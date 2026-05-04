@@ -62,8 +62,8 @@ class Chapter(DockbModel):
 ```
 
 Then I created a model "Document", which at this stage is not much more than
-a stub itself:
+a stub itself: [src/dockb/models/document.py](https://github.com/brianmodra/dockb/blob/5b19a1cf918d9814d0930e659cd66eca45afebf5/src/dockb/models/document.py)
 
-And here is the test (as it started) [tests/models/test_document.py](tests/models/test_document.py)
+And here is the test (as it started) [tests/models/test_document.py](https://github.com/brianmodra/dockb/blob/5b19a1cf918d9814d0930e659cd66eca45afebf5/tests/dockb/models/test_document.py)
 
 This is all the coding and documentation I did before I put the LLM to work.
