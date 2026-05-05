@@ -12,7 +12,7 @@ class Document(DockbModel):
     The entire document is stored in the text parameter. (This may change later.)
     This class will not handle the process of extracting chapters from the text of the document and creating
     Chapter objects in the list. That will be handled by another class. That other class will only start
-    establishing the semantics when triggered anbd when the dirty flag is True. Once it has done its work,
+    establishing the semantics when triggered and when the dirty flag is True. Once it has done its work,
     it will set it to False.
 
     This class (Document) will not make changes to the list of Chapters, but after an apply_... function is called,

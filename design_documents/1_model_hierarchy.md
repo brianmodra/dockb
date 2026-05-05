@@ -8,9 +8,7 @@ Chapter has a list of Paragraph objects.
 ## Paragraph
 Paragraph has a list of Sentence objects.
 ## Sentence
-Sentence has a list of Phrase objects.
-# Phrase
-Phrase has a list ot Token objects.
+Sentence has a list of Token objects.
 # Token
 A token is either a word, or punctuation,
 or white space, and white space can be any

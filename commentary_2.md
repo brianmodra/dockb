@@ -19,7 +19,7 @@ models. I will write the classes with empty functions,
 I'll write the tests, and this time use a better prompt.
 
 I started to fill out the Chapter class with empty
-functions, and crceated a very empty Paragraph class,
+functions, and created a very empty Paragraph class,
 then realised that teh LLM can create the other classes
 for me because they are basically carbon copies.
 
@@ -28,10 +28,10 @@ I said we should not let the LLM create tests, but my
 prompt will tell it to create the classes using the
 same ideas as in Document, and then get it to duplicate
 the tests for the new classes. They will be the same as
-the tests I created. I'm jsut getting it to do the 
+the tests I created. I'm just getting it to do the
 duplication.
 
-The following started as a prompt, then became a 
+The following started as a prompt, then became a
 design document:
 ```
 The system of models is a hiararcy of classes as so:
@@ -92,3 +92,11 @@ type, but don't attempt to create any new functions.
 ```
 Then I created a stub Token class with comments, and wrote the test_token.py
 and prompted it to fill in the blanks.
+
+This worked very well, took hardly any time, except the time I spent writing up the
+description of the Token class. I admit that I changed the design of the Token class
+half-way through and asked the LLM to fix up the documentation and the tests.
+And I was saying, "Don't let the LLM write tests". However, if you watch closely
+what it is creating, it is OK. This is an exception to my rule though, which I am
+happy to state later one once I've (hopefully) proven my theory. So far, it's
+working out great.

@@ -5,12 +5,12 @@ import uuid
 from pydantic import Field
 
 from .base import DockbModel
-from dockb.models.phrase import Phrase
+from dockb.models.token import Token
 
 
 class Sentence(DockbModel):
     id: str = uuid.uuid4()
-    phrases: list[Phrase] = Field(default_factory=list)
+    tokens: list[Token] = Field(default_factory=list)
     text: str = ""
     dirty: bool = False
 
