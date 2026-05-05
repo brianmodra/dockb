@@ -3,3 +3,9 @@ class EditTextRangeError(Exception):
         super().__init__(message)
         self.start = start
         self.end = end
+
+
+class TokenInvalidError(Exception):
+    pass
+
+

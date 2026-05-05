@@ -1,7 +1,7 @@
 # OpenCode Notes
 
 ## Documentaton
-- Design context lives in numbered files under `design_docs/`; read them in numeric order when changing domain behavior.
+- Design context lives in numbered files under `design_documents/`; read them in numeric order when changing domain behavior.
 
 ## Backend Commands
 - Install dev deps from repo root: `source .venv/bin/activate && pip install -e '.[dev]'`.

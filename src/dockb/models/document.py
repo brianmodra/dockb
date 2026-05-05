@@ -1,9 +1,6 @@
 from __future__ import annotations
-
 import uuid
-
 from pydantic import Field, PositiveInt
-
 from .base import DockbModel
 from dockb.models.chapter import Chapter
 from dockb.exceptions import EditTextRangeError
@@ -47,9 +44,9 @@ class Document(DockbModel):
             raise EditTextRangeError("end is before start", start, end)
         if not self.text:
             raise EditTextRangeError("no text to edit", start, end)
-        if start >= len(self.text):
+        if start >= len(self.text) or start < 0:
             raise EditTextRangeError("start is out of range", start, end)
-        if end >= len(self.text):
+        if end >= len(self.text) or end < 0:
             raise EditTextRangeError("end is out of range", start, end)
         self.text = self.text[:start] + text + self.text[end + 1 :]
         self.dirty = True
@@ -58,5 +55,23 @@ class Document(DockbModel):
         """
         Appends the text after the end of the existing text
         """
+        if not text:
+            return
         self.text = self.text + text
+        self.dirty = True
+
+    def apply_insert_text(self, pos: int, text: str) -> None:
+        """
+        Inserts the text before the character at offset pos in the existing text
+        """
+        if not text:
+            return
+
+        if pos < 0 or pos > len(self.text):
+            raise EditTextRangeError("pos is out of range", pos, pos)
+
+        if pos == 0:
+            self.text = text + self.text
+        else:
+            self.text = self.text[:pos] + text + self.text[pos:]
         self.dirty = True

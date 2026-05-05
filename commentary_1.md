@@ -96,10 +96,10 @@ because I have not written the body of the function
 apply_append_text in @src/dockb/models/document.py .
 ```
 Then I accidentally pressed ENTER, and opencoder just jumped into it.
-So that was a very simple prompt.However, it should have been very
+So that was a very simple prompt. However, it should have been very
 obvious what it needed to do.
 
-It fixed a bug I'd written into teh exception class (I was calling super()
+It fixed a bug I'd written into the exception class (I was calling super()
 as if it was super().__init__()).
 
 There was a bug in my test, and it added some automation into the function
