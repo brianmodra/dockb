@@ -1,9 +1,20 @@
 # How I made this project using AI
 
+## Why?
+
+In my team in my day job, we use Cursor and Claude
+(depending on personal preferences).
+I prefer Cursor, and we have `.cursor/skills` set up so that it can read
+tickets, refine them, access GitHub, work on tickets, and review tickets.
+
+It all works very well, and it's a lot of fun, but it uses a lot of
+tokens, it's expensive, and we are all chewing our fingernails - what
+will it be like when costs go up?
+
 ## Introduction
 
 The process of software development has been disrupted by tools like
-Copilot, Cluade, and Cursor. I also got myself a key and used it with GPT-5,
+Copilot, Claude, and Cursor. I also got myself a key and used it with GPT-5,
 connected to my IDE to see just how expensive it got.
 I chewed up $10 in the space of a week...
 
@@ -75,3 +86,24 @@ a stub itself: [src/dockb/models/document.py](https://github.com/brianmodra/dock
 And here is the test (as it started) [tests/models/test_document.py](https://github.com/brianmodra/dockb/blob/064b094379c9e9966b1734b10ae317ae5c3806b5/tests/dockb/models/test_document.py)
 
 This is all the coding and documentation I did before I put the LLM to work.
+
+Following is the prompt I used:
+
+```
+I have written a test file for the Document
+model: @tests/dockb/models/test_document.py Most fail at present,
+because I have not written the body of the function
+apply_append_text in @src/dockb/models/document.py .
+```
+Then I accidentally pressed ENTER, and opencoder just jumped into it.
+So that was a very simple prompt.However, it should have been very
+obvious what it needed to do.
+
+It fixed a bug I'd written into teh exception class (I was calling super()
+as if it was super().__init__()).
+
+There was a bug in my test, and it added some automation into the function
+which I don't want, so I will fix the text and remove that logic.
+
+Here is the code it created:
+[src/dockb/models/document.py]()
