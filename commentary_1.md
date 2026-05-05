@@ -106,4 +106,10 @@ There was a bug in my test, and it added some automation into the function
 which I don't want, so I will fix the text and remove that logic.
 
 Here is the code it created:
-[src/dockb/models/document.py]()
+[src/dockb/models/document.py](https://github.com/brianmodra/dockb/blob/ce2af56dc5da172925a2f166289bfc3fda6f6faa/src/dockb/models/document.py)
+
+The error was not on the part of Big Pickle, it was my error.
+For completeness, here's the test and the class after I fixed them:
+
+[tests/models/test_document.py](https://github.com/brianmodra/dockb/blob/8d80a60ad25de9786e78637c908960450e91fb9c/tests/dockb/models/test_document.py)
+[src/dockb/models/document.py](https://github.com/brianmodra/dockb/blob/8d80a60ad25de9786e78637c908960450e91fb9c/src/dockb/models/document.py)
