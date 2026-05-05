@@ -55,15 +55,23 @@ I created a base class:
 class DockbModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 ```
-and a stub class "Chapter" with nothing in it (which I'll expand later.)
+a stub class "Chapter" with nothing in it (which I'll expand later.)
 ``` python
 class Chapter(DockbModel):
     id: str
 ```
+and an exception class:
+```python
+class EditTextRangeError(Exception):
+    def __init__(self, message: str, start: int, end:int):
+        super(message)
+        self.start = start
+        self.end = end
+```
 
 Then I created a model "Document", which at this stage is not much more than
-a stub itself: [src/dockb/models/document.py](https://github.com/brianmodra/dockb/blob/5b19a1cf918d9814d0930e659cd66eca45afebf5/src/dockb/models/document.py)
+a stub itself: [src/dockb/models/document.py](https://github.com/brianmodra/dockb/blob/064b094379c9e9966b1734b10ae317ae5c3806b5/src/dockb/models/document.py)
 
-And here is the test (as it started) [tests/models/test_document.py](https://github.com/brianmodra/dockb/blob/5b19a1cf918d9814d0930e659cd66eca45afebf5/tests/dockb/models/test_document.py)
+And here is the test (as it started) [tests/models/test_document.py](https://github.com/brianmodra/dockb/blob/064b094379c9e9966b1734b10ae317ae5c3806b5/tests/dockb/models/test_document.py)
 
 This is all the coding and documentation I did before I put the LLM to work.
