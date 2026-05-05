@@ -32,7 +32,7 @@ def test_edit_text_of_single_character_does_replace_the_text_and_invalidates_sem
     document = Document()
     document.apply_append_text("Hello World!")
     document.dirty = False # force it so we can test that it gets set to True
-    document.apply_edit_text(12, 12, ".")
+    document.apply_edit_text(11, 11, ".")
     assert document.text == "Hello World."
     assert document.dirty
 

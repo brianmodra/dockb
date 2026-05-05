@@ -47,12 +47,9 @@ class Document(DockbModel):
             raise EditTextRangeError("end is before start", start, end)
         if not self.text:
             raise EditTextRangeError("no text to edit", start, end)
-        if start == end == len(self.text):
-            start = len(self.text) - 1
-            end = start
-        if start > len(self.text):
+        if start >= len(self.text):
             raise EditTextRangeError("start is out of range", start, end)
-        if end > len(self.text):
+        if end >= len(self.text):
             raise EditTextRangeError("end is out of range", start, end)
         self.text = self.text[:start] + text + self.text[end + 1 :]
         self.dirty = True
