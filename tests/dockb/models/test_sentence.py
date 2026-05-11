@@ -171,3 +171,10 @@ def test_append_text_with_empty_string_to_existing_text_does_nothing():
     sentence.apply_append_text("")
     assert sentence.text == "Hello"
     assert not sentence.dirty
+
+
+def test_each_sentence_has_unique_id():
+    s1 = Sentence()
+    s2 = Sentence()
+    assert s1.id != s2.id
+    assert isinstance(s1.id, str)

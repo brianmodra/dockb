@@ -1,12 +1,7 @@
 from __future__ import annotations
-
 import string
-import uuid
 from enum import Enum
 from dockb.exceptions import TokenInvalidError
-
-from pydantic import Field
-
 from .base import DockbModel
 
 
@@ -17,11 +12,12 @@ class TokenType(Enum):
     TOKEN_IS_WHITESPACE = "whitespace"
     TOKEN_IS_EXTENDED = "extended"
 
-
 class Token(DockbModel):
-    id: str = uuid.uuid4()
     text: str = ""
     type: TokenType = TokenType.TOKEN_IS_UNDEFINED
+
+    def get_text(self) -> str:
+        return self.text
 
     def set_text(self, text: str) -> None:
         """
@@ -66,3 +62,12 @@ class Token(DockbModel):
             self.type = TokenType.TOKEN_IS_EXTENDED
         else:
             raise TokenInvalidError("text does not conform to any token type")
+
+    def apply_edit_text(self, start: int, end: int, text: str) -> None:
+        raise NotImplemented()
+
+    def apply_append_text(self, text: str) -> None:
+        raise NotImplemented()
+
+    def apply_insert_text(self, pos: int, text: str) -> None:
+        raise NotImplemented()

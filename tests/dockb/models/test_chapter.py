@@ -171,3 +171,10 @@ def test_append_text_with_empty_string_to_existing_text_does_nothing():
     chapter.apply_append_text("")
     assert chapter.text == "Hello"
     assert not chapter.dirty
+
+
+def test_each_chapter_has_unique_id():
+    ch1 = Chapter()
+    ch2 = Chapter()
+    assert ch1.id != ch2.id
+    assert isinstance(ch1.id, str)

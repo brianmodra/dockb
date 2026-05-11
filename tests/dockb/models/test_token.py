@@ -230,3 +230,10 @@ def test_set_text_as_extended_single_character():
     token.set_text("★")
     assert token.text == "★"
     assert token.type == TokenType.TOKEN_IS_EXTENDED
+
+
+def test_each_token_has_unique_id():
+    t1 = Token()
+    t2 = Token()
+    assert t1.id != t2.id
+    assert isinstance(t1.id, str)

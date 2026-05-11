@@ -172,3 +172,10 @@ def test_append_text_with_empty_string_to_existing_text_does_nothing():
     document.apply_append_text("")
     assert document.text == "Hello"
     assert not document.dirty
+
+
+def test_each_document_has_unique_id():
+    doc1 = Document()
+    doc2 = Document()
+    assert doc1.id != doc2.id
+    assert isinstance(doc1.id, str)

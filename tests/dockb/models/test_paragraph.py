@@ -171,3 +171,10 @@ def test_append_text_with_empty_string_to_existing_text_does_nothing():
     paragraph.apply_append_text("")
     assert paragraph.text == "Hello"
     assert not paragraph.dirty
+
+
+def test_each_paragraph_has_unique_id():
+    p1 = Paragraph()
+    p2 = Paragraph()
+    assert p1.id != p2.id
+    assert isinstance(p1.id, str)
