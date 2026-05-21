@@ -4,10 +4,7 @@ from logging import shutdown
 
 import pytest
 import asyncio
-from dockb.services.semantics.job import Job, JobStatus
-from dockb.services.semantics.job_queue import JobQueue
-from dockb.services.semantics.delete_job import DeleteJob
-from dockb.services.semantics.reconstruct_job import ReconstructJob
+from dockb.services.semantics import Job, JobStatus, JobQueue, DeleteJob, ReconstructJob
 
 class TestJob(Job):
     count: int = 0

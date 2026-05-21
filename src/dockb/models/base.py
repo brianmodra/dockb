@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from pydantic import BaseModel, ConfigDict, Field
 from abc import ABC, abstractmethod
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from dockb.exceptions import EditTextRangeError
 
 

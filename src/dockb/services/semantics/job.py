@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
+from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional
-from abc import ABC, abstractmethod
-
-import asyncio
 
 
 class JobStatus(Enum):

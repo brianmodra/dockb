@@ -1,12 +1,12 @@
 import pytest
 
-from dockb.models.token import Token, TokenType
+from dockb.models import Token, TokenType, POS
 from dockb.exceptions import TokenInvalidError
 
 
-def test_initial_state_is_undefined():
+def test_initial_state_is_empty():
     token = Token()
-    assert token.type == TokenType.TOKEN_IS_UNDEFINED
+    assert token.type == TokenType._
     assert token.text == ""
 
 
@@ -21,7 +21,70 @@ def test_set_text_as_number():
     token = Token()
     token.set_text("123")
     assert token.text == "123"
-    assert token.type == TokenType.TOKEN_IS_WORD
+    assert token.type == TokenType.TOKEN_IS_NUMBER
+    assert token.is_digit == True
+
+
+def test_set_text_as_float():
+    token = Token()
+    token.set_text("123.123")
+    assert token.text == "123.123"
+    assert token.type == TokenType.TOKEN_IS_NUMBER
+    assert token.is_digit == False
+
+
+def test_set_text_as_thousands():
+    token = Token()
+    token.set_text("123,123")
+    assert token.text == "123,123"
+    assert token.type == TokenType.TOKEN_IS_NUMBER
+    assert token.is_digit == False
+
+
+def test_set_text_with_multiple_dots():
+    token = Token()
+    token.set_text("123.123.3.12")
+    assert token.text == "123.123.3.12"
+    assert token.type == TokenType.TOKEN_IS_NUMBER
+    assert token.is_digit == False
+
+
+def test_set_text_with_multiple_commas():
+    token = Token()
+    token.set_text("123,123,3,12")
+    assert token.text == "123,123,3,12"
+    assert token.type == TokenType.TOKEN_IS_NUMBER
+    assert token.is_digit == False
+
+
+def test_categorizes_invalid_numbers():
+    token = Token()
+    token.set_text("123,,123,3,12")
+    assert token.type == TokenType._
+    token.set_text("123,,,3,12")
+    assert token.type == TokenType._
+    token.set_text("123,,,,3,12")
+    assert token.type == TokenType._
+
+
+def test_categorizes_invalid_dot_numbers():
+    token = Token()
+    token.set_text("123..1")
+    assert token.type == TokenType._
+    token.set_text("123...1")
+    assert token.type == TokenType._
+    token.set_text("123....1")
+    assert token.type == TokenType._
+
+
+def test_categorizes_mixed_dot_comma_numbers():
+    token = Token()
+    token.set_text("123.,.1")
+    assert token.type == TokenType._
+    token.set_text("123.,1")
+    assert token.type == TokenType._
+    token.set_text("123,.1")
+    assert token.type == TokenType._
 
 
 def test_set_text_as_word_with_number():
@@ -52,64 +115,76 @@ def test_set_text_as_simple_word_with_number():
     assert token.type == TokenType.TOKEN_IS_WORD
 
 
-def test_throws_wnen_set_text_as_word_with_underscore():
+def test_categorizes_invalid_words_with_underscore():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("abc_def")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("abc_")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("_def")
+    token.set_text("abc_def")
+    assert token.type == TokenType._
+    token.set_text("abc_")
+    assert token.type == TokenType._
+    token.set_text("_def")
+    assert token.type == TokenType._
 
 
-def test_throws_wnen_set_text_as_word_with_space():
+def test_categorizes_invalid_words_with_embedded_or_leading_space():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("abc def")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("abc ")
-    with pytest.raises(TokenInvalidError):
-        token.set_text(" abc")
+    token.set_text("abc def")
+    assert token.type == TokenType._
+    token.set_text(" abc")
+    assert token.type == TokenType._
+
+
+def test_sets_whitespace_set_text_as_word_with_trailing_space():
+    token = Token()
+    token.set_text("abc ")
+    assert token.text == "abc"
+    assert token.type == TokenType.TOKEN_IS_WORD
+    assert token.trailing_ws == " "
 
 
 def test_throws_wnen_set_text_as_word_with_non_alphanum():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("abc=")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("ab$c")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("a%bc")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("!abc")
+def test_categorizes_invalid_words_with_non_alphanum():
+    token = Token()
+    token.set_text("abc=")
+    assert token.type == TokenType._
+    token.set_text("ab$c")
+    assert token.type == TokenType._
+    token.set_text("a%bc")
+    assert token.type == TokenType._
+    token.set_text("!abc")
+    assert token.type == TokenType._
 
 
 def test_set_text_as_space():
     token = Token()
     token.set_text(" ")
-    assert token.text == " "
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    assert token.text == ""
+    assert token.type == TokenType.TOKEN_IS_WORD
+    assert token.trailing_ws == " "
 
 
-def test_set_text_as_newline():
+def test_set_text_with_newline():
     token = Token()
-    token.set_text("\n")
-    assert token.text == "\n"
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    token.set_text("Hello\n")
+    assert token.text == "Hello"
+    assert token.trailing_ws == "\n"
+    assert token.type == TokenType.TOKEN_IS_WORD
 
 
-def test_set_text_as_tab():
+def test_set_text_with_tab():
     token = Token()
-    token.set_text("\t")
-    assert token.text == "\t"
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    token.set_text("Hello\t")
+    assert token.text == "Hello"
+    assert token.trailing_ws == "\t"
+    assert token.type == TokenType.TOKEN_IS_WORD
 
 
-def test_set_text_as_whitespace():
+def test_set_text_with_multiple_whitespace():
     token = Token()
-    token.set_text("\t\n   \t \n")
-    assert token.text == "\t\n   \t \n"
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    token.set_text("Hello\t\n   \t \n")
+    assert token.text == "Hello"
+    assert token.trailing_ws == "\t\n   \t \n"
+    assert token.type == TokenType.TOKEN_IS_WORD
 
 
 def test_set_text_as_comma():
@@ -119,22 +194,57 @@ def test_set_text_as_comma():
     assert token.type == TokenType.TOKEN_IS_PUNCTUATION
 
 
-def test_throws_if_set_text_as_commas():
+def test_categorizes_invalid_punctuation():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text(",,")
+    token.set_text(",,")
+    assert token.type == TokenType._
+    token.set_text("..")
+    assert token.type == TokenType._
+    token.set_text(", ")
+    assert token.type == TokenType._
+    token.set_text("")
+    assert token.type == TokenType._
+    token.set_text("!!")
+    assert token.type == TokenType._
+    token.set_text(".?")
+    assert token.type == TokenType._
+    token.set_text("!@")
+    assert token.type == TokenType._
 
 
-def test_throws_if_set_text_as_comma_and_space():
+def test_detects_ellipseis_if_set_text_as_three_full_stops():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text(", ")
+    token.set_text("...")
+    assert token.text == "..."
+    assert token.type == TokenType.TOKEN_IS_PUNCTUATION
 
 
-def test_throws_if_set_text_is_empty():
+def test_adding_whitespace_to_a_word():
     token = Token()
+    token.set_text("abc")
+    token.set_trailing_ws("\n\n")
+    assert token.text == "abc"
+    assert token.trailing_ws == "\n\n"
+    assert token.type == TokenType.TOKEN_IS_WORD
+
+
+def test_throws_when_adding_non_whitespace_to_a_word():
+    token = Token()
+    token.set_text("abc")
     with pytest.raises(TokenInvalidError):
-        token.set_text("")
+        token.set_trailing_ws("\n,\n")
+
+
+def test_categorizes_comma_and_space():
+    token = Token()
+    token.set_text(", ")
+    assert token.type == TokenType._
+
+
+def test_categorizes_empty_text():
+    token = Token()
+    token.set_text("")
+    assert token.type == TokenType._
 
 
 def test_set_text_as_various_punctuation():
@@ -145,61 +255,54 @@ def test_set_text_as_various_punctuation():
         assert token.type == TokenType.TOKEN_IS_PUNCTUATION
 
 
-def test_throws_if_set_text_is_multiple_punctuation():
+def test_categorizes_multiple_punctuation():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("!!")
-    with pytest.raises(TokenInvalidError):
-        token.set_text(".?")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("!@")
+    token.set_text("!!")
+    assert token.type == TokenType._
+    token.set_text(".?")
+    assert token.type == TokenType._
+    token.set_text("!@")
+    assert token.type == TokenType._
 
 
-def test_set_text_as_carriage_return():
+def test_set_text_with_carriage_return():
     token = Token()
-    token.set_text("\r")
-    assert token.text == "\r"
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    token.set_text("Hello\r")
+    assert token.text == "Hello"
+    assert token.trailing_ws == "\r"
+    assert token.type == TokenType.TOKEN_IS_WORD
 
 
-def test_set_text_as_form_feed():
+def test_set_text_with_form_feed():
     token = Token()
-    token.set_text("\f")
-    assert token.text == "\f"
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    token.set_text("Hello\f")
+    assert token.text == "Hello"
+    assert token.trailing_ws == "\f"
+    assert token.type == TokenType.TOKEN_IS_WORD
 
 
-def test_set_text_as_vertical_tab():
+def test_set_text_with_vertical_tab():
     token = Token()
-    token.set_text("\v")
-    assert token.text == "\v"
-    assert token.type == TokenType.TOKEN_IS_WHITESPACE
+    token.set_text("Hello\v")
+    assert token.text == "Hello"
+    assert token.trailing_ws == "\v"
+    assert token.type == TokenType.TOKEN_IS_WORD
 
 
-def test_throws_if_set_text_mixed_whitespace_and_word():
+def test_categorizes_mixed_punctuation_and_word():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("hello ")
-    with pytest.raises(TokenInvalidError):
-        token.set_text(" hello")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("he llo")
+    token.set_text("hello.")
+    assert token.type == TokenType._
+    token.set_text(".hello")
+    assert token.type == TokenType._
+    token.set_text("hel.lo")
+    assert token.type == TokenType._
 
 
-def test_throws_if_set_text_mixed_punctuation_and_word():
+def test_categorizes_multi_char_extended():
     token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("hello.")
-    with pytest.raises(TokenInvalidError):
-        token.set_text(".hello")
-    with pytest.raises(TokenInvalidError):
-        token.set_text("hel.lo")
-
-
-def test_throws_if_set_text_is_multi_char_extended():
-    token = Token()
-    with pytest.raises(TokenInvalidError):
-        token.set_text("🎉🎉")
+    token.set_text("🎉🎉")
+    assert token.type == TokenType._
 
 
 def test_set_text_as_extended_word():
@@ -237,3 +340,67 @@ def test_each_token_has_unique_id():
     t2 = Token()
     assert t1.id != t2.id
     assert isinstance(t1.id, str)
+
+
+def test_set_pos_on_word():
+    token = Token()
+    token.set_text("Hello")
+    token.set_pos("NOUN")
+    assert token.pos == POS.NOUN
+
+
+def test_set_pos_on_non_word():
+    token = Token()
+    token.set_text("!")
+    token.set_pos("PUNCT")
+    assert token.pos == POS.PUNCT
+
+    token.set_text("123")
+    token.set_pos("NUM")
+    assert token.pos == POS.NUM
+
+
+def test_sets_pos_on_inappropriate_types():
+    token = Token()
+    token.set_text("!")
+    token.set_pos("PUNCT")
+    assert token.pos == POS.PUNCT
+
+    token.set_text("Hello")
+    with pytest.raises(TokenInvalidError):
+        token.set_pos("INVALID")
+
+
+def test_set_lemma_on_non_word():
+    token = Token()
+    token.set_text("?")
+    token.set_lemma("?")
+    assert token.lemma == "?"
+
+    token.set_text("123")
+    token.set_lemma("123")
+    assert token.lemma == "123"
+
+
+def test_set_lemma_on_verb():
+    token = Token()
+    token.set_text("running")
+    token.set_lemma("ran")
+    assert token.lemma == "ran"
+    token.set_text("runs")
+    token.set_lemma("run")
+    assert token.lemma == "run"
+    token.set_text("was")
+    token.set_lemma("be")
+    assert token.lemma == "be"
+
+
+def test_set_lemma_on_noun():
+    token = Token()
+    token.set_text("cats")
+    token.set_lemma("cat")
+    assert token.lemma == "cat"
+    token.set_text("children")
+    token.set_lemma("child")
+    assert token.lemma == "child"
+    # that's probably enough tests for lemma

@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from pydantic import Field
-from .base import DockbModel
+
 from dockb.models.chapter import Chapter
+
+from .base import DockbModel
 
 
 class Document(DockbModel):
@@ -21,7 +24,15 @@ class Document(DockbModel):
     text: str = ""
 
     def get_text(self) -> str:
-        return self.text
+        if self.dirty:
+            return self.text
+        if not self.chapters:
+            return self.text
+        return "".join(chapter.getText() for chapter in self.chapters)
 
-    def set_text(self, text: str) -> None:
+    def set_text(self, text: str, delay_semantics: bool = False) -> None:
+        self.dirty = True
         self.text = text
+        if delay_semantics:
+            return
+

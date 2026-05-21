@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from dockb.services.semantics.job import Job, JobStatus
+from dockb.services.semantics import Job, JobStatus, DeleteJob, ReconstructJob
 
 
 class TestJob(Job):
@@ -39,8 +39,6 @@ def test_each_job_has_unique_id():
 
 
 def test_delete_job_has_unique_id():
-    from dockb.services.semantics.delete_job import DeleteJob
-
     class ConcreteDelete(DeleteJob):
         async def run(self) -> None:
             pass
@@ -52,8 +50,6 @@ def test_delete_job_has_unique_id():
 
 
 def test_reconstruct_job_has_unique_id():
-    from dockb.services.semantics.reconstruct_job import ReconstructJob
-
     class ConcreteReconstruct(ReconstructJob):
         async def run(self) -> None:
             pass
