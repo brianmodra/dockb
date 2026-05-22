@@ -1,11 +1,13 @@
-import pytest
 import asyncio
-from dockb.services.semantics.job import Job, JobStatus
+
+import pytest
+
 from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.job import Job, JobStatus
 from dockb.services.semantics.reconstruct_job import ReconstructJob
 
 
-class TestJob(Job):
+class SimpleJob(Job):
     ready = asyncio.Event()
 
     async def run(self) -> None:
@@ -22,7 +24,7 @@ class ConcreteJob(Job):
 
 @pytest.mark.asyncio
 async def test_job_runs():
-    job = TestJob()
+    job = SimpleJob()
     await asyncio.gather(job.set(), job.execute())
     assert job.status == JobStatus.DONE
 

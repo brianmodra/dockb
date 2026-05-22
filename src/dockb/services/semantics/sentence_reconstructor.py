@@ -3,8 +3,7 @@
 from abc import ABC, abstractmethod
 
 from dockb.models.base import DockbModel
-
-from .reconstructor import Reconstructor
+from dockb.services.semantics.reconstructor import Reconstructor
 
 
 class SentenceReconstructor(Reconstructor, ABC):  # pylint: disable=too-few-public-methods

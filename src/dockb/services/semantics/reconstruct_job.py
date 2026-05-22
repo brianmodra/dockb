@@ -1,5 +1,4 @@
 """Job for reconstructing sentence semantics."""
-
 from __future__ import annotations
 
 from dockb.models.base import DockbModel
@@ -17,19 +16,19 @@ class ReconstructJob(Job):
     ) -> None:
         super().__init__()
         self.model_id: str = model_id
-        self.sentence: DockbModel | None = None
+        self.model: DockbModel | None = None
         self.doc_cache: DocCache | None = None
 
     async def run(self) -> None:
-        if self.sentence is None or self.doc_cache is None:
+        """Run tokenization on the attached model if dirty."""
+        if self.model is None or self.doc_cache is None:
             return
-        if not self.sentence.dirty:
+        if not self.model.dirty:
             return
-        doc_cache: DocCache = self.doc_cache
-        self.sentence.tokenize(doc_cache)
-        self.sentence = None
+        self.model.tokenize(self.doc_cache)
+        self.model = None
 
     def set(self, sentence: DockbModel, doc_cache: DocCache) -> None:
         """Attach the sentence and doc cache for processing."""
-        self.sentence = sentence
+        self.model = sentence
         self.doc_cache = doc_cache

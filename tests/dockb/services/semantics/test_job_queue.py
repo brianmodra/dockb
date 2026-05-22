@@ -1,16 +1,16 @@
-import sys
 
-from logging import shutdown
+
+import asyncio
 
 import pytest
-import asyncio
-from dockb.services.semantics.job_queue import JobQueue
-from dockb.services.semantics.job import Job, JobStatus
+
 from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.job import Job, JobStatus
+from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
 
 
-class TestJob(Job):
+class SimpleJob(Job):
     count: int = 0
 
     def __init__(self) -> None:
@@ -19,7 +19,7 @@ class TestJob(Job):
         self.ready_to_start = asyncio.Event()
         self.almost_done = asyncio.Event()
         self.started = asyncio.Event()
-        TestJob.count += 1
+        SimpleJob.count += 1
         self.seq = 0
 
     def set_ready_to_start(self) -> None:
@@ -31,7 +31,7 @@ class TestJob(Job):
     async def run(self) -> None:
         self.started.set()
         await self.ready_to_start.wait()
-        self.seq = TestJob.count
+        self.seq = SimpleJob.count
         await self.almost_done.wait()
 
 
@@ -48,9 +48,9 @@ async def test_job_queue_runs():
 async def test_job_queue_queues_jobs_and_runs_them_in_order():
     queue = JobQueue()
     assert not await queue.is_running()
-    job1 = TestJob()
+    job1 = SimpleJob()
     id1 = job1.id
-    job2 = TestJob()
+    job2 = SimpleJob()
     id2 = job2.id
     queue.enqueue(job1)
     assert job1.status == JobStatus.QUEUED
@@ -84,11 +84,11 @@ async def test_job_queue_queues_jobs_and_runs_them_in_order():
 async def test_job_queue_can_cancel_jobs_that_are_running_and_lets_other_jobs_be_run_afterwards():
     queue = JobQueue()
     assert not await queue.is_running()
-    job_to_cancel = TestJob()
+    job_to_cancel = SimpleJob()
     seq_to_cancel = job_to_cancel.seq
-    job_to_remain = TestJob()
+    job_to_remain = SimpleJob()
     queue.enqueue(job_to_cancel)
-    job_to_remain = TestJob()
+    job_to_remain = SimpleJob()
     queue.enqueue(job_to_remain)
     assert job_to_cancel.status == JobStatus.QUEUED
     assert job_to_remain.status == JobStatus.QUEUED

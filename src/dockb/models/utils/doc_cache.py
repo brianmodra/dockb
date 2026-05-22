@@ -91,6 +91,12 @@ class DocCache:
         self.eviction_thread = threading.Thread(target=self._eviction_worker, daemon=True)
         self.eviction_thread.start()
 
+    def join(self) -> None:
+        """Wait for any running eviction worker to finish"""
+        if not self.eviction_thread:
+            return
+        self.eviction_thread.join()
+
     def stop(self) -> None:
         """Signal the eviction thread to stop and wait for it to finish."""
         if not self.eviction_thread:

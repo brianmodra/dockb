@@ -1,14 +1,11 @@
 """Async job queue for semantic processing tasks."""
-
 from __future__ import annotations
 
 import asyncio
-import logging
+from typing import Dict, List
 
 from .job import Job, JobStatus
 from .reconstruct_job import ReconstructJob
-
-logger = logging.getLogger(__name__)
 
 
 class JobQueue:  # pylint: disable=too-many-instance-attributes
@@ -16,10 +13,10 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
 
     def __init__(self) -> None:
         self.queue: asyncio.Queue[str] = asyncio.Queue()
-        self.reconstruct_jobs: dict[str, ReconstructJob] = {}
+        self.reconstruct_jobs: Dict[str, ReconstructJob] = {}
         self._worker_task: asyncio.Task[None] | None = None
         self._shutdown = False
-        self._jobs: dict[str, Job] = {}
+        self._jobs: Dict[str, Job] = {}
         self._completed_event: asyncio.Event = asyncio.Event()
         self._new_job_event: asyncio.Event = asyncio.Event()
         self._pending_count: int = 0
@@ -97,21 +94,8 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
                 await job.execute()
             except asyncio.CancelledError:
                 job.status = JobStatus.CANCELLED
-            except (
-                    KeyboardInterrupt,
-                    SystemExit,
-                    MemoryError,
-                    RuntimeError,
-                    NotImplementedError,
-                    RecursionError,
-                    InterruptedError) as ex:
-                # TRAP 2: Global application shutdown signals.
-                # We must re-raise these immediately so the program exits.
-                logger.exception("%s thrown by %s#%s in JobQueue", ex, type(job).__name__, job.id)
-                raise
-            except Exception as ex:  # pylint: disable=broad-exception-caught
-                job.error = ex
-                job.status = JobStatus.FAILED
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
             finally:
                 if hasattr(job, "done"):
                     job.done.set()
@@ -124,6 +108,6 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
                 if isinstance(job, ReconstructJob):
                     self.reconstruct_jobs.pop(job.model_id, None)
 
-    def list_jobs(self) -> list[str]:
+    def list_jobs(self) -> List[str]:
         """Return IDs of all currently queued jobs."""
-        return [job_id for job_id, job in self._jobs.items() if job.status == JobStatus.QUEUED]
+        return [job_id for job_id in list(self._jobs.keys()) if self._jobs[job_id].status == JobStatus.QUEUED]

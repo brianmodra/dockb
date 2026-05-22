@@ -1,8 +1,7 @@
 """Synchronous sentence reconstruction."""
 
 from dockb.models.base import DockbModel
-
-from .sentence_reconstructor import SentenceReconstructor
+from dockb.services.semantics.sentence_reconstructor import SentenceReconstructor
 
 
 class SyncSentenceReconstructor(SentenceReconstructor):  # pylint: disable=too-few-public-methods

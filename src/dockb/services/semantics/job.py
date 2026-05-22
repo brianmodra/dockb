@@ -1,16 +1,15 @@
-"""Job abstraction for async semantic processing tasks."""
-
+"""Job abstraction for semantic processing tasks."""
 from __future__ import annotations
 
 import asyncio
 import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 
 class JobStatus(Enum):
-    """Lifecycle states for a processing job."""
+    """Enumeration of job lifecycle states."""
 
     QUEUED = "queued"
     RUNNING = "running"
@@ -20,28 +19,28 @@ class JobStatus(Enum):
 
 
 class Job(ABC):
-    """Abstract base class for async jobs executed by the JobQueue."""
+    """Abstract base class for semantic processing jobs."""
 
     def __init__(self) -> None:
         self.timeout: int = 5000  # 5 seconds by default
         self.status: JobStatus = JobStatus.QUEUED
         self.result: Any = None
-        self.error: Exception | None = None
-        self.worker_task: asyncio.Task[Any] | None = None
+        self.error: Optional[Exception] = None
+        self.worker_task: Optional[asyncio.Task[Any]] = None
         self.id: str = str(uuid.uuid4())
 
     def cancel(self) -> None:
-        """Cancel the job and its underlying asyncio task."""
+        """Cancel the job and its underlying worker task."""
         self.status = JobStatus.CANCELLED
         if self.worker_task and not self.worker_task.done():
             self.worker_task.cancel()
 
     @abstractmethod
     async def run(self) -> None:
-        """Implement the actual job logic here."""
+        """Execute the job's specific logic."""
 
     async def execute(self) -> None:
-        """Run the job with a timeout, handling cancellation and errors."""
+        """Execute the job with a timeout and status management."""
         self.status = JobStatus.RUNNING
         try:
             await asyncio.wait_for(self.run(), timeout=self.timeout)

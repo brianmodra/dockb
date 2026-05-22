@@ -1,6 +1,4 @@
-# pylint: disable=cyclic-import
 """Job for clearing sentence tokens before reconstruction."""
-
 from __future__ import annotations
 
 from dockb.models.base import DockbModel
@@ -15,16 +13,17 @@ class DeleteJob(Job):
         self,
     ) -> None:
         super().__init__()
-        self.sentence: DockbModel | None = None
+        self.model: DockbModel | None = None
 
     async def run(self) -> None:
-        if self.sentence is None:
+        """Clear semantics on the attached model if dirty."""
+        if self.model is None:
             return
-        if not self.sentence.dirty:
+        if not self.model.dirty:
             return
-        self.sentence.clear_semantics()
-        self.sentence = None
+        self.model.clear_semantics()
+        self.model = None
 
     def set(self, sentence: DockbModel) -> None:
         """Attach the sentence to be cleared."""
-        self.sentence = sentence
+        self.model = sentence

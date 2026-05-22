@@ -1,7 +1,7 @@
 import pytest
 
-from dockb.models.paragraph import Paragraph
 from dockb.exceptions import EditTextRangeError
+from dockb.models.paragraph import Paragraph
 
 
 def test_apply_text_creates_the_text_and_invalidates_semantics():

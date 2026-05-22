@@ -35,13 +35,13 @@ class POS(Enum):
     _ = ""
 
 
-class TokenType(Enum):
+class Type(Enum):
     """Classification of token text content."""
 
-    TOKEN_IS_NUMBER = "number"
-    TOKEN_IS_WORD = "word"
-    TOKEN_IS_PUNCTUATION = "punctuation"
-    TOKEN_IS_EXTENDED = "extended"
+    NUMBER = "number"
+    WORD = "word"
+    PUNCTUATION = "punctuation"
+    EXTENDED = "extended"
     _ = ""
 
 
@@ -49,7 +49,7 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
     """A single token with text, type, POS tag, and linguistic attributes."""
 
     text: str = ""
-    type: TokenType = TokenType._
+    type: Type = Type._
     trailing_ws: str = ""
     is_digit: bool = False
     like_num: bool = False
@@ -65,25 +65,25 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
         """
         Convert the text into either a word, punctuation, extended, or whitespace.
 
-        TOKEN_IS_NUMBER: one or more numeric characters. May contain a single
+        NUMBER: one or more numeric characters. May contain a single
         decimal point or comma surrounded by numbers (e.g. 1.234, 1,234).
         Cannot contain punctuation, whitespace, or non-numeric characters.
 
-        TOKEN_IS_WORD: one or more alphanumeric characters including Unicode
+        WORD: one or more alphanumeric characters including Unicode
         letters and digits. Cannot contain punctuation or whitespace.
 
-        TOKEN_IS_PUNCTUATION: exactly one punctuation character from
+        PUNCTUATION: exactly one punctuation character from
         string.punctuation. Cannot be whitespace or alphanumeric.
 
-        TOKEN_IS_EXTENDED: exactly one extended non-alphabetic character
+        EXTENDED: exactly one extended non-alphabetic character
         (e.g. emoji or symbol). Cannot be letter, digit, punctuation, or whitespace.
 
-        Non-conforming or empty text becomes TokenType._
+        Non-conforming or empty text becomes Type._
         """
 
         # initialise everything
         self.text = ""
-        self.type = TokenType._
+        self.type = Type._
         self.trailing_ws: str = ""
         self.is_digit = False
         self.like_num = False
@@ -109,41 +109,41 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
         if not core:
             self.text = ""
             self.trailing_ws = text
-            self.type = TokenType.TOKEN_IS_WORD
+            self.type = Type.WORD
             self.is_digit = False
         elif self._is_number(core):
             self.text = core
             self.trailing_ws = trailing
-            self.type = TokenType.TOKEN_IS_NUMBER
+            self.type = Type.NUMBER
             self.is_digit = core.isdigit()
         elif core in string.punctuation or core == "...":
             if trailing:
                 # punctuation cannot have trailing whitespace
-                self.type = TokenType._
+                self.type = Type._
                 self.trailing_ws = trailing
             else:
-                self.type = TokenType.TOKEN_IS_PUNCTUATION
+                self.type = Type.PUNCTUATION
                 self.trailing_ws = ""
             self.text = core
             self.is_digit = False
         elif core and all(c.isalnum() for c in core):
             self.text = core
             self.trailing_ws = trailing
-            self.type = TokenType.TOKEN_IS_WORD
+            self.type = Type.WORD
             self.is_digit = False
         elif len(core) == 1 and not core[0].isalnum() and core[0] not in string.whitespace:
             if trailing:
                 # extended character cannot have trailing whitespace
                 self.trailing_ws = trailing
-                self.type = TokenType._
+                self.type = Type._
             else:
                 self.trailing_ws = ""
-                self.type = TokenType.TOKEN_IS_EXTENDED
+                self.type = Type.EXTENDED
             self.text = core
             self.is_digit = False
         else:
             # text does not conform to any token type
-            self.type = TokenType._
+            self.type = Type._
             self.text = core
 
     def _is_number(self, text: str) -> bool:

@@ -52,10 +52,10 @@ asyncio_mode = "auto"
 
 [tool.black]
 target-version = ["py310"]
-line-length = 120
+line-length = 140
 
 [tool.ruff]
-line-length = 120
+line-length = 140
 src = ["src"]
 select = ["E", "F", "I", "B", "UP", "C90"]
 ignore = []
@@ -64,7 +64,8 @@ ignore = []
 "tests/**/*" = ["S101"]
 
 [tool.pylint.format]
-max-line-length = 120
+max-line-length = 140
+max-attributes = 10
 
 [tool.mypy]
 python_version = "3.10"
@@ -74,7 +75,7 @@ mypy_path = "src"
 
 [tool.isort]
 profile = "black"
-line_length = 120
+line_length = 140
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0

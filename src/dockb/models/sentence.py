@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from dockb.models.token import Token, TokenType
+from dockb.models.token import Token, Type
 from dockb.models.utils.doc_cache import DocCache
 
 from .base import DockbModel
@@ -48,7 +48,7 @@ class Sentence(DockbModel):
             token = Token()
             token.set_text(spacy_token.text)
             token.trailing_ws = spacy_token.whitespace_
-            if token.type != TokenType.TOKEN_IS_EXTENDED:
+            if token.type != Type.EXTENDED:
                 if spacy_token.pos_:
                     token.set_pos(spacy_token.pos_)
                 token.set_lemma(spacy_token.lemma_)
