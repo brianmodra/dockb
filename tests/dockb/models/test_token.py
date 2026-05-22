@@ -1,6 +1,6 @@
 import pytest
 
-from dockb.models import Token, TokenType, POS
+from dockb.models.token import Token, TokenType, POS
 from dockb.exceptions import TokenInvalidError
 
 
@@ -143,6 +143,8 @@ def test_sets_whitespace_set_text_as_word_with_trailing_space():
 
 def test_throws_wnen_set_text_as_word_with_non_alphanum():
     token = Token()
+
+
 def test_categorizes_invalid_words_with_non_alphanum():
     token = Token()
     token.set_text("abc=")

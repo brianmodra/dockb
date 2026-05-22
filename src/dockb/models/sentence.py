@@ -1,19 +1,22 @@
+"""Sentence model for tokenization and text reconstruction."""
+
 from __future__ import annotations
 
 from pydantic import Field
 
 from dockb.models.token import Token, TokenType
-from dockb.models.utils import DocCache
+from dockb.models.utils.doc_cache import DocCache
 
 from .base import DockbModel
 
 
 class Sentence(DockbModel):
     """
-    A sentence is a list of Tokens. Each token is either a word, punctuation, whitespace, or an extended character.
-    It is simple to construct the text of a sentence from its Tokens: just concatenate them together in order.
-    Similarly, to convert text into Tokens, just tokenise the sentence, and construct the Token objects.
+    A sentence is a list of Tokens (word, punctuation, whitespace, extended).
+    Text is reconstructed by concatenating tokens in order.
+    Tokenization converts text into Token objects.
     """
+
     tokens: list[Token] = Field(default_factory=list)
     text: str = ""
 
@@ -34,7 +37,11 @@ class Sentence(DockbModel):
         self.dirty = True
         self.text = text
 
+    def clear_semantics(self) -> None:
+        self.tokens.clear()
+
     def tokenize(self, doc_cache: DocCache) -> None:
+        """Tokenize the sentence text using spaCy via the provided doc_cache."""
         doc = doc_cache.get_doc(self.text)
         self.tokens = []
         for spacy_token in doc:

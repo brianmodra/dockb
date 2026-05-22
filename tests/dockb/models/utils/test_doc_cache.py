@@ -1,5 +1,5 @@
 import pytest
-from dockb.models.utils import DocCache
+from dockb.models.utils.doc_cache import DocCache
 import spacy
 
 
@@ -8,7 +8,7 @@ def test_doc_cache_stores_and_evicts_as_expected(freezer):
     ttl: int = 60
     nlp = spacy.load("en_core_web_sm")
     sweep_time = 60
-    cache = DocCache(max_size, ttl, sweep_time, nlp)
+    cache = DocCache(nlp=nlp, max_size=max_size, ttl=ttl, sweep_time=sweep_time)
     doc1: spacy.tokens.Doc = cache.get_doc("Hello World!")
     doc2: spacy.tokens.Doc = cache.get_doc("Hello Mars!")
     doc3: spacy.tokens.Doc = cache.get_doc("Hello Moon!")

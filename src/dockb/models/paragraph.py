@@ -1,3 +1,5 @@
+"""Paragraph model for document hierarchy."""
+
 from __future__ import annotations
 
 from pydantic import Field
@@ -8,6 +10,8 @@ from .base import DockbModel
 
 
 class Paragraph(DockbModel):
+    """A paragraph containing a list of sentences."""
+
     sentences: list[Sentence] = Field(default_factory=list)
     text: str = ""
 
@@ -16,10 +20,13 @@ class Paragraph(DockbModel):
             return self.text
         if not self.sentences:
             return self.text
-        return "".join(sentence.getText() for sentence in self.sentences)
+        return "".join(sentence.get_text() for sentence in self.sentences)
 
-    def set_text(self, text: str, delay_semantics: bool = False) -> None:
+    def set_text(self, text: str, _delay_semantics: bool = False) -> None:
         self.dirty = True
         self.text = text
-        if delay_semantics:
-            return
+
+    def clear_semantics(self) -> None:
+        for sentence in self.sentences:
+            sentence.clear_semantics()
+        self.sentences.clear()

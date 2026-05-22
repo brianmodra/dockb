@@ -1,9 +1,12 @@
 import pytest
 import spacy
 
-from dockb.models import Sentence, Token, TokenType, POS
+from dockb.models.sentence import Sentence
+from dockb.models.token import Token, TokenType, POS
 from dockb.exceptions import EditTextRangeError
-from dockb.models.utils import DocCache, SyncSentenceReconstructor
+from dockb.models.utils.doc_cache import DocCache
+from dockb.models.utils.sync_sentence_reconstructor import SyncSentenceReconstructor
+from dockb.models.utils.async_sentence_reconstructor import AsyncSentenceReconstructor
 
 
 def test_apply_text_creates_the_text_and_invalidates_semantics():
@@ -184,27 +187,162 @@ def test_each_sentence_has_unique_id():
 
 def test_sentence_can_tokenise():
     nlp = spacy.load("en_core_web_sm")
-    cache = DocCache(100, 60, 60, nlp)
+    cache = DocCache(nlp)
     sentence_reconstructor = SyncSentenceReconstructor(cache)
     sentence = Sentence()
     sentence.set_text("The cat sat on the mat in the café looking at the dog 😜.")
     sentence_reconstructor.run(sentence)
     expected = [
-        Token(text="The", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
-        Token(text="cat", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="cat", pos=POS.NOUN),
-        Token(text="sat", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="sit", pos=POS.VERB),
-        Token(text="on", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="on", pos=POS.ADP),
-        Token(text="the", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
-        Token(text="mat", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="mat", pos=POS.NOUN),
-        Token(text="in", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="in", pos=POS.ADP),
-        Token(text="the", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
-        Token(text="café", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="café", pos=POS.NOUN),
-        Token(text="looking", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="look", pos=POS.VERB),
-        Token(text="at", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="at", pos=POS.ADP),
-        Token(text="the", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
-        Token(text="dog", type=TokenType.TOKEN_IS_WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="dog", pos=POS.NOUN),
-        Token(text="😜", type=TokenType.TOKEN_IS_EXTENDED, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma="", pos=POS._),
-        Token(text=".", type=TokenType.TOKEN_IS_PUNCTUATION, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma=".", pos=POS.PUNCT),
+        Token(
+            text="The",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="the",
+            pos=POS.DET,
+        ),
+        Token(
+            text="cat",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="cat",
+            pos=POS.NOUN,
+        ),
+        Token(
+            text="sat",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="sit",
+            pos=POS.VERB,
+        ),
+        Token(
+            text="on",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="on",
+            pos=POS.ADP,
+        ),
+        Token(
+            text="the",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="the",
+            pos=POS.DET,
+        ),
+        Token(
+            text="mat",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="mat",
+            pos=POS.NOUN,
+        ),
+        Token(
+            text="in",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="in",
+            pos=POS.ADP,
+        ),
+        Token(
+            text="the",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="the",
+            pos=POS.DET,
+        ),
+        Token(
+            text="café",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="café",
+            pos=POS.NOUN,
+        ),
+        Token(
+            text="looking",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="look",
+            pos=POS.VERB,
+        ),
+        Token(
+            text="at",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="at",
+            pos=POS.ADP,
+        ),
+        Token(
+            text="the",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="the",
+            pos=POS.DET,
+        ),
+        Token(
+            text="dog",
+            type=TokenType.TOKEN_IS_WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="dog",
+            pos=POS.NOUN,
+        ),
+        Token(
+            text="😜",
+            type=TokenType.TOKEN_IS_EXTENDED,
+            trailing_ws="",
+            is_digit=False,
+            like_num=False,
+            is_alpha=False,
+            lemma="",
+            pos=POS._,
+        ),
+        Token(
+            text=".",
+            type=TokenType.TOKEN_IS_PUNCTUATION,
+            trailing_ws="",
+            is_digit=False,
+            like_num=False,
+            is_alpha=False,
+            lemma=".",
+            pos=POS.PUNCT,
+        ),
     ]
     print(sentence.tokens)
     assert len(sentence.tokens) == len(expected)
@@ -217,3 +355,4 @@ def test_sentence_can_tokenise():
         assert actual.is_alpha == exp.is_alpha
         assert actual.lemma == exp.lemma
         assert actual.pos == exp.pos
+    #async_sentence_reconstructor = AsyncSentenceReconstructor(doc_cache=)

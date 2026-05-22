@@ -1,3 +1,5 @@
+"""Base model class for all dockb document hierarchy objects."""
+
 from __future__ import annotations
 
 import uuid
@@ -6,36 +8,46 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel, ConfigDict, Field
 
 from dockb.exceptions import EditTextRangeError
+from dockb.models.utils.doc_cache import DocCache
 
 
 class DockbModel(BaseModel, ABC):
+    """Abstract base class for all document hierarchy models."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     dirty: bool = False
     model_config = ConfigDict(populate_by_name=True)
 
     @abstractmethod
     def get_text(self) -> str:
-        pass
+        """Return the full text content of this model."""
 
     @abstractmethod
     def set_text(self, text: str) -> None:
-        pass
+        """Replace the full text content of this model."""
+
+    @abstractmethod
+    def clear_semantics(self) -> None:
+        """removes the child hierarchy"""
+
+    def tokenize(self, doc_cache: DocCache) -> None:
+        """Most models don't implement this, so this is not abstract, but defaukt is to do nothing"""
 
     def apply_edit_text(self, start: int, end: int, text: str) -> None:
         """
-        Replace the text inclusively
+        Replace text in the range [start, end] inclusively.
 
         start : int
-                zero-based offset of the start of the text to be replaced
+            zero-based offset of the start of the text to be replaced
         end   : int
-                zero-based offset of the last character to be replaced
+            zero-based offset of the last character to be replaced
         text  : str
-                the replacement string of text
+            the replacement string of text
 
-        E.g. if it starts with "Hello World!", and this function is called with start=6 and end=10, and text="Sir"
-        Then the text in the document will become "Hello Sir!".
+        E.g. "Hello World!" with start=6, end=10, text="Sir" becomes
+        "Hello Sir!".
 
-        If the existing text is empty, you can't replace it. In that case, use apply_append_text
+        If the existing text is empty, use apply_append_text instead.
         """
 
         self_text = self.get_text()

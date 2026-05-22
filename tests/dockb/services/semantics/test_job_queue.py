@@ -4,7 +4,11 @@ from logging import shutdown
 
 import pytest
 import asyncio
-from dockb.services.semantics import Job, JobStatus, JobQueue, DeleteJob, ReconstructJob
+from dockb.services.semantics.job_queue import JobQueue
+from dockb.services.semantics.job import Job, JobStatus
+from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.reconstruct_job import ReconstructJob
+
 
 class TestJob(Job):
     count: int = 0
@@ -30,6 +34,7 @@ class TestJob(Job):
         self.seq = TestJob.count
         await self.almost_done.wait()
 
+
 @pytest.mark.asyncio
 async def test_job_queue_runs():
     queue = JobQueue()
@@ -37,6 +42,7 @@ async def test_job_queue_runs():
     assert await queue.is_running()
     await queue.shutdown()
     assert not await queue.is_running()
+
 
 @pytest.mark.asyncio
 async def test_job_queue_queues_jobs_and_runs_them_in_order():
@@ -73,6 +79,7 @@ async def test_job_queue_queues_jobs_and_runs_them_in_order():
     assert len(jobs) == 0
     await queue.shutdown()
 
+
 @pytest.mark.asyncio
 async def test_job_queue_can_cancel_jobs_that_are_running_and_lets_other_jobs_be_run_afterwards():
     queue = JobQueue()
@@ -103,6 +110,7 @@ async def test_job_queue_can_cancel_jobs_that_are_running_and_lets_other_jobs_be
     assert len(jobs) == 0
     await queue.shutdown()
 
+
 @pytest.mark.asyncio
 async def test_job_queue_stores_reconstruct_jobs_into_dict_but_not_delete_jobs():
     queue = JobQueue()
@@ -117,6 +125,7 @@ async def test_job_queue_stores_reconstruct_jobs_into_dict_but_not_delete_jobs()
     jobs = queue.list_jobs()
     assert len(jobs) == 3
     assert len(queue.reconstruct_jobs) == 2
+
 
 @pytest.mark.asyncio
 async def test_job_queue_removes_reconstruct_jobs_for_same_model_but_leaves_delete_jobs():

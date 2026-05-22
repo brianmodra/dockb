@@ -1,6 +1,6 @@
 import pytest
 
-from dockb.models import Document
+from dockb.models.document import Document
 from dockb.exceptions import EditTextRangeError
 
 

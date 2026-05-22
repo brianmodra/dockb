@@ -1,4 +1,4 @@
-all: sort check_static_typing detect_cycles lint
+all: sort check_static_typing detect_cycles lint test
 
 sort:
 	isort src/dockb
@@ -12,7 +12,10 @@ lint:
 detect_cycles:
 	cd src/dockb; pycycle --here
 
+test:
+	cd tests; pytest
+
 run:
 	cd src; ../.venv/bin/python3 -m main
 
-.PHONY: all check_static_typing lint detect_cycles sort run
+.PHONY: all check_static_typing lint detect_cycles sort run test

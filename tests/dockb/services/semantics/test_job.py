@@ -1,6 +1,8 @@
 import pytest
 import asyncio
-from dockb.services.semantics import Job, JobStatus, DeleteJob, ReconstructJob
+from dockb.services.semantics.job import Job, JobStatus
+from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.reconstruct_job import ReconstructJob
 
 
 class TestJob(Job):

@@ -1,3 +1,5 @@
+"""Token model with POS tags, lemmas, and text classification."""
+
 from __future__ import annotations
 
 import string
@@ -9,6 +11,8 @@ from .base import DockbModel
 
 
 class POS(Enum):
+    """Part-of-speech tags from the Universal Dependencies framework."""
+
     ADJ = "ADJ"
     ADP = "ADP"
     ADV = "ADV"
@@ -32,6 +36,8 @@ class POS(Enum):
 
 
 class TokenType(Enum):
+    """Classification of token text content."""
+
     TOKEN_IS_NUMBER = "number"
     TOKEN_IS_WORD = "word"
     TOKEN_IS_PUNCTUATION = "punctuation"
@@ -39,7 +45,9 @@ class TokenType(Enum):
     _ = ""
 
 
-class Token(DockbModel):
+class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
+    """A single token with text, type, POS tag, and linguistic attributes."""
+
     text: str = ""
     type: TokenType = TokenType._
     trailing_ws: str = ""
@@ -53,31 +61,24 @@ class Token(DockbModel):
     def get_text(self) -> str:
         return self.text
 
-    def set_text(self, text: str) -> None:
+    def set_text(self, text: str) -> None:  # noqa: C901  # pylint: disable=too-many-branches,too-many-statements
         """
         Convert the text into either a word, punctuation, extended, or whitespace.
 
-        When TOKEN_IS_NUMBER type, the text can be any combination of one or more numeric characters.
-        It can't contain punctuation, whitespace, or any other non-alpha-numeric characters, except
-        a single decimal point surrounded by numbers, or a single comma surrounded by numbers.
-        e.g. 1.234 is a number, 1.2.3 is also, 1,234 is a number, so is 1,2,3 or 1,23,4
-        But 1..2 is not, and 1,,2 is not.
+        TOKEN_IS_NUMBER: one or more numeric characters. May contain a single
+        decimal point or comma surrounded by numbers (e.g. 1.234, 1,234).
+        Cannot contain punctuation, whitespace, or non-numeric characters.
 
-        When TOKEN_IS_WORD type, the text can be any combination of one or more alphanumeric characters.
-        Letters include any Unicode letter (e.g. é, Ω, 汉), and digits include any Unicode digit.
-        It can't contain punctuation, whitespace, or any other non-alpha-numeric characters.
+        TOKEN_IS_WORD: one or more alphanumeric characters including Unicode
+        letters and digits. Cannot contain punctuation or whitespace.
 
-        When TOKEN_IS_PUNCTUATION, the text must be exactly one character, and it must be a
-        punctuation character. It cannot be whitespace or alphanumeric.
-        A "punctuation character" is one of the characters defined in string.punctuation in the
-        string library.
+        TOKEN_IS_PUNCTUATION: exactly one punctuation character from
+        string.punctuation. Cannot be whitespace or alphanumeric.
 
-        When TOKEN_IS_EXTENDED, the text must be exactly one character, and it must be an
-        extended non-alphabetic character, such as an emoji or symbol. It cannot be a letter,
-        digit, punctuation, or whitespace.
+        TOKEN_IS_EXTENDED: exactly one extended non-alphabetic character
+        (e.g. emoji or symbol). Cannot be letter, digit, punctuation, or whitespace.
 
-        If the text parameter passed into this function is zero length, or does not conform to the above rules,
-        then it will be an uncategrorised TokenType._
+        Non-conforming or empty text becomes TokenType._
         """
 
         # initialise everything
@@ -130,11 +131,7 @@ class Token(DockbModel):
             self.trailing_ws = trailing
             self.type = TokenType.TOKEN_IS_WORD
             self.is_digit = False
-        elif (
-            len(core) == 1
-            and not core[0].isalnum()
-            and core[0] not in string.whitespace
-        ):
+        elif len(core) == 1 and not core[0].isalnum() and core[0] not in string.whitespace:
             if trailing:
                 # extended character cannot have trailing whitespace
                 self.trailing_ws = trailing
@@ -163,16 +160,18 @@ class Token(DockbModel):
         return False
 
     def set_pos(self, pos: str | POS) -> None:
+        """Set the part-of-speech tag, validating against the POS enum."""
         if isinstance(pos, POS):
             pos_enum = pos
         else:
             try:
                 pos_enum = POS(pos)
-            except ValueError:
-                raise TokenInvalidError(f"'{pos}' is not a valid POS tag")
+            except ValueError as exc:
+                raise TokenInvalidError(f"'{pos}' is not a valid POS tag") from exc
         self.pos = pos_enum
 
     def set_lemma(self, lemma: str) -> None:
+        """Set the lemmatized form of the token text."""
         self.lemma = lemma
 
     def set_trailing_ws(self, trailing_ws: str) -> None:
@@ -184,16 +183,17 @@ class Token(DockbModel):
         TokenInvalidError is raised.
         """
         if not all(c in string.whitespace for c in trailing_ws):
-            raise TokenInvalidError(
-                "trailing_ws must contain only valid whitespace characters"
-            )
+            raise TokenInvalidError("trailing_ws must contain only valid whitespace characters")
         self.trailing_ws = trailing_ws
 
     def apply_edit_text(self, start: int, end: int, text: str) -> None:
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def apply_append_text(self, text: str) -> None:
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def apply_insert_text(self, pos: int, text: str) -> None:
-        raise NotImplemented()
+        raise NotImplementedError()
+
+    def clear_semantics(self) -> None:
+        pass

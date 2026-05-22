@@ -1,15 +1,15 @@
+"""Abstract base class for sentence-level reconstruction."""
+
 from abc import ABC, abstractmethod
 
 from dockb.models.base import DockbModel
-from dockb.models.utils import DocCache
 
 from .reconstructor import Reconstructor
 
 
-class SentenceReconstructor(Reconstructor, ABC):
-    def __init__(self, doc_cache: DocCache):
-        super().__init__(doc_cache)
+class SentenceReconstructor(Reconstructor, ABC):  # pylint: disable=too-few-public-methods
+    """Base class for sentence reconstruction with doc caching."""
 
     @abstractmethod
-    def run(self, model: DockbModel):
-        pass
+    def run(self, model: DockbModel) -> None:
+        """Run sentence reconstruction on the given model."""

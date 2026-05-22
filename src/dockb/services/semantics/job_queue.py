@@ -1,25 +1,31 @@
+"""Async job queue for semantic processing tasks."""
+
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List, Optional
+import logging
 
-from .delete_job import DeleteJob
 from .job import Job, JobStatus
 from .reconstruct_job import ReconstructJob
 
+logger = logging.getLogger(__name__)
 
-class JobQueue:
+
+class JobQueue:  # pylint: disable=too-many-instance-attributes
+    """Async queue that manages and executes semantic processing jobs."""
+
     def __init__(self) -> None:
         self.queue: asyncio.Queue[str] = asyncio.Queue()
-        self.reconstruct_jobs: Dict[str, ReconstructJob] = {}
-        self._worker_task: Optional[asyncio.Task] = None
+        self.reconstruct_jobs: dict[str, ReconstructJob] = {}
+        self._worker_task: asyncio.Task[None] | None = None
         self._shutdown = False
-        self._jobs: Dict[str, Job] = {}
+        self._jobs: dict[str, Job] = {}
         self._completed_event: asyncio.Event = asyncio.Event()
         self._new_job_event: asyncio.Event = asyncio.Event()
         self._pending_count: int = 0
 
     def enqueue(self, job: Job) -> None:
+        """Add a job to the queue for execution."""
         self._jobs[job.id] = job
         self.queue.put_nowait(job.id)
         self._pending_count += 1
@@ -33,6 +39,7 @@ class JobQueue:
             self.reconstruct_jobs[job.model_id] = job
 
     def cancel_job(self, job: Job) -> bool:
+        """Cancel a queued or running job."""
         if job.id not in self._jobs:
             return False
         job.cancel()
@@ -40,14 +47,17 @@ class JobQueue:
         return True
 
     async def start(self) -> None:
+        """Start the background worker task."""
         if self._worker_task is None:
             self._completed_event.clear()
             self._worker_task = asyncio.create_task(self._worker())
 
     async def is_running(self) -> bool:
+        """Return True if the worker is active and not shutting down."""
         return self._worker_task is not None and not self._shutdown
 
     async def shutdown(self) -> None:
+        """Stop the worker and cancel any pending tasks."""
         self._shutdown = True
         if self._worker_task:
             self._worker_task.cancel()
@@ -58,6 +68,7 @@ class JobQueue:
             self._worker_task = None
 
     async def join(self) -> None:
+        """Wait until all queued jobs are completed."""
         await self._completed_event.wait()
 
     async def _worker(self) -> None:
@@ -86,10 +97,23 @@ class JobQueue:
                 await job.execute()
             except asyncio.CancelledError:
                 job.status = JobStatus.CANCELLED
-            except Exception:
-                pass
+            except (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    MemoryError,
+                    RuntimeError,
+                    NotImplementedError,
+                    RecursionError,
+                    InterruptedError) as ex:
+                # TRAP 2: Global application shutdown signals.
+                # We must re-raise these immediately so the program exits.
+                logger.exception("%s thrown by %s#%s in JobQueue", ex, type(job).__name__, job.id)
+                raise
+            except Exception as ex:  # pylint: disable=broad-exception-caught
+                job.error = ex
+                job.status = JobStatus.FAILED
             finally:
-                if hasattr(job, 'done'):
+                if hasattr(job, "done"):
                     job.done.set()
 
             self._pending_count -= 1
@@ -100,5 +124,6 @@ class JobQueue:
                 if isinstance(job, ReconstructJob):
                     self.reconstruct_jobs.pop(job.model_id, None)
 
-    def list_jobs(self) -> List[str]:
-        return [job_id for job_id in list(self._jobs.keys()) if self._jobs[job_id].status == JobStatus.QUEUED]
+    def list_jobs(self) -> list[str]:
+        """Return IDs of all currently queued jobs."""
+        return [job_id for job_id, job in self._jobs.items() if job.status == JobStatus.QUEUED]

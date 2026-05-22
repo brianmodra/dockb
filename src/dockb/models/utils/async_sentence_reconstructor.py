@@ -1,25 +1,27 @@
-from typing import TYPE_CHECKING
+"""Async sentence reconstruction via job queue."""
 
-from dockb.models import DockbModel
-from dockb.models.utils import DocCache
-from dockb.services.semantics import DeleteJob, JobQueue, ReconstructJob
+from dockb.models.base import DockbModel
+from dockb.models.utils.doc_cache import DocCache
+from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.job_queue import JobQueue
+from dockb.services.semantics.reconstruct_job import ReconstructJob
 
 from .sentence_reconstructor import SentenceReconstructor
 
-if TYPE_CHECKING:
-    from dockb.models import Sentence
 
+class AsyncSentenceReconstructor(SentenceReconstructor):  # pylint: disable=too-few-public-methods
+    """Reconstructs sentences asynchronously using a job queue."""
 
-class AsyncSentenceReconstructor(SentenceReconstructor):
     def __init__(self, doc_cache: DocCache, queue: JobQueue):
         super().__init__(doc_cache)
         self.queue = queue
 
-    def run(self, model: DockbModel):
-        sentence: Sentence = model
+    def run(self, model: DockbModel) -> None:
+        if not hasattr(model, "tokens"):
+            return
         djob = DeleteJob()
-        djob.set(sentence)
+        djob.set(model)
         self.queue.enqueue(djob)
-        rjob = ReconstructJob(sentence.id)
-        rjob.set(sentence, self.doc_cache)
+        rjob = ReconstructJob(model.id)
+        rjob.set(model, self.doc_cache)
         self.queue.enqueue(rjob)
