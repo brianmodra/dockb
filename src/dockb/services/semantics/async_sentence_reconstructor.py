@@ -1,7 +1,8 @@
 """Async sentence reconstruction via job queue."""
+
 from dockb.models.base import DockbModel
-from dockb.models.utils.doc_cache import DocCache
 from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
 from dockb.services.semantics.sentence_reconstructor import SentenceReconstructor

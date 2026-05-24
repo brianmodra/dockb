@@ -66,6 +66,8 @@ ignore = []
 [tool.pylint.format]
 max-line-length = 140
 max-attributes = 10
+max-branches = 15
+max-statements = 60
 
 [tool.mypy]
 python_version = "3.10"

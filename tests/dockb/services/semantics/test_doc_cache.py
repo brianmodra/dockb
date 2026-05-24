@@ -1,6 +1,6 @@
 import spacy
 
-from dockb.models.utils.doc_cache import DocCache
+from dockb.services.semantics.doc_cache import DocCache
 
 
 def test_doc_cache_stores_and_evicts_as_expected(freezer):

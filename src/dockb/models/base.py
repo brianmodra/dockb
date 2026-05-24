@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel, ConfigDict, Field
 
 from dockb.exceptions import EditTextRangeError
-from dockb.models.utils.doc_cache import DocCache
 
 
 class DockbModel(BaseModel, ABC):
@@ -29,9 +28,6 @@ class DockbModel(BaseModel, ABC):
     @abstractmethod
     def clear_semantics(self) -> None:
         """removes the child hierarchy"""
-
-    def tokenize(self, doc_cache: DocCache) -> None:
-        """Most models don't implement this, so this is not abstract, but defaukt is to do nothing"""
 
     def apply_edit_text(self, start: int, end: int, text: str) -> None:
         """

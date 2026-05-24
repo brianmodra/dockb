@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 
 from dockb.models.base import DockbModel
-from dockb.models.utils.doc_cache import DocCache
+from dockb.services.semantics.doc_cache import DocCache
 
 
 class Reconstructor(ABC):  # pylint: disable=too-few-public-methods

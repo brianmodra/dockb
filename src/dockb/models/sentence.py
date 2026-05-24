@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from dockb.models.token import Token, Type
-from dockb.models.utils.doc_cache import DocCache
+from dockb.models.token import Token
 
 from .base import DockbModel
 
@@ -28,32 +27,8 @@ class Sentence(DockbModel):
         return "".join(token.text + token.trailing_ws for token in self.tokens)
 
     def set_text(self, text: str) -> None:
-        """
-        Change the text.
-        :param text:
-        :param sentence_helper: either sync or async, calls tokenize indirectly
-        :return:
-        """
         self.dirty = True
         self.text = text
 
     def clear_semantics(self) -> None:
         self.tokens.clear()
-
-    def tokenize(self, doc_cache: DocCache) -> None:
-        """Tokenize the sentence text using spaCy via the provided doc_cache."""
-        doc = doc_cache.get_doc(self.text)
-        self.tokens = []
-        for spacy_token in doc:
-            token = Token()
-            token.set_text(spacy_token.text)
-            token.trailing_ws = spacy_token.whitespace_
-            if token.type != Type.EXTENDED:
-                if spacy_token.pos_:
-                    token.set_pos(spacy_token.pos_)
-                token.set_lemma(spacy_token.lemma_)
-            token.is_digit = spacy_token.is_digit
-            token.like_num = spacy_token.like_num
-            token.is_alpha = spacy_token.is_alpha
-            self.tokens.append(token)
-        self.dirty = False

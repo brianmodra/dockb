@@ -1,11 +1,10 @@
 """Job abstraction for semantic processing tasks."""
-from __future__ import annotations
 
-import asyncio
+import threading
 import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, final
 
 
 class JobStatus(Enum):
@@ -22,32 +21,26 @@ class Job(ABC):
     """Abstract base class for semantic processing jobs."""
 
     def __init__(self) -> None:
-        self.timeout: int = 5000  # 5 seconds by default
+        self.timeout: float = 5.0  # seconds (informational only in sync mode)
         self.status: JobStatus = JobStatus.QUEUED
         self.result: Any = None
-        self.error: Optional[Exception] = None
-        self.worker_task: Optional[asyncio.Task[Any]] = None
+        self.error: Exception | None = None
         self.id: str = str(uuid.uuid4())
+        self.done = threading.Event()
 
+    @final
     def cancel(self) -> None:
-        """Cancel the job and its underlying worker task."""
+        """Cancel the job. Note: Running threads cannot be forcefully cancelled."""
+        if self.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+            return
+        was_running = self.status == JobStatus.RUNNING
         self.status = JobStatus.CANCELLED
-        if self.worker_task and not self.worker_task.done():
-            self.worker_task.cancel()
+        if was_running:
+            self.on_cancel()
+
+    def on_cancel(self) -> None:  # noqa: B027
+        """Execute whatever is needed to cancel a job that is already running."""
 
     @abstractmethod
-    async def run(self) -> None:
+    def run(self) -> None:
         """Execute the job's specific logic."""
-
-    async def execute(self) -> None:
-        """Execute the job with a timeout and status management."""
-        self.status = JobStatus.RUNNING
-        try:
-            await asyncio.wait_for(self.run(), timeout=self.timeout)
-            if self.status != JobStatus.CANCELLED:
-                self.status = JobStatus.DONE
-        except asyncio.CancelledError:
-            self.status = JobStatus.CANCELLED
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            self.error = e
-            self.status = JobStatus.FAILED

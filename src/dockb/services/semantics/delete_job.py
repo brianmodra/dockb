@@ -1,4 +1,5 @@
 """Job for clearing sentence tokens before reconstruction."""
+
 from __future__ import annotations
 
 from dockb.models.base import DockbModel
@@ -15,7 +16,7 @@ class DeleteJob(Job):
         super().__init__()
         self.model: DockbModel | None = None
 
-    async def run(self) -> None:
+    def run(self) -> None:
         """Clear semantics on the attached model if dirty."""
         if self.model is None:
             return

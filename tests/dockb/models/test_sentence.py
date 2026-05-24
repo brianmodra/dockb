@@ -4,7 +4,7 @@ import spacy
 from dockb.exceptions import EditTextRangeError
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
-from dockb.models.utils.doc_cache import DocCache
+from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.sync_sentence_reconstructor import SyncSentenceReconstructor
 
 

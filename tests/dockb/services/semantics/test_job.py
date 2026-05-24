@@ -1,6 +1,4 @@
-import asyncio
-
-import pytest
+import threading
 
 from dockb.services.semantics.delete_job import DeleteJob
 from dockb.services.semantics.job import Job, JobStatus
@@ -8,25 +6,24 @@ from dockb.services.semantics.reconstruct_job import ReconstructJob
 
 
 class SimpleJob(Job):
-    ready = asyncio.Event()
+    ready = threading.Event()
 
-    async def run(self) -> None:
-        await self.ready.wait()
+    def run(self) -> None:
+        self.ready.wait()
 
-    async def set(self) -> None:
+    def set(self) -> None:
         self.ready.set()
 
 
 class ConcreteJob(Job):
-    async def run(self) -> None:
+    def run(self) -> None:
         pass
 
 
-@pytest.mark.asyncio
-async def test_job_runs():
+def test_job_runs():
     job = SimpleJob()
-    await asyncio.gather(job.set(), job.execute())
-    assert job.status == JobStatus.DONE
+    job.set()
+    job.run()  # runs without raising
 
 
 def test_job_cancel():
@@ -44,7 +41,7 @@ def test_each_job_has_unique_id():
 
 def test_delete_job_has_unique_id():
     class ConcreteDelete(DeleteJob):
-        async def run(self) -> None:
+        def run(self) -> None:
             pass
 
     job1 = ConcreteDelete()
@@ -55,7 +52,7 @@ def test_delete_job_has_unique_id():
 
 def test_reconstruct_job_has_unique_id():
     class ConcreteReconstruct(ReconstructJob):
-        async def run(self) -> None:
+        def run(self) -> None:
             pass
 
     job1 = ConcreteReconstruct(model_id="model-1")

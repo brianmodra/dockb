@@ -2,6 +2,7 @@
 
 from dockb.models.base import DockbModel
 from dockb.services.semantics.sentence_reconstructor import SentenceReconstructor
+from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer
 
 
 class SyncSentenceReconstructor(SentenceReconstructor):  # pylint: disable=too-few-public-methods
@@ -10,4 +11,6 @@ class SyncSentenceReconstructor(SentenceReconstructor):  # pylint: disable=too-f
     def run(self, model: DockbModel) -> None:
         if not hasattr(model, "tokens"):
             return
-        model.tokenize(self.doc_cache)
+        tokenizer = SentenceTokenizer()
+        model.tokens = tokenizer.tokenize(model.get_text(), self.doc_cache)
+        model.dirty = False
