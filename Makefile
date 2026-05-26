@@ -8,6 +8,8 @@ check_static_typing:
 
 lint:
 	pylint src && pylint --rcfile=tests/pylintrc tests
+	black src tests
+	ruff check --fix src tests
 
 detect_cycles:
 	cd src/dockb; pycycle --here

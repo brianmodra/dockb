@@ -37,7 +37,7 @@ def test_async_sentence_reconstructor_can_retokenise_a_sentence_asynchronously()
     queue.shutdown()
     print(sentence.tokens)
     assert len(sentence.tokens) == len(expected)
-    for actual, exp in zip(sentence.tokens, expected):
+    for actual, exp in zip(sentence.tokens, expected, strict=True):
         assert actual.text == exp.text
         assert actual.type == exp.type
         assert actual.trailing_ws == exp.trailing_ws
@@ -84,7 +84,7 @@ def test_async_sentence_reconstructor_does_not_double_up_with_retokenization():
     queue.shutdown()
     print(sentence.tokens)
     assert len(sentence.tokens) == len(expected)
-    for actual, exp in zip(sentence.tokens, expected):
+    for actual, exp in zip(sentence.tokens, expected, strict=True):
         assert actual.text == exp.text
         assert actual.type == exp.type
         assert actual.trailing_ws == exp.trailing_ws

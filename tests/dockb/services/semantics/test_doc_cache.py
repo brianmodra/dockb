@@ -1,5 +1,3 @@
-import threading
-
 import spacy
 
 from dockb.services.semantics.doc_cache import DocCache

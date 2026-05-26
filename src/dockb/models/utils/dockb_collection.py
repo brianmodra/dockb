@@ -1,3 +1,5 @@
+"""Ordered collection of DockbModel objects keyed by ID with insertion order."""
+
 from collections import OrderedDict
 from collections.abc import Iterator
 
@@ -21,6 +23,7 @@ class DockbCollection:
     # -------------------------
 
     def append(self, item: DockbModel) -> None:
+        """Add or update an item, preserving insertion order."""
         key = item.id
 
         # Upsert without breaking order
@@ -30,9 +33,11 @@ class DockbCollection:
             self._data[key] = item
 
     def clear(self) -> None:
+        """Remove all items from the collection."""
         self._data.clear()
 
     def count(self) -> int:
+        """Return the number of items in the collection."""
         return len(self._data)
 
     # -------------------------
@@ -40,6 +45,7 @@ class DockbCollection:
     # -------------------------
 
     def get(self, key: str) -> DockbModel | None:
+        """Return the item with the given ID, or None if not found."""
         return self._data.get(key)
 
     # -------------------------

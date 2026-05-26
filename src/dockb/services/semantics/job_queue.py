@@ -122,8 +122,8 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
             with self._lock:
                 job = self._jobs.get(job_id)
                 if job is None or job.status == JobStatus.CANCELLED:
-                    if not job is None:
-                        job.done.set() # Its not done as in status==DONE, but it is done-with
+                    if job is not None:
+                        job.done.set()  # Its not done as in status==DONE, but it is done-with
                     self._pending_count -= 1
                     self._queue.task_done()
                     logger.debug("job %s was cancelled", job_id)

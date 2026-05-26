@@ -1,5 +1,3 @@
-import pytest
-
 from dockb.exceptions import EditTextRangeError, TokenInvalidError
 
 

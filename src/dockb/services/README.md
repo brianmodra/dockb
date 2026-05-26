@@ -99,3 +99,30 @@ doc = nlp(text)
 for i, sentence in enumerate(doc.sents, 1):
 ```
 
+## How the hydration and tokenization happens
+
+A service function will directly call model class(es) to do quick
+changes. These make quick changes and leave the model
+object in a "dirty" state - meaning that it as yet needs more work.
+
+By "more work", this means tokenisation or hydration, which is slow.
+This sort of slow work is done in a queue (JobQueue).
+The queue will have only one worker thread, and jobs added to the queue will be processed
+in a FIFO manner.
+
+When a model is edited and becomes "dirty", its dirty flag will be set to True.
+Then the service function will create two jobs.
+The first job added to the queue will be to delete the existing semantics associated with
+the model object.
+The second job will be to re-create the semantics.
+
+This second job could potentially have a problem, because the EventService
+functions will be called in response to async calls from the front end as the user is typing away
+and creating lots of edit requests in fairly quick succession.
+Any currently queued for the same sentence, or in progress, could be creating semantics which will be
+invalidated by the latest edit.
+So if they are queued, they should be cancelled, and if one is currently running, it should be stopped.
+
+## Jobs, worker tasks, and the JobQueue
+
+See the file @tests/dockb/services/semantics/README.md

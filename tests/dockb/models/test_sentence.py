@@ -182,7 +182,7 @@ def test_sentence_can_tokenise():
     ]
     print(sentence.tokens)
     assert len(sentence.tokens) == len(expected)
-    for actual, exp in zip(sentence.tokens, expected):
+    for actual, exp in zip(sentence.tokens, expected, strict=True):
         assert actual.text == exp.text
         assert actual.type == exp.type
         assert actual.trailing_ws == exp.trailing_ws

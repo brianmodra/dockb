@@ -101,7 +101,7 @@ def test_getitem_by_integer_index(collection):
 def test_getitem_raises_for_non_integer_index(collection):
     collection.append(FakeModel())
     with pytest.raises(TypeError, match="Index must be an integer"):
-        collection["key"]
+        return collection["key"]
 
 
 def test_repr(collection):
