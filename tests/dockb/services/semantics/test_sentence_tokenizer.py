@@ -1,14 +1,19 @@
 import threading
+from unittest.mock import MagicMock
+
+import pytest
 import spacy
-from spacy.language import Language 
+from spacy.language import Language
+from spacy.tokens import Doc
+
+from dockb.models.sentence import Sentence
+from dockb.models.token import Type
 from dockb.services.semantics.delete_job import DeleteJob
-from dockb.services.semantics.job import Job, JobStatus
+from dockb.services.semantics.doc_cache import DocCache
+from dockb.services.semantics.job import JobStatus
 from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
-from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer, TokenizationCancelled
-from dockb.models.sentence import Sentence
-from spacy.tokens import Doc
 
 STRESS_NUM_THREADS = 10
 STRESS_JOBS_PER_THREAD = 20
@@ -22,9 +27,10 @@ class WaitableDocCache(DocCache):
     def get_doc(self, text: str) -> Doc:
         self._wait_event.set()
         return super().get_doc(text)
-    
+
     def wait_for_get(self) -> None:
         self._wait_event.wait()
+
 
 def test_sentence_tokenizer_can_be_cancelled_even_if_already_running_in_the_queue():
     nlp = spacy.load("en_core_web_sm")
@@ -52,6 +58,7 @@ def test_sentence_tokenizer_can_be_cancelled_even_if_already_running_in_the_queu
     rjob2.done.wait()
     assert len(sentence.tokens) > 0
     queue.shutdown()
+
 
 def test_sentence_tokenizer_is_cancelled_properly_when_second_reconstruct_job_added():
     nlp = spacy.load("en_core_web_sm")
@@ -96,7 +103,7 @@ class TokenizeThread(threading.Thread):
         rjob.set(self.sentence, self.doc_cache)
         self.queue.enqueue(rjob)
         rjob.done.wait()
-        
+
 
 def test_sentence_tokenizer_is_cancelled_properly_when_second_reconstruct_job_added_from_another_thread():
     nlp = spacy.load("en_core_web_sm")
@@ -146,6 +153,25 @@ class StressTokenizeThread(threading.Thread):
 
 
 def test_job_queue_stress_test_multi_threaded_tokenization():
+    """
+    Tests that when 100 set_text() functions are called on the Sentence,
+    and the resultant DeleteJob and ReconstructJobs are added to the queue,
+    only one (the last enqueued) actually changes teh sentence. All the rest
+    are cancelled.
+
+    This was difficult to write. It was extremely difficult to set up
+    random delays within the test to cause collisions, but of course,
+    whatever random delays added to cause collisions on one PC, possibly won't
+    work on another PC. Therefore, that logic was removed.
+
+    However, when that logic was "working" only one collision would occur.
+    This is because the queue is single threaded, and while one ReconstructJob is running,
+    if any other happen to be enqueued at the same time, they all will cancel it, and the
+    last one standing will cancel any other one that is left queued. By this time all 100
+    have been enqueued, and only one was cancledd while running. The very fact that this was
+    difficult to simulate says that the queue is going to work very well in production,
+    and that the design is robust.
+    """
     nlp = spacy.load("en_core_web_sm")
     doc_cache = DocCache(nlp)
     queue = JobQueue()
@@ -162,7 +188,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "Perfect love casts out fear.",
         "Walk humbly with your God.",
         "Blessed are the peacemakers.",
-
         "The Lord is my shepherd.",
         "Be still and know God.",
         "Man shall not live by bread alone.",
@@ -173,7 +198,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "Guard your heart diligently.",
         "Love covers many sins.",
         "Mercy triumphs over judgment.",
-
         "A cheerful heart is good medicine.",
         "The Lord searches every heart.",
         "Hope does not disappoint.",
@@ -184,7 +208,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "The Lord is near the brokenhearted.",
         "Iron sharpens iron.",
         "Blessed are the pure in heart.",
-
         "God opposes the proud.",
         "The joy of the Lord is strength.",
         "Peace I leave with you.",
@@ -195,7 +218,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "Better a little with righteousness.",
         "Love never fails.",
         "The Lord is compassionate and gracious.",
-
         "Be strong and courageous.",
         "A fool despises instruction.",
         "The wages of sin is death.",
@@ -206,7 +228,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "Those who seek find.",
         "Do everything in love.",
         "The tongue can destroy.",
-        
         "God is our refuge and strength.",
         "The righteous are bold as lions.",
         "Hatred stirs conflict.",
@@ -217,7 +238,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "The wise listen carefully.",
         "Blessed are those who hunger for righteousness.",
         "The Lord upholds the humble.",
-
         "A faithful friend is priceless.",
         "The path of righteousness shines brightly.",
         "Children are a gift from God.",
@@ -228,7 +248,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "God cannot be mocked.",
         "The prudent speak carefully.",
         "Where your treasure is, your heart follows.",
-        
         "If anyone loudly blesses their neighbor early in the morning, it will be taken as a curse.",
         "The righteous flourish like a tree planted beside flowing waters.",
         "Better to trust in the Lord than rely upon human strength.",
@@ -239,7 +258,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "The unfolding of God's words brings light and understanding.",
         "Do not repay evil with evil, but overcome evil with good.",
         "The Lord is faithful to all who call upon Him sincerely.",
-
         "The wise store knowledge, but reckless words invite trouble.",
         "A patient person shows great understanding and self-control.",
         "The Lord is gracious and compassionate, slow to anger and rich in love.",
@@ -250,7 +268,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "The fear of the Lord leads to wisdom and lasting understanding.",
         "Those who trust the Lord will never be put to shame.",
         "The wise accept correction, but fools reject instruction.",
-
         "Kind words are like honey, sweet to the soul and healing.",
         "A peaceful answer can calm anger and restore relationships.",
         "The Lord directs the steps of those who delight in Him.",
@@ -261,7 +278,6 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
         "God gives strength to the weary and hope to the discouraged.",
         "A generous person will prosper and refresh others with kindness.",
         "The Lord is close to all who call upon Him faithfully.",
-
         "A wise heart listens carefully before speaking any words.",
         "The one who forgives offenses promotes love and unity.",
         "The path of the righteous grows brighter with each passing day.",
@@ -293,7 +309,7 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
             count_done += 1
         else:
             count_other += 1
-        if not thread.rjob.error is None:
+        if thread.rjob.error is not None:
             count_throws += 1
 
     print(sentence.tokens)
@@ -303,3 +319,66 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
     # can't be sure about count_throws because the conditions that cause it are random
     assert len(sentence.tokens) > 0
     queue.shutdown()
+
+
+def test_sentence_tokenizer_empty_text_returns_empty_list(nlp):
+    cache = DocCache(nlp)
+    tok = SentenceTokenizer()
+    tokens = tok.tokenize("", cache)
+    assert not tokens
+
+
+def test_sentence_tokenizer_raises_if_cancelled_before_tokenize(nlp):
+    cache = DocCache(nlp)
+    tok = SentenceTokenizer()
+    tok.cancel()
+    with pytest.raises(TokenizationCancelled):
+        tok.tokenize("Hello world", cache)
+
+
+def test_sentence_tokenizer_produces_correct_tokens(nlp):
+    cache = DocCache(nlp)
+    tok = SentenceTokenizer()
+    tokens = tok.tokenize("Hello world!", cache)
+
+    assert len(tokens) == 3
+    assert tokens[0].text == "Hello"
+    assert tokens[0].trailing_ws == " "
+    assert tokens[0].type == Type.WORD
+
+    assert tokens[1].text == "world"
+    assert tokens[1].trailing_ws == ""
+    assert tokens[1].type == Type.WORD
+
+    assert tokens[2].text == "!"
+    assert tokens[2].trailing_ws == ""
+    assert tokens[2].type == Type.PUNCTUATION
+
+
+def test_sentence_tokenizer_sets_pos_and_lemma(nlp):
+    cache = DocCache(nlp)
+    tok = SentenceTokenizer()
+    tokens = tok.tokenize("Running fast.", cache)
+
+    for tok_item in tokens:
+        if tok_item.type != Type.EXTENDED:
+            assert tok_item.lemma != "" or tok_item.text in {".", "fast"}
+
+
+def test_sentence_tokenizer_raises_if_cancelled_during_loop():
+    cache = MagicMock(spec=DocCache)
+    tok = SentenceTokenizer()
+    tok.cancel()
+    doc = MagicMock()
+    doc.__iter__ = MagicMock(return_value=iter([MagicMock()]))
+    cache.get_doc.return_value = doc
+
+    with pytest.raises(TokenizationCancelled):
+        tok.tokenize("ignored", cache)
+
+
+def test_sentence_tokenizer_cancel_is_idempotent():
+    tok = SentenceTokenizer()
+    tok.cancel()
+    tok.cancel()
+    assert tok._cancel_event.is_set()

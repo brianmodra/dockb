@@ -40,6 +40,7 @@ dev = [
 
 [tool.pylint.master]
 load-plugins = ["pylint_pydantic"]
+extension-pkg-allow-list = ["pydantic"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -74,6 +75,8 @@ python_version = "3.10"
 plugins = []
 strict = true
 mypy_path = "src"
+no_implicit_reexport = false
+disallow_untyped_defs = false
 
 [tool.isort]
 profile = "black"

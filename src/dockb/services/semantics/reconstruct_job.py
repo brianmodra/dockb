@@ -30,6 +30,7 @@ class ReconstructJob(Job):
         if self.model is None or self.doc_cache is None:
             return
         if not self.model.dirty:
+            self.model = None
             return
         if hasattr(self.model, "tokens"):
             self._tokenizer = SentenceTokenizer()
@@ -44,3 +45,4 @@ class ReconstructJob(Job):
         """Attach the sentence and doc cache for processing."""
         self.model = sentence
         self.doc_cache = doc_cache
+        self.model_id = sentence.id

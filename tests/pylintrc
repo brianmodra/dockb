@@ -1,0 +1,19 @@
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-function-docstring,
+    missing-class-docstring,
+    too-many-arguments,
+    too-many-positional-arguments,
+    protected-access,
+    import-outside-toplevel,
+    duplicate-code,
+    unused-import,
+    redefined-outer-name
+
+[BASIC]
+# Pydantic creates these dynamically
+generated-members=extend,append,clear
+
+[FORMAT]
+max-line-length = 140

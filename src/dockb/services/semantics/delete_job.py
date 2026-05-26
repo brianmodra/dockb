@@ -21,6 +21,7 @@ class DeleteJob(Job):
         if self.model is None:
             return
         if not self.model.dirty:
+            self.model = None
             return
         self.model.clear_semantics()
         self.model = None

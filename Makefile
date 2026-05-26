@@ -1,13 +1,13 @@
 all: sort check_static_typing detect_cycles lint test
 
 sort:
-	isort src/dockb
+	isort src/dockb tests/dockb
 
 check_static_typing:
 	mypy src --check-untyped-defs
 
 lint:
-	pylint src
+	pylint src && pylint --rcfile=tests/pylintrc tests
 
 detect_cycles:
 	cd src/dockb; pycycle --here

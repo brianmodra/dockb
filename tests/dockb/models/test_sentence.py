@@ -1,3 +1,5 @@
+"""Tests for Sentence text-editing operations and tokenization."""
+
 import pytest
 import spacy
 
@@ -8,172 +10,133 @@ from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.sync_sentence_reconstructor import SyncSentenceReconstructor
 
 
-def test_apply_text_creates_the_text_and_invalidates_semantics():
-    sentence = Sentence()
+@pytest.mark.parametrize(
+    "operations, expected_text",
+    [
+        pytest.param([("append", "Hello World!")], "Hello World!", id="creates_text"),
+        pytest.param(
+            [("append", "Hello"), ("append", " World!")],
+            "Hello World!",
+            id="appends_text",
+        ),
+    ],
+)
+def test_apply_text_creates_or_appends_and_invalidates_semantics(sentence, operations, expected_text):
+    for op, value in operations:
+        if op == "append":
+            sentence.apply_append_text(value)
+    assert sentence.text == expected_text
+    assert sentence.dirty
+
+
+@pytest.mark.parametrize(
+    "start, end, replacement, expected_text",
+    [
+        pytest.param(6, 10, "Sir", "Hello Sir!", id="replace_word"),
+        pytest.param(11, 11, ".", "Hello World.", id="replace_single_char"),
+        pytest.param(5, 10, "", "Hello!", id="empty_replacement_removes_text"),
+    ],
+)
+def test_edit_text_replaces_text_and_invalidates_semantics(sentence, start, end, replacement, expected_text):
     sentence.apply_append_text("Hello World!")
-    assert sentence.text == "Hello World!"
+    sentence.dirty = False
+    sentence.apply_edit_text(start, end, replacement)
+    assert sentence.text == expected_text
     assert sentence.dirty
 
 
-def test_apply_text_appends_the_text_and_invalidates_semantics():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello")
-    sentence.apply_append_text(" World!")
-    assert sentence.text == "Hello World!"
-    assert sentence.dirty
-
-
-def test_edit_text_does_replace_the_text_and_invalidates_semantics():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    sentence.dirty = False  # force it so we can test that it gets set to True
-    sentence.apply_edit_text(6, 10, "Sir")
-    assert sentence.text == "Hello Sir!"
-    assert sentence.dirty
-
-
-def test_edit_text_of_single_character_does_replace_the_text_and_invalidates_semantics():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    sentence.dirty = False  # force it so we can test that it gets set to True
-    sentence.apply_edit_text(11, 11, ".")
-    assert sentence.text == "Hello World."
-    assert sentence.dirty
-
-
-def test_edit_throws_if_end_is_before_start():
-    sentence = Sentence()
+@pytest.mark.parametrize(
+    "start, end",
+    [
+        pytest.param(2, 1, id="end_before_start"),
+        pytest.param(14, 14, id="start_out_of_range"),
+        pytest.param(1, 15, id="end_out_of_range"),
+        pytest.param(-1, 5, id="start_negative"),
+        pytest.param(1, -1, id="end_negative"),
+    ],
+)
+def test_edit_text_throws_for_invalid_ranges(sentence, start, end):
     sentence.apply_append_text("Hello World!")
     with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(2, 1, "this won't work")
+        sentence.apply_edit_text(start, end, "this won't work")
 
 
-def test_edit_throws_if_start_is_out_of_range():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(14, 14, "this won't work")
-
-
-def test_edit_throws_if_end_is_out_of_range():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(1, 15, "this won't work")
-
-
-def test_edit_throws_if_start_is_out_of_range_with_no_existing_text():
-    sentence = Sentence()
+def test_edit_text_throws_when_no_existing_text(sentence):
     with pytest.raises(EditTextRangeError):
         sentence.apply_edit_text(0, 0, "this won't work")
 
 
-def test_edit_throws_if_start_is_negative():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(-1, 5, "this won't work")
-
-
-def test_edit_throws_if_end_is_negative():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(1, -1, "this won't work")
-
-
-def test_edit_text_with_empty_replacement_removes_text():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
+@pytest.mark.parametrize(
+    "pos, insertion, expected_text",
+    [
+        pytest.param(0, "Hello ", "Hello World!", id="beginning"),
+        pytest.param(5, " World", "Hello World!", id="middle"),
+        pytest.param(5, " World!", "Hello World!", id="end"),
+    ],
+)
+def test_insert_text_and_invalidates_semantics(sentence, pos, insertion, expected_text):
+    if pos == 0 and insertion == "Hello ":
+        sentence.apply_append_text("World!")
+    elif pos == 5 and insertion == " World":
+        sentence.apply_append_text("Hello!")
+    else:
+        sentence.apply_append_text("Hello")
     sentence.dirty = False
-    sentence.apply_edit_text(5, 10, "")
-    assert sentence.text == "Hello!"
+    sentence.apply_insert_text(pos, insertion)
+    assert sentence.text == expected_text
     assert sentence.dirty
 
 
-def test_insert_text_at_beginning():
-    sentence = Sentence()
-    sentence.apply_append_text("World!")
-    sentence.dirty = False
-    sentence.apply_insert_text(0, "Hello ")
-    assert sentence.text == "Hello World!"
-    assert sentence.dirty
-
-
-def test_insert_text_in_middle():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello!")
-    sentence.dirty = False
-    sentence.apply_insert_text(5, " World")
-    assert sentence.text == "Hello World!"
-    assert sentence.dirty
-
-
-def test_insert_text_at_end():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello")
-    sentence.dirty = False
-    sentence.apply_insert_text(5, " World!")
-    assert sentence.text == "Hello World!"
-    assert sentence.dirty
-
-
-def test_insert_text_into_empty_sentence_at_zero():
-    sentence = Sentence()
+def test_insert_text_into_empty_sentence_at_zero(sentence):
     sentence.apply_insert_text(0, "Hello World!")
     assert sentence.text == "Hello World!"
     assert sentence.dirty
 
 
-def test_insert_text_throws_if_pos_is_negative():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
+@pytest.mark.parametrize(
+    "pos, existing_text",
+    [
+        pytest.param(-1, "Hello World!", id="negative_pos"),
+        pytest.param(14, "Hello World!", id="pos_out_of_range"),
+        pytest.param(1, "", id="pos_out_of_range_with_no_text"),
+    ],
+)
+def test_insert_text_throws_for_invalid_positions(sentence, pos, existing_text):
+    if existing_text:
+        sentence.apply_append_text(existing_text)
     with pytest.raises(EditTextRangeError):
-        sentence.apply_insert_text(-1, "this won't work")
+        sentence.apply_insert_text(pos, "this won't work")
 
 
-def test_insert_text_throws_if_pos_is_out_of_range():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_insert_text(14, "this won't work")
-
-
-def test_insert_text_throws_if_pos_is_out_of_range_with_no_existing_text():
-    sentence = Sentence()
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_insert_text(1, "this won't work")
-
-
-def test_insert_text_with_empty_text_does_nothing():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello World!")
+@pytest.mark.parametrize(
+    "setup_text, pos, insertion",
+    [
+        pytest.param("Hello World!", 5, "", id="into_existing_text"),
+        pytest.param("", 0, "", id="into_empty_sentence"),
+    ],
+)
+def test_insert_text_with_empty_insertion_does_nothing(sentence, setup_text, pos, insertion):
+    if setup_text:
+        sentence.apply_append_text(setup_text)
     sentence.dirty = False
-    sentence.apply_insert_text(5, "")
-    assert sentence.text == "Hello World!"
+    sentence.apply_insert_text(pos, insertion)
+    assert sentence.text == setup_text
     assert not sentence.dirty
 
 
-def test_insert_text_with_empty_text_into_empty_sentence_does_nothing():
-    sentence = Sentence()
-    sentence.apply_insert_text(0, "")
-    assert sentence.text == ""
-    assert not sentence.dirty
-
-
-def test_append_text_with_empty_string_does_nothing():
-    sentence = Sentence()
+@pytest.mark.parametrize(
+    "existing_text",
+    [
+        pytest.param("", id="no_existing_text"),
+        pytest.param("Hello", id="with_existing_text"),
+    ],
+)
+def test_append_text_with_empty_string_does_nothing(sentence, existing_text):
+    if existing_text:
+        sentence.apply_append_text(existing_text)
+        sentence.dirty = False
     sentence.apply_append_text("")
-    assert sentence.text == ""
-    assert not sentence.dirty
-
-
-def test_append_text_with_empty_string_to_existing_text_does_nothing():
-    sentence = Sentence()
-    sentence.apply_append_text("Hello")
-    sentence.dirty = False
-    sentence.apply_append_text("")
-    assert sentence.text == "Hello"
+    assert sentence.text == existing_text
     assert not sentence.dirty
 
 
@@ -189,7 +152,7 @@ def test_sentence_can_tokenise():
     cache = DocCache(nlp)
     sentence_reconstructor = SyncSentenceReconstructor(cache)
     sentence = Sentence()
-    sentence.set_text("The cat sat on the mat in the café looking at the dog 😜.")
+    sentence.set_text("The cat sat on the mat in the caf\u00e9 looking at the dog \U0001f61c.")
     sentence_reconstructor.run(sentence)
     expected = [
         Token(text="The", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
@@ -200,12 +163,21 @@ def test_sentence_can_tokenise():
         Token(text="mat", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="mat", pos=POS.NOUN),
         Token(text="in", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="in", pos=POS.ADP),
         Token(text="the", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
-        Token(text="café", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="café", pos=POS.NOUN),
+        Token(
+            text="caf\u00e9",
+            type=Type.WORD,
+            trailing_ws=" ",
+            is_digit=False,
+            like_num=False,
+            is_alpha=True,
+            lemma="caf\u00e9",
+            pos=POS.NOUN,
+        ),
         Token(text="looking", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="look", pos=POS.VERB),
         Token(text="at", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="at", pos=POS.ADP),
         Token(text="the", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
         Token(text="dog", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="dog", pos=POS.NOUN),
-        Token(text="😜", type=Type.EXTENDED, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma="", pos=POS._),
+        Token(text="\U0001f61c", type=Type.EXTENDED, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma="", pos=POS._),
         Token(text=".", type=Type.PUNCTUATION, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma=".", pos=POS.PUNCT),
     ]
     print(sentence.tokens)
@@ -219,4 +191,12 @@ def test_sentence_can_tokenise():
         assert actual.is_alpha == exp.is_alpha
         assert actual.lemma == exp.lemma
         assert actual.pos == exp.pos
-    # async_sentence_reconstructor = AsyncSentenceReconstructor(doc_cache=)
+
+
+def test_clear_semantics_removes_tokens(sentence):
+    sentence.tokens.append(Token(text="Hello"))
+    sentence.tokens.append(Token(text="World", trailing_ws="!"))
+
+    sentence.clear_semantics()
+
+    assert len(sentence.tokens) == 0

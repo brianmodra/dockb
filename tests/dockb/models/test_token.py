@@ -22,7 +22,7 @@ def test_set_text_as_number():
     token.set_text("123")
     assert token.text == "123"
     assert token.type == Type.NUMBER
-    assert token.is_digit == True
+    assert token.is_digit
 
 
 def test_set_text_as_float():
@@ -30,7 +30,7 @@ def test_set_text_as_float():
     token.set_text("123.123")
     assert token.text == "123.123"
     assert token.type == Type.NUMBER
-    assert token.is_digit == False
+    assert not token.is_digit
 
 
 def test_set_text_as_thousands():
@@ -38,7 +38,7 @@ def test_set_text_as_thousands():
     token.set_text("123,123")
     assert token.text == "123,123"
     assert token.type == Type.NUMBER
-    assert token.is_digit == False
+    assert not token.is_digit
 
 
 def test_set_text_with_multiple_dots():
@@ -46,7 +46,7 @@ def test_set_text_with_multiple_dots():
     token.set_text("123.123.3.12")
     assert token.text == "123.123.3.12"
     assert token.type == Type.NUMBER
-    assert token.is_digit == False
+    assert not token.is_digit
 
 
 def test_set_text_with_multiple_commas():
@@ -54,7 +54,7 @@ def test_set_text_with_multiple_commas():
     token.set_text("123,123,3,12")
     assert token.text == "123,123,3,12"
     assert token.type == Type.NUMBER
-    assert token.is_digit == False
+    assert not token.is_digit
 
 
 def test_categorizes_invalid_numbers():
@@ -143,6 +143,8 @@ def test_sets_whitespace_set_text_as_word_with_trailing_space():
 
 def test_throws_wnen_set_text_as_word_with_non_alphanum():
     token = Token()
+    token.set_text("abc!")
+    assert token.type == Type._
 
 
 def test_categorizes_invalid_words_with_non_alphanum():
@@ -406,3 +408,73 @@ def test_set_lemma_on_noun():
     token.set_lemma("child")
     assert token.lemma == "child"
     # that's probably enough tests for lemma
+
+
+@pytest.mark.parametrize(
+    "text, expected_is_stop",
+    [
+        pytest.param("the", True, id="common_stop_word"),
+        pytest.param("is", True, id="verb_stop_word"),
+        pytest.param("hello", False, id="non_stop_word"),
+        pytest.param("123", False, id="number_not_stop"),
+        pytest.param("!", False, id="punctuation_not_stop"),
+    ],
+)
+def test_is_stop_reflects_assignment(text, expected_is_stop):
+    token = Token()
+    token.set_text(text)
+    token.is_stop = expected_is_stop
+    assert token.is_stop == expected_is_stop
+
+
+@pytest.mark.parametrize(
+    "text, expected_like_num",
+    [
+        pytest.param("123", True, id="integer"),
+        pytest.param("45.67", True, id="float"),
+        pytest.param("one", False, id="word_text"),
+        pytest.param("!", False, id="punctuation"),
+    ],
+)
+def test_like_num_reflects_assignment(text, expected_like_num):
+    token = Token()
+    token.set_text(text)
+    token.like_num = expected_like_num
+    assert token.like_num == expected_like_num
+
+
+@pytest.mark.parametrize(
+    "text, expected_is_alpha",
+    [
+        pytest.param("hello", True, id="alphabetic_word"),
+        pytest.param("123", False, id="numeric"),
+        pytest.param("abc123", False, id="mixed_alphanumeric"),
+        pytest.param("café", True, id="unicode_alpha"),
+    ],
+)
+def test_is_alpha_reflects_assignment(text, expected_is_alpha):
+    token = Token()
+    token.set_text(text)
+    token.is_alpha = expected_is_alpha
+    assert token.is_alpha == expected_is_alpha
+
+
+def test_clear_semantics_does_nothing(token):
+    token.set_text("Hello")
+    token.clear_semantics()
+    assert token.text == "Hello"
+
+
+def test_apply_edit_text_raises_not_implemented_error(token):
+    with pytest.raises(NotImplementedError):
+        token.apply_edit_text(0, 1, "x")
+
+
+def test_apply_append_text_raises_not_implemented_error(token):
+    with pytest.raises(NotImplementedError):
+        token.apply_append_text("x")
+
+
+def test_apply_insert_text_raises_not_implemented_error(token):
+    with pytest.raises(NotImplementedError):
+        token.apply_insert_text(0, "x")

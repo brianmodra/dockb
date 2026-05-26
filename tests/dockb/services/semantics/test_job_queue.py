@@ -77,6 +77,15 @@ def test_job_queue_runs():
     assert not queue.is_running()
 
 
+def test_job_queue_cancel_job_returns_false_for_unknown_job():
+    queue = JobQueue()
+    queue.start()
+    job = SimpleJob()
+    result = queue.cancel_job(job)
+    assert result is False
+    queue.shutdown()
+
+
 def test_job_queue_queues_jobs_and_runs_them_in_order():
     queue = JobQueue()
     assert not queue.is_running()

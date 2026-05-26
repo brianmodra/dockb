@@ -1,3 +1,5 @@
+import threading
+
 import spacy
 
 from dockb.services.semantics.doc_cache import DocCache
@@ -39,3 +41,38 @@ def test_doc_cache_stores_and_evicts_as_expected(freezer):
     # cause one more eviction pass to execute, then all should be gone
     cache.evict()
     assert cache.len() == 0
+
+
+def test_doc_cache_remove_doc(nlp):
+    cache = DocCache(nlp=nlp)
+    cache.get_doc("Hello World!")
+    assert cache.has_doc("Hello World!")
+
+    cache.remove_doc("Hello World!")
+    assert not cache.has_doc("Hello World!")
+
+
+def test_doc_cache_remove_doc_missing_does_not_raise(nlp):
+    cache = DocCache(nlp=nlp)
+    cache.remove_doc("never existed")
+
+
+def test_doc_cache_start_stop_lifecycle(nlp):
+    cache = DocCache(nlp=nlp, sweep_time=60)
+    cache.start()
+    assert cache.eviction_thread is not None
+    assert cache.eviction_thread.is_alive()
+
+    cache.stop()
+    assert not cache.eviction_thread.is_alive()
+
+
+def test_doc_cache_stop_is_idempotent(nlp):
+    cache = DocCache(nlp=nlp, sweep_time=60)
+    cache.stop()
+    cache.stop()
+
+
+def test_doc_cache_join_with_no_thread_returns_immediately(nlp):
+    cache = DocCache(nlp=nlp)
+    cache.join()
