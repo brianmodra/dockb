@@ -3,7 +3,10 @@
 import pytest
 
 from dockb.exceptions import EditTextRangeError
+from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.paragraph import Paragraph
+from dockb.models.sentence import Sentence
 
 
 @pytest.mark.parametrize(
@@ -144,10 +147,6 @@ def test_each_document_has_unique_id():
 
 
 def test_get_text_aggregates_children_when_not_dirty():
-    from dockb.models.chapter import Chapter
-    from dockb.models.paragraph import Paragraph
-    from dockb.models.sentence import Sentence
-
     doc = Document()
     doc.text = "Original"
     doc.dirty = False
@@ -171,10 +170,6 @@ def test_get_text_aggregates_children_when_not_dirty():
 
 
 def test_clear_semantics_removes_all_children(document):
-    from dockb.models.chapter import Chapter
-    from dockb.models.paragraph import Paragraph
-    from dockb.models.sentence import Sentence
-
     ch = Chapter()
     p = Paragraph()
     s = Sentence(text="Hello")

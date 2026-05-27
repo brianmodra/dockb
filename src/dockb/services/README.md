@@ -125,4 +125,4 @@ So if they are queued, they should be cancelled, and if one is currently running
 
 ## Jobs, worker tasks, and the JobQueue
 
-See the file @tests/dockb/services/semantics/README.md
+See the file @src/dockb/services/semantics/README.md

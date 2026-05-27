@@ -15,9 +15,5 @@ class ChapterHydrator:  # pylint: disable=too-few-public-methods
         Skips empty text chunks that may appear from consecutive delimiters.
         """
         text = chapter.get_text()
-        paragraphs = [
-            Paragraph(text=chunk)
-            for chunk in text.split(PARAGRAPH_DELIMITER)
-            if chunk.strip()
-        ]
+        paragraphs = [Paragraph(text=chunk) for chunk in text.split(PARAGRAPH_DELIMITER) if chunk.strip()]
         chapter.paragraphs = paragraphs

@@ -1,6 +1,10 @@
 import threading
+from unittest.mock import MagicMock
 
+from dockb.models.sentence import Sentence
+from dockb.models.token import Token
 from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job import Job, JobStatus
 from dockb.services.semantics.reconstruct_job import ReconstructJob
 
@@ -55,8 +59,10 @@ def test_reconstruct_job_has_unique_id():
         def run(self) -> None:
             pass
 
-    job1 = ConcreteReconstruct(model_id="model-1")
-    job2 = ConcreteReconstruct(model_id="model-2")
+    job1 = ConcreteReconstruct()
+    job1.model_id = "model-1"
+    job2 = ConcreteReconstruct()
+    job2.model_id = "model-2"
     assert job1.id != job2.id
     assert isinstance(job1.id, str)
     assert job1.model_id == "model-1"
@@ -137,8 +143,6 @@ def test_delete_job_run_with_no_model_does_nothing():
 
 
 def test_delete_job_run_with_non_dirty_model_does_nothing():
-    from dockb.models.sentence import Sentence
-
     job = DeleteJob()
     sentence = Sentence(text="Hello")
     sentence.dirty = False
@@ -149,9 +153,6 @@ def test_delete_job_run_with_non_dirty_model_does_nothing():
 
 
 def test_delete_job_run_clears_dirty_model():
-    from dockb.models.sentence import Sentence
-    from dockb.models.token import Token
-
     job = DeleteJob()
     sentence = Sentence(text="Hello")
     sentence.dirty = True
@@ -163,17 +164,14 @@ def test_delete_job_run_clears_dirty_model():
 
 
 def test_reconstruct_job_run_with_no_model_does_nothing():
-    job = ReconstructJob("model-1")
+    job = ReconstructJob()
     job.run()
     assert job.status == JobStatus.QUEUED
 
 
 def test_reconstruct_job_run_with_non_dirty_model_does_nothing(nlp):
-    from dockb.models.sentence import Sentence
-    from dockb.services.semantics.doc_cache import DocCache
-
     cache = DocCache(nlp)
-    job = ReconstructJob("model-1")
+    job = ReconstructJob()
     sentence = Sentence(text="Hello")
     sentence.dirty = False
     job.set(sentence, cache)
@@ -183,9 +181,7 @@ def test_reconstruct_job_run_with_non_dirty_model_does_nothing(nlp):
 
 
 def test_reconstruct_job_on_cancel_with_tokenizer():
-    from unittest.mock import MagicMock
-
-    job = ReconstructJob("model-1")
+    job = ReconstructJob()
     mock_tokenizer = MagicMock()
     job._tokenizer = mock_tokenizer
     job.on_cancel()
@@ -193,5 +189,5 @@ def test_reconstruct_job_on_cancel_with_tokenizer():
 
 
 def test_reconstruct_job_on_cancel_without_tokenizer_does_nothing():
-    job = ReconstructJob("model-1")
+    job = ReconstructJob()
     job.on_cancel()

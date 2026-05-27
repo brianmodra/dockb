@@ -1,9 +1,16 @@
 import threading
+from unittest.mock import MagicMock, patch
 
+from dockb.models.sentence import Sentence
 from dockb.services.semantics.delete_job import DeleteJob
+from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job import Job, JobStatus
 from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
+from dockb.services.semantics.sentence_tokenizer import (
+    SentenceTokenizer,
+    TokenizationCancelled,
+)
 
 STRESS_NUM_THREADS = 10
 STRESS_JOBS_PER_THREAD = 20
@@ -154,8 +161,10 @@ def test_job_queue_can_cancel_jobs_that_are_running_and_lets_other_jobs_be_run_a
 def test_job_queue_stores_reconstruct_jobs_into_dict_but_not_delete_jobs():
     queue = JobQueue()
     job1 = DeleteJob()
-    job2 = ReconstructJob("model2")
-    job3 = ReconstructJob("model3")
+    job2 = ReconstructJob()
+    job2.model_id = "model2"
+    job3 = ReconstructJob()
+    job3.model_id = "model3"
     queue.enqueue(job1)
     queue.enqueue(job2)
     queue.enqueue(job3)
@@ -169,13 +178,16 @@ def test_job_queue_stores_reconstruct_jobs_into_dict_but_not_delete_jobs():
 def test_job_queue_removes_reconstruct_jobs_for_same_model_but_leaves_delete_jobs():
     queue = JobQueue()
     job1 = DeleteJob()
-    job2 = ReconstructJob("model2")
-    job3 = ReconstructJob("same-model")
+    job2 = ReconstructJob()
+    job2.model_id = "model2"
+    job3 = ReconstructJob()
+    job3.model_id = "same-model"
     id3 = job3.id
     queue.enqueue(job1)
     queue.enqueue(job2)
     queue.enqueue(job3)
-    job4 = ReconstructJob("same-model")
+    job4 = ReconstructJob()
+    job4.model_id = "same-model"
     queue.enqueue(job4)
     job5 = DeleteJob()
     queue.enqueue(job5)
@@ -313,24 +325,12 @@ def test_job_queue_stress_test_multi_threaded_ordering():
 
 
 def test_reconstruct_job_cancels_tokenization():
-    from dockb.services.semantics.sentence_tokenizer import (
-        SentenceTokenizer,
-    )
-
     slow_tok = SentenceTokenizer()
     slow_tok.cancel()
     assert slow_tok._cancel_event.is_set()
 
 
 def test_reconstruct_job_cancels_tokenization_via_queue():
-    from unittest.mock import patch
-
-    from dockb.models.sentence import Sentence
-    from dockb.services.semantics.sentence_tokenizer import (
-        SentenceTokenizer,
-        TokenizationCancelled,
-    )
-
     blocked = threading.Event()
     tokenizer_started = threading.Event()
 
@@ -348,9 +348,10 @@ def test_reconstruct_job_cancels_tokenization_via_queue():
     with patch.object(SentenceTokenizer, "__new__", return_value=BlockingTokenizer()):
         queue = JobQueue()
         queue.start()
-        job = ReconstructJob("model-1")
-        job.set(sentence, doc_cache=None)
-        job.doc_cache = "ignored"
+        job = ReconstructJob()
+        job.model_id = "model-1"
+        job.model = sentence
+        job.doc_cache = MagicMock(spec=DocCache)
 
         queue.enqueue(job)
         tokenizer_started.wait()

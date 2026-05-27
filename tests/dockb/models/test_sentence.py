@@ -7,7 +7,7 @@ from dockb.exceptions import EditTextRangeError
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
 from dockb.services.semantics.doc_cache import DocCache
-from dockb.services.semantics.sync_sentence_reconstructor import SyncSentenceReconstructor
+from dockb.services.semantics.sync_reconstructor import SyncReconstructor
 
 
 @pytest.mark.parametrize(
@@ -150,10 +150,10 @@ def test_each_sentence_has_unique_id():
 def test_sentence_can_tokenise():
     nlp = spacy.load("en_core_web_sm")
     cache = DocCache(nlp)
-    sentence_reconstructor = SyncSentenceReconstructor(cache)
+    reconstructor = SyncReconstructor(cache, nlp)
     sentence = Sentence()
     sentence.set_text("The cat sat on the mat in the caf\u00e9 looking at the dog \U0001f61c.")
-    sentence_reconstructor.run(sentence)
+    reconstructor.run(sentence)
     expected = [
         Token(text="The", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
         Token(text="cat", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="cat", pos=POS.NOUN),

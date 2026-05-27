@@ -1,3 +1,11 @@
+# DeleteJob and ReconstructJob
+
+DeleteJob clears existing sentence tokens before reconstruction.
+ReconstructJob performs tokenization and semantic reconstruction.
+
+Both are enqueued to the JobQueue and executed by the single background worker.
+Jobs are populated via their `set()` method before being enqueued.
+
 # Job
 
 Base class for ReconstructJob and DeleteJob.
@@ -35,14 +43,6 @@ The `on_cancel()` hook can be overridden by subclasses to perform cleanup when
 a running job is cancelled. It is only called if the job was in RUNNING state
 at the time of cancellation.
 
-# DeleteJob and ReconstructJob
-
-DeleteJob clears existing sentence tokens before reconstruction.
-ReconstructJob performs tokenization and semantic reconstruction.
-
-Both are enqueued to the JobQueue and executed by the single background worker.
-Jobs are populated via their `set()` method before being enqueued.
-
 # JobQueue
 
 The JobQueue manages job execution with a single background worker thread.
@@ -78,7 +78,7 @@ DeleteJob entries are never stored in the `reconstruct_jobs` dict.
 # SentenceTokenizer
 
 Tokenizes raw sentence text into `Token` objects using spaCy via a `DocCache`.
-Both `ReconstructJob` and `SyncSentenceReconstructor` delegate to this class,
+Both `ReconstructJob` and `SyncReconstructor` delegate to this class,
 keeping the `models` layer free of spaCy awareness. The `tokenize()` method
 takes `(text: str, doc_cache: DocCache)` and returns a `list[Token]` with POS,
 lemma, whitespace, and other spaCy-derived attributes populated.
@@ -89,3 +89,19 @@ If a reconstruct is in progress, it can be cancelled. The ReconstructJob class
 has an on_cancel method, which calls the SentenceTokenizer cancel method.
 This method may be able to cancel the tokenization loop, if it was called during
 the process, because it sets and event which is checked in the loop.
+
+# Hydrators
+
+## DocumentHydator, ChapterHydrator, ParagraphHydrator
+
+These are already introduced in @src/dockb/services/README.md
+
+These hydrators will use the model's text, and split it up into the constutuent parts.
+
+# Reconstructors
+
+The `Reconstructor` abstract base class is implemented by `SyncReconstructor`
+and `AsyncReconstructor`. Both handle all model types (`Document`, `Chapter`,
+`Paragraph`, `Sentence`), routing to the appropriate hydrator or tokenizer
+based on the model's type.
+

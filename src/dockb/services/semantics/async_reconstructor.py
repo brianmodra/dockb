@@ -1,15 +1,15 @@
-"""Async sentence reconstruction via job queue."""
+"""Async reconstruction via job queue."""
 
 from dockb.models.base import DockbModel
 from dockb.services.semantics.delete_job import DeleteJob
 from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
-from dockb.services.semantics.sentence_reconstructor import SentenceReconstructor
+from dockb.services.semantics.reconstructor import Reconstructor
 
 
-class AsyncSentenceReconstructor(SentenceReconstructor):  # pylint: disable=too-few-public-methods
-    """Reconstructs sentences asynchronously using a job queue."""
+class AsyncReconstructor(Reconstructor):  # pylint: disable=too-few-public-methods
+    """Reconstructs models asynchronously using a job queue."""
 
     def __init__(self, doc_cache: DocCache, queue: JobQueue):
         super().__init__(doc_cache)
@@ -20,6 +20,6 @@ class AsyncSentenceReconstructor(SentenceReconstructor):  # pylint: disable=too-
         djob = DeleteJob()
         djob.set(model)
         self.queue.enqueue(djob)
-        rjob = ReconstructJob(model.id)
+        rjob = ReconstructJob()
         rjob.set(model, self.doc_cache)
         self.queue.enqueue(rjob)

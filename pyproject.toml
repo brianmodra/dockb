@@ -42,6 +42,9 @@ dev = [
 load-plugins = ["pylint_pydantic"]
 extension-pkg-allow-list = ["pydantic"]
 
+[tool.pylint.messages_control]
+disable = ["duplicate-code"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["dockb"]

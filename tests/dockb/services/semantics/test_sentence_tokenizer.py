@@ -41,9 +41,9 @@ def test_sentence_tokenizer_can_be_cancelled_even_if_already_running_in_the_queu
     sentence.set_text("If anyone loudly blesses their neighbor early in the morning, it will be taken as a curse.")
     djob = DeleteJob()
     djob.set(sentence)
-    rjob1 = ReconstructJob(sentence.id)
+    rjob1 = ReconstructJob()
     rjob1.set(sentence, doc_cache)
-    rjob2 = ReconstructJob(sentence.id)
+    rjob2 = ReconstructJob()
     rjob2.set(sentence, doc_cache)
     queue.enqueue(djob)
     queue.enqueue(rjob1)
@@ -69,9 +69,9 @@ def test_sentence_tokenizer_is_cancelled_properly_when_second_reconstruct_job_ad
     sentence.set_text("If anyone loudly blesses their neighbor early in the morning, it will be taken as a curse.")
     djob = DeleteJob()
     djob.set(sentence)
-    rjob1 = ReconstructJob(sentence.id)
+    rjob1 = ReconstructJob()
     rjob1.set(sentence, doc_cache)
-    rjob2 = ReconstructJob(sentence.id)
+    rjob2 = ReconstructJob()
     rjob2.set(sentence, doc_cache)
     queue.enqueue(djob)
     queue.enqueue(rjob1)
@@ -99,7 +99,7 @@ class TokenizeThread(threading.Thread):
 
     def run(self) -> None:
         self.wait_for.wait()
-        rjob = ReconstructJob(self.sentence.id)
+        rjob = ReconstructJob()
         rjob.set(self.sentence, self.doc_cache)
         self.queue.enqueue(rjob)
         rjob.done.wait()
@@ -117,7 +117,7 @@ def test_sentence_tokenizer_is_cancelled_properly_when_second_reconstruct_job_ad
     queue.start()
     djob = DeleteJob()
     djob.set(sentence)
-    rjob = ReconstructJob(sentence.id)
+    rjob = ReconstructJob()
     rjob.set(sentence, doc_cache)
     queue.enqueue(djob)
     queue.enqueue(rjob)
@@ -139,7 +139,7 @@ class StressTokenizeThread(threading.Thread):
         self.sentence = sentence
         self.text = text
         self.barrier = barrier
-        self.rjob = ReconstructJob(self.sentence.id)
+        self.rjob = ReconstructJob()
 
     def run(self) -> None:
         self.barrier.wait()
