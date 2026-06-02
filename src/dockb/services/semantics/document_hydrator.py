@@ -16,4 +16,4 @@ class DocumentHydrator:  # pylint: disable=too-few-public-methods
         """
         text = document.get_text()
         chapters = [Chapter(text=chunk) for chunk in text.split(CHAPTER_DELIMITER) if chunk.strip()]
-        document.chapters = chapters
+        document.chapters[:] = chapters

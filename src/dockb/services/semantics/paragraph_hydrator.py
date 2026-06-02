@@ -20,4 +20,4 @@ class ParagraphHydrator:  # pylint: disable=too-few-public-methods
         text = paragraph.get_text()
         doc = self._nlp(text)
         sentences = [Sentence(text=sent.text) for sent in doc.sents if sent.text.strip()]
-        paragraph.sentences = sentences
+        paragraph.sentences[:] = sentences

@@ -6,6 +6,7 @@ import string
 from enum import Enum
 
 from dockb.exceptions import TokenInvalidError
+from dockb.models.utils.dockb_collection import DockbModelBase, InsertionMode
 
 from .base import DockbModel
 
@@ -186,14 +187,11 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
             raise TokenInvalidError("trailing_ws must contain only valid whitespace characters")
         self.trailing_ws = trailing_ws
 
-    def apply_edit_text(self, start: int, end: int, text: str) -> None:
-        raise NotImplementedError()
-
-    def apply_append_text(self, text: str) -> None:
-        raise NotImplementedError()
-
-    def apply_insert_text(self, pos: int, text: str) -> None:
-        raise NotImplementedError()
-
     def clear_semantics(self) -> None:
         pass
+
+    def delete_child(self, child_id: str) -> bool:
+        return False
+
+    def insert_child(self, child: DockbModelBase, insertion_mode: InsertionMode, after: str | None = None) -> None:
+        raise TypeError("Token has no children")

@@ -2,6 +2,7 @@ import pytest
 
 from dockb.exceptions import TokenInvalidError
 from dockb.models.token import POS, Token, Type
+from dockb.models.utils.dockb_collection import InsertionMode
 
 
 def test_initial_state_is_empty():
@@ -465,16 +466,6 @@ def test_clear_semantics_does_nothing(token):
     assert token.text == "Hello"
 
 
-def test_apply_edit_text_raises_not_implemented_error(token):
-    with pytest.raises(NotImplementedError):
-        token.apply_edit_text(0, 1, "x")
-
-
-def test_apply_append_text_raises_not_implemented_error(token):
-    with pytest.raises(NotImplementedError):
-        token.apply_append_text("x")
-
-
-def test_apply_insert_text_raises_not_implemented_error(token):
-    with pytest.raises(NotImplementedError):
-        token.apply_insert_text(0, "x")
+def test_insert_child_raises_type_error(token):
+    with pytest.raises(TypeError, match="Token has no children"):
+        token.insert_child(Token(), InsertionMode.LAST)

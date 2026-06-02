@@ -1,143 +1,13 @@
-"""Tests for Sentence text-editing operations and tokenization."""
+"""Tests for Sentence model."""
 
 import pytest
 import spacy
 
-from dockb.exceptions import EditTextRangeError
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
+from dockb.models.utils.dockb_collection import InsertionMode
 from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.sync_reconstructor import SyncReconstructor
-
-
-@pytest.mark.parametrize(
-    "operations, expected_text",
-    [
-        pytest.param([("append", "Hello World!")], "Hello World!", id="creates_text"),
-        pytest.param(
-            [("append", "Hello"), ("append", " World!")],
-            "Hello World!",
-            id="appends_text",
-        ),
-    ],
-)
-def test_apply_text_creates_or_appends_and_invalidates_semantics(sentence, operations, expected_text):
-    for op, value in operations:
-        if op == "append":
-            sentence.apply_append_text(value)
-    assert sentence.text == expected_text
-    assert sentence.dirty
-
-
-@pytest.mark.parametrize(
-    "start, end, replacement, expected_text",
-    [
-        pytest.param(6, 10, "Sir", "Hello Sir!", id="replace_word"),
-        pytest.param(11, 11, ".", "Hello World.", id="replace_single_char"),
-        pytest.param(5, 10, "", "Hello!", id="empty_replacement_removes_text"),
-    ],
-)
-def test_edit_text_replaces_text_and_invalidates_semantics(sentence, start, end, replacement, expected_text):
-    sentence.apply_append_text("Hello World!")
-    sentence.dirty = False
-    sentence.apply_edit_text(start, end, replacement)
-    assert sentence.text == expected_text
-    assert sentence.dirty
-
-
-@pytest.mark.parametrize(
-    "start, end",
-    [
-        pytest.param(2, 1, id="end_before_start"),
-        pytest.param(14, 14, id="start_out_of_range"),
-        pytest.param(1, 15, id="end_out_of_range"),
-        pytest.param(-1, 5, id="start_negative"),
-        pytest.param(1, -1, id="end_negative"),
-    ],
-)
-def test_edit_text_throws_for_invalid_ranges(sentence, start, end):
-    sentence.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(start, end, "this won't work")
-
-
-def test_edit_text_throws_when_no_existing_text(sentence):
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_edit_text(0, 0, "this won't work")
-
-
-@pytest.mark.parametrize(
-    "pos, insertion, expected_text",
-    [
-        pytest.param(0, "Hello ", "Hello World!", id="beginning"),
-        pytest.param(5, " World", "Hello World!", id="middle"),
-        pytest.param(5, " World!", "Hello World!", id="end"),
-    ],
-)
-def test_insert_text_and_invalidates_semantics(sentence, pos, insertion, expected_text):
-    if pos == 0 and insertion == "Hello ":
-        sentence.apply_append_text("World!")
-    elif pos == 5 and insertion == " World":
-        sentence.apply_append_text("Hello!")
-    else:
-        sentence.apply_append_text("Hello")
-    sentence.dirty = False
-    sentence.apply_insert_text(pos, insertion)
-    assert sentence.text == expected_text
-    assert sentence.dirty
-
-
-def test_insert_text_into_empty_sentence_at_zero(sentence):
-    sentence.apply_insert_text(0, "Hello World!")
-    assert sentence.text == "Hello World!"
-    assert sentence.dirty
-
-
-@pytest.mark.parametrize(
-    "pos, existing_text",
-    [
-        pytest.param(-1, "Hello World!", id="negative_pos"),
-        pytest.param(14, "Hello World!", id="pos_out_of_range"),
-        pytest.param(1, "", id="pos_out_of_range_with_no_text"),
-    ],
-)
-def test_insert_text_throws_for_invalid_positions(sentence, pos, existing_text):
-    if existing_text:
-        sentence.apply_append_text(existing_text)
-    with pytest.raises(EditTextRangeError):
-        sentence.apply_insert_text(pos, "this won't work")
-
-
-@pytest.mark.parametrize(
-    "setup_text, pos, insertion",
-    [
-        pytest.param("Hello World!", 5, "", id="into_existing_text"),
-        pytest.param("", 0, "", id="into_empty_sentence"),
-    ],
-)
-def test_insert_text_with_empty_insertion_does_nothing(sentence, setup_text, pos, insertion):
-    if setup_text:
-        sentence.apply_append_text(setup_text)
-    sentence.dirty = False
-    sentence.apply_insert_text(pos, insertion)
-    assert sentence.text == setup_text
-    assert not sentence.dirty
-
-
-@pytest.mark.parametrize(
-    "existing_text",
-    [
-        pytest.param("", id="no_existing_text"),
-        pytest.param("Hello", id="with_existing_text"),
-    ],
-)
-def test_append_text_with_empty_string_does_nothing(sentence, existing_text):
-    if existing_text:
-        sentence.apply_append_text(existing_text)
-        sentence.dirty = False
-    sentence.apply_append_text("")
-    assert sentence.text == existing_text
-    assert not sentence.dirty
 
 
 def test_each_sentence_has_unique_id():
@@ -145,6 +15,12 @@ def test_each_sentence_has_unique_id():
     s2 = Sentence()
     assert s1.id != s2.id
     assert isinstance(s1.id, str)
+
+
+def test_set_text_sets_dirty(sentence):
+    sentence.set_text("Hello")
+    assert sentence.text == "Hello"
+    assert sentence.dirty
 
 
 def test_sentence_can_tokenise():
@@ -195,8 +71,82 @@ def test_sentence_can_tokenise():
 
 def test_clear_semantics_removes_tokens(sentence):
     sentence.tokens.append(Token(text="Hello"))
-    sentence.tokens.append(Token(text="World", trailing_ws="!"))
+    sentence.tokens.append(Token(text="World"))
+    sentence.tokens.append(Token(text="!"))
 
     sentence.clear_semantics()
 
     assert len(sentence.tokens) == 0
+
+
+def test_delete_child_removes_a_token_from_a_sentence(sentence):
+    token = Token(text="!")
+    sentence.tokens.append(Token(text="Hello", trailing_ws=" "))
+    sentence.tokens.append(Token(text="World"))
+    sentence.tokens.append(token)
+
+    assert len(sentence.tokens) == 3
+
+    assert sentence.delete_child(token.id)
+
+    assert len(sentence.tokens) == 2
+    assert not sentence.dirty
+    assert sentence.get_text() == "Hello World"
+    assert sentence.tokens[0].text == "Hello"
+    assert sentence.tokens[1].text == "World"
+
+
+def test_insert_child_last_appends_token(sentence):
+    token_a = Token(text="Hello", trailing_ws=" ")
+    token_b = Token(text="World")
+    sentence.tokens.append(token_a)
+    sentence.tokens.append(token_b)
+    sentence.insert_child(Token(text="!"), InsertionMode.LAST)
+
+    assert len(sentence.tokens) == 3
+    assert list(sentence.tokens)[0] is token_a
+    assert list(sentence.tokens)[1] is token_b
+    assert list(sentence.tokens)[2].text == "!"
+
+
+def test_insert_child_first_prepends_token(sentence):
+    token_a = Token(text="Hello", trailing_ws=" ")
+    token_b = Token(text="World")
+    sentence.tokens.append(token_a)
+    sentence.tokens.append(token_b)
+    first = Token(text="!")
+    sentence.insert_child(first, InsertionMode.FIRST)
+
+    assert len(sentence.tokens) == 3
+    assert list(sentence.tokens)[0] is first
+    assert list(sentence.tokens)[1] is token_a
+    assert list(sentence.tokens)[2] is token_b
+
+
+def test_insert_child_after_inserts_in_middle(sentence):
+    token_a = Token(text="Hello", trailing_ws=" ")
+    token_b = Token(text="World")
+    sentence.tokens.append(token_a)
+    sentence.tokens.append(token_b)
+    middle = Token(text="there", trailing_ws=" ")
+    sentence.insert_child(middle, InsertionMode.AFTER, token_a.id)
+
+    assert len(sentence.tokens) == 3
+    assert list(sentence.tokens)[0] is token_a
+    assert list(sentence.tokens)[1] is middle
+    assert list(sentence.tokens)[2] is token_b
+
+
+def test_insert_child_sets_parent(sentence):
+    token = Token(text="Hello")
+    sentence.insert_child(token, InsertionMode.LAST)
+
+    assert token.get_parent() is sentence
+
+
+def test_insert_child_raises_type_error_for_wrong_type(sentence):
+    not_token = Sentence()
+    with pytest.raises(TypeError, match="Expected Token"):
+        sentence.insert_child(not_token, InsertionMode.LAST)
+    with pytest.raises(TypeError, match="Expected Token"):
+        sentence.insert_child(Sentence(), InsertionMode.LAST)

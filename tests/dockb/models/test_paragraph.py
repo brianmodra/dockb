@@ -1,140 +1,11 @@
-"""Tests for Paragraph text-editing operations inherited from DockbModel."""
+"""Tests for Paragraph model."""
 
 import pytest
 
-from dockb.exceptions import EditTextRangeError
+from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
-
-
-@pytest.mark.parametrize(
-    "operations, expected_text",
-    [
-        pytest.param([("append", "Hello World!")], "Hello World!", id="creates_text"),
-        pytest.param(
-            [("append", "Hello"), ("append", " World!")],
-            "Hello World!",
-            id="appends_text",
-        ),
-    ],
-)
-def test_apply_text_creates_or_appends_and_invalidates_semantics(paragraph, operations, expected_text):
-    for op, value in operations:
-        if op == "append":
-            paragraph.apply_append_text(value)
-    assert paragraph.text == expected_text
-    assert paragraph.dirty
-
-
-@pytest.mark.parametrize(
-    "start, end, replacement, expected_text",
-    [
-        pytest.param(6, 10, "Sir", "Hello Sir!", id="replace_word"),
-        pytest.param(11, 11, ".", "Hello World.", id="replace_single_char"),
-        pytest.param(5, 10, "", "Hello!", id="empty_replacement_removes_text"),
-    ],
-)
-def test_edit_text_replaces_text_and_invalidates_semantics(paragraph, start, end, replacement, expected_text):
-    paragraph.apply_append_text("Hello World!")
-    paragraph.dirty = False
-    paragraph.apply_edit_text(start, end, replacement)
-    assert paragraph.text == expected_text
-    assert paragraph.dirty
-
-
-@pytest.mark.parametrize(
-    "start, end",
-    [
-        pytest.param(2, 1, id="end_before_start"),
-        pytest.param(14, 14, id="start_out_of_range"),
-        pytest.param(1, 15, id="end_out_of_range"),
-        pytest.param(-1, 5, id="start_negative"),
-        pytest.param(1, -1, id="end_negative"),
-    ],
-)
-def test_edit_text_throws_for_invalid_ranges(paragraph, start, end):
-    paragraph.apply_append_text("Hello World!")
-    with pytest.raises(EditTextRangeError):
-        paragraph.apply_edit_text(start, end, "this won't work")
-
-
-def test_edit_text_throws_when_no_existing_text(paragraph):
-    with pytest.raises(EditTextRangeError):
-        paragraph.apply_edit_text(0, 0, "this won't work")
-
-
-@pytest.mark.parametrize(
-    "pos, insertion, expected_text",
-    [
-        pytest.param(0, "Hello ", "Hello World!", id="beginning"),
-        pytest.param(5, " World", "Hello World!", id="middle"),
-        pytest.param(5, " World!", "Hello World!", id="end"),
-    ],
-)
-def test_insert_text_and_invalidates_semantics(paragraph, pos, insertion, expected_text):
-    if pos == 0 and insertion == "Hello ":
-        paragraph.apply_append_text("World!")
-    elif pos == 5 and insertion == " World":
-        paragraph.apply_append_text("Hello!")
-    else:
-        paragraph.apply_append_text("Hello")
-    paragraph.dirty = False
-    paragraph.apply_insert_text(pos, insertion)
-    assert paragraph.text == expected_text
-    assert paragraph.dirty
-
-
-def test_insert_text_into_empty_paragraph_at_zero(paragraph):
-    paragraph.apply_insert_text(0, "Hello World!")
-    assert paragraph.text == "Hello World!"
-    assert paragraph.dirty
-
-
-@pytest.mark.parametrize(
-    "pos, existing_text",
-    [
-        pytest.param(-1, "Hello World!", id="negative_pos"),
-        pytest.param(14, "Hello World!", id="pos_out_of_range"),
-        pytest.param(1, "", id="pos_out_of_range_with_no_text"),
-    ],
-)
-def test_insert_text_throws_for_invalid_positions(paragraph, pos, existing_text):
-    if existing_text:
-        paragraph.apply_append_text(existing_text)
-    with pytest.raises(EditTextRangeError):
-        paragraph.apply_insert_text(pos, "this won't work")
-
-
-@pytest.mark.parametrize(
-    "setup_text, pos, insertion",
-    [
-        pytest.param("Hello World!", 5, "", id="into_existing_text"),
-        pytest.param("", 0, "", id="into_empty_paragraph"),
-    ],
-)
-def test_insert_text_with_empty_insertion_does_nothing(paragraph, setup_text, pos, insertion):
-    if setup_text:
-        paragraph.apply_append_text(setup_text)
-    paragraph.dirty = False
-    paragraph.apply_insert_text(pos, insertion)
-    assert paragraph.text == setup_text
-    assert not paragraph.dirty
-
-
-@pytest.mark.parametrize(
-    "existing_text",
-    [
-        pytest.param("", id="no_existing_text"),
-        pytest.param("Hello", id="with_existing_text"),
-    ],
-)
-def test_append_text_with_empty_string_does_nothing(paragraph, existing_text):
-    if existing_text:
-        paragraph.apply_append_text(existing_text)
-        paragraph.dirty = False
-    paragraph.apply_append_text("")
-    assert paragraph.text == existing_text
-    assert not paragraph.dirty
+from dockb.models.utils.dockb_collection import InsertionMode
 
 
 def test_each_paragraph_has_unique_id():
@@ -168,7 +39,61 @@ def test_clear_semantics_removes_all_children(paragraph):
     assert len(paragraph.sentences) == 0
 
 
-def test_set_text_with_delay_semantics(paragraph):
+def test_set_text_sets_dirty(paragraph):
     paragraph.set_text("Hello", _delay_semantics=True)
     assert paragraph.text == "Hello"
     assert paragraph.dirty
+
+
+def test_insert_child_last_appends_sentence(paragraph):
+    s1 = Sentence()
+    s2 = Sentence()
+    paragraph.sentences.append(s1)
+    paragraph.sentences.append(s2)
+    paragraph.insert_child(Sentence(), InsertionMode.LAST)
+
+    assert len(paragraph.sentences) == 3
+    assert list(paragraph.sentences)[0] is s1
+    assert list(paragraph.sentences)[1] is s2
+
+
+def test_insert_child_first_prepends_sentence(paragraph):
+    s1 = Sentence()
+    s2 = Sentence()
+    paragraph.sentences.append(s1)
+    paragraph.sentences.append(s2)
+    first = Sentence()
+    paragraph.insert_child(first, InsertionMode.FIRST)
+
+    assert len(paragraph.sentences) == 3
+    assert list(paragraph.sentences)[0] is first
+    assert list(paragraph.sentences)[1] is s1
+    assert list(paragraph.sentences)[2] is s2
+
+
+def test_insert_child_after_inserts_sentence_in_middle(paragraph):
+    s1 = Sentence()
+    s2 = Sentence()
+    paragraph.sentences.append(s1)
+    paragraph.sentences.append(s2)
+    middle = Sentence()
+    paragraph.insert_child(middle, InsertionMode.AFTER, s1.id)
+
+    assert len(paragraph.sentences) == 3
+    assert list(paragraph.sentences)[0] is s1
+    assert list(paragraph.sentences)[1] is middle
+    assert list(paragraph.sentences)[2] is s2
+
+
+def test_insert_child_sentence_sets_parent(paragraph):
+    s = Sentence()
+    paragraph.insert_child(s, InsertionMode.LAST)
+
+    assert s.get_parent() is paragraph
+
+
+def test_insert_child_raises_type_error_for_wrong_type(paragraph):
+    with pytest.raises(TypeError, match="Expected Sentence"):
+        paragraph.insert_child(Chapter(), InsertionMode.LAST)
+    with pytest.raises(TypeError, match="Expected Sentence"):
+        paragraph.insert_child(Chapter(), InsertionMode.LAST)

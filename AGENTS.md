@@ -2,8 +2,9 @@
 
 ## Documentaton
 
-Design context is documented in README.md files under @src and @tests.
-When modifying code, read all README.md files from @src (or @tests) down to the target file's directory,
+Design context is documented in README\*.md files under @src and @tests. I.e. not just README.md,
+but for example README\_blah.md (where "\_blah" is an example of a subvject that may be given its own README.
+When modifying code, read all README\*.md files from @src (or @tests) down to the target file's directory,
 in hierarchical order.
 
 ## Backend Commands

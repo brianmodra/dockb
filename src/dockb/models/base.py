@@ -4,18 +4,39 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from dockb.exceptions import EditTextRangeError
+from dockb.models.utils.dockb_collection import DockbModelBase, InsertionMode
 
 
-class DockbModel(BaseModel, ABC):
+class DockbModel(DockbModelBase, BaseModel, ABC):
     """Abstract base class for all document hierarchy models."""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     dirty: bool = False
     model_config = ConfigDict(populate_by_name=True)
+
+    def model_post_init(self, __context: Any) -> None:  # pylint: disable=arguments-differ
+        super().model_post_init(__context)
+        from dockb.models.utils.dockb_collection import DockbCollection  # pylint: disable=import-outside-toplevel
+
+        for field_name in self.__class__.model_fields:
+            field_value = getattr(self, field_name, None)
+            if isinstance(field_value, DockbCollection):
+                field_value.set_parent(self)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Prevent direct assignment of lists to DockbCollection fields, and auto-setup parent."""
+        from dockb.models.utils.dockb_collection import DockbCollection  # pylint: disable=import-outside-toplevel
+
+        current = self.__dict__.get(name)
+        if isinstance(current, DockbCollection) and isinstance(value, list):
+            raise ValueError(f"Cannot replace '{name}' directly. " f"Please use '{name}[:] = value' to replace contents.")
+        super().__setattr__(name, value)
+        if isinstance(value, DockbCollection):
+            value.set_parent(self)
 
     @abstractmethod
     def get_text(self) -> str:
@@ -29,61 +50,16 @@ class DockbModel(BaseModel, ABC):
     def clear_semantics(self) -> None:
         """removes the child hierarchy"""
 
-    def apply_edit_text(self, start: int, end: int, text: str) -> None:
+    @abstractmethod
+    def delete_child(self, child_id: str) -> bool:
+        """Remove a child model by its ID. Returns True if found and deleted, False otherwise."""
+
+    @abstractmethod
+    def insert_child(self, child: DockbModelBase, insertion_mode: InsertionMode, after: str | None = None) -> None:
         """
-        Replace text in the range [start, end] inclusively.
+        Insert a child in the list of children for this model.
 
-        start : int
-            zero-based offset of the start of the text to be replaced
-        end   : int
-            zero-based offset of the last character to be replaced
-        text  : str
-            the replacement string of text
-
-        E.g. "Hello World!" with start=6, end=10, text="Sir" becomes
-        "Hello Sir!".
-
-        If the existing text is empty, use apply_append_text instead.
+        insertion_mode is either "FIRST" (make this new child the first in the list)
+        "LAST" (append it to the list), or "AFTER", insert it after another one.
+        after is a the ID of another child which this one will be inserted after.
         """
-
-        self_text = self.get_text()
-
-        if end < start:
-            raise EditTextRangeError("end is before start", start, end)
-        if not self_text:
-            raise EditTextRangeError("no text to edit", start, end)
-        if start >= len(self_text) or start < 0:
-            raise EditTextRangeError("start is out of range", start, end)
-        if end >= len(self_text) or end < 0:
-            raise EditTextRangeError("end is out of range", start, end)
-        self.set_text(self_text[:start] + text + self_text[end + 1 :])
-        self.dirty = True
-
-    def apply_append_text(self, text: str) -> None:
-        """
-        Appends the text after the end of the existing text
-        """
-
-        if not text:
-            return
-        self_text = self.get_text()
-        self.set_text(self_text + text)
-        self.dirty = True
-
-    def apply_insert_text(self, pos: int, text: str) -> None:
-        """
-        Inserts the text before the character at offset pos in the existing text
-        """
-        if not text:
-            return
-
-        self_text = self.get_text()
-
-        if pos < 0 or pos > len(self_text):
-            raise EditTextRangeError("pos is out of range", pos, pos)
-
-        if pos == 0:
-            self.set_text(text + self_text)
-        else:
-            self.set_text(self_text[:pos] + text + self_text[pos:])
-        self.dirty = True

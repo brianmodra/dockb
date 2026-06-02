@@ -46,7 +46,7 @@ class ReconstructJob(Job):
         elif isinstance(self.model, Sentence):
             self._tokenizer = SentenceTokenizer()
             try:
-                self.model.tokens = self._tokenizer.tokenize(self.model.get_text(), self.doc_cache)
+                self.model.tokens[:] = self._tokenizer.tokenize(self.model.get_text(), self.doc_cache)
                 self.model.dirty = False
             finally:
                 self._tokenizer = None

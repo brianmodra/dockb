@@ -16,4 +16,4 @@ class ChapterHydrator:  # pylint: disable=too-few-public-methods
         """
         text = chapter.get_text()
         paragraphs = [Paragraph(text=chunk) for chunk in text.split(PARAGRAPH_DELIMITER) if chunk.strip()]
-        chapter.paragraphs = paragraphs
+        chapter.paragraphs[:] = paragraphs
