@@ -18,7 +18,6 @@ class Sentence(DockbModel):
     """
 
     tokens: DockbCollection[Token] = Field(default_factory=DockbCollection)
-    text: str = ""
 
     def get_text(self) -> str:
         if self.dirty:
@@ -26,10 +25,6 @@ class Sentence(DockbModel):
         if not self.tokens:
             return self.text
         return "".join(token.text + token.trailing_ws for token in self.tokens)
-
-    def set_text(self, text: str) -> None:
-        self.dirty = True
-        self.text = text
 
     def clear_semantics(self) -> None:
         self.tokens.clear()

@@ -18,7 +18,7 @@ def test_doc_cache_stores_and_evicts_as_expected(freezer):
     assert cache.len() == 2
     assert doc3 == doc3_again
     assert doc2 == doc2_again
-    # doc1 should have been evicted from teh cache as it only stores 2 objects
+    # doc1 should have been evicted from the cache as it only stores 2 objects
     doc1_again: spacy.tokens.Doc = cache.get_doc("Hello World!")
     assert doc1 != doc1_again
     freezer.tick(30)

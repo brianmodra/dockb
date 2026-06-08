@@ -156,7 +156,7 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
     """
     Tests that when 100 set_text() functions are called on the Sentence,
     and the resultant DeleteJob and ReconstructJobs are added to the queue,
-    only one (the last enqueued) actually changes teh sentence. All the rest
+    only one (the last enqueued) actually changes the sentence. All the rest
     are cancelled.
 
     This was difficult to write. It was extremely difficult to set up
@@ -166,9 +166,9 @@ def test_job_queue_stress_test_multi_threaded_tokenization():
 
     However, when that logic was "working" only one collision would occur.
     This is because the queue is single threaded, and while one ReconstructJob is running,
-    if any other happen to be enqueued at the same time, they all will cancel it, and the
+    if any others happen to be enqueued at the same time, they all will cancel it, and the
     last one standing will cancel any other one that is left queued. By this time all 100
-    have been enqueued, and only one was cancledd while running. The very fact that this was
+    have been enqueued, and     only one was cancelled while running. The very fact that this was
     difficult to simulate says that the queue is going to work very well in production,
     and that the design is robust.
     """

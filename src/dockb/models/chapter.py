@@ -14,7 +14,6 @@ class Chapter(DockbModel):
     """A chapter containing a list of paragraphs."""
 
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)
-    text: str = ""
 
     def get_text(self) -> str:
         if self.dirty:
@@ -22,10 +21,6 @@ class Chapter(DockbModel):
         if not self.paragraphs:
             return self.text
         return "".join(paragraph.get_text() for paragraph in self.paragraphs)
-
-    def set_text(self, text: str, _delay_semantics: bool = False) -> None:
-        self.dirty = True
-        self.text = text
 
     def clear_semantics(self) -> None:
         for paragraph in self.paragraphs:

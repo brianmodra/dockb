@@ -1,3 +1,6 @@
+include .env
+export
+
 all: sort check_static_typing detect_cycles lint test
 
 sort:
@@ -20,4 +23,7 @@ test:
 run:
 	cd src; ../.venv/bin/python3 -m main
 
-.PHONY: all check_static_typing lint detect_cycles sort run test
+migrate:
+	neo4j-migrations --database=$(NEO4J_DATABASE) migrate
+
+.PHONY: all check_static_typing lint detect_cycles sort run test migrate

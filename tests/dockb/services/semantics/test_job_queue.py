@@ -35,7 +35,7 @@ class SimpleJob(Job):
         self.almost_done.set()
 
     def on_cancel(self) -> None:
-        """Cancel the job. signal the events to stop it from waiting."""
+        """Cancel the job. Signal the events to stop it from waiting."""
         self.set_ready_to_start()
         self.set_almost_done()
 

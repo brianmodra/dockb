@@ -36,7 +36,7 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
 
     @property
     def pending_count(self) -> int:
-        """read-only copy of _pending_count"""
+        """Read-only copy of _pending_count"""
         return self._pending_count
 
     def enqueue(self, job: Job) -> None:
@@ -123,7 +123,7 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
                 job = self._jobs.get(job_id)
                 if job is None or job.status == JobStatus.CANCELLED:
                     if job is not None:
-                        job.done.set()  # Its not done as in status==DONE, but it is done-with
+                        job.done.set()  # It's not done as in status==DONE, but it is done-with
                     self._pending_count -= 1
                     self._queue.task_done()
                     logger.debug("job %s was cancelled", job_id)

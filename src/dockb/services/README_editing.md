@@ -13,7 +13,7 @@ sentences to replace the existing sentence.
 The FE could combine two sentences, or insert a sentence between two existing ones, or split a sentence
 into two sentences.
 
-While the user is editing, they likely will be adding incomplete sentences, and they could appeare in a form
+While the user is editing, they likely will be adding incomplete sentences, and they could appear in a form
 (as they type), which is quite different to what the user has in their mind.
 
 For example, if the existing paragraph is:
@@ -45,12 +45,26 @@ A change to a paragraph is when it gains or loses sentences.
 
 Similarly, a change to a chapter is only when it gains or loses paragraphs.
 
-## Dirty flags
+## Flags
 
 When a model gains children, or loses children, it's not set to dirty,
-because the gain or loss is a change to the semantic hierarchy, but it is a complete hierarchy.
+because although the gain or loss is a change to the semantic hierarchy,
+it is a complete hierarchy.
+However, this introduces a new state that needs to be maintained: not "dirty", but "changed"
+(from database).
+At this point of writing, we don't have a database yet, but we will, and the state needs to
+be maintained.
+As well as "changed", it could be "new", as in, not in the database yet. It could also be
+"deleted".
+
+The idea of "deleted" exposes a new problem: When a child is deleted from a hierarchy, if
+its status was not previously "new", then it needs to be added to a list of children to be deleted
+from the database.
+
+See @src/dockb/services/README_data_states.md
 
 ## Inserting Children
 
-The model classes need support for inserting children.
 The DockbBase has an abstract method insert_child, with an "after" parameter.
+The model classes implement it appropriately.
+

@@ -49,7 +49,6 @@ class Type(Enum):
 class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
     """A single token with text, type, POS tag, and linguistic attributes."""
 
-    text: str = ""
     type: Type = Type._
     trailing_ws: str = ""
     is_digit: bool = False
@@ -82,7 +81,7 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
         Non-conforming or empty text becomes Type._
         """
 
-        # initialise everything
+        # initialize everything
         self.text = ""
         self.type = Type._
         self.trailing_ws: str = ""
@@ -96,6 +95,7 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
         if not text:
             # text cannot be empty
             return
+
 
         # Extract trailing whitespace
         trailing = ""
@@ -119,7 +119,7 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
             self.is_digit = core.isdigit()
         elif core in string.punctuation or core == "...":
             if trailing:
-                # punctuation cannot have trailing whitespace
+                # Punctuation cannot have trailing whitespace
                 self.type = Type._
                 self.trailing_ws = trailing
             else:
@@ -134,7 +134,7 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
             self.is_digit = False
         elif len(core) == 1 and not core[0].isalnum() and core[0] not in string.whitespace:
             if trailing:
-                # extended character cannot have trailing whitespace
+                # Extended character cannot have trailing whitespace
                 self.trailing_ws = trailing
                 self.type = Type._
             else:
@@ -143,9 +143,12 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
             self.text = core
             self.is_digit = False
         else:
-            # text does not conform to any token type
+            # Text does not conform to any token type
             self.type = Type._
             self.text = core
+
+
+        self.on_changed()
 
     def _is_number(self, text: str) -> bool:
         if not text:

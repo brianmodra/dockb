@@ -42,7 +42,7 @@ def test_clear_semantics_removes_all_children(chapter):
 
 
 def test_set_text_sets_dirty(chapter):
-    chapter.set_text("Hello", _delay_semantics=True)
+    chapter.set_text("Hello")
     assert chapter.text == "Hello"
     assert chapter.dirty
 

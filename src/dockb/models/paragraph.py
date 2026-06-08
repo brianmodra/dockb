@@ -14,7 +14,6 @@ class Paragraph(DockbModel):
     """A paragraph containing a list of sentences."""
 
     sentences: DockbCollection[Sentence] = Field(default_factory=DockbCollection)
-    text: str = ""
 
     def get_text(self) -> str:
         if self.dirty:
@@ -22,10 +21,6 @@ class Paragraph(DockbModel):
         if not self.sentences:
             return self.text
         return "".join(sentence.get_text() for sentence in self.sentences)
-
-    def set_text(self, text: str, _delay_semantics: bool = False) -> None:
-        self.dirty = True
-        self.text = text
 
     def clear_semantics(self) -> None:
         for sentence in self.sentences:

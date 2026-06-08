@@ -20,6 +20,9 @@ class FakeModel(DockbModel):
     def insert_child(self, child: DockbModelBase, insertion_mode: InsertionMode, after: str | None = None) -> None:
         pass
 
+    def on_deleted(self) -> None:
+        pass
+
 
 class FakeCollectionModel(DockbModel):
     items: DockbCollection[FakeModel] = DockbCollection()
@@ -34,9 +37,12 @@ class FakeCollectionModel(DockbModel):
         pass
 
     def delete_child(self, child_id: str) -> bool:
-        return False
+        return self.items.delete(child_id)
 
     def insert_child(self, child: DockbModelBase, insertion_mode: InsertionMode, after: str | None = None) -> None:
+        pass
+
+    def on_deleted(self) -> None:
         pass
 
 
@@ -240,6 +246,9 @@ def test_collection_knows_parent():
         def insert_child(self, child: DockbModelBase, insertion_mode: InsertionMode, after: str | None = None) -> None:
             pass
 
+        def on_deleted(self) -> None:
+            pass
+
     doc = FakeModelWithCollection()
     assert doc.items.parent is doc
 
@@ -280,6 +289,106 @@ def test_clear_clears_parent_on_all_items():
     parent.items.clear()
     assert child1.get_parent() is None
     assert child2.get_parent() is None
+
+
+class OnDeletedTracker(FakeModel):
+    deleted_calls: int = 0
+
+    def on_deleted(self) -> None:
+        self.deleted_calls += 1
+
+
+def test_delete_calls_on_deleted():
+    parent = FakeCollectionModel()
+    child = OnDeletedTracker()
+    parent.items.append(child)
+    parent.items.delete(child.id)
+    assert child.deleted_calls == 1
+
+
+def test_delete_does_not_call_on_deleted_when_missing():
+    parent = FakeCollectionModel()
+    child = OnDeletedTracker()
+    parent.items.append(child)
+    parent.items.delete("nonexistent")
+    assert child.deleted_calls == 0
+
+
+def test_delitem_calls_on_deleted():
+    parent = FakeCollectionModel()
+    child = OnDeletedTracker()
+    parent.items.append(child)
+    del parent.items[child.id]
+    assert child.deleted_calls == 1
+
+
+def test_clear_calls_on_deleted_for_each_item():
+    parent = FakeCollectionModel()
+    child1 = OnDeletedTracker()
+    child2 = OnDeletedTracker()
+    parent.items.append(child1)
+    parent.items.append(child2)
+    parent.items.clear()
+    assert child1.deleted_calls == 1
+    assert child2.deleted_calls == 1
+
+
+def test_append_does_not_call_on_deleted():
+    parent = FakeCollectionModel()
+    child = OnDeletedTracker()
+    parent.items.append(child)
+    assert child.deleted_calls == 0
+
+
+def test_set_parent_none_on_unparented_does_not_call_on_deleted():
+    container = FakeCollectionModel()
+    child = OnDeletedTracker()
+    child.set_parent(container, None)
+    assert child.deleted_calls == 0
+
+
+def test_append_upsert_calls_on_deleted_on_old_item_but_not_on_new_item():
+    previous_parent = FakeCollectionModel()
+    parent = FakeCollectionModel()
+    child1 = OnDeletedTracker()
+    child2 = OnDeletedTracker()
+    child2.id = child1.id
+    previous_parent.items.append(child2)
+    parent.items.append(child1)
+    parent.items.append(child2)
+    assert child1.deleted_calls == 1
+    assert child2.deleted_calls == 0
+
+
+def test_appending_or_inserting_an_existing_model_is_ignored():
+    parent = FakeCollectionModel()
+    child1 = FakeModel()
+    child2 = FakeModel()
+    child3 = FakeModel()
+    parent.items.append(child1)
+    parent.items.append(child2)
+    parent.items.append(child3)
+    with pytest.raises(ValueError):
+        parent.items.append(child1)
+    assert len(parent.items) == 3
+    items_after = list(parent.items.items())
+    assert items_after[0] == child1
+    assert items_after[1] == child2
+    assert items_after[2] == child3
+    with pytest.raises(KeyError):
+        parent.items.insert(child3, InsertionMode.FIRST)
+    items_after = list(parent.items.items())
+    assert items_after[0] == child1
+    assert items_after[1] == child2
+    assert items_after[2] == child3
+
+
+def test_delete_child_calls_on_deleted():
+    parent = FakeCollectionModel()
+    child = OnDeletedTracker()
+    parent.items.append(child)
+    parent.delete_child(child.id)
+    assert child.deleted_calls == 1
 
 
 def test_delete_removes_item_by_id(collection):

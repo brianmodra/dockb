@@ -13,7 +13,7 @@ disable=
 
 [BASIC]
 # Pydantic creates these dynamically
-generated-members=extend,append,clear
+generated-members=extend,append,clear,delete
 
 [FORMAT]
 max-line-length = 140

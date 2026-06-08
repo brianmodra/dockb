@@ -40,7 +40,7 @@ def test_clear_semantics_removes_all_children(paragraph):
 
 
 def test_set_text_sets_dirty(paragraph):
-    paragraph.set_text("Hello", _delay_semantics=True)
+    paragraph.set_text("Hello")
     assert paragraph.text == "Hello"
     assert paragraph.dirty
 

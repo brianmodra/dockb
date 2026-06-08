@@ -55,7 +55,7 @@ def test_clear_semantics_removes_all_children(document):
 
 
 def test_set_text_sets_dirty(document):
-    document.set_text("Hello", _delay_semantics=True)
+    document.set_text("Hello")
     assert document.text == "Hello"
     assert document.dirty
 

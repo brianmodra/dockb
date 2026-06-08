@@ -2,7 +2,7 @@
 
 ## Context
 
-JobQueue and DocCache objects are specific to a user's oauth logged in session.
+JobQueue and DocCache objects are specific to a user's OAuth logged in session.
 The JobQueue and DocCache, and other things, will be stored in a session context object.
 
 ### Session context
@@ -17,7 +17,7 @@ to put/get/remove a SessionContext.
 The SessionManager maintains the SessionContext object associated with the user's account ID.
 When the user's logged in session is either logged out, or times out due to inactivity,
 then the SessionManager will clean up that user's SessionContext.
-The SessionManager will have a methiod for getting a user's SessionContext object, given
+The SessionManager will have a method for getting a user's SessionContext object, given
 user's account ID.
 
 ## EventController and EventService
@@ -57,10 +57,10 @@ will call a domain service class, and then it will call the models.
 ## Models
 
 At the point of writing this, the models (which all inherit from DockbModel), have a lot of
-editing functions which I woill replace with just a handful, because when I started designing
-these classes I was thinking that the FE would be calling teh BE with fairly fine-grained
+editing functions which I will replace with just a handful, because when I started designing
+these classes I was thinking that the FE would be calling the BE with fairly fine-grained
 edits. The FE could send fine grained edits, but the truth of it is that it is pointless to try
-to make it "more efficient" by sending smaller edits. Every time a send=tence is edited, it
+to make it "more efficient" by sending smaller edits. Every time a sentence is edited, it
 will need to be re-tokenized, so the FE may as well just send the whole sentence each time.
 
 The following methods in DockbModel will be removed (and all the associated tests)
@@ -78,20 +78,20 @@ A Chapter's children are the paragraphs.
 A Paragraph's children are the sentences.
 A Sentence's children are the tokens.
 
-## DocumentHydator, ChapterHydrator, ParagraphHydrator
+## DocumentHydrator, ChapterHydrator, ParagraphHydrator
 
 Note there is not SentenceHydrator, because that's the SentenceTokenizer.
-In the other thre model types, the children are not tokens, they can be referred to as
+In the other three model types, the children are not tokens, they can be referred to as
 "children" and it is obvious that a Document's children are the chapters. In the case of a
 Sentence, if we refer to its "children", that would be ambiguous. It could mean phrases,
 or tripples, or words, or characters - but they are actually tokens.
 
-These hydrators will use the model's text, and split it up into the constutuent parts.
+These hydrators will use the model's text, and split it up into the constituent parts.
 They depend upon some rules:
 
 - chapters are delimited by a double page break character
 - paragraphs are delimited by double newlines.
-- sentences are delimited by punctuation, but rather than specify chat characters are
+- sentences are delimited by punctuation, but rather than specify what characters are
 used in which context (e.g. the dot after "Dr" is not a sentence delimiter) the
 SentenceHydrator will use spaCy's mechanism, e.g.
 ```
@@ -105,7 +105,7 @@ A service function will directly call model class(es) to do quick
 changes. These make quick changes and leave the model
 object in a "dirty" state - meaning that it as yet needs more work.
 
-By "more work", this means tokenisation or hydration, which is slow.
+By "more work", this means tokenization or hydration, which is slow.
 This sort of slow work is done in a queue (JobQueue).
 The queue will have only one worker thread, and jobs added to the queue will be processed
 in a FIFO manner.
@@ -119,7 +119,7 @@ The second job will be to re-create the semantics.
 This second job could potentially have a problem, because the EventService
 functions will be called in response to async calls from the front end as the user is typing away
 and creating lots of edit requests in fairly quick succession.
-Any currently queued for the same sentence, or in progress, could be creating semantics which will be
+Any jobs currently queued for the same sentence, or in progress, could be creating semantics which will be
 invalidated by the latest edit.
 So if they are queued, they should be cancelled, and if one is currently running, it should be stopped.
 

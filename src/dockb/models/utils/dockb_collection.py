@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import weakref
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Iterator, Sequence
 from enum import Enum
@@ -12,7 +13,7 @@ from pydantic import GetCoreSchemaHandler
 from pydantic_core import core_schema
 
 
-class DockbModelBase:  # pylint: disable=too-few-public-methods
+class DockbModelBase(ABC):  # pylint: disable=too-few-public-methods
     """Lightweight base interface for items in a DockbCollection."""
 
     id: str
@@ -22,9 +23,37 @@ class DockbModelBase:  # pylint: disable=too-few-public-methods
         """Return the parent model, or None."""
         return self._parent
 
-    def set_parent(self, parent: DockbModelBase | None) -> None:
-        """Set the parent model. No-op by default for root models."""
+    @abstractmethod
+    def delete_child(self, child_id: str) -> bool:
+        """Remove a child model by its ID. Returns True if found and deleted, False otherwise."""
+
+    def set_parent(self, container: DockbModelBase | None, parent: DockbModelBase | None) -> None:
+        """
+        Set the parent model. Calls on_deleted() when removed from a parent.
+        However, it contains some custom logic which unparents the model from its previous parent,
+        if it was previously parented.
+        In that case, it will get called again (from the previous parent, when it tried to unparent it).
+        This method will also detect that case, because the container will not be right, and in this
+        case it will not call on_deleted(). It will also reset the parent after the call to the previous
+        parent.
+        """
+        previous_parent = self._parent
         self._parent = parent
+        if previous_parent is not None:
+            if parent is None:
+                if previous_parent == container:
+                    self.on_deleted()
+            elif parent != previous_parent: # ensure it is not still a child of the previous parent
+                previous_parent.delete_child(self.id)
+                self._parent = parent
+
+    @abstractmethod
+    def on_deleted(self) -> None:
+        """Hook called when this model is removed from its parent. Override as needed."""
+
+    @abstractmethod
+    def on_changed(self) -> None:
+        """Hook called when this model's semantic hierarchy is changed. Override as needed."""
 
 
 class InsertionMode(Enum):
@@ -49,13 +78,13 @@ class DockbCollection(Generic[T]):
 
     def __init__(self) -> None:
         self._data: OrderedDict[str, T] = OrderedDict()
-        self._parent: weakref.ReferenceType[Any] | None = None
+        self._parent: weakref.ReferenceType[DockbModelBase] | None = None
 
-    def set_parent(self, parent: Any) -> None:
+    def set_parent(self, parent: DockbModelBase) -> None:
         """Set the parent model that contains this collection, and propagate to items."""
         self._parent = weakref.ref(parent)
         for item in self._data.values():
-            item.set_parent(parent)
+            item.set_parent(self.parent, parent)
 
     @property
     def parent(self) -> Any | None:
@@ -72,14 +101,17 @@ class DockbCollection(Generic[T]):
         """
         key = item.id
 
-        # Upsert without breaking order
         if key in self._data:
+            old_item = self._data[key]
+            if old_item is item:
+                raise ValueError(f"Item {item.id!r} is already in the collection")
             self._data[key] = item
+            old_item.set_parent(self.parent, None)
         else:
             self._data[key] = item
 
         if self._parent is not None:
-            item.set_parent(self.parent)
+            item.set_parent(self.parent, self.parent)
 
     def extend(self, items: Sequence[T]) -> None:
         """Add multiple items to the collection, preserving insertion order."""
@@ -89,14 +121,14 @@ class DockbCollection(Generic[T]):
     def clear(self) -> None:
         """Remove all items from the collection, un-parenting each."""
         for item in self._data.values():
-            item.set_parent(None)
+            item.set_parent(self.parent, None)
         self._data.clear()
 
     def delete(self, key: str) -> bool:
         """Remove the item with the given ID. Returns True if found and deleted, False otherwise."""
         if key in self._data:
             item = self._data.pop(key)
-            item.set_parent(None)
+            item.set_parent(self.parent, None)
             return True
         return False
 
@@ -110,8 +142,10 @@ class DockbCollection(Generic[T]):
 
         insertion_mode is either "FIRST" (make this new item the first in the list)
         "LAST" (append it to the list), or "AFTER", insert it after another one.
-        after is a the key of another item which this one will be inserted after.
+        after is the key of another item after which this one will be inserted.
         """
+        if item.id in self._data:
+            raise KeyError(f"Item with id {item.id!r} already exists in the collection")
         if insertion_mode == InsertionMode.FIRST:
             new_data: OrderedDict[str, T] = OrderedDict()
             new_data[item.id] = item
@@ -131,7 +165,7 @@ class DockbCollection(Generic[T]):
             self._data = new_data
 
         if self._parent is not None:
-            item.set_parent(self.parent)
+            item.set_parent(self.parent, self.parent)
 
     def count(self) -> int:
         """Return the number of items in the collection."""
@@ -160,7 +194,7 @@ class DockbCollection(Generic[T]):
 
     def __delitem__(self, key: str) -> None:
         item = self._data.pop(key)
-        item.set_parent(None)
+        item.set_parent(self.parent, None)
 
     def __getitem__(self, index: int) -> T:
         """

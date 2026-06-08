@@ -92,7 +92,7 @@ class DocCache:
         self.eviction_thread.start()
 
     def join(self) -> None:
-        """Wait for any running eviction worker to finish"""
+        """Wait for any running eviction worker to finish."""
         if not self.eviction_thread:
             return
         self.eviction_thread.join()

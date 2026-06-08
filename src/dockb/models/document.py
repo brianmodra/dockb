@@ -19,7 +19,6 @@ class Document(DockbModel):
     """
 
     chapters: DockbCollection[Chapter] = Field(default_factory=DockbCollection)
-    text: str = ""
 
     def get_text(self) -> str:
         if self.dirty:
@@ -27,10 +26,6 @@ class Document(DockbModel):
         if not self.chapters:
             return self.text
         return "".join(chapter.get_text() for chapter in self.chapters)
-
-    def set_text(self, text: str, _delay_semantics: bool = False) -> None:
-        self.dirty = True
-        self.text = text
 
     def clear_semantics(self) -> None:
         for chapter in self.chapters:

@@ -88,15 +88,15 @@ lemma, whitespace, and other spaCy-derived attributes populated.
 If a reconstruct is in progress, it can be cancelled. The ReconstructJob class
 has an on_cancel method, which calls the SentenceTokenizer cancel method.
 This method may be able to cancel the tokenization loop, if it was called during
-the process, because it sets and event which is checked in the loop.
+the process, because it sets an event which is checked in the loop.
 
 # Hydrators
 
-## DocumentHydator, ChapterHydrator, ParagraphHydrator
+## DocumentHydrator, ChapterHydrator, ParagraphHydrator
 
 These are already introduced in @src/dockb/services/README.md
 
-These hydrators will use the model's text, and split it up into the constutuent parts.
+These hydrators will use the model's text, and split it up into the constituent parts.
 
 # Reconstructors
 
