@@ -1,4 +1,3 @@
 Work in progress
 
-
-pip install pytest-asyncio
+source .venv/bin/activate && pip install -e '.[dev]'
