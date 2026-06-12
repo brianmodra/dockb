@@ -20,3 +20,27 @@ def repo(neo4j_session):
     from dockb.repositories.sentence_repository import SentenceRepository
 
     return SentenceRepository(neo4j_session)
+
+
+@pytest.fixture
+def paragraph_repo(neo4j_session):
+    """ParagraphRepository backed by the mocked session."""
+    from dockb.repositories.paragraph_repository import ParagraphRepository
+
+    return ParagraphRepository(neo4j_session)
+
+
+@pytest.fixture
+def chapter_repo(neo4j_session):
+    """ChapterRepository backed by the mocked session."""
+    from dockb.repositories.chapter_repository import ChapterRepository
+
+    return ChapterRepository(neo4j_session)
+
+
+@pytest.fixture
+def document_repo(neo4j_session):
+    """DocumentRepository backed by the mocked session."""
+    from dockb.repositories.document_repository import DocumentRepository
+
+    return DocumentRepository(neo4j_session)

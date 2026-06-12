@@ -1,11 +1,12 @@
 import threading
+import time
 from unittest.mock import MagicMock, patch
 
 from dockb.models.sentence import Sentence
 from dockb.services.semantics.delete_job import DeleteJob
 from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job import Job, JobStatus
-from dockb.services.semantics.job_queue import JobQueue
+from dockb.services.semantics.job_queue import WORKER_GET_TIMEOUT, JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
 from dockb.services.semantics.sentence_tokenizer import (
     SentenceTokenizer,
@@ -264,6 +265,63 @@ def test_job_queue_start_is_idempotent():
     assert queue.is_running()
     queue.shutdown()
     assert not queue.is_running()
+
+
+def test_job_queue_calls_on_idle_when_empty():
+    calls: list[bool] = []
+
+    def on_idle() -> None:
+        calls.append(True)
+
+    queue = JobQueue(on_idle=on_idle)
+    queue.start()
+    queue.join()
+    # Patched value not available yet — wait for natural idle cycle
+    time.sleep(WORKER_GET_TIMEOUT + 0.5)
+    assert len(calls) > 0
+    queue.shutdown()
+
+
+def test_job_queue_calls_on_idle_repeatedly():
+    calls: list[bool] = []
+
+    def on_idle() -> None:
+        calls.append(True)
+
+    with patch("dockb.services.semantics.job_queue.WORKER_GET_TIMEOUT", 0.1):
+        queue = JobQueue(on_idle=on_idle)
+        queue.start()
+        queue.join()
+        time.sleep(0.35)
+        assert len(calls) >= 2  # at least two idle cycles in 350ms with 100ms timeout
+        queue.shutdown()
+
+
+def test_job_queue_on_idle_not_called_when_jobs_are_processing():
+    calls: list[bool] = []
+
+    def on_idle() -> None:
+        calls.append(True)
+
+    with patch("dockb.services.semantics.job_queue.WORKER_GET_TIMEOUT", 0.1):
+        queue = JobQueue(on_idle=on_idle)
+        queue.start()
+
+        slow_job = SimpleJob()
+        queue.enqueue(slow_job)
+        slow_job.started.wait()
+        # let a few idle cycles pass while the slow job is running
+        time.sleep(0.35)
+        idle_during_job = len(calls)
+
+        slow_job.set_ready_to_start()
+        slow_job.set_almost_done()
+        slow_job.done.wait()
+        queue.join()
+        time.sleep(0.25)
+        idle_after_job = len(calls) - idle_during_job
+        assert idle_after_job > 0  # on_idle fires after queue empties
+        queue.shutdown()
 
 
 def test_job_queue_shutdown_is_idempotent():

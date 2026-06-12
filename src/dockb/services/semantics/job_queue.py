@@ -3,6 +3,7 @@
 import logging
 import queue
 import threading
+from collections.abc import Callable
 from typing import Final
 
 from .job import Job, JobStatus
@@ -17,7 +18,11 @@ QUEUE_THREAD_JOIN_TIMEOUT: Final = 300.0
 class JobQueue:  # pylint: disable=too-many-instance-attributes
     """Thread-safe queue that manages and executes semantic processing jobs."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_idle: Callable[[], None] | None = None,
+    ) -> None:
+        self._on_idle = on_idle
         self._queue: queue.Queue[str] = queue.Queue()
         self._reconstruct_jobs: dict[str, ReconstructJob] = {}
         self._worker_thread: threading.Thread | None = None
@@ -117,6 +122,8 @@ class JobQueue:  # pylint: disable=too-many-instance-attributes
                 with self._lock:
                     if self._pending_count == 0:
                         self._completed_event.set()
+                if self._on_idle is not None:
+                    self._on_idle()
                 continue
 
             with self._lock:

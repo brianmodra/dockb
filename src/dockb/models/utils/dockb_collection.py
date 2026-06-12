@@ -43,7 +43,7 @@ class DockbModelBase(ABC):  # pylint: disable=too-few-public-methods
             if parent is None:
                 if previous_parent == container:
                     self.on_deleted()
-            elif parent != previous_parent: # ensure it is not still a child of the previous parent
+            elif parent != previous_parent:  # ensure it is not still a child of the previous parent
                 previous_parent.delete_child(self.id)
                 self._parent = parent
 

@@ -58,6 +58,14 @@ The state of a model (see class DataState(Enum) in @src/dockb/models/base.py) ca
 If the state is _ (nothing, initial state), that object should be silently skipped rather than saved.
 If the state is DELETED, then that object should be deleted from the database.
 If the state is CHANGED, then that object should be changed in the database to match how it appears in memory.
-If the state is NE, then the object should be created in teh database.
+If the state is NE, then the object should be created in the database.
 If the state is SYNC, then it should be silently skipped, there is no need to save it.
 
+## text
+
+The text properties of Sentence, Paragraph, Chapter, and Document should not be saved to the database.
+
+# Sessions
+
+Each repository class constructor will be passed a Session object. For mopre information about them,
+see @src/dockb/infrastructure/neo4j/README.md

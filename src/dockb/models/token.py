@@ -96,7 +96,6 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
             # text cannot be empty
             return
 
-
         # Extract trailing whitespace
         trailing = ""
         for i in range(len(text) - 1, -1, -1):
@@ -146,7 +145,6 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
             # Text does not conform to any token type
             self.type = Type._
             self.text = core
-
 
         self.on_changed()
 

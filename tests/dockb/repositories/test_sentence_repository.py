@@ -1,26 +1,25 @@
 """Tests for SentenceRepository."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from neo4j import Session
 
 from dockb.models.base import DataState
-from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def extract_call(mock_session, call_index=0):
+
+def extract_call(mock_session: MagicMock, call_index: int = 0) -> tuple[str, dict[str, Any]]:
     """Return (cypher, params_dict) from the *call_index*-th session.run() call."""
     call = mock_session.run.call_args_list[call_index]
-    cypher = call.args[0]
+    cypher: str = call.args[0]
     # Params may be a second positional arg or spread as kwargs
     if len(call.args) > 1:
-        params = call.args[1]
+        params: dict[str, Any] = call.args[1]
     else:
         params = call.kwargs
     return cypher, params
@@ -30,38 +29,38 @@ def extract_call(mock_session, call_index=0):
 # Token-level param assertions (shared by NEW and CHANGED tests)
 # ---------------------------------------------------------------------------
 
-TOKEN_A_DICT = dict(
-    text="Hello",
-    trailing_ws=" ",
-    type="word",
-    pos="PROPN",
-    lemma="hello",
-    is_alpha=True,
-    is_digit=False,
-    like_num=False,
-    is_stop=False,
-)
+TOKEN_A_DICT = {
+    "text": "Hello",
+    "trailing_ws": "",
+    "type": "word",
+    "pos": "PROPN",
+    "lemma": "hello",
+    "is_alpha": True,
+    "is_digit": False,
+    "like_num": False,
+    "is_stop": False,
+}
 
-TOKEN_B_DICT = dict(
-    text="world",
-    trailing_ws="",
-    type="word",
-    pos="NOUN",
-    lemma="world",
-    is_alpha=True,
-    is_digit=False,
-    like_num=False,
-    is_stop=False,
-)
+TOKEN_B_DICT = {
+    "text": "world",
+    "trailing_ws": "",
+    "type": "word",
+    "pos": "NOUN",
+    "lemma": "world",
+    "is_alpha": True,
+    "is_digit": False,
+    "like_num": False,
+    "is_stop": False,
+}
 
 
-def assert_token_dict(actual, expected, index):
+def assert_token_dict(actual: dict[str, Any], expected: dict[str, Any], index: int) -> None:
     for key, val in expected.items():
         assert actual[key] == val, f"token[{index}].{key}"
     assert actual.get("index") == index, f"token[{index}].index"
 
 
-def make_token(text, type_=Type.WORD, **kw):
+def make_token(text: str, type_: Type = Type.WORD, **kw: Any) -> Token:
     """Build a Token with sensible defaults for repo tests."""
     return Token(text=text, type=type_, **kw)
 
@@ -144,18 +143,23 @@ class TestSaveChangedSentence:
         assert "OPTIONAL MATCH" in cypher
         assert "DETACH DELETE orphan" in cypher
 
-    def test_passes_current_tokens_only(self, repo, neo4j_session, sentence):
+    def test_passes_only_current_tokens_after_removal(self, repo, neo4j_session, sentence):
         sentence.state = DataState.CHANGED
-        sentence.tokens.append(make_token("Hello", pos=POS.PROPN, lemma="hello", is_alpha=True))
+        token_a = make_token("Hello", pos=POS.PROPN, lemma="hello", is_alpha=True)
+        token_b = make_token("world", pos=POS.NOUN, lemma="world", is_alpha=True)
+        sentence.tokens.append(token_a)
+        sentence.tokens.append(token_b)
+        sentence.delete_child(token_a.id)
 
         repo.save(sentence, paragraph_id="p1")
 
         _, params = extract_call(neo4j_session)
-        assert len(params["tokens"]) == 1
-        assert_token_dict(params["tokens"][0], TOKEN_A_DICT, index=0)
+        tokens = params["tokens"]
+        assert len(tokens) == 1
+        assert_token_dict(tokens[0], TOKEN_B_DICT, index=0)
 
 
-class TestSaveDeletedSentence:
+class TestSaveDeletedSentence:  # pylint: disable=too-few-public-methods
     """Behaviour when sentence.state == DataState.DELETED."""
 
     def test_detach_deletes_the_sentence(self, repo, neo4j_session, sentence):
@@ -167,7 +171,7 @@ class TestSaveDeletedSentence:
         assert params["sentence_id"] == sentence.id
 
 
-class TestSaveSkipStates:
+class TestSaveSkipStates:  # pylint: disable=too-few-public-methods
     """States that should NOT call session.run()."""
 
     @pytest.mark.parametrize("state", [DataState.SYNC, DataState._])
@@ -177,7 +181,7 @@ class TestSaveSkipStates:
         neo4j_session.run.assert_not_called()
 
 
-class TestSaveDirtySentence:
+class TestSaveDirtySentence:  # pylint: disable=too-few-public-methods
     """Dirty flag guard."""
 
     def test_raises_value_error(self, repo, neo4j_session, sentence):

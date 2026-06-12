@@ -19,10 +19,12 @@ def test_each_sentence_has_unique_id():
     assert s1.id != s2.id
     assert isinstance(s1.id, str)
 
+
 def test_set_text_sets_dirty(sentence):
     sentence.set_text("Hello")
     assert sentence.text == "Hello"
     assert sentence.dirty
+
 
 def test_sentence_can_tokenise():
     nlp = spacy.load("en_core_web_sm")
@@ -69,6 +71,7 @@ def test_sentence_can_tokenise():
         assert actual.lemma == exp.lemma
         assert actual.pos == exp.pos
 
+
 def test_clear_semantics_removes_tokens(sentence):
     sentence.tokens.append(Token(text="Hello"))
     sentence.tokens.append(Token(text="World"))
@@ -77,6 +80,7 @@ def test_clear_semantics_removes_tokens(sentence):
     sentence.clear_semantics()
 
     assert len(sentence.tokens) == 0
+
 
 def test_delete_child_removes_a_token_from_a_sentence(sentence):
     token = Token(text="!")
@@ -94,6 +98,7 @@ def test_delete_child_removes_a_token_from_a_sentence(sentence):
     assert sentence.tokens[0].text == "Hello"
     assert sentence.tokens[1].text == "World"
 
+
 def test_insert_child_last_appends_token(sentence):
     token_a = Token(text="Hello", trailing_ws=" ")
     token_b = Token(text="World")
@@ -105,6 +110,7 @@ def test_insert_child_last_appends_token(sentence):
     assert list(sentence.tokens)[0] is token_a
     assert list(sentence.tokens)[1] is token_b
     assert list(sentence.tokens)[2].text == "!"
+
 
 def test_insert_child_first_prepends_token(sentence):
     token_a = Token(text="Hello", trailing_ws=" ")
@@ -118,6 +124,7 @@ def test_insert_child_first_prepends_token(sentence):
     assert list(sentence.tokens)[0] is first
     assert list(sentence.tokens)[1] is token_a
     assert list(sentence.tokens)[2] is token_b
+
 
 def test_insert_child_after_inserts_in_middle(sentence):
     token_a = Token(text="Hello", trailing_ws=" ")
@@ -139,6 +146,7 @@ def test_insert_child_sets_parent(sentence):
 
     assert token.get_parent() is sentence
 
+
 def test_insert_child_raises_type_error_for_wrong_type(sentence):
     not_token = Sentence()
     with pytest.raises(TypeError, match="Expected Token"):
@@ -146,34 +154,39 @@ def test_insert_child_raises_type_error_for_wrong_type(sentence):
     with pytest.raises(TypeError, match="Expected Token"):
         sentence.insert_child(Sentence(), InsertionMode.LAST)
 
-def test_append_child_to_NOTHING_sentence_changes_state_to_NEW(sentence):
+
+def test_append_child_to_nothing_sentence_changes_state_to_new(sentence):
     token = Token(text="Hello")
     assert sentence.state == DataState._
     sentence.append_child(token)
     assert sentence.state == DataState.NEW
 
-def test_append_child_to_NEW_sentence_does_not_change_state_to_CHANGED(sentence):
+
+def test_append_child_to_new_sentence_does_not_change_state_to_changed(sentence):
     token = Token(text="Hello")
     # force it to NEW for the test
     sentence.state = DataState.NEW
     sentence.append_child(token)
     assert sentence.state == DataState.NEW
 
-def test_append_child_to_CHANGED_sentence_leaves_state_as_CHANGED(sentence):
+
+def test_append_child_to_changed_sentence_leaves_state_as_changed(sentence):
     token = Token(text="Hello")
     # force it to NEW for the test
     sentence.state = DataState.CHANGED
     sentence.append_child(token)
     assert sentence.state == DataState.CHANGED
 
-def test_append_child_to_SYNC_sentence_changes_state_to_CHANGED(sentence):
+
+def test_append_child_to_sync_sentence_changes_state_to_changed(sentence):
     token = Token(text="Hello")
     # force it to SYNC for the test
     sentence.state = DataState.SYNC
     sentence.append_child(token)
     assert sentence.state == DataState.CHANGED
 
-def test_append_child_to_DELETED_sentence_resurrects_it_and_changes_state_to_CHANGED(sentence, caplog):
+
+def test_append_child_to_deleted_sentence_resurrects_it_and_changes_state_to_changed(sentence, caplog):
     # the logic here is that if it was DELETED, and then changed, well, it
     # must have been resurrected. But this could be a bug, so it must warn.
     caplog.set_level(logging.WARN)
@@ -186,14 +199,16 @@ def test_append_child_to_DELETED_sentence_resurrects_it_and_changes_state_to_CHA
     assert caplog.records[0].levelname == "WARNING"
     assert "changed" in caplog.records[0].message
 
-def test_set_text_on_NOTHING_sentence_changes_state_to_NEW(sentence):
+
+def test_set_text_on_nothing_sentence_changes_state_to_new(sentence):
     assert sentence.state == DataState._
     sentence.set_text("Hello World")
     assert sentence.state == DataState.NEW
 
-def test_set_text_on_NEW_sentence_leaves_states_as_NEW(sentence):
-    sentence.set_text("Hello World") # make it NEW
-    sentence.set_text("Hello World!") # change it
+
+def test_set_text_on_new_sentence_leaves_states_as_new(sentence):
+    sentence.set_text("Hello World")  # make it NEW
+    sentence.set_text("Hello World!")  # change it
     assert sentence.state == DataState.NEW
     nlp = spacy.load("en_core_web_sm")
     cache = DocCache(nlp)
@@ -203,7 +218,8 @@ def test_set_text_on_NEW_sentence_leaves_states_as_NEW(sentence):
     reconstructor.run(sentence)
     assert sentence.state == DataState.NEW
 
-def test_set_text_on_SYNC_sentence_changes_state_to_CHANGED(sentence):
+
+def test_set_text_on_sync_sentence_changes_state_to_changed(sentence):
     sentence.state = DataState.SYNC
     sentence.set_text("Hello World")
     assert sentence.state == DataState.CHANGED
@@ -212,6 +228,6 @@ def test_set_text_on_SYNC_sentence_changes_state_to_CHANGED(sentence):
     reconstructor = SyncReconstructor(cache, nlp)
     sentence = Sentence()
     reconstructor.run(sentence)
-    sentence.state = DataState.SYNC # reset it to SYNC and this time change the existing
+    sentence.state = DataState.SYNC  # reset it to SYNC and this time change the existing
     sentence.set_text("Hello World!")
     assert sentence.state == DataState.CHANGED

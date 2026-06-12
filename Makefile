@@ -4,7 +4,7 @@ export
 all: sort check_static_typing detect_cycles lint test
 
 sort:
-	isort src/dockb tests/dockb
+	ruff check --fix --select I src tests
 
 check_static_typing:
 	mypy src --check-untyped-defs
