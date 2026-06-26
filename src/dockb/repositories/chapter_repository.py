@@ -1,12 +1,9 @@
 """Repository for persisting Chapter models to Neo4j."""
 
-import logging
 from typing import Any
 
 from dockb.infrastructure.neo4j.base import BaseRepository
 from dockb.models.chapter import Chapter
-
-logger = logging.getLogger(__name__)
 
 _NEW_CYPHER = """
 MATCH (d:Document {id: $document_id})

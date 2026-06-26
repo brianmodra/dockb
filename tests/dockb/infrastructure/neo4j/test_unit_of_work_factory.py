@@ -7,7 +7,7 @@ import pytest
 
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
-from dockb.models.base import DockbModel
+from dockb.models.base import DataState, DockbModel
 from dockb.models.document import Document
 
 
@@ -29,13 +29,16 @@ class TestUnitOfWorkFactoryGetUnitOfWork:
         uow2 = factory.get_unit_of_work()
         assert uow1 is uow2
 
-    def test_returns_new_instance_after_commit(self, factory: UnitOfWorkFactory) -> None:
+    def test_returns_same_instance_after_failed_commit(self, factory: UnitOfWorkFactory) -> None:
         uow1 = factory.get_unit_of_work()
         model = Document()
-        model.state = model.state  # keep default
-        uow1.commit(factory._repos)
+        model.state = DataState.DELETED
+        model.dirty = True
+        uow1.register(model)
+        with pytest.raises(ValueError):
+            uow1.commit(factory._repos)
         uow2 = factory.get_unit_of_work()
-        assert uow2 is not uow1
+        assert uow2 is uow1
 
     def test_implicitly_creates_new_after_commit_on_next_call(self, factory: UnitOfWorkFactory) -> None:
         uow1 = factory.get_unit_of_work()

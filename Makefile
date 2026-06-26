@@ -18,7 +18,10 @@ detect_cycles:
 	cd src/dockb; pycycle --here
 
 test:
-	cd tests; pytest
+	pytest --ignore=tests/integration
+
+test_integration:
+	pytest tests/integration -v -s
 
 run:
 	cd src; ../.venv/bin/python3 -m main
@@ -26,4 +29,4 @@ run:
 migrate:
 	neo4j-migrations --database=$(NEO4J_DATABASE) migrate
 
-.PHONY: all check_static_typing lint detect_cycles sort run test migrate
+.PHONY: all check_static_typing lint detect_cycles sort run test test_integration migrate
