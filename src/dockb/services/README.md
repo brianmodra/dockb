@@ -7,7 +7,9 @@ The JobQueue and DocCache, and other things, will be stored in a session context
 
 ### Session context
 
-The session context (in a class SessionContext) will store the JobQueue and the DocCache.
+The session context (in a class SessionContext) will store the JobQueue, the DocCache,
+and a queue of pending notifications for the FE (see **Async Notifications** in
+controllers/README_API.md).
 
 ### Session manager
 
@@ -20,39 +22,12 @@ then the SessionManager will clean up that user's SessionContext.
 The SessionManager will have a method for getting a user's SessionContext object, given
 user's account ID.
 
-## EventController and EventService
+## ...Controller and ...Service
 
-The API (FastAPI) will be responding to change events which come from the FE and originate from Lexical,
-e.g. a payload (this is not a design, just an example from my thoughts at this point in time before
-designing the actual API)
+This document uses "...Controller" and "...Service" to mean the DocumentController and associated DocumentService,
+ChapterController, ChapterService, ParagraphController, ParagraphService, SentenceController and SentenceService.
 
-``` json
-{
-  nodeKey: "paragraph-1",
-  before: {
-    type: "paragraph",
-    children: [{ text: "Hello" }]
-  },
-  after: {
-    type: "paragraph",
-    children: [{ text: "Hello world" }]
-  }
-}
-```
-Therefore, the EventController will be quite simple, and we will have a corresponding EventService class.
-The EventService class will look at the request, and create one or more calls to model-specific
-service objects.
-
-There won't be a controller for each type of model, but there will be a controller-service pairing.
-There won't even be a service-model pairing, but there may be domain service classes.
-
-## Model-specific Service classes
-
-There won't be any.
-
-The EventService will mostly just call the models directly, though in some cases if it becomes obvious
-we need to do extra domain-type functions before calling a model class, then the EventService
-will call a domain service class, and then it will call the models.
+The API (FastAPI) will be responding to change requests which come from the FE.
 
 ## Models
 
@@ -78,6 +53,28 @@ A Chapter's children are the paragraphs.
 A Paragraph's children are the sentences.
 A Sentence's children are the tokens.
 
+### Cascade deletion
+
+When a model is deleted via `DELETE` API endpoint, the repository layer uses a Cypher `DETACH DELETE`
+to cascade-delete all descendant nodes (e.g. deleting a paragraph deletes all its sentences and their
+tokens in one Cypher query). The model layer does not need to iterate children for bulk cascade.
+
+`model.delete_child(id)` removes a child from the parent's DockbCollection.
+The child's data state becomes `DELETED` (or `_` if the child was previously `NEW`).
+If the child is subsequently inserted into another parent via `insert_child`
+(reparenting), its state changes to `CHANGED`. If not re-inserted, it stays
+`DELETED` and will be cleaned up by the repository.
+`delete_child` does not handle token-level deletion — that is the repository's job
+during `DETACH DELETE`.
+
+| Scenario | Mechanism |
+|---|---|
+| `DELETE /api/sentences/{id}` | Repo Cypher: `MATCH (s:Sentence {id}) DETACH DELETE s` |
+| `DELETE /api/paragraphs/{id}` | Repo Cypher cascade: all sentences + tokens |
+| `DELETE /api/chapters/{id}` | Repo Cypher cascade: all paragraphs + sentences + tokens |
+| `DELETE /api/documents/{id}` | Repo Cypher cascade: entire hierarchy |
+| Re-parent a sentence to another paragraph | `paragraph_a.delete_child(s_id)` + `paragraph_b.insert_child(s, after=...)` |
+
 ## DocumentHydrator, ChapterHydrator, ParagraphHydrator
 
 Note there is not SentenceHydrator, because that's the SentenceTokenizer.
@@ -99,6 +96,14 @@ doc = nlp(text)
 for i, sentence in enumerate(doc.sents, 1):
 ```
 
+### Scope: import only
+
+These hydrators run only during **initial bulk import** of raw text (e.g. pasting a manuscript).
+They are not used during normal editing — the structured JSON API (controllers/README_API.md)
+receives already-delimited chapters, paragraphs, and sentences in ProseMirror format.
+During normal PUT/POST editing, only the SentenceTokenizer runs (via DeleteJob/ReconstructJob) to
+tokenize sentence text into Token objects. The Document/Chapter/Paragraph hydrators are unused.
+
 ## How the hydration and tokenization happens
 
 A service function will directly call model class(es) to do quick
@@ -116,12 +121,28 @@ The first job added to the queue will be to delete the existing semantics associ
 the model object.
 The second job will be to re-create the semantics.
 
-This second job could potentially have a problem, because the EventService
+This second job could potentially have a problem, because the ...Service
 functions will be called in response to async calls from the front end as the user is typing away
 and creating lots of edit requests in fairly quick succession.
 Any jobs currently queued for the same sentence, or in progress, could be creating semantics which will be
 invalidated by the latest edit.
 So if they are queued, they should be cancelled, and if one is currently running, it should be stopped.
+
+### Sentence split detection during ReconstructJob
+
+The second job (ReconstructJob) does more than tokenization. It also detects
+sentence splits. For a sentence whose dirty flag is set, spaCy is run on the
+text to identify linguistic sentence boundaries. If the text contains multiple
+sentences, the ReconstructJob:
+
+1. Creates new Sentence model objects for each split
+2. Updates the parent paragraph's children list to include the new sentences
+3. Sets each new sentence's data state to `NEW`
+4. Truncates the original sentence's text to its portion
+5. Queues a `sentence_split` notification in the SessionContext
+
+The notification is delivered to the FE via piggy-back or poll (see **Async
+Notifications** in controllers/README_API.md).
 
 ## Jobs, worker tasks, and the JobQueue
 

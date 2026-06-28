@@ -10,14 +10,19 @@ It will be created once at app startup with graphite:// URI, auth, and pool conf
 It provides a create_session() method returning a context manager so callers get automatic return-to-pool:
 The factory creates real sessions. The repository layer never touches the driver.
 
-The SessionFactory will be constructed soon after startupo of the app, and it will be closed when
-the app suts down.
-The SessionFactory will be passed to the EventService which services incoming edit requests from the
-FE via EventController, so that when the AsyncReconstructor is run, the UnitOfWork can gets a Session. 
+The SessionFactory will be constructed soon after startup of the app, and it will be closed when
+the app shuts down.
+The SessionFactory will be passed to the ...Service class which services incoming requests from the
+FE via ...Controller, so that when the AsyncReconstructor is run, the UnitOfWork can gets a Session. 
+
+## ...Controller and ...Service
+
+This document uses "...Controller" and "...Service" to mean the DocumentController and associated DocumentService,
+ChapterController, ChapterService, ParagraphController, ParagraphService, SentenceController and SentenceService.
 
 ## Repository Base Class / Mixin
 
-Avoides repeating the same save() dispatch if dirty → raise logic.
+Avoids repeating the same save() dispatch if dirty → raise logic.
 In the repository classes then the only things that vary are:
 - The concrete model type
 - Whether a parent ID is required (Document: none; Sentence/Paragraph/Chapter: one)
@@ -39,7 +44,7 @@ its own chapter\_id. The sentence is registered with the new paragraph\_id.
 This all happens in one transaction, ensuring consistency.
 
 A UnitOfWork will effectively delimit the start and end/commit of a transaction, and the granularity of
-that will match a single edit event from the EventController via the EventService.
+that will match a single request from the ...Controller via the ...Service.
 
 ### UnitOfWork combined with AsynchronousReconstructor and the dirty flag
 
@@ -47,15 +52,15 @@ Things get complicated because the reconstruction must be done before saving to 
 - reconstruction takes time
 - saving to database takes time
 (This is done asynchronously on purpose because these time-consuming things should not block the editor,
-and editing events should return quickly back to the FE.)
+and editing requests should return quickly back to the FE.)
 
-Due to these asynchronous jobs not being super-quick, it's quite likely that another editing event will
+Due to these asynchronous jobs not being super-quick, it's quite likely that another editing request will
 come in for the same model objects while in progress. This could make one of the models dirty again.
 If this happens during a reconstruct, that is OK - the reconstruct is interrupted and stopped, replaced with
 a new reconstruct job.
 However, if it happens while saving to the database, then it will throw.
 
-If the UnitOfWork is constructed by the EventService when an edit event comes in, and committed when all the jobs
+If the UnitOfWork is constructed by the ...Service when an edit request comes in, and committed when all the jobs
 related to the edit have completed, then the UnitOfWork can commit, and afterwards be freed up.
 If it gets interrupted by an exception, then we have a problem.
 The dirty model can't just be skipped because transactions often will contain many models that must be
@@ -65,15 +70,15 @@ Note that as the JobQueue is single threaded, then if the UnitOfWork commit was 
 and no other mutating database accesses are ever done from any other threads (which is the case),
 then we can be certain that no other database modifications could be in progress.
 
-Rather than create the UnitOfWork per EventService function, we have a UnitOfWorkFactory, which
+Rather than create the UnitOfWork per ...Service function, we have a UnitOfWorkFactory, which
 has a get\_unit\_of\_work() function. That does not necessarily return a new one each time, but as needed.
 In fact it will always return the same UnitOfWork until that UnitOfWork's commit completes.
-UnitOfWorkFactory will also have a SyncReconstructor which it can provide to teh UnitOfWork
-when it constructs them. The UnitOfWork will use the SyncReconstructor when its flush_pending() method is calld.
-UnitOfWorkFactory will aso have a SessionFactory, DocCache, and nlp.
+UnitOfWorkFactory will also have a SyncReconstructor which it can provide to the UnitOfWork
+when it constructs them. The UnitOfWork will use the SyncReconstructor when its flush_pending() method is called.
+UnitOfWorkFactory will also have a SessionFactory, DocCache, and nlp.
 
-The EventService function will synchronously:
-1. it will construct a CommitJob.
+The ...Service function will synchronously:
+1. construct a CommitJob.
 2. All the modified models will be added to the CommitJob as it works on them
 3. make modifications to the models (this will cause jobs to be added to the JobQueue, and models to be dirty)
 4. It will then add the CommitJob to the queue. 
@@ -82,7 +87,7 @@ The EventService function will synchronously:
 What will happen asynchronously:
 1. models will have the semantics reconstructed
 2. each job will run.
-3. while this is happening, it is possible that one of the models will get zapped by another edit and becoome dirty
+3. while this is happening, it is possible that one of the models will get zapped by another edit and become dirty
 4. finally the CommitJob will be run, it will:
     1. call the UnitOfWorkFactory to get\_unit\_of\_work()
 	2. add all the models to the UnitOfWork.
@@ -94,7 +99,7 @@ What will happen asynchronously:
 	The next time a CommitJob calls get\_unit\_of\_work(), it will get a new one.
 
 If the CommitJob had exited early (due to UnitOfWork throwing), then the UnitOfWork will retain the models and they will
-get commited nect time - by the next CommitJob.
+get committed next time - by the next CommitJob.
 
 However, what if there is not another CommitJob?
 The JobQueue will sense that nothing is happening in it after a short period of time, maybe 0.5 second.

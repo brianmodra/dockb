@@ -1,7 +1,7 @@
 # DeleteJob and ReconstructJob
 
 DeleteJob clears existing sentence tokens before reconstruction.
-ReconstructJob performs tokenization and semantic reconstruction.
+ReconstructJob performs sentence-boundary detection, tokenization, and semantic reconstruction.
 
 Both are enqueued to the JobQueue and executed by the single background worker.
 Jobs are populated via their `set()` method before being enqueued.
@@ -82,6 +82,14 @@ Both `ReconstructJob` and `SyncReconstructor` delegate to this class,
 keeping the `models` layer free of spaCy awareness. The `tokenize()` method
 takes `(text: str, doc_cache: DocCache)` and returns a `list[Token]` with POS,
 lemma, whitespace, and other spaCy-derived attributes populated.
+
+# Sentence split detection
+
+The ReconstructJob also detects sentence splits. It runs spaCy on the sentence
+text to find linguistic sentence boundaries. If the text contains multiple
+sentences, it creates new Sentence model objects, updates the parent paragraph's
+children, and queues a `sentence_split` notification in the SessionContext
+(see controllers/README_API.md **Async Notifications**).
 
 # Cancelling a ReconstructJob
 
