@@ -18,7 +18,7 @@ class SessionManager:
     def __init__(self) -> None:
         self._contexts: dict[str, SessionContext] = {}
 
-    def get(self, account_id: str) -> SessionContext | None:  # pylint: disable=unused-argument
+    def get(self, account_id: str) -> SessionContext | None:
         """Return the SessionContext for a given account ID, or None."""
         return self._contexts.get(account_id)
 

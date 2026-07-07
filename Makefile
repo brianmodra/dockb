@@ -24,7 +24,7 @@ test_integration:
 	pytest tests/integration -v -s
 
 run:
-	cd src; ../.venv/bin/python3 -m main
+	@bash scripts/run.sh
 
 migrate:
 	neo4j-migrations --database=$(NEO4J_DATABASE) migrate
