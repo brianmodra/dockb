@@ -13,6 +13,7 @@ from .base import DockbModel
 class Chapter(DockbModel):
     """A chapter containing a list of paragraphs."""
 
+    title: str = ""
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

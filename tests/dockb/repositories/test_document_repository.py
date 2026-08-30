@@ -46,6 +46,8 @@ class TestSaveNewDocument:
 
         cypher, _ = extract_call(neo4j_session)
         assert "MERGE (d:Document" in cypher
+        assert "d.title = $title" in cypher
+        assert "d.author = $author" in cypher
         assert "UNWIND $chapters" in cypher
         assert "MERGE (chapter:Chapter" in cypher
         assert "MERGE (chapter)-[r:PART_OF]->(d)" in cypher
@@ -57,6 +59,16 @@ class TestSaveNewDocument:
 
         _, params = extract_call(neo4j_session)
         assert params["document_id"] == document.id
+
+    def test_passes_title_and_author(self, document_repo, neo4j_session, document):
+        document.state = DataState.NEW
+        document.title = "Faith"
+        document.author = "Paul"
+        document_repo.save(document)
+
+        _, params = extract_call(neo4j_session)
+        assert params["title"] == "Faith"
+        assert params["author"] == "Paul"
 
     def test_passes_chapter_ids(self, document_repo, neo4j_session, document):
         document.state = DataState.NEW
@@ -159,3 +171,36 @@ class TestSaveDirtyDocument:  # pylint: disable=too-few-public-methods
         with pytest.raises(ValueError, match="(?i)dirty"):
             document_repo.save(document)
         neo4j_session.run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# list_all
+# ---------------------------------------------------------------------------
+
+
+class TestListAllDocuments:
+    """Behaviour of DocumentRepository.list_all()."""
+
+    def test_returns_ids_from_records(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "d-1", "title": "T1", "author": "A1"},
+            {"id": "d-2", "title": "T2", "author": "A2"},
+        ]
+        result = document_repo.list_all()
+        assert result == [
+            {"id": "d-1", "title": "T1", "author": "A1"},
+            {"id": "d-2", "title": "T2", "author": "A2"},
+        ]
+
+    def test_returns_empty_list_when_no_documents(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        result = document_repo.list_all()
+        assert result == []
+
+    def test_runs_list_all_cypher(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        document_repo.list_all()
+        cypher, _ = extract_call(neo4j_session)
+        assert "MATCH (d:Document)" in cypher
+        assert "d.title AS title" in cypher
+        assert "d.author AS author" in cypher

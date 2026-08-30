@@ -190,3 +190,74 @@ class TestSaveDirtySentence:  # pylint: disable=too-few-public-methods
         with pytest.raises(ValueError, match="(?i)dirty"):
             repo.save(sentence, paragraph_id="p1")
         neo4j_session.run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# list_by_paragraph
+# ---------------------------------------------------------------------------
+
+
+class TestListByParagraph:
+    """Behaviour of SentenceRepository.list_by_paragraph()."""
+
+    def test_returns_ids(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "s-1"}, {"id": "s-2"}]
+        result = repo.list_by_paragraph("p-1")
+        assert result == [{"id": "s-1"}, {"id": "s-2"}]
+
+    def test_returns_empty_list_when_no_sentences(self, repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        result = repo.list_by_paragraph("p-1")
+        assert result == []
+
+    def test_passes_paragraph_id(self, repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        repo.list_by_paragraph("p-999")
+        _, params = extract_call(neo4j_session)
+        assert params["paragraph_id"] == "p-999"
+
+
+# ---------------------------------------------------------------------------
+# load
+# ---------------------------------------------------------------------------
+
+
+class TestLoadSentence:
+    """Behaviour of SentenceRepository.load()."""
+
+    def test_returns_none_when_not_found(self, repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert repo.load("nonexistent") is None
+
+    def test_returns_none_when_first_record_has_null_id(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [{"sentence_id": None}]
+        assert repo.load("s-1") is None
+
+    def test_returns_sentence_with_tokens(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "sentence_id": "s-1",
+                "token_id": "t-1",
+                "token_index": 0,
+                "token_text": "Hello",
+                "token_type": "word",
+                "token_trailing_ws": " ",
+                "token_pos": "NOUN",
+                "token_lemma": "hello",
+                "token_is_digit": False,
+                "token_like_num": False,
+                "token_is_alpha": True,
+                "token_is_stop": False,
+            }
+        ]
+        s = repo.load("s-1")
+        assert s is not None
+        assert s.id == "s-1"
+        assert len(s.tokens) == 1
+        assert s.tokens[0].text == "Hello"
+        assert s.tokens[0].type == Type.WORD
+
+    def test_sets_state_to_sync(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [{"sentence_id": "s-1"}]
+        s = repo.load("s-1")
+        assert s.state == DataState.SYNC

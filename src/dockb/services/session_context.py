@@ -1,8 +1,14 @@
 """Per-user session context with notification queue and processing state."""
 
+from __future__ import annotations
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from dockb.services.semantics.doc_cache import DocCache
+    from dockb.services.semantics.job_queue import JobQueue
 
 
 @dataclass
@@ -25,7 +31,13 @@ class SessionContext:
     the client.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        job_queue: JobQueue | None = None,
+        doc_cache: DocCache | None = None,
+    ) -> None:
+        self.job_queue = job_queue
+        self.doc_cache = doc_cache
         self._notifications: list[Notification] = []
 
     def add_notification(self, notification: Notification) -> None:

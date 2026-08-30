@@ -13,8 +13,13 @@ from dockb.models.token import POS, Token, Type
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Write Cypher
+# ---------------------------------------------------------------------------
+
 _NEW_CYPHER = """
 MERGE (d:Document {id: $document_id})
+SET d.title = $title, d.author = $author
 WITH d
 UNWIND $chapters AS ch
 MERGE (chapter:Chapter {id: ch.id})
@@ -54,6 +59,12 @@ RETURN
 ORDER BY chapter_index, paragraph_index, sentence_index, token_index
 """
 
+_LIST_ALL_CYPHER = """
+MATCH (d:Document)
+RETURN d.id AS id, d.title AS title, d.author AS author
+ORDER BY d.id
+"""
+
 
 class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-public-methods
     """Persists Document models to Neo4j."""
@@ -73,8 +84,15 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
     def _build_params(self, model: Document, **parent_ids: str) -> dict[str, Any]:
         return {
             "document_id": model.id,
+            "title": model.title,
+            "author": model.author,
             "chapters": [{"id": ch.id, "index": i} for i, ch in enumerate(model.chapters)],
         }
+
+    def list_all(self) -> list[dict[str, str]]:
+        """Return a list of ``{id, title, author}`` dicts for every Document in the graph."""
+        records = list(self._session.run(_LIST_ALL_CYPHER))
+        return [{"id": r["id"], "title": r["title"], "author": r["author"]} for r in records]
 
     def load(self, id: str) -> Document | None:  # pylint: disable=redefined-builtin,too-many-locals
         """Load a Document and its full hierarchy from Neo4j.

@@ -161,3 +161,77 @@ class TestSaveDirtyParagraph:  # pylint: disable=too-few-public-methods
         with pytest.raises(ValueError, match="(?i)dirty"):
             paragraph_repo.save(paragraph, chapter_id="ch1")
         neo4j_session.run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# list_by_chapter
+# ---------------------------------------------------------------------------
+
+
+class TestListByChapter:
+    """Behaviour of ParagraphRepository.list_by_chapter()."""
+
+    def test_returns_ids(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "p-1"}, {"id": "p-2"}]
+        result = paragraph_repo.list_by_chapter("ch-1")
+        assert result == [{"id": "p-1"}, {"id": "p-2"}]
+
+    def test_returns_empty_list_when_no_paragraphs(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        result = paragraph_repo.list_by_chapter("ch-1")
+        assert result == []
+
+    def test_passes_chapter_id(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        paragraph_repo.list_by_chapter("ch-999")
+        _, params = extract_call(neo4j_session)
+        assert params["chapter_id"] == "ch-999"
+
+
+# ---------------------------------------------------------------------------
+# load
+# ---------------------------------------------------------------------------
+
+
+class TestLoadParagraph:
+    """Behaviour of ParagraphRepository.load()."""
+
+    def test_returns_none_when_not_found(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert paragraph_repo.load("nonexistent") is None
+
+    def test_returns_none_when_first_record_has_null_id(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"paragraph_id": None}]
+        assert paragraph_repo.load("p-1") is None
+
+    def test_returns_paragraph_with_sentences(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "paragraph_id": "p-1",
+                "sentence_id": "s-1",
+                "sentence_index": 0,
+                "token_id": "t-1",
+                "token_index": 0,
+                "token_text": "Hello",
+                "token_type": "word",
+                "token_trailing_ws": " ",
+                "token_pos": "NOUN",
+                "token_lemma": "hello",
+                "token_is_digit": False,
+                "token_like_num": False,
+                "token_is_alpha": True,
+                "token_is_stop": False,
+            }
+        ]
+        p = paragraph_repo.load("p-1")
+        assert p is not None
+        assert p.id == "p-1"
+        assert len(p.sentences) == 1
+        assert p.sentences[0].id == "s-1"
+        assert len(p.sentences[0].tokens) == 1
+        assert p.sentences[0].tokens[0].text == "Hello"
+
+    def test_sets_state_to_sync(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"paragraph_id": "p-1"}]
+        p = paragraph_repo.load("p-1")
+        assert p.state == DataState.SYNC

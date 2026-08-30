@@ -69,6 +69,7 @@ mccabe.max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["S101"]
+"src/dockb/controllers/*.py" = ["B008"]
 
 [tool.pylint.format]
 max-line-length = 140

@@ -9,7 +9,8 @@ disable=
     import-outside-toplevel,
     duplicate-code,
     unused-import,
-    redefined-outer-name
+    redefined-outer-name,
+    attribute-defined-outside-init
 
 [BASIC]
 # Pydantic creates these dynamically

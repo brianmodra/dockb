@@ -18,6 +18,8 @@ class Document(DockbModel):
     Semantic processing only starts when triggered and when dirty is True.
     """
 
+    title: str = ""
+    author: str = ""
     chapters: DockbCollection[Chapter] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

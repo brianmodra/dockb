@@ -147,22 +147,15 @@ it creates an empty document with the supplied attributes.
 The body of a POST method to the /api/document endpoint will conform to the following schema:
 
 ```
-document: { attrs: { id: string, title: string, author: string }, relations?: { after_document_id: string } }
+document: { attrs: { id: string, title: string, author: string } }
 ```
+Note also that the POST data for a document does not have a relations field, because a document does
+not have a parent or peers. It is a stand-alone entity. However, the database can have many documents in it.
 
-E.g. (no ordering — this is the first document):
+E.g. (no ordering with documents):
 ``` json
 {
   "attrs": { "id": "d-uuid-1", "title": "Faith", "author": "Sha'ul ha-Tarsi" }
-}
-```
-Or, to add after an existing document:
-``` json
-{
-  "attrs": { "id": "d-uuid-2", "title": "Hope", "author": "Paulos Tarseus" },
-  "relations": {
-    "after_document_id": "d-uuid-1"
-  }
 }
 ```
 

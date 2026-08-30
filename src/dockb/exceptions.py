@@ -12,3 +12,7 @@ class EditTextRangeError(Exception):
 
 class TokenInvalidError(Exception):
     """Raised when a token value is invalid."""
+
+
+class SnapshotError(Exception):
+    """Raised when a snapshot read or write operation fails."""

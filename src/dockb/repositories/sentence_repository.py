@@ -1,10 +1,18 @@
 """Repository for persisting Sentence models to Neo4j."""
 
+import logging
 from typing import Any
 
 from dockb.infrastructure.neo4j.base import BaseRepository
+from dockb.models.base import DataState
 from dockb.models.sentence import Sentence
-from dockb.models.token import Token
+from dockb.models.token import POS, Token, Type
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Write Cypher
+# ---------------------------------------------------------------------------
 
 _NEW_CYPHER = """
 MATCH (p:Paragraph {id: $paragraph_id})
@@ -49,8 +57,32 @@ MATCH (s:Sentence {id: $sentence_id})
 DETACH DELETE s
 """
 
+# ---------------------------------------------------------------------------
+# Read Cypher
+# ---------------------------------------------------------------------------
 
-class SentenceRepository(BaseRepository[Sentence]):  # pylint: disable=too-few-public-methods
+_LIST_BY_PARAGRAPH_CYPHER = """
+MATCH (s:Sentence)-[:PART_OF]->(p:Paragraph {id: $paragraph_id})
+RETURN s.id AS id
+ORDER BY s.id
+"""
+
+_LOAD_CYPHER = """
+MATCH (s:Sentence {id: $sentence_id})
+OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
+RETURN
+  s.id AS sentence_id,
+  t.id AS token_id, rt.index AS token_index,
+  t.text AS token_text, t.type AS token_type,
+  t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
+  t.lemma AS token_lemma, t.is_digit AS token_is_digit,
+  t.like_num AS token_like_num, t.is_alpha AS token_is_alpha,
+  t.is_stop AS token_is_stop
+ORDER BY token_index
+"""
+
+
+class SentenceRepository(BaseRepository[Sentence]):
     """Persists Sentence models to Neo4j."""
 
     @property
@@ -87,3 +119,47 @@ class SentenceRepository(BaseRepository[Sentence]):  # pylint: disable=too-few-p
             "is_stop": token.is_stop,
             "index": index,
         }
+
+    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
+        """Return ``[{id}]`` summaries for sentences belonging to *paragraph_id*."""
+        records = list(self._session.run(_LIST_BY_PARAGRAPH_CYPHER, {"paragraph_id": paragraph_id}))
+        return [{"id": r["id"]} for r in records]
+
+    def load(self, sentence_id: str) -> Sentence | None:
+        """Load a Sentence and its Tokens from Neo4j.
+
+        Returns None when no sentence with *sentence_id* exists.
+        """
+        logger.debug("Load Sentence %s", sentence_id)
+        records = list(self._session.run(_LOAD_CYPHER, {"sentence_id": sentence_id}))
+        if not records:
+            return None
+
+        first = records[0]
+        if first.get("sentence_id") is None:
+            return None
+
+        sentence = Sentence(id=first["sentence_id"], state=DataState.SYNC)
+
+        for rec in records:
+            t_id = rec.get("token_id")
+            if t_id is not None:
+                _type = Type(rec["token_type"]) if rec.get("token_type") else Type._
+                _pos = POS(rec["token_pos"]) if rec.get("token_pos") else POS._
+                token = Token(
+                    id=t_id,
+                    text=rec.get("token_text", ""),
+                    type=_type,
+                    trailing_ws=rec.get("token_trailing_ws", ""),
+                    pos=_pos,
+                    lemma=rec.get("token_lemma", ""),
+                    is_digit=bool(rec.get("token_is_digit", False)),
+                    like_num=bool(rec.get("token_like_num", False)),
+                    is_alpha=bool(rec.get("token_is_alpha", False)),
+                    is_stop=bool(rec.get("token_is_stop", False)),
+                    state=DataState.SYNC,
+                )
+                sentence.tokens.append(token)
+
+        logger.debug("Loaded Sentence: %d tokens", len(sentence.tokens))
+        return sentence
