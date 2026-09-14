@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import uuid
 
 import pytest
 
@@ -21,8 +22,8 @@ def git_repo(tmp_path):
 
 
 @pytest.fixture()
-def reader(git_repo):
-    return SnapshotReader(base_dir=git_repo)
+def reader(git_repo, nlp):
+    return SnapshotReader(base_dir=git_repo, nlp=nlp)
 
 
 def _write_snapshot(git_repo, *, chapter_id: str, title: str, body: str) -> None:
@@ -74,12 +75,12 @@ def test_read_empty_body(reader, git_repo):
     assert len(chapter.paragraphs) == 0
 
 
-def test_read_paragraphs_are_dirty(reader, git_repo):
+def test_read_paragraph_has_sentences(reader, git_repo):
     _write_snapshot(git_repo, chapter_id="c-fff", title="T", body="Dirty text.")
     chapter = reader.read_chapter("c-fff")
     assert len(chapter.paragraphs) == 1
-    assert chapter.paragraphs[0].dirty is True
-    assert chapter.paragraphs[0].text == "Dirty text."
+    assert len(chapter.paragraphs[0].sentences) == 1
+    assert chapter.paragraphs[0].sentences[0].text == "Dirty text."
 
 
 def test_read_raw_content(reader, git_repo):
@@ -94,13 +95,13 @@ def test_read_missing_file_raises(reader):
         reader.read_chapter("c-nonexistent")
 
 
-def test_read_at_commit(reader, git_repo):  # pylint: disable=too-many-locals
+def test_read_at_commit(reader, git_repo, nlp):  # pylint: disable=too-many-locals
     from dockb.models.chapter import Chapter
     from dockb.models.paragraph import Paragraph
     from dockb.models.sentence import Sentence
     from dockb.models.token import Token
 
-    writer = SnapshotWriter(base_dir=git_repo)
+    writer = SnapshotWriter(base_dir=git_repo, nlp=nlp)
 
     ch = Chapter(id="c-hhh", title="V1")
     token = Token()
@@ -156,3 +157,112 @@ def test_read_extras_in_front_matter(reader, git_repo):
     extras = getattr(chapter, "_snapshot_extras", {})
     assert extras.get("premise") == "A premise"
     assert extras.get("order") == 1
+
+
+def test_read_sentences_per_line(reader, git_repo):
+    _write_snapshot(git_repo, chapter_id="c-jjj", title="T", body="First sentence.\n Second sentence.")
+    chapter = reader.read_chapter("c-jjj")
+    paragraph = chapter.paragraphs[0]
+    assert len(paragraph.sentences) == 2
+    assert paragraph.sentences[0].text == "First sentence.\n "
+    assert paragraph.sentences[1].text == "Second sentence."
+    assert chapter.get_text() == "First sentence.\n Second sentence."
+
+
+def test_read_sentences_single_line(reader, git_repo):
+    _write_snapshot(git_repo, chapter_id="c-kkk", title="T", body="First sentence. Second sentence.")
+    chapter = reader.read_chapter("c-kkk")
+    paragraph = chapter.paragraphs[0]
+    assert len(paragraph.sentences) == 2
+    assert paragraph.sentences[0].text == "First sentence. "
+    assert paragraph.sentences[1].text == "Second sentence."
+    assert chapter.get_text() == "First sentence. Second sentence."
+
+
+def test_read_mid_sentence_newline(reader, git_repo):
+    _write_snapshot(git_repo, chapter_id="c-lll", title="T", body="First\nline. Second.")
+    chapter = reader.read_chapter("c-lll")
+    paragraph = chapter.paragraphs[0]
+    assert len(paragraph.sentences) == 2
+    assert paragraph.sentences[0].text == "First\nline. "
+    assert paragraph.sentences[1].text == "Second."
+    assert chapter.get_text() == "First\nline. Second."
+
+
+def test_read_hard_break_preserved(reader, git_repo):
+    _write_snapshot(git_repo, chapter_id="c-mmm", title="T", body="Line one\\\nline two. Next.")
+    chapter = reader.read_chapter("c-mmm")
+    paragraph = chapter.paragraphs[0]
+    assert len(paragraph.sentences) == 2
+    assert paragraph.sentences[0].text == "Line one\\\nline two. "
+    assert paragraph.sentences[1].text == "Next."
+    assert chapter.get_text() == "Line one\\\nline two. Next."
+
+
+def test_read_span_paragraph_ids_restore_paragraph_identity(reader, git_repo):
+    body = (
+        '<span data-par-id="par-1">First.</span>\n'
+        + '<span data-par-id="par-1">Second.</span>\n\n'
+        + '<span data-par-id="par-2">Third.</span>'
+    )
+    _write_snapshot(git_repo, chapter_id="c-nnn", title="T", body=body)
+
+    chapter = reader.read_chapter("c-nnn")
+
+    assert len(chapter.paragraphs) == 2
+    first, second = chapter.paragraphs
+    assert first.id == "par-1"
+    assert second.id == "par-2"
+    assert [s.text for s in first.sentences] == ["First.", "Second."]
+    assert second.sentences[0].text == "Third."
+    # Sentences carry no id in the format; they get freshly generated ones
+    for sentence in [*first.sentences, *second.sentences]:
+        uuid.UUID(sentence.id)
+
+
+def test_read_span_sentence_keeps_mid_sentence_newline(reader, git_repo):
+    body = '<span data-par-id="par-1">First\nline. Still first.</span>'
+    _write_snapshot(git_repo, chapter_id="c-ooo", title="T", body=body)
+
+    chapter = reader.read_chapter("c-ooo")
+
+    assert len(chapter.paragraphs[0].sentences) == 1
+    assert chapter.paragraphs[0].sentences[0].text == "First\nline. Still first."
+
+
+def test_read_unescapes_span_content(reader, git_repo):
+    body = '<span data-par-id="par-1">' + "A &lt;span&gt; tag &amp; &quot;quotes&quot;.</span>"
+    _write_snapshot(git_repo, chapter_id="c-ppp", title="T", body=body)
+
+    chapter = reader.read_chapter("c-ppp")
+
+    assert chapter.paragraphs[0].sentences[0].text == 'A <span> tag & "quotes".'
+
+
+def test_read_mixed_spans_and_plain_text(reader, git_repo):
+    body = '<span data-par-id="par-1">Span one.</span>\nPlain two. Plain three.'
+    _write_snapshot(git_repo, chapter_id="c-qqq", title="T", body=body)
+
+    chapter = reader.read_chapter("c-qqq")
+
+    paragraph = chapter.paragraphs[0]
+    assert len(paragraph.sentences) == 3
+    assert paragraph.id == "par-1"
+    assert paragraph.sentences[0].text == "Span one."
+    # The span-free text is NLP-split and given fresh ids
+    assert paragraph.sentences[1].text.strip() == "Plain two."
+    assert paragraph.sentences[2].text.strip() == "Plain three."
+    assert paragraph.sentences[1].id != paragraph.sentences[2].id
+
+
+def test_read_span_bodies_become_fresh_id_sentences(reader, git_repo):
+    body = "<span>One.</span>\n<span>Two.</span>"
+    _write_snapshot(git_repo, chapter_id="c-rrr", title="T", body=body)
+
+    chapter = reader.read_chapter("c-rrr")
+
+    paragraph = chapter.paragraphs[0]
+    assert [s.text for s in paragraph.sentences] == ["One.", "Two."]
+    assert paragraph.sentences[0].id != paragraph.sentences[1].id
+    uuid.UUID(paragraph.sentences[0].id)
+    uuid.UUID(paragraph.sentences[1].id)

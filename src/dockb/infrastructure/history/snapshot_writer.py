@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import html
 import subprocess
 from pathlib import Path
 
 import yaml
+from spacy.language import Language
 
 from dockb.exceptions import SnapshotError
 from dockb.models.chapter import Chapter
+from dockb.models.paragraph import Paragraph
+from dockb.models.sentence import Sentence
 
 
 class SnapshotWriter:  # pylint: disable=too-few-public-methods
     """Write chapter snapshots as markdown files committed to a local git repo."""
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, nlp: Language) -> None:
         self._base_dir = base_dir
+        self._nlp = nlp
 
     def write(self, chapter: Chapter) -> str:
         """Serialize *chapter* to markdown, write to disk, git-commit, return SHA."""
@@ -50,12 +55,48 @@ class SnapshotWriter:  # pylint: disable=too-few-public-methods
 
     def _build_body(self, chapter: Chapter) -> str:
         if chapter.dirty:
-            paragraphs = chapter.text.split("\n\n")
+            blocks = [self._serialize_plain_text(block) for block in chapter.text.split("\n\n")]
         elif chapter.paragraphs:
-            paragraphs = [p.get_text() for p in chapter.paragraphs]
+            blocks = [self._serialize_paragraph(paragraph) for paragraph in chapter.paragraphs]
         else:
-            paragraphs = []
-        return "\n\n".join(paragraphs)
+            blocks = []
+        return "\n\n".join(blocks)
+
+    def _serialize_paragraph(self, paragraph: Paragraph) -> str:
+        """Serialize one paragraph as its sentences, each in an identity span on its own line."""
+        if not paragraph.sentences:
+            return self._serialize_plain_text(paragraph.get_text())
+        lines = [self._sentence_span(sentence, paragraph.id) for sentence in paragraph.sentences]
+        return "\n".join(lines)
+
+    def _serialize_plain_text(self, text: str) -> str:
+        """Wrap span-free text in fresh-id sentences, splitting with spaCy."""
+        if not text.strip():
+            return ""
+        paragraph = Paragraph()
+        paragraph.sentences[:] = self._split_sentences(text)
+        return self._serialize_paragraph(paragraph)
+
+    def _sentence_span(self, sentence: Sentence, paragraph_id: str) -> str:
+        par_id = html.escape(paragraph_id, quote=True)
+        text = html.escape(sentence.get_text(), quote=True)
+        return f'<span data-par-id="{par_id}">{text}</span>'
+
+    def _split_sentences(self, text: str) -> list[Sentence]:
+        """Split *text* into Sentence objects using spaCy sentence boundaries.
+
+        Newlines are never sentence delimiters: a mid-sentence newline stays inside
+        the sentence's text, and a backslash-newline hard break is preserved. Each
+        sentence keeps the whitespace up to the next sentence.
+        """
+        spans = list(self._nlp(text).sents)
+        sentences = []
+        for idx, span in enumerate(spans):
+            end = spans[idx + 1].start_char if idx + 1 < len(spans) else len(text)
+            sentence_text = text[span.start_char : end]
+            if sentence_text.strip():
+                sentences.append(Sentence(text=sentence_text))
+        return sentences
 
     def _git(self, *args: str) -> str:
         try:

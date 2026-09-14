@@ -1,12 +1,4 @@
-# Markdown-Based Redesign
-
-This document captures a design discussion and its conclusions. It records the *why* behind
-the decisions, the alternatives that were considered and rejected, and the design we converged on.
-It will drive a restructuring of the codebase; code no longer needed will be deleted.
-
-Status: design agreed, not yet implemented.
-
----
+# Markdown-Based Design
 
 ## 1. The problem we were trying to solve
 
@@ -50,7 +42,30 @@ below). All work that touches the knowledge graph (tokenization, sentence/paragr
 persistence) stays behind the API; the loop is a dumb-but-careful client that never reaches into the
 services or repositories directly.
 
-### The working loop
+### Synchronous save-and-rehydrate (hard design change, supersedes the async loop below)
+
+**The async working loop described below is replaced.** Its asynchronous nature (file changes
+arriving while rehydration runs, discard-and-rerun, cancel-and-rerun job reuse) is **impractical**
+and is dropped. From this point on the model is:
+
+**Save → full re-hydration → the editor receives the updates before the user can continue
+editing.**
+
+The save is synchronous with re-hydration: the editor is blocked (or the update delivered in-line)
+until the knowledge graph is current, so the editor always works against hydrated truth and there is
+never stale-client state to reconcile.
+
+Consequences:
+
+- The rehydrate endpoints (`PUT /api/chapters/{id}/rehydrate`,
+  `PUT /api/paragraphs/{id}/rehydrate`, `PUT /api/sentences/{id}/rehydrate`) are **all kept**; the
+  design may iterate and whole-chapter or single-sentence rehydration remain needed.
+- Change detection against the **old** side does **not** re-parse the previous markdown file. The
+  previous (hydrated) chapter is read from the **knowledge graph**; the new markdown file is the
+  only text parsed. `data-par-id` on spans identifies paragraphs, not sentence content.
+- **The editor and file-save mechanics are deferred** (a later feature).
+
+### The working loop (superseded)
 
 1. A file change is detected (e.g. a save).
 2. The change is classified from `git diff` (see **How the depth of change is classified**) and the
@@ -63,10 +78,7 @@ services or repositories directly.
    of consecutive failures, **freeze the editor** so rehydration can complete (a later feature, once
    we own the editor).
 
-The accumulated state after each successful cycle is:
-**previous changes + hydration update + latest changes.**
-
-This is a single-truth, always-converges, editor-agnostic rehydration engine. It reuses the
+This section is retained only as the record of the rejected design. It reuses the
 existing cancel-and-rerun job semantics (`Job.cancel()` / `on_cancel()` in
 `src/dockb/services/semantics/README.md`), which remain server-side behind the API.
 
@@ -152,27 +164,34 @@ To let `git merge-file` (line-based) resolve at **sentence granularity** rather 
 granularity, hydration normalizes the markdown so that:
 
 - **Paragraph** = a block delimited by a blank line (`\n\n`).
-- **Sentence** = a terminator-ended line inside a paragraph; the hydrator **adds one newline after
-  each true sentence end** (`.`, `?`, `!` — using NLP, so "Dr." and "e.g." are handled correctly) if
-  one is not already present.
+- **Sentence** = one line inside a paragraph: a `<span data-par-id="…">` element
+  holding that sentence's text and its paragraph's UUID (repeated on every
+  sentence of the paragraph). The span *is* the sentence unit; each paragraph
+  is written one sentence-span per line. Sentences carry no id of their own —
+  they are re-derived at hydration time. The spaCy pipeline still resolves
+  sentence boundaries for text that arrives without spans (hand-typed edits or
+  legacy snapshots), so "Dr."
+  and "e.g." are handled correctly there.
 
 The rules, stated symmetrically:
 
-- **Newlines are never sentence delimiters.** Sentence-splitting uses NLP logic only
-  (`nlp(...).sents`).
+- **Newlines are never sentence delimiters.** In span-free text, sentence-splitting uses NLP logic
+  only (`nlp(...).sents`); in span-wrapped text the spans delimit the sentences.
 - **A newline mid-sentence is ordinary whitespace.** Renderers treat it as soft wrapping; the parser
-  ignores it for sentence structure. A user may place a newline mid-sentence freely.
+  ignores it for sentence structure. A user may place a newline mid-sentence freely (inside a span
+  it is preserved byte-for-byte).
 - **A forced mid-sentence break** is written as `\` followed by a newline (CommonMark hard-break
   syntax). The hydrator must preserve this and not strip or reinterpret it.
-- **Parse side:** sentence-split on the terminator regardless of the newline; the extra newline is a
-  *merge* convenience, not a parsing requirement.
-- **Write side:** after each true sentence end, ensure a newline is present.
+- **Parse side:** span-wrapped sentences are read from the spans; span-free text is split on the
+  terminator regardless of the newline. The per-line layout is a *merge* convenience, not a parsing
+  requirement.
+- **Write side:** emit one sentence-span per line; span-free input is split and wrapped first.
 
 The one whitespace distinction to keep straight:
 
 | Whitespace | Meaning | For |
 |---|---|---|
-| Sentence-ender newline | sentence boundary (writer-inserted) | `git merge-file` granularity |
+| Sentence-ender line break | sentence boundary (writer-inserted per span) | `git merge-file` granularity |
 | Blank line `\n\n` | paragraph boundary | block structure + `git merge-file` |
 
 ## 5. The cross-process, multi-tasking consideration
@@ -207,16 +226,24 @@ types" shell changes later.**
 
 ## 6. Sentence metadata in the format
 
-The current snapshot format already drops sentences (`snapshot_writer` writes `paragraph.get_text()`).
-Because parsing is NLP-driven and independent of the newline, sentence *identity* is re-derived at
-hydrate time. The README's aspirational metadata — JSON-in-HTML-comment blobs for non-text attrs
-(e.g. premise, elevator pitch) and `<span data-attr>` inline metadata — is not implemented in the
-current code.
+The snapshot writer serializes the hierarchy into markdown and wraps every
+sentence in a `<span data-par-id="…">` element carrying its paragraph's UUID
+(repeated on every sentence span of the paragraph). The parser reads the spans
+back onto the Paragraph model objects, so paragraph *identity* survives
+serialization. Sentences carry no id in the format: they are re-derived at
+write and parse time (from the spans' text, or with spaCy for span-free text)
+and assigned fresh UUIDs.
 
-Whether the markdown format needs explicit sentence IDs depends on whether we require clean
-sentence-level merges across concurrent writers. With the single-truth loop there is only ever one
-writer of record, so **sentence IDs in the format are not currently required**; they would be added
-only if/when concurrent sentence-level merging becomes a goal (likely with the own-editor phase).
+The README's aspirational metadata — JSON-in-HTML-comment blobs for non-text
+attrs (e.g. premise, elevator pitch) and `<span data-attr>` inline metadata —
+remains out of scope; only the paragraph identity spans (`data-par-id`) are
+implemented today. They reuse the span mechanism described below for the
+later NLP-derived spans.
+
+With the single-truth loop there is only ever one writer of record; embedding
+paragraph-level identity in the format keeps the graph aligned with the file
+across rehydration and makes paragraph identity stable for the merge
+and freeze features to come, at negligible cost.
 
 ### Semantic spans inline in the text (pivotal)
 
@@ -274,15 +301,18 @@ during planning.
    (accept resolved content, stop reading git). The rehydrate path must also **emit semantic spans**
    (`data-triple`/`data-spo` and other NLP attributes) back into the normalized markdown. Remove
    backend code no longer needed (delete, per the requirement to delete unused code).
-2. **Loop process** (own process, editor-agnostic): owns the markdown files + git repo; file-watch,
-   `git diff` classification, sync rehydrate via the API with cancel-and-rerun, `git merge-file
-   --diff3 -p` conflict detection, commit-on-success; owns snapshot listing and restore-from-git.
+2. **Synchronous save-and-rehydrate engine** (editor-agnostic): owns the markdown files + git repo.
+   On save: parse the new markdown file, diff it against the chapter read from the knowledge graph
+   (changed / new / deleted paragraphs, classified from `data-par-id` identity + parsed sentence
+   text), then rehydrate synchronously before the editor continues. Owns snapshot listing and
+   restore-from-git. Editor and file-save mechanics are deferred (later). The former async loop
+   (file-watch, `git merge-file --diff3 -p`, cancel-and-rerun) is dropped per **Synchronous
+   save-and-rehydrate** above.
    - Enforce the sentence-boundary / minimal-write normalization rules.
-   - Configurable fail-tolerance (early version may just log/wait; freeze is deferred).
    - `SnapshotWriter`/`SnapshotReader` and all git logic are moved here from the backend.
 3. **Remove the old front end** (React + Tiptap/ProseMirror) and any backend code only it used.
-4. **Own markdown editor** (later): drives the loop, adds frequent-save cycles, push updates,
-   editor-freeze, and — if needed — sentence-ID metadata for fine merges.
+4. **Editor integration** (later): wires the editor's save into the synchronous rehydrate step.
+   Paragraph identity is already in the format (`data-par-id` spans).
 
 ### Front-end & loop platform (PC-only variant, decided)
 
@@ -296,10 +326,11 @@ Concretely:
 
 - **Editor:** CodeMirror 6 for the markdown source mode; browser markdown rendering / WYSIWYG
   (markdown-it + HTML, or TipTap) for the primary view; the NLP semantics render as styled/clickable
-  spans already present in the text (`data-triple` / `data-spo`, etc.). The editor and the loop share
-  the markdown serializer and the git/file logic.
-- **Loop (same process):** `chokidar` for file-watch, `simple-git` for `git diff` / `git merge-file`
-  / `git add` / `git commit`, and the API client for the rehydrate endpoints + notification polling.
+  spans already present in the text (`data-triple` / `data-spo`, etc.). The editor and the sync
+  engine share the markdown serializer and the git/file logic.
+- **Sync engine (same process):** parses the saved markdown file, diffs against the knowledge graph,
+  rehydrates synchronously through the API, then `git add` / `git commit`. Also owns snapshot
+  listing and restore-from-git.
 - **Portability note:** this decision is for PC-only. If mobile/iPad ever becomes a requirement, the
   flat markdown + span format is unchanged and a Flutter client could drive the same loop via the API;
   only the editor shell differs.

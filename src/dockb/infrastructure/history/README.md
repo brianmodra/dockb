@@ -34,19 +34,49 @@ order: 1
 (... other chapter attrs ...)
 ---
 
-Chapter text goes here.
+<span data-par-id="p-uuid-1">Paragraph one first sentence.</span>
+<span data-par-id="p-uuid-1">Paragraph one second sentence.</span>
 
-<!-- {"premise": "...", "elevator_pitch": "..."} -->
-
-A <span data-attr="something">word</span> in context.
+<span data-par-id="p-uuid-2">Paragraph two first sentence.</span>
 ```
 
 - **Front matter** (YAML between `---` delimiters) holds chapter attributes
   (title, id, order, etc.)
-- **JSON blobs** in HTML comments hold non-text attributes (e.g. premise,
-  elevator pitch) that don't map naturally to markdown
-- **HTML `<span>` elements** with `data-attr` attributes hold inline
-  formatting or structural metadata where appropriate
+- **Paragraph** = a block delimited by a blank line (`\n\n`).
+- **Sentence** = one inline `<span data-par-id="…">` element per line inside a
+  paragraph. The paragraph's UUID is repeated on every sentence span it
+  contains, so paragraph identity survives any single-sentence edit. The span
+  markup is invisible to markdown renderers and carries the paragraph id the
+  rehydration loop needs.
+- **Sentences carry no id in the format.** They are re-derived at read time and
+  assigned freshly generated UUIDs.
+- **The span is the sentence unit.** The writer emits one span per model
+  sentence, one per line. It reads the sentence text from the model and does
+  not re-run sentence splitting over it. Text that was written without spans
+  (hand-typed, or legacy files) is split with spaCy on write and is given
+  freshly generated paragraph and sentence UUIDs.
+- **Spans only mark identity.** The same span mechanism later carries any other
+  attribute the NLP layer derives (`data-triple` / `data-spo`, etc.), per the
+  markdown redesign. Only `data-par-id` is interpreted by the serializer and
+  parser today.
+- **Newlines are never sentence delimiters.** Sentences are delimited by their
+  spans. A newline inside a span is ordinary whitespace (soft wrapping) and is
+  preserved byte-for-byte; a forced mid-sentence break is `\` followed by a
+  newline (CommonMark hard break), also preserved inside the span. Span-free
+  text is delimited only by spaCy sentence boundaries.
+- **Escaping.** Sentence text is HTML-escaped on write and unescaped on read,
+  so a literal `<span>` or `&` in the text cannot be confused with markup. The
+  parser ignores span boundaries that cross a blank line.
+
+Writing normalizes to the one-span-per-line form; reading restores paragraph
+UUIDs from the spans and falls back to a spaCy split (fresh UUIDs) for
+span-free blocks. Both directions are idempotent, so paragraphs the caller
+did not change serialize unchanged — the minimal-diff property the rehydration
+loop relies on. Both classes take the same injected spaCy pipeline
+(`spacy.load("en_core_web_sm")` and siblings) used by the semantics services.
+
+See [`../../../../README_markdown_redesign.md`](../../../../README_markdown_redesign.md)
+for the design rationale (section 4, "The sentence-boundary format rule").
 
 ## Retention
 
@@ -59,8 +89,8 @@ The `infrastructure/history/` package contains:
 
 | Component | Responsibility |
 |---|---|
-| `snapshot_writer.py` | Serialize a chapter to markdown and write to disk |
-| `snapshot_reader.py` | Parse a markdown snapshot back into model objects |
+| `snapshot_writer.py` | Serialize a chapter to markdown (per-sentence `<span data-par-id>` lines, spaCy split for span-free text) and write to disk |
+| `snapshot_reader.py` | Parse a markdown snapshot back into model objects (paragraph UUIDs restored from spans; spaCy-injected split for span-free text) |
 
 The `HistoryService` (in `services/`) orchestrates these components and
 coordinates with edits.

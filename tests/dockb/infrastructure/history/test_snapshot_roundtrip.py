@@ -24,18 +24,18 @@ def git_repo(tmp_path):
 
 
 @pytest.fixture()
-def writer(git_repo):
-    return SnapshotWriter(base_dir=git_repo)
+def writer(git_repo, nlp):
+    return SnapshotWriter(base_dir=git_repo, nlp=nlp)
 
 
 @pytest.fixture()
-def reader(git_repo):
-    return SnapshotReader(base_dir=git_repo)
+def reader(git_repo, nlp):
+    return SnapshotReader(base_dir=git_repo, nlp=nlp)
 
 
-def _make_paragraph_with_sentences(*texts: str) -> Paragraph:
+def _make_paragraph_with_sentences(*texts: str, p_id: str | None = None) -> Paragraph:
     """Create a paragraph with one sentence per text."""
-    paragraph = Paragraph()
+    paragraph = Paragraph(id=p_id) if p_id else Paragraph()
     for text in texts:
         token = Token()
         token.set_text(text)
@@ -110,18 +110,41 @@ def test_roundtrip_full_text_equivalence(writer, reader):
     assert result.get_text() == original_text
 
 
-def test_roundtrip_paragraph_ids_are_different(writer, reader):
-    """Read-back paragraphs get new IDs (they are re-hydrated, not stored verbatim)."""
+def test_roundtrip_paragraph_ids_preserved_sentence_ids_recreated(writer, reader):
+    """Paragraph UUIDs embedded in the spans survive a roundtrip; sentences are re-derived."""
     chapter = Chapter(id="c-round-006", title="New IDs")
-    chapter.paragraphs.append(_make_paragraph_with_sentences("Text."))
+    chapter.paragraphs.append(_make_paragraph_with_sentences("One.", "Two.", p_id="par-a"))
+    chapter.paragraphs.append(_make_paragraph_with_sentences("Three.", p_id="par-b"))
 
     writer.write(chapter)
     result = reader.read_chapter("c-round-006")
 
-    # The chapter ID is preserved from front matter
     assert result.id == "c-round-006"
-    # Paragraph IDs are newly generated (not from the original)
-    assert len(result.paragraphs) == 1
+    assert [p.id for p in result.paragraphs] == ["par-a", "par-b"]
+    assert [s.text for s in result.paragraphs[0].sentences] == ["One.", "Two."]
+    assert result.paragraphs[1].sentences[0].text == "Three."
+    # Sentences are not persisted in the format — they come back with fresh UUIDs
+    for sentence in [
+        *result.paragraphs[0].sentences,
+        *result.paragraphs[1].sentences,
+    ]:
+        assert sentence.id not in {p.id for p in result.paragraphs}
+
+
+def test_roundtrip_file_bytes_stable(writer, reader, git_repo):
+    """Parsing and re-serializing produces the same bytes as the file (minimal-diff)."""
+    chapter = Chapter(id="c-round-009", title="Stable")
+    paragraph_a = _make_paragraph_with_sentences("One.", "Two.", p_id="par-a")
+    paragraph_b = _make_paragraph_with_sentences("Three.", p_id="par-b")
+    chapter.paragraphs.append(paragraph_a)
+    chapter.paragraphs.append(paragraph_b)
+
+    writer.write(chapter)
+    file_content = (git_repo / "chapter-c-round-009.md").read_text()
+
+    result = reader.read_chapter("c-round-009")
+
+    assert writer._serialize(result) == file_content  # pylint: disable=protected-access
 
 
 def test_roundtrip_repeated_writes(writer, reader):

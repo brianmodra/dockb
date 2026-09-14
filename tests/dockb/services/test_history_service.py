@@ -28,13 +28,13 @@ def git_repo(tmp_path):
 
 
 @pytest.fixture()
-def reader(git_repo):
-    return SnapshotReader(base_dir=git_repo)
+def reader(git_repo, nlp):
+    return SnapshotReader(base_dir=git_repo, nlp=nlp)
 
 
 @pytest.fixture()
-def writer(git_repo):
-    return SnapshotWriter(base_dir=git_repo)
+def writer(git_repo, nlp):
+    return SnapshotWriter(base_dir=git_repo, nlp=nlp)
 
 
 def _make_chapter(ch_id: str = "c1", title: str = "Ch1", text: str = "Hello.") -> Chapter:

@@ -12,6 +12,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
+import spacy
+
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import set_doc_service
 from dockb.controllers.history import set_history_service
@@ -72,7 +74,7 @@ def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None) -> Sess
     set_session_context(ctx)
 
     if snapshot_base_dir is not None:
-        reader = SnapshotReader(base_dir=snapshot_base_dir)
+        reader = SnapshotReader(base_dir=snapshot_base_dir, nlp=spacy.load("en_core_web_sm"))
         history_svc = HistoryService(reader=reader, chapter_repo=repos[Chapter], uow_factory=uow_factory)
         set_history_service(history_svc)
 

@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
+import html
+import re
 import subprocess
 from pathlib import Path
 
 import yaml
+from spacy.language import Language
 
 from dockb.exceptions import SnapshotError
 from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
+from dockb.models.sentence import Sentence
+
+_SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
 
 
 class SnapshotReader:
     """Read chapter snapshots from markdown files (optionally at a specific git commit)."""
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, nlp: Language) -> None:
         self._base_dir = base_dir
+        self._nlp = nlp
 
     def read(self, chapter_id: str, *, commit_id: str | None = None) -> str:
         """Return raw markdown content for *chapter_id*."""
@@ -50,11 +57,75 @@ class SnapshotReader:
 
         paragraphs_text = body.strip().split("\n\n") if body.strip() else []
         for para_text in paragraphs_text:
-            paragraph = Paragraph()
-            paragraph.set_text(para_text.strip())
+            paragraph, sentences = self._parse_paragraph(para_text.strip())
+            if sentences:
+                paragraph.sentences[:] = sentences
+            else:
+                paragraph.set_text(para_text.strip())
             chapter.paragraphs.append(paragraph)
 
         return chapter
+
+    def _parse_paragraph(self, text: str) -> tuple[Paragraph, list[Sentence]]:
+        """Parse one paragraph block into a Paragraph and its Sentences.
+
+        The paragraph's UUID is restored from the ``data-par-id`` span attribute.
+        The spans delimit the sentences, which receive freshly generated UUIDs.
+        Any text outside spans (hand-typed or legacy files) is split with spaCy
+        and assigned freshly generated UUIDs.
+        """
+        matches = list(_SPAN_RE.finditer(text))
+        if not matches:
+            return Paragraph(), self._split_sentences(text)
+
+        sentences = []
+        paragraph_id: str | None = None
+        position = 0
+        for match in matches:
+            gap = text[position : match.start()]
+            if gap.strip():
+                sentences.extend(self._split_sentences(gap))
+
+            tag = match.group(1)
+            inner = html.unescape(match.group(2))
+            par_id = self._span_attr(tag, "data-par-id")
+            if paragraph_id is None and par_id:
+                paragraph_id = par_id
+            if inner.strip():
+                sentences.append(Sentence(text=inner))
+            position = match.end()
+
+        tail = text[position:]
+        if tail.strip():
+            sentences.extend(self._split_sentences(tail))
+
+        if paragraph_id is None:
+            return Paragraph(), sentences
+        return Paragraph(id=paragraph_id), sentences
+
+    @staticmethod
+    def _span_attr(tag: str, name: str) -> str | None:
+        match = re.search(rf'\b{name}="([^"]*)"', tag)
+        if not match:
+            return None
+        return html.unescape(match.group(1))
+
+    def _split_sentences(self, text: str) -> list[Sentence]:
+        """Split *text* into Sentence objects using spaCy sentence boundaries.
+
+        Newlines are never sentence delimiters: a mid-sentence newline stays inside
+        the sentence's text, and a backslash-newline hard break is preserved. Each
+        sentence keeps the whitespace up to the next sentence so that
+        ``Chapter.get_text()`` reproduces the file byte-for-byte.
+        """
+        spans = list(self._nlp(text).sents)
+        sentences = []
+        for idx, span in enumerate(spans):
+            end = spans[idx + 1].start_char if idx + 1 < len(spans) else len(text)
+            sentence_text = text[span.start_char : end]
+            if sentence_text.strip():
+                sentences.append(Sentence(text=sentence_text))
+        return sentences
 
     def _split_front_matter(self, content: str) -> tuple[str, str]:
         if not content.startswith("---"):

@@ -16,3 +16,7 @@ class TokenInvalidError(Exception):
 
 class SnapshotError(Exception):
     """Raised when a snapshot read or write operation fails."""
+
+
+class ChapterMismatchError(Exception):
+    """Raised when a markdown file's chapter identity disagrees with the chapter it is diffed against."""

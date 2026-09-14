@@ -2,9 +2,10 @@
 
 ## Backend Commands
 - Install dev deps from repo root: `source .venv/bin/activate && pip install -e '.[dev]'`.
-- Backend checks: `source .venv/bin/activate && make` — it runs isort, mypy, pylint, black, ruff, pycycle, and pytest.
-- Autofix/format before final checks when editing Python: `black src tests` and `ruff check --fix src tests`.
-- Focused tests: e.g. `pytest tests/models/test_documents.py`.
+- Backend checks: `source .venv/bin/activate && make` — it runs ruff (import sort + lint), mypy, pylint, black, pycycle, and pytest.
+- When editing Python code, autofix/format and check via `make`; do not call black or ruff directly.
+- Backend dev server: from `src/`, `source ../.venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000 --reload`. Requires the `NEO4J_URL`, `NEO4J_USER`, and `NEO4J_PASSWORD` environment variables (`.env` in the repo root, or exported).
+- Focused tests: e.g. `pytest tests/dockb/models/test_document.py`.
 
 ## Frontend Commands
 - Lint: `cd frontend && npm run lint`
@@ -21,7 +22,7 @@
 ## Specification
 
 - `README*.md` files hold the design context and the specification.
-- The root [`README.md`](README.md) describes the whole project.
+- The root [`README.md`](README.md) points to the install command; the whole-project specification lives in [`README.md`](README.md).
 - The **relevant** `README*.md` files for any part of the code are the `README*.md` files in the
   same directory as the code, and every parent directory up to the root — and
   likewise for the corresponding test file's directory chain.
@@ -45,7 +46,7 @@ Establish what is being built or fixed before planning.
 - Break the build into sections according to function, so that each section is small
   and all changes in the section stay in the same logical context.
 - **Ask** the user to approve the plan. If not approved, discuss with the user.
-- Write the agreed breakdown into the plan.
+- Keep the plan and the breakdown in your own working memory; do not create a separate plan document.
 - **Do not start the build until the user has re-read and approved the plan, including the
   breakdown.** The build may be a single section or a cycle of several sections.
 
@@ -59,7 +60,7 @@ Following are examples of what is meant by a "False Positive":
 - Pedantic nitpicks that a senior engineer wouldn't call out
 - Issues that a linter, typechecker, or compiler would catch (e.g. missing or incorrect imports, type errors,
   broken tests, formatting issues, pedantic style issues like newlines).
-  No need to run these checks yourself.
+  Don't flag these as review findings; the lint/test step in the build already surfaces them.
 - Changes in functionality that are likely intentional or are directly related to the broader change
 
 #### How to score issues
@@ -68,6 +69,7 @@ Following are examples of what is meant by a "False Positive":
   This is a [False positive](#false-positive) that doesn't stand up to light scrutiny.
 - Give an issue a score of 1 if you are somewhat confident.
   This might be a real issue, but may also be a false positive.
+  Leave it alone; mention it to the user only if notable.
 - Give an issue a score of 2 if you are moderately confident.
   It is verified as a real issue, but it might be a nitpick or not happen very often.
   Relative to the rest of the issues, it's not very important.
@@ -81,7 +83,16 @@ Following are examples of what is meant by a "False Positive":
 
 #### Work through each section of the breakdown, using this sequence:
 
-1. **README first.** Create or update the relevant `README*.md` files to reflect the design.
+1. **Revisit the specification first.** Review the [Specification](#specification).
+   Check for:
+   - ambiguity,
+   - inconsistency,
+   - contradictions,
+   - unnecessary repetitions,
+   - gaps and unanswered questions,
+   - claims that a test could not catch,
+   Fix what obviously needs fixing, and **ask** where you need a decision to be made,
+   then fix that also.
 2. **Skeletons.** Write the class/module skeletons.
 3. **Failing tests.** Write the tests; they should fail at this point.
 4. **Review.** Note that a misreading of the [Specification](#specification) propagates into
@@ -94,7 +105,8 @@ Following are examples of what is meant by a "False Positive":
 5. **Implement.** Write the code so the tests pass.
    Favor readable, self-describing code over compact code or large explanatory comments.
 6. **Lint, test, fix.** Run linting and the tests; fix anything that fails.
-   Run `source .venv/bin/activate && make` to run all tests, linters, and auto-reformatters.
+   Run `source .venv/bin/activate && make` to run all backend tests, linters, and auto-reformatters,
+   then run the frontend checks (`npm run lint`, `npm run build`, `npm test`).
 7. **Code Review**
    a. Find all the unstaged changes and review them in context with the [Specification](#specification).
    b. Do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes.
@@ -112,11 +124,36 @@ Following are examples of what is meant by a "False Positive":
    i. Fix every issue that scored 3 or 4.
       After fixing, tell the user about these and what you did to fix them.
    j. **Ask** the user about any issues that scored 2, whether to fix or not, and if so, how you would fix.
+8. **Reflect*** if changes were made to the [Specification](#specification) during steps
+   1-7 above, reflect them in the specification by editing the relevant `README*.md` files.
+
+9. **Commit** Git add the unstaged changes, and create a quick summary of the work
+   completed in this section and use it as the commit message.
+   - This will be limited to one sentence.
+   - Use domain words to say what it is for. (Not the mechanism or other details.)
+   - Use present tense, verb first, no subject.
+   Commit the changes.
+
+#### Loop
 
 A single build section may contain multiple TDD cycles.
 
-If changes are made during or after coding, reflect them in the plan and, where they
-affect the specification, in the relevant READMEs.
+Then repeat the sequence for the next section. 
 
-Then repeat the sequence for the next section. Once a PR has been code-reviewed and merged (which
-may not happen in order), prune its branch; leave unmerged branches in place.
+#### Wrap-up
+
+**Consolidate the specification**
+
+1. Compare the [Specification](#specification) to the code. The code should re-state everything
+   that is in the specification, in code rather than in English.
+   Remove anything in the READMEs that is adequately re-stated in the code.
+
+2. Executive Summary for each relevant `README*.md` file touched in this work:
+   (An executive summary will use simple language, to the point, aimed at someone who is not familiar with the work.
+   It will describe the reason for the document and what it achieves.
+   It should be no more than two paragraphs.
+   It will come under a heading "Executive Summary", and will be at the top of the file.)
+   Read the entire file, and generate a new summary.
+   If the file already has an "Executive Summary" section, replace it.
+
+3. **Ask** the user if the changes committed should be pushed to git.
