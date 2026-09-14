@@ -1,32 +1,52 @@
 # Change Detection
 
-`detect_changes` classifies what changed in a chapter between the **knowledge graph** and a
-**newly saved markdown file**, at paragraph granularity. It is the diff step of the synchronous
-save-and-rehydrate engine (see `README_markdown_redesign.md` §3 and §7-2): the loop reads the
-hydrated chapter from Neo4j, parses only the new file, and rehydrates the paragraphs that changed.
+## Executive Summary
+
+`detect_changes` classifies what changed in a chapter between the knowledge graph and a newly
+saved markdown file, at paragraph granularity. It is the diff step of the synchronous
+save-and-rehydrate engine: the loop reads the hydrated chapter from Neo4j, parses only the new
+file, and rehydrates the paragraphs that changed.
+
+The function takes two callbacks instead of a chapter object: `get_chapter` resolves the old
+chapter by id, and `create_chapter` supplies an empty skeleton when there is no old side. This lets
+a single implementation serve a brand-new chapter (new document, or appended to an existing one):
+a file with no YAML front matter is simply a new chapter whose every paragraph is reported new.
 
 ## Contract
 
 ```python
-detect_changes(old_chapter: Chapter, new_markdown: str, nlp: Language) -> ChapterDiff
+detect_changes(
+    new_markdown: str,
+    nlp: Language,
+    get_chapter: Callable[[str], Chapter | None],
+    create_chapter: Callable[[str | None], Chapter],
+) -> ChapterDiff
 ```
 
-- `old_chapter` — the hydrated `Chapter` pulled from the knowledge graph (paragraphs + sentences,
-  read via `get_text()`). The old side is **never re-parsed**; only the new markdown file is parsed.
-- `new_markdown` — the text of the saved file, including its YAML front matter.
+- `new_markdown` — the text of the saved file, including any YAML front matter.
 - `nlp` — the spaCy pipeline (`spacy.load("en_core_web_sm")`) injected like the history package's
   `SnapshotReader`/`SnapshotWriter`. It splits span-free text and loose gaps into sentences; it is
   never used to re-derive sentence boundaries inside identity spans.
+- `get_chapter` — resolves the *old* hydrated chapter (read from the knowledge graph) by chapter id.
+  It is called with the file's front-matter id when the file carries one. The old side is
+  **never re-parsed**; only the new markdown file is parsed.
+- `create_chapter` — builds the empty skeleton chapter when there is no old side. It is passed the
+  front-matter id, or `None` when the file has none; when it receives `None` it assigns the new
+  chapter's id itself. The caller supplies the implementation specific to "new document" or
+  "append to existing document" (the knowledge-graph wiring for those lives in the caller).
 
-Returns a `ChapterDiff` (see below). Unchanged paragraphs are omitted entirely; the diff only
-carries what the caller must rehydrate or delete.
+Returns a `ChapterDiff` (see below). The old chapter is whichever of `get_chapter` (found) or
+`create_chapter` (fallback) produced the non-empty side; a missing front matter (or an id no
+chapter answers for) therefore means every block in the file is a new paragraph. Unchanged
+paragraphs are omitted entirely; the diff only carries what the caller must rehydrate or delete.
 
 ### Front matter
 
-The file must start with YAML front matter (`---\n…\n---`) whose `id` equals `old_chapter.id`. A
-missing or mismatched `id` raises `ChapterMismatchError`; the file's identity must agree with the
-knowledge graph it is being diffed against. The front matter is then stripped and only the body is
-parsed. `title` and any extra attributes are ignored by this function.
+Front matter is **optional**. When present, the file must start with it (`---\n…\n---`) and its
+`id` selects the old chapter via `get_chapter`. A file that opens with `---` but is missing the
+closing `---` raises `ChapterMismatchError`. `title` and any extra attributes are ignored by this
+function. When the file has no front matter (or no `id` inside it), there is no old chapter to
+diff against: `get_chapter` is not called and `create_chapter` builds the skeleton.
 
 ## Parse rules (new markdown only)
 
@@ -72,7 +92,11 @@ class ChapterDiff:
     changed: list[ChangedParagraph] = field(default_factory=list)
     new: list[NewParagraph] = field(default_factory=list)
     deleted: list[str] = field(default_factory=list)
+    chapter_id: str = ""
 ```
+
+`chapter_id` is the resolved chapter identity — the front-matter id of the diffed file when
+present, otherwise the id assigned by `create_chapter` — so the caller learns a generated id.
 
 ## Files
 
