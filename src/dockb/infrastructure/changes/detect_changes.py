@@ -30,6 +30,8 @@ class NewParagraph:
     """A paragraph present only in the new markdown (no id, or id unknown to the DB)."""
 
     sentence_texts: list[str]
+    after_id: str | None = None
+    at_start: bool = False
 
 
 @dataclass
@@ -38,12 +40,18 @@ class ChapterDiff:
 
     ``chapter_id`` is the resolved chapter identity — the front-matter id of the
     diffed file when present, otherwise the id assigned by ``create_chapter``.
+    ``title`` is the front-matter title, else ``title_fallback``. ``front_id`` is
+    the file's front-matter id, if any; ``created`` is True when ``create_chapter``
+    supplied the old side.
     """
 
     changed: list[ChangedParagraph] = field(default_factory=list)
     new: list[NewParagraph] = field(default_factory=list)
     deleted: list[str] = field(default_factory=list)
     chapter_id: str = ""
+    title: str = ""
+    front_id: str | None = None
+    created: bool = False
 
     def __bool__(self) -> bool:
         return bool(self.changed or self.new or self.deleted)
@@ -53,7 +61,8 @@ def detect_changes(
     new_markdown: str,
     nlp: Language,
     get_chapter: Callable[[str], Chapter | None],
-    create_chapter: Callable[[str | None], Chapter],
+    create_chapter: Callable[[str | None, str], Chapter],
+    title_fallback: str = "",
 ) -> ChapterDiff:
     """Classify paragraph changes between a chapter and a new markdown file.
 
@@ -61,31 +70,70 @@ def detect_changes(
     resolved through ``get_chapter`` (its paragraphs' ``get_text``-ed sentences)
     and never re-parsed. A file with no YAML front matter (or with an id no
     chapter answers for) has no old side: ``create_chapter`` supplies the empty
-    skeleton, and every block in the file is a new paragraph.
+    skeleton and receives the resolved chapter title now. The resolved title is
+    the front-matter ``title`` when present, else ``title_fallback``; it is also
+    carried back on ``ChapterDiff.title``.
     """
-    front_id, body = _extract_front_matter(new_markdown)
+    front_id, front_title, body = _extract_front_matter(new_markdown)
+    title = front_title or title_fallback
 
     old_chapter = get_chapter(front_id) if front_id is not None else None
+    created = False
     if old_chapter is None:
-        old_chapter = create_chapter(front_id)
+        old_chapter = create_chapter(front_id, title)
+        created = True
 
     old_texts = {paragraph.id: _old_texts(paragraph) for paragraph in old_chapter.paragraphs}
+    changed, new, seen_ids = _classify_blocks(body, nlp, old_texts, bool(old_chapter.paragraphs))
 
-    diff = ChapterDiff(chapter_id=old_chapter.id)
+    return ChapterDiff(
+        changed=changed,
+        new=new,
+        deleted=[paragraph.id for paragraph in old_chapter.paragraphs if paragraph.id not in seen_ids],
+        chapter_id=old_chapter.id,
+        title=title,
+        front_id=front_id,
+        created=created,
+    )
+
+
+def _classify_blocks(
+    body: str,
+    nlp: Language,
+    old_texts: dict[str, list[str]],
+    chapter_has_paragraphs: bool,
+) -> tuple[list[ChangedParagraph], list[NewParagraph], set[str]]:
+    """Classify every block in *body*, returning ``(changed, new, seen_ids)``.
+
+    *anchor* is the nearest preceding block that survives (an unchanged or
+    changed paragraph); consecutive new blocks all carry the same anchor, and a
+    leading-new block is flagged ``at_start`` only when the old chapter already
+    has paragraphs (so placement at the start matters).
+    """
+    changed: list[ChangedParagraph] = []
+    new: list[NewParagraph] = []
     seen_ids: set[str] = set()
+    anchor: str | None = None
     for block in (part.strip() for part in body.split("\n\n")):
         if not block:
             continue
         par_id, sentence_texts = _parse_block(block, nlp)
         if par_id is None or par_id not in old_texts:
-            diff.new.append(NewParagraph(sentence_texts))
-        elif sentence_texts != old_texts[par_id]:
-            diff.changed.append(ChangedParagraph(par_id, sentence_texts))
+            new.append(
+                NewParagraph(
+                    sentence_texts,
+                    after_id=anchor,
+                    at_start=anchor is None and chapter_has_paragraphs,
+                )
+            )
+        else:
+            if sentence_texts != old_texts[par_id]:
+                changed.append(ChangedParagraph(par_id, sentence_texts))
+            anchor = par_id
         if par_id is not None:
             seen_ids.add(par_id)
 
-    diff.deleted = [paragraph.id for paragraph in old_chapter.paragraphs if paragraph.id not in seen_ids]
-    return diff
+    return changed, new, seen_ids
 
 
 def _old_texts(paragraph: Paragraph) -> list[str]:
@@ -148,19 +196,19 @@ def _span_attr(tag: str, name: str) -> str | None:
     return html.unescape(match.group(1))
 
 
-def _extract_front_matter(content: str) -> tuple[str | None, str]:
-    """Read an optional YAML front matter block and return its ``id`` and the body.
+def _extract_front_matter(content: str) -> tuple[str | None, str | None, str]:
+    """Read an optional YAML front matter block; return its ``id``, ``title``, and the body.
 
     Front matter is optional: a file without it is a new chapter (no ``id``).
     A file that opens with ``---`` but is missing the closing ``---`` is malformed.
     """
     stripped = content.strip()
     if not stripped.startswith("---"):
-        return None, content
+        return None, None, content
 
     parts = stripped.split("---", 2)
     if len(parts) < 3:
         raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
 
     attrs = yaml.safe_load(parts[1]) or {}
-    return attrs.get("id"), parts[2]
+    return attrs.get("id"), attrs.get("title"), parts[2]

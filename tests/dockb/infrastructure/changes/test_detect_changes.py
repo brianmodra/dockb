@@ -80,7 +80,7 @@ def test_span_free_block_is_new_and_nlp_split(nlp):
 
     diff = detect_changes(_front_matter() + body, nlp, _get_old(old), _no_create)
 
-    assert diff.new == [NewParagraph(sentence_texts=["Plain paragraph. ", "Second sentence."])]
+    assert diff.new == [NewParagraph(sentence_texts=["Plain paragraph. ", "Second sentence."], at_start=True)]
     assert not diff.changed
     assert diff.deleted == ["par-1"]
 
@@ -99,7 +99,7 @@ def test_span_bearing_block_with_unknown_id_is_new():
 
     diff = detect_changes(_front_matter() + body, None, _get_old(old), _no_create)
 
-    assert diff.new == [NewParagraph(sentence_texts=["Unknown paragraph."])]
+    assert diff.new == [NewParagraph(sentence_texts=["Unknown paragraph."], at_start=True)]
     assert diff.deleted == ["par-1"]
     assert "ghost" not in diff.deleted
 
@@ -210,8 +210,8 @@ def test_mixed_changed_and_new_and_deleted(nlp):
 
     assert diff.changed == [ChangedParagraph(par_id="par-1", sentence_texts=["New one. "])]
     assert diff.deleted == ["par-3"]
-    assert diff.new[-1] == NewParagraph(sentence_texts=["Hand typed block."])
-    assert NewParagraph(sentence_texts=["Fresh. "]) in diff.new
+    assert diff.new[-1] == NewParagraph(sentence_texts=["Hand typed block."], after_id="par-2")
+    assert NewParagraph(sentence_texts=["Fresh. "], after_id="par-1") in diff.new
     assert not any(changed.par_id == "par-2" for changed in diff.changed)
 
 
@@ -226,16 +226,22 @@ def test_diff_carries_the_resolved_chapter_id():
 
 def test_no_front_matter_is_a_new_chapter(nlp):
     created_ids: list[str | None] = []
+    created_titles: list[str] = []
     created = Chapter(id="c-fresh")
 
-    def create_chapter(chapter_id: str | None) -> Chapter:
+    def create_chapter(chapter_id: str | None, title: str) -> Chapter:
         created_ids.append(chapter_id)
+        created_titles.append(title)
         return created
 
-    diff = detect_changes("Brand new paragraph. Second sentence.", nlp, _no_get, create_chapter)
+    diff = detect_changes("Brand new paragraph. Second sentence.", nlp, _no_get, create_chapter, title_fallback="Fallback")
 
     assert created_ids == [None]
+    assert created_titles == ["Fallback"]
     assert diff.chapter_id == "c-fresh"
+    assert diff.title == "Fallback"
+    assert diff.front_id is None
+    assert diff.created is True
     assert diff.new == [NewParagraph(sentence_texts=["Brand new paragraph. ", "Second sentence."])]
     assert not diff.deleted
 
@@ -244,9 +250,12 @@ def test_front_matter_without_id_is_a_new_chapter(nlp):
     created = Chapter(id="c-fresh")
     content = '---\ntitle: "T"\n---\n\nLonesome paragraph.'
 
-    diff = detect_changes(content, nlp, _get_old(_chapter([])), lambda chapter_id: created)
+    diff = detect_changes(content, nlp, _get_old(_chapter([])), lambda _chapter_id, title: created)
 
     assert diff.chapter_id == "c-fresh"
+    assert diff.title == "T"
+    assert diff.front_id is None
+    assert diff.created is True
     assert diff.new == [NewParagraph(sentence_texts=["Lonesome paragraph."])]
 
 
@@ -262,14 +271,19 @@ def test_front_matter_id_is_used_to_lookup_the_old_chapter():
 
     assert lookups == ["c-1"]
     assert diff.chapter_id == "c-1"
+    assert diff.title == "T"
+    assert diff.front_id == "c-1"
+    assert diff.created is False
     assert not diff
 
 
 def test_front_matter_id_with_no_kg_chapter_creates_with_that_id():
     created_ids: list[str | None] = []
+    created_titles: list[str] = []
 
-    def create_chapter(chapter_id: str | None) -> Chapter:
+    def create_chapter(chapter_id: str | None, title: str) -> Chapter:
         created_ids.append(chapter_id)
+        created_titles.append(title)
         return Chapter(id=chapter_id or "generated")
 
     diff = detect_changes(
@@ -280,8 +294,92 @@ def test_front_matter_id_with_no_kg_chapter_creates_with_that_id():
     )
 
     assert created_ids == ["c-9"]
+    assert created_titles == ["T"]
     assert diff.chapter_id == "c-9"
+    assert diff.title == "T"
+    assert diff.front_id == "c-9"
+    assert diff.created is True
     assert diff.new == [NewParagraph(sentence_texts=["One. "])]
+
+
+def test_consecutive_new_paragraphs_share_the_anchor(nlp):
+    old = _chapter([("par-1", ["Known. "])])
+    body = '<span data-par-id="par-1">Known. </span>\n\n' "Brand new A.\n\n" "Brand new B."
+
+    diff = detect_changes(_front_matter() + body, nlp, _get_old(old), _no_create)
+
+    assert diff.new == [
+        NewParagraph(sentence_texts=["Brand new A."], after_id="par-1"),
+        NewParagraph(sentence_texts=["Brand new B."], after_id="par-1"),
+    ]
+    assert not diff.changed
+    assert not diff.deleted
+
+
+def test_leading_new_paragraphs_are_at_start(nlp):
+    old = _chapter([("par-1", ["Known. "])])
+    body = 'Brand new A.\n\nBrand new B.\n\n<span data-par-id="par-1">Known. </span>'
+
+    diff = detect_changes(_front_matter() + body, nlp, _get_old(old), _no_create)
+
+    assert diff.new == [
+        NewParagraph(sentence_texts=["Brand new A."], at_start=True),
+        NewParagraph(sentence_texts=["Brand new B."], at_start=True),
+    ]
+    assert not diff.changed
+    assert not diff.deleted
+
+
+def test_new_paragraph_after_changed_uses_its_id(nlp):
+    old = _chapter([("par-1", ["Old one. "])])
+    body = '<span data-par-id="par-1">New one. </span>\n\nBrand new.'
+
+    diff = detect_changes(_front_matter() + body, nlp, _get_old(old), _no_create)
+
+    assert diff.changed == [ChangedParagraph(par_id="par-1", sentence_texts=["New one. "])]
+    assert diff.new == [NewParagraph(sentence_texts=["Brand new."], after_id="par-1")]
+
+
+def test_new_paragraph_after_unchanged_uses_its_id(nlp):
+    old = _chapter([("par-1", ["Known. "])])
+    body = 'Brand new.\n\n<span data-par-id="par-1">Known. </span>\n\nAlso new.'
+
+    diff = detect_changes(_front_matter() + body, nlp, _get_old(old), _no_create)
+
+    assert diff.new == [
+        NewParagraph(sentence_texts=["Brand new."], at_start=True),
+        NewParagraph(sentence_texts=["Also new."], after_id="par-1"),
+    ]
+
+
+def test_front_matter_title_wins_over_fallback(nlp):
+    created = Chapter(id="c-fresh")
+    content = '---\ntitle: "FM Title"\n---\n\nLonesome paragraph.'
+    res: list[str] = []
+
+    def create_chapter(_chapter_id: str | None, title: str) -> Chapter:
+        res.append(title)
+        return created
+
+    diff = detect_changes(content, nlp, _get_old(_chapter([])), create_chapter, title_fallback="Fallback")
+
+    assert res == ["FM Title"]
+    assert diff.title == "FM Title"
+
+
+def test_front_matter_without_title_uses_fallback(nlp):
+    created = Chapter(id="c-fresh")
+    content = '---\nid: "c-9"\n---\n\nLonesome paragraph.'
+    res: list[str] = []
+
+    def create_chapter(_chapter_id: str | None, title: str) -> Chapter:
+        res.append(title)
+        return created
+
+    diff = detect_changes(content, nlp, lambda _chapter_id: None, create_chapter, title_fallback="Fallback")
+
+    assert res == ["Fallback"]
+    assert diff.title == "Fallback"
 
 
 def test_missing_closing_front_matter_raises():
