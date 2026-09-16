@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
 from spacy.language import Language
 
 from dockb.exceptions import ChapterMismatchError
@@ -23,6 +25,11 @@ from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import InsertionMode
 from dockb.repositories.chapter_repository import ChapterRepository
+from dockb.repositories.document_repository import DocumentRepository
+
+logger = logging.getLogger(__name__)
+
+_METADATA_FILE = "document_metadata.yaml"
 
 
 @dataclass
@@ -31,9 +38,18 @@ class ChapterImportSummary:
 
     chapter_id: str
     created: bool
+    title: str = ""
     changed: int = 0
     added: int = 0
     deleted: int = 0
+
+
+@dataclass
+class DocumentMetadata:
+    """The document's title and author, as located by the directory walker."""
+
+    title: str
+    author: str
 
 
 def apply_chapter_file(
@@ -91,10 +107,57 @@ def apply_chapter_file(
     return ChapterImportSummary(
         chapter_id=chapter.id,
         created=diff.created,
+        title=diff.title,
         changed=len(changed_paragraphs),
         added=len(added_paragraphs),
         deleted=len(diff.deleted),
     )
+
+
+def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetadata:
+    """Read a document directory's metadata, defaulting the missing fields.
+
+    ``title`` defaults to the directory name, ``author`` to *user_name* when
+    ``document_metadata.yaml`` is absent or does not carry the field.
+    """
+    attrs: dict[str, object] = {}
+    metadata_path = document_dir / _METADATA_FILE
+    if metadata_path.is_file():
+        parsed = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            attrs = parsed
+    return DocumentMetadata(
+        title=str(attrs.get("title") or document_dir.name),
+        author=str(attrs.get("author") or user_name),
+    )
+
+
+def _resolve_document(
+    document_dir: Path,
+    metadata: DocumentMetadata,
+    document_repo: DocumentRepository,
+    uow_factory: UnitOfWorkFactory,
+) -> Document:
+    """Return the graph Document for a document directory, creating it if missing.
+
+    An existing Document is matched by exact title and reused; a directory whose
+    title no Document answers for is turned into a fresh NEW Document and
+    persisted immediately, so later chapter imports can link to it.
+    """
+    matches = [row for row in document_repo.list_all() if row["title"] == metadata.title]
+    if matches:
+        if len(matches) > 1:
+            logger.warning("Multiple documents titled %r; reusing %r", metadata.title, matches[0]["id"])
+        document = document_repo.load(matches[0]["id"])
+        if document is not None:
+            return document
+        logger.warning("Document %r listed but could not be loaded", matches[0]["id"])
+    document = Document(title=metadata.title, author=metadata.author, state=DataState.NEW)
+    uow = uow_factory.get_unit_of_work()
+    uow.register(document)
+    uow.commit()
+    logger.debug("Persisted new document %r under %s", document.id, document_dir)
+    return document
 
 
 def _persist(

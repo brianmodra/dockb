@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +15,14 @@ from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
 from dockb.repositories.chapter_repository import ChapterRepository
-from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
+from dockb.repositories.document_repository import DocumentRepository
+from dockb.services.markdown_import import (
+    ChapterImportSummary,
+    DocumentMetadata,
+    _read_document_metadata,
+    _resolve_document,
+    apply_chapter_file,
+)
 
 
 def _make_paragraph(par_id: str, *sentence_texts: str) -> Paragraph:
@@ -275,3 +283,88 @@ class TestNewParagraphPlacement:
 
         saved, _ = _saved_chapter(uow)
         assert [p.sentences[0].get_text() for p in saved.paragraphs] == ["Lead1.", "Lead2.", "A."]
+
+
+class TestDocumentMetadata:
+    def test_reads_title_and_author_from_yaml(self, tmp_path):
+        (tmp_path / "document_metadata.yaml").write_text("title: Linchpin\nauthor: Brian\n")
+        metadata = _read_document_metadata(tmp_path, "User")
+        assert metadata.title == "Linchpin"
+        assert metadata.author == "Brian"
+
+    def test_missing_file_defaults_to_dir_name_and_user(self, tmp_path):
+        metadata = _read_document_metadata(tmp_path, "User")
+        assert metadata.title == tmp_path.name
+        assert metadata.author == "User"
+
+    def test_partial_metadata_falls_back_for_missing_field(self, tmp_path):
+        (tmp_path / "document_metadata.yaml").write_text("title: Linchpin\n")
+        metadata = _read_document_metadata(tmp_path, "User")
+        assert metadata.title == "Linchpin"
+        assert metadata.author == "User"
+
+    def test_non_dict_yaml_is_ignored(self, tmp_path):
+        (tmp_path / "document_metadata.yaml").write_text("- a\n- b\n")
+        metadata = _read_document_metadata(tmp_path, "User")
+        assert metadata.title == tmp_path.name
+        assert metadata.author == "User"
+
+
+class TestResolveDocument:
+    def _repo_with(self, rows):
+        repo = MagicMock(spec=DocumentRepository)
+        repo.list_all.return_value = rows
+        return repo
+
+    def test_reuses_existing_document_by_title(self):
+        repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
+        loaded = Document(id="d1", state=DataState.SYNC)
+        repo.load.return_value = loaded
+        uow_factory = MagicMock()
+
+        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert result is loaded
+        repo.load.assert_called_once_with("d1")
+        uow_factory.get_unit_of_work.assert_not_called()
+
+    def test_multiple_matches_uses_first(self):
+        repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}, {"id": "d2", "title": "Linchpin", "author": "A"}])
+        loaded = Document(id="d1", state=DataState.SYNC)
+        repo.load.return_value = loaded
+        uow_factory = MagicMock()
+
+        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert result is loaded
+        repo.load.assert_called_once_with("d1")
+
+    def test_creates_new_document_when_no_match(self):
+        repo = self._repo_with([])
+        uow = MagicMock()
+        uow_factory = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert isinstance(result, Document)
+        assert result.id != "d1"
+        assert result.title == "Linchpin"
+        assert result.author == "User"
+        assert result.state is DataState.NEW
+        uow.register.assert_called_once_with(result)
+        uow.commit.assert_called_once()
+
+    def test_creates_when_load_misses(self):
+        repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
+        repo.load.return_value = None
+        uow = MagicMock()
+        uow_factory = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert result.state is DataState.NEW
+        assert result.title == "Linchpin"
+        uow.register.assert_called_once_with(result)
+        uow.commit.assert_called_once()

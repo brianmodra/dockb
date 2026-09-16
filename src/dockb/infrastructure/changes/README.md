@@ -36,6 +36,14 @@ Chapters are identified by the front-matter `id` of their file. A chapter file a
 the document it lives under: if the file's front matter names a chapter that is not a child of the
 document being edited, that is an error, not a reason to create a chapter elsewhere.
 
+`document_metadata.yaml` carries the document's `title` and `author` (strings). When the file is
+absent, `title` defaults to the document directory's name and `author` to the current user name
+(passed into the walker). The walker matches a directory to a graph `Document` by exact title and
+reuses it (new chapters are appended to it, existing ones changed); a directory whose title no
+document answers for becomes a new `Document` persisted before any chapter import, because the
+chapter write path requires the parent `Document` node to already exist. (Later, an `id` field in
+the yaml could replace the title-based match.)
+
 The function this package contracts with is a **per-chapter-file** caller: it takes one markdown
 chapter file and the hydrated `Document` it belongs to. A separate, directory-aware function (not
 yet written) walks a document directory, reads `document_metadata.yaml`, resolves the `Document`,
