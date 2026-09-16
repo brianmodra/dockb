@@ -134,7 +134,53 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
         raise ValueError(f"Document directory '{dir_path}' does not exist")
     metadata = _read_document_metadata(dir_path, user_name)
     document = _resolve_document(dir_path, metadata, document_repo, uow_factory)
-    return [apply_chapter_file(document, chapter_file, nlp, chapter_repo, uow_factory) for chapter_file in sorted(dir_path.rglob("*.md"))]
+    summaries = []
+    for chapter_file in sorted(dir_path.rglob("*.md")):
+        summary = apply_chapter_file(document, chapter_file, nlp, chapter_repo, uow_factory)
+        if summary.created:
+            _write_back_front_matter(chapter_file, summary)
+        summaries.append(summary)
+    return summaries
+
+
+def _write_back_front_matter(chapter_file: Path, summary: ChapterImportSummary) -> None:
+    """Persist the new chapter's id/title in the file's front matter.
+
+    A chapter that was just created (``summary.created``) has no file identity
+    yet; its id is written into (or added to) the file's YAML front matter so
+    later imports match it. Files that already carried a known id are untouched.
+    """
+    content = chapter_file.read_text(encoding="utf-8")
+    chapter_file.write_text(_with_front_matter(content, summary.chapter_id, summary.title), encoding="utf-8")
+
+
+def _front_matter_block(chapter_id: str, title: str) -> str:
+    attrs: dict[str, object] = {"id": chapter_id, "title": title}
+    return "---\n" + yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False) + "---\n"
+
+
+def _with_front_matter(content: str, chapter_id: str, title: str) -> str:
+    """Return *content* with ``id``/``title`` merged into its front matter.
+
+    A file with no opening ``---`` gets a front matter block prepended; one with
+    an existing block keeps its other attributes, only ``id`` and ``title`` being
+    added or overwritten.
+    """
+    if not content.startswith("---"):
+        return _front_matter_block(chapter_id, title) + content
+    lines = content.splitlines(keepends=True)
+    closing = next((index for index in range(1, len(lines)) if lines[index].startswith("---")), None)
+    if closing is None:
+        raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
+    attrs = yaml.safe_load("".join(lines[1:closing])) or {}
+    if not isinstance(attrs, dict):
+        raise ChapterMismatchError("Front matter must be a mapping of key: value pairs")
+    attrs = dict(attrs)
+    attrs["id"] = chapter_id
+    attrs["title"] = title
+    merged = yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    body = "".join(lines[closing + 1 :])
+    return "---\n" + merged + "---\n" + body
 
 
 def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetadata:

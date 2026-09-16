@@ -22,6 +22,7 @@ from dockb.services.markdown_import import (
     DocumentMetadata,
     _read_document_metadata,
     _resolve_document,
+    _write_back_front_matter,
     apply_chapter_file,
     import_document_directory,
 )
@@ -443,8 +444,63 @@ class TestImportDocumentDirectory:
 
         result = import_document_directory(tmp_path, "User", nlp, None, None, None)
 
-        assert result == []
+        assert not result
 
     def test_missing_directory_raises(self, nlp, tmp_path):
         with pytest.raises(ValueError, match="does not exist"):
             import_document_directory(tmp_path / "nope", "User", nlp, None, None, None)
+
+
+class TestWriteBackFrontMatter:
+    def test_prepends_front_matter_when_absent(self, tmp_path):
+        chapter_file = tmp_path / "new.md"
+        chapter_file.write_text("# Ch\n\nbody\n")
+
+        _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c1", created=True, title="Ch"))
+
+        assert chapter_file.read_text() == "---\nid: c1\ntitle: Ch\n---\n# Ch\n\nbody\n"
+
+    def test_merges_id_and_title_into_existing_front_matter(self, tmp_path):
+        chapter_file = tmp_path / "new.md"
+        chapter_file.write_text("---\nfoo: bar\n---\nbody\n")
+
+        _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c1", created=True, title="T"))
+
+        assert chapter_file.read_text() == "---\nfoo: bar\nid: c1\ntitle: T\n---\nbody\n"
+
+    def test_keeps_existing_id_when_other_attrs_present(self, tmp_path):
+        chapter_file = tmp_path / "new.md"
+        chapter_file.write_text("---\nauthor: Brian\n---\nbody\n")
+
+        _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c9", created=True, title="T"))
+
+        assert "author: Brian\n" in chapter_file.read_text()
+        assert "id: c9\n" in chapter_file.read_text()
+
+    def test_unclosed_front_matter_raises(self, tmp_path):
+        chapter_file = tmp_path / "new.md"
+        chapter_file.write_text("---\nfoo: bar\nbody\n")
+
+        with pytest.raises(ChapterMismatchError, match="closing"):
+            _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c1", created=True, title="T"))
+
+    def test_walker_writes_back_only_for_created_chapters(self, nlp, tmp_path, monkeypatch):
+        new_file = tmp_path / "new.md"
+        new_file.write_text("fresh")
+        kept_file = tmp_path / "kept.md"
+        kept_file.write_text("old")
+        document = Document(id="d1", state=DataState.SYNC)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
+
+        def fake_apply(*args):
+            chapter_file = Path(args[1])
+            if chapter_file.name == "new.md":
+                return ChapterImportSummary(chapter_id="c-new", created=True, title="New")
+            return ChapterImportSummary(chapter_id="c-old", created=False, title="Old")
+
+        monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
+
+        import_document_directory(tmp_path, "User", nlp, None, MagicMock(spec=ChapterRepository), MagicMock())
+
+        assert new_file.read_text() == "---\nid: c-new\ntitle: New\n---\nfresh"
+        assert kept_file.read_text() == "old"

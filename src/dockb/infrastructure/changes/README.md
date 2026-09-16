@@ -49,7 +49,10 @@ chapter file and the hydrated `Document` it belongs to. `import_document_directo
 `dockb.services.markdown_import` is the directory-aware walker: it walks a document directory,
 reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-file caller once per
 `*.md` file found recursively (in sorted order), returning one summary per file. A chapter file
-whose front-matter `id` belongs to a different document aborts the whole directory import.
+whose front-matter `id` belongs to a different document aborts the whole directory import. A file
+that is created during the import (its front matter carried no `id` the graph answered for) is
+rewritten in place: the new chapter's `id` and `title` are merged into its front matter, any other
+attributes being preserved; a file with a known `id` is left as it is.
 
 ## Contract
 
