@@ -16,12 +16,14 @@ from dockb.models.sentence import Sentence
 from dockb.models.token import Token
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
+from dockb.services import markdown_import
 from dockb.services.markdown_import import (
     ChapterImportSummary,
     DocumentMetadata,
     _read_document_metadata,
     _resolve_document,
     apply_chapter_file,
+    import_document_directory,
 )
 
 
@@ -368,3 +370,81 @@ class TestResolveDocument:
         assert result.title == "Linchpin"
         uow.register.assert_called_once_with(result)
         uow.commit.assert_called_once()
+
+
+class TestImportDocumentDirectory:
+    def test_imports_every_markdown_file_in_sorted_order(self, nlp, tmp_path, monkeypatch):
+        act_i = tmp_path / "Act I"
+        act_ii = tmp_path / "Act II" / "deeper"
+        (tmp_path / "Chapter 1.md").write_text("a")
+        act_i.mkdir(parents=True)
+        (act_i / "Chapter 2.md").write_text("b")
+        act_ii.mkdir(parents=True)
+        (act_ii / "Chapter 3.md").write_text("c")
+
+        document = Document(id="d1", state=DataState.SYNC)
+        document_repo = MagicMock(spec=DocumentRepository)
+        document_repo.list_all.return_value = [{"id": "d1", "title": tmp_path.name, "author": "User"}]
+        document_repo.load.return_value = document
+        chapter_repo = MagicMock(spec=ChapterRepository)
+        uow_factory = MagicMock()
+        summaries = [
+            ChapterImportSummary(chapter_id="c1", created=True),
+            ChapterImportSummary(chapter_id="c2", created=True),
+            ChapterImportSummary(chapter_id="c3", created=True),
+        ]
+        calls: list[tuple] = []
+
+        def fake_apply(*args):
+            calls.append(args)
+            return summaries[len(calls) - 1]
+
+        monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
+
+        result = import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory)
+
+        assert result == summaries
+        assert [Path(args[1]).name for args in calls] == ["Chapter 2.md", "Chapter 3.md", "Chapter 1.md"]
+        assert all(args[0] is document for args in calls)
+        assert all(args[2] is nlp for args in calls)
+        assert all(args[3] is chapter_repo for args in calls)
+        assert all(args[4] is uow_factory for args in calls)
+
+    def test_resolves_document_via_metadata_helpers(self, nlp, tmp_path, monkeypatch):
+        (tmp_path / "Chapter 1.md").write_text("a")
+        document = Document(id="d1", state=DataState.SYNC)
+        resolved: list[tuple] = []
+        chapter_repo = MagicMock(spec=ChapterRepository)
+        uow_factory = MagicMock()
+        monkeypatch.setattr(markdown_import, "_read_document_metadata", lambda d, u: DocumentMetadata("T", u))
+        monkeypatch.setattr(
+            markdown_import,
+            "_resolve_document",
+            lambda d, metadata, document_repo, uow_factory: resolved.append((d, metadata)) or document,
+        )
+        monkeypatch.setattr(
+            markdown_import,
+            "apply_chapter_file",
+            lambda document, file, nlp, chapter_repo, uow_factory: ChapterImportSummary("c1", False),
+        )
+
+        import_document_directory(tmp_path, "User", nlp, MagicMock(), chapter_repo, uow_factory)
+
+        assert resolved == [(tmp_path, DocumentMetadata("T", "User"))]
+
+    def test_no_chapter_files_returns_empty(self, nlp, tmp_path, monkeypatch):
+        document = Document(id="d1", state=DataState.SYNC)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
+        monkeypatch.setattr(
+            markdown_import,
+            "apply_chapter_file",
+            lambda *a: (_ for _ in ()).throw(AssertionError("no chapter file expected")),
+        )
+
+        result = import_document_directory(tmp_path, "User", nlp, None, None, None)
+
+        assert result == []
+
+    def test_missing_directory_raises(self, nlp, tmp_path):
+        with pytest.raises(ValueError, match="does not exist"):
+            import_document_directory(tmp_path / "nope", "User", nlp, None, None, None)

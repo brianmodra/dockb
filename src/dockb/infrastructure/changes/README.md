@@ -45,9 +45,11 @@ chapter write path requires the parent `Document` node to already exist. (Later,
 the yaml could replace the title-based match.)
 
 The function this package contracts with is a **per-chapter-file** caller: it takes one markdown
-chapter file and the hydrated `Document` it belongs to. A separate, directory-aware function (not
-yet written) walks a document directory, reads `document_metadata.yaml`, resolves the `Document`,
-and invokes the per-file caller once per chapter file.
+chapter file and the hydrated `Document` it belongs to. `import_document_directory()` in
+`dockb.services.markdown_import` is the directory-aware walker: it walks a document directory,
+reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-file caller once per
+`*.md` file found recursively (in sorted order), returning one summary per file. A chapter file
+whose front-matter `id` belongs to a different document aborts the whole directory import.
 
 ## Contract
 

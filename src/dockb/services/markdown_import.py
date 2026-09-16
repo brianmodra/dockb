@@ -114,6 +114,29 @@ def apply_chapter_file(
     )
 
 
+def import_document_directory(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    document_dir: str | Path,
+    user_name: str,
+    nlp: Language,
+    document_repo: DocumentRepository,
+    chapter_repo: ChapterRepository,
+    uow_factory: UnitOfWorkFactory,
+) -> list[ChapterImportSummary]:
+    """Import every chapter file under a document directory into its graph Document.
+
+    Files are found recursively (``*.md`` anywhere beneath *document_dir*), in
+    sorted order. The whole directory is imported into a single Document,
+    resolved by its metadata (see ``_read_document_metadata``/``_resolve_document``),
+    and one summary is returned per chapter file.
+    """
+    dir_path = Path(document_dir)
+    if not dir_path.is_dir():
+        raise ValueError(f"Document directory '{dir_path}' does not exist")
+    metadata = _read_document_metadata(dir_path, user_name)
+    document = _resolve_document(dir_path, metadata, document_repo, uow_factory)
+    return [apply_chapter_file(document, chapter_file, nlp, chapter_repo, uow_factory) for chapter_file in sorted(dir_path.rglob("*.md"))]
+
+
 def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetadata:
     """Read a document directory's metadata, defaulting the missing fields.
 
