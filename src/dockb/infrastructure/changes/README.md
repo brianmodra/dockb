@@ -2,17 +2,18 @@
 
 ## Executive Summary
 
-`detect_changes` classifies what changed in a chapter between the knowledge graph and a newly
-edited markdown file, at paragraph granularity, and describes where each new paragraph must be
-placed. It is the diff step of a caller that rehydrates the knowledge graph from a saved file: the
-loop reads the hydrated chapter from Neo4j, parses only the new file, and returns what the caller
-must add, change, and delete.
+This document specifies how a saved markdown chapter file is reconciled with the knowledge
+graph. Two pieces implement it: `detect_changes` reports the paragraph-level changes between the
+graph's chapter and the file — what to add, change, and delete, and where each new paragraph
+belongs — and `apply_chapter_file` (a service in `services/markdown_import.py`) turns that report
+into graph writes, after checking that the file's chapter really belongs to the document being
+edited.
 
-The function takes callbacks instead of a chapter object: `get_chapter` resolves the old chapter
-by id, and `create_chapter` supplies an empty skeleton (with the chapter title) when there is no
-old side. The caller applies the diff by rebuilding the chapter model in memory — inserting new
-paragraphs, replacing changed sentences, dropping deleted paragraphs — and persisting the whole
-chapter, because paragraph ordering is only guaranteed when it is written at the chapter level.
+Only the new file is parsed; the chapter already in the graph is never re-parsed. The caller
+rebuilds the chapter in memory from the diff and persists the whole chapter in one commit,
+because paragraph order is only stored on the chapter-level edges. Read this document to learn
+how chapter files map back into the graph, which files count as new vs edited, and what the
+caller guarantees.
 
 ## Calling context
 
@@ -36,9 +37,9 @@ the document it lives under: if the file's front matter names a chapter that is 
 document being edited, that is an error, not a reason to create a chapter elsewhere.
 
 The function this package contracts with is a **per-chapter-file** caller: it takes one markdown
-chapter file and the hydated `Document` it belongs to. A separate, directory-aware function (not
-described here) walks a document directory, reads `document_metadata.yaml`, resolves the
-`Document`, and invokes the per-file caller once per chapter file.
+chapter file and the hydrated `Document` it belongs to. A separate, directory-aware function (not
+yet written) walks a document directory, reads `document_metadata.yaml`, resolves the `Document`,
+and invokes the per-file caller once per chapter file.
 
 ## Contract
 
@@ -209,7 +210,7 @@ is the precedent for whole-chapter persistence.
 - `detect_changes.py` — the diff implementation plus the data structures above.
 - `ChapterMismatchError` lives in `dockb/exceptions.py`, alongside the other domain exceptions.
 - The per-chapter-file caller is `services/markdown_import.py` (`apply_chapter_file`), a service
-  consumer of this package; `composition.py` wires it.
+  consumer of this package; `composition.py` is where it will be wired.
 
 See `README_markdown_redesign.md` §4 ("The sentence-boundary format rule") and §6 ("Sentence
 metadata in the format") for the format; `../history/README.md` describes the writer/reader that

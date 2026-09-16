@@ -1,5 +1,16 @@
 # Design of the service to do edits on the models
 
+## Executive Summary
+
+This document covers the backend service layer for editing a document's text and semantics: how
+model changes are queued and re-tokenized per session, how sentences are split during re-tokenization,
+and how deletion cascades. It is written for developers touching the editing services.
+
+One service is deliberately outside this flow: the bulk re-sync import caller
+(`services/markdown_import.py`, `apply_chapter_file`) matches a saved markdown chapter file back
+against the graph as a one-shot, whole-chapter write instead of fine-grained edit requests. It is
+described at `../infrastructure/changes/README.md`; what follows here is the editing side.
+
 ## Context
 
 JobQueue and DocCache objects are specific to a user's OAuth logged in session.
