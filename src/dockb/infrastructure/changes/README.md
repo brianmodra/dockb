@@ -192,6 +192,12 @@ to load chapters and persist models. Its steps:
    which is the `deleted` set) *and* register each new/changed paragraph for its sentence content.
    Commit once.
 
+The chapter is always registered with `document_id=<the hydrated document's id>` — matching the
+`MATCH (d:Document {id: $document_id})` that opens the chapter write path, so the whole query runs
+(the re-link on the `PART_OF` edge is an idempotent `MERGE`). An empty diff (nothing to add,
+change, or delete) persists nothing: an unchanged file re-save is a no-op, and a brand-new empty
+chapter is reported as `created` but is not written until it gains content.
+
 Paragraph ordering is persisted as `index` on the `(Paragraph)-[:PART_OF]->(Chapter)` edge. The
 paragraph-level write path (`ParagraphRepository`) does **not** set this index; ordering is
 guaranteed only when the caller persists the whole rebuilt chapter, which is why step 4 is
@@ -202,7 +208,8 @@ is the precedent for whole-chapter persistence.
 
 - `detect_changes.py` — the diff implementation plus the data structures above.
 - `ChapterMismatchError` lives in `dockb/exceptions.py`, alongside the other domain exceptions.
-- The per-chapter-file caller is a service consumer of this package; `composition.py` wires it.
+- The per-chapter-file caller is `services/markdown_import.py` (`apply_chapter_file`), a service
+  consumer of this package; `composition.py` wires it.
 
 See `README_markdown_redesign.md` §4 ("The sentence-boundary format rule") and §6 ("Sentence
 metadata in the format") for the format; `../history/README.md` describes the writer/reader that

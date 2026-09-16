@@ -304,7 +304,7 @@ def test_front_matter_id_with_no_kg_chapter_creates_with_that_id():
 
 def test_consecutive_new_paragraphs_share_the_anchor(nlp):
     old = _chapter([("par-1", ["Known. "])])
-    body = '<span data-par-id="par-1">Known. </span>\n\n' "Brand new A.\n\n" "Brand new B."
+    body = '<span data-par-id="par-1">Known. </span>\n\n' + "Brand new A.\n\n" + "Brand new B."
 
     diff = detect_changes(_front_matter() + body, nlp, _get_old(old), _no_create)
 
