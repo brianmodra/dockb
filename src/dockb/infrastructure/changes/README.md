@@ -2,18 +2,18 @@
 
 ## Executive Summary
 
-This document specifies how a saved markdown chapter file is reconciled with the knowledge
-graph. Two pieces implement it: `detect_changes` reports the paragraph-level changes between the
-graph's chapter and the file — what to add, change, and delete, and where each new paragraph
-belongs — and `apply_chapter_file` (a service in `services/markdown_import.py`) turns that report
-into graph writes, after checking that the file's chapter really belongs to the document being
-edited.
+This document specifies how markdown chapter files are brought back into the knowledge graph. One
+piece, `detect_changes`, turns a saved file into a paragraph-level report — what to add, change, and
+delete, and where each new paragraph goes — without ever re-parsing the chapter the graph already
+holds. A second piece, `apply_chapter_file`, puts that report into effect as graph writes after
+checking the file's chapter really belongs to the document being edited.
 
-Only the new file is parsed; the chapter already in the graph is never re-parsed. The caller
-rebuilds the chapter in memory from the diff and persists the whole chapter in one commit,
-because paragraph order is only stored on the chapter-level edges. Read this document to learn
-how chapter files map back into the graph, which files count as new vs edited, and what the
-caller guarantees.
+`import_document_directory` then drives the whole process from the shell: it walks a document's
+directory for markdown files, resolves the directory to one `Document` from its metadata
+(`document_metadata.yaml`), imports each chapter file, and writes a fresh chapter's `id` and `title`
+back into its file so the next import matches it. Read this document to learn how chapter files map
+back into the graph, which files count as new versus edited, what the caller guarantees, and how a
+document directory becomes graph data.
 
 ## Calling context
 
@@ -52,9 +52,8 @@ reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-fil
 whose front-matter `id` belongs to a different document aborts the whole directory import. A file
 that is created during the import (its front matter carried no `id` the graph answered for) is
 rewritten in place: the new chapter's `id` and `title` are merged into its front matter, any other
-attributes being preserved; a file with a known `id` is left as it is. From a shell the walker is
-driven by `python -m dockb.cli.import_document <document_dir>`, which reads its Neo4j connection
-from `NEO4J_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` and imports as the current user.
+attributes being preserved; a file with a known `id` is left as it is. From a shell,
+`python -m dockb.cli.import_document <document_dir>` drives the walker.
 
 ## Contract
 
@@ -128,28 +127,10 @@ Merge case: old ids vanish (deleted) while the merged block carries either a sur
 
 ## Data structures
 
-```python
-@dataclass
-class ChangedParagraph:
-    par_id: str
-    sentence_texts: list[str]
-
-@dataclass
-class NewParagraph:
-    sentence_texts: list[str]
-    after_id: str | None = None   # nearest preceding *surviving* paragraph, propagated across a run
-    at_start: bool = False        # no surviving paragraph precedes it; chapter pre-exists non-empty
-
-@dataclass
-class ChapterDiff:
-    changed: list[ChangedParagraph] = field(default_factory=list)
-    new: list[NewParagraph] = field(default_factory=list)
-    deleted: list[str] = field(default_factory=list)
-    chapter_id: str = ""
-    title: str = ""               # front-matter title, else title_fallback
-    front_id: str | None = None   # the file's front-matter id, if any
-    created: bool = False         # True when create_chapter supplied the old side
-```
+`ChangedParagraph`, `NewParagraph`, and `ChapterDiff` are defined in `detect_changes.py`. Beyond
+the three change lists, `ChapterDiff` carries `chapter_id` — the resolved chapter identity, the
+file's front-matter id or the id `create_chapter` assigned — `title`, `front_id`, and `created`,
+which together let `apply_chapter_file` enforce document membership and learn a generated id.
 
 ### New paragraph placement
 
@@ -225,7 +206,7 @@ is the precedent for whole-chapter persistence.
 - `detect_changes.py` — the diff implementation plus the data structures above.
 - `ChapterMismatchError` lives in `dockb/exceptions.py`, alongside the other domain exceptions.
 - The per-chapter-file caller is `services/markdown_import.py` (`apply_chapter_file`), a service
-  consumer of this package; `composition.py` is where it will be wired.
+  consumer of this package; wiring it into the app is tracked in `../../../../README_todo.md`.
 
 See `README_markdown_redesign.md` §4 ("The sentence-boundary format rule") and §6 ("Sentence
 metadata in the format") for the format; `../history/README.md` describes the writer/reader that
