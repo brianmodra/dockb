@@ -25,6 +25,9 @@ The back end also keeps a version history of each chapter. Every time a chapter 
 - [`README_markdown_redesign.md`](README_markdown_redesign.md) — the markdown-based redesign decision and plan.
 - Backend: [`src/dockb/controllers/README_API.md`](src/dockb/controllers/README_API.md) (API design), [`src/dockb/services/README.md`](src/dockb/services/README.md) (hydrators, reconstructors, jobs), [`src/dockb/services/semantics/README.md`](src/dockb/services/semantics/README.md), [`src/dockb/infrastructure/history/README.md`](src/dockb/infrastructure/history/README.md), [`src/dockb/models/README.md`](src/dockb/models/README.md), [`src/dockb/repositories/README.md`](src/dockb/repositories/README.md).
 - Frontend: [`frontend/README.md`](frontend/README.md).
+- Deferred work: [`README_todo.md`](README_todo.md) — a log of known-but-not-yet-done tasks
+  discovered while building (e.g. OAuth login, the import HTTP endpoint), with pointers to the
+  design docs for each.
 - Development workflow: [`AGENTS.md`](AGENTS.md).
 
 ## Install

@@ -1,5 +1,14 @@
 # AGENTS.md — DockB Project Workflow
 
+## Commands
+
+- **"start work"** / **"start-work"** — begin the [Workflow](#workflow) section, from
+  A. Understand the request through E. Wrap-up. Do not run any other workflow or skill.
+- **"tdd"** / **"TDD"** — begin the [C. Build — the TDD loop](#c-build--the-tdd-loop) section,
+  working on the next uncompleted section of the plan breakdown stored at
+  `~/.cache/dockb/plan.md`. If that file is missing or stale, ask the user rather than guessing.
+- **"wrap up"** / **"wrap-up"** — begin the [E. Wrap-up](#e-wrap-up) section.
+
 ## Backend Commands
 - Install dev deps from repo root: `source .venv/bin/activate && pip install -e '.[dev]'`.
 - Backend checks: `source .venv/bin/activate && make` — it runs ruff (import sort + lint), mypy, pylint, black, pycycle, and pytest.
@@ -17,6 +26,7 @@
 
 - **Ask** the user when requirements are unclear or need exploration.
 - **Always use Test-Driven Development** (see the Workflow below).
+- Never use tools, skills, or any files under `/home/brian-modra/.claude`.
 - Prefer **small, focused diffs** and match the patterns of the package you touch.
 
 ## Specification
@@ -35,22 +45,33 @@
 
 ## Workflow
 
-### 1. Understand the request
+When the user tells you to "start work", that means to start with this workflow.
+
+Follow the following alphabetical steps exactly and each time you move to the next step,
+report to the user which step you are working on. If the step contains a numbered list,
+then report the letter and the number, e.g. "C.3".
+
+After completing a step, and before moving on to the next, present a short summary
+to the user.
+
+### A. Understand the request
 
 The user may type a prompt directly, point you at a markdown file, or reference a Jira ticket.
 Establish what is being built or fixed before planning.
 
-### 2. Plan
+### B. Plan
 
 - Build the plan from the spec and further discussion with the user.
 - Break the build into sections according to function, so that each section is small
   and all changes in the section stay in the same logical context.
 - **Ask** the user to approve the plan. If not approved, discuss with the user.
-- Keep the plan and the breakdown in your own working memory; do not create a separate plan document.
+- Keep the plan and the breakdown in working memory for this session, and persist it to
+  `~/.cache/dockb/plan.md` (keyed by working directory) so a later "tdd" can resume it.
+  Do not create a plan document inside the repo.
 - **Do not start the build until the user has re-read and approved the plan, including the
   breakdown.** The build may be a single section or a cycle of several sections.
 
-### 3. Build — the TDD loop
+### C. Build — the TDD loop
 
 #### False positive
 
@@ -82,6 +103,13 @@ Following are examples of what is meant by a "False Positive":
   that will happen frequently in practice. The evidence directly confirms this.
 
 #### Work through each section of the breakdown, using this sequence:
+
+Follow the following numbered steps exactly and each time you move to the next step,
+report to the user which step you are working on, and for which section of the breakdown.
+E.g. "Working on step C.4 for section 2."
+
+After completing a step, and before moving on to the next, present a short summary
+to the user.
 
 1. **Revisit the specification first.** Review the [Specification](#specification).
    Check for:
@@ -133,16 +161,21 @@ Following are examples of what is meant by a "False Positive":
    - Use domain words to say what it is for. (Not the mechanism or other details.)
    - Use present tense, verb first, no subject.
    Commit the changes.
+   After the commit, pause and **ask** the user whether to continue with the next section of the
+   breakdown ([D. Loop](#d-loop)) or move to [E. Wrap-up](#e-wrap-up).
 
-#### Loop
+### D. Loop
 
-A single build section may contain multiple TDD cycles.
+A single build section may contain multiple TDD sections.
 
-Then repeat the sequence for the next section. 
+**Ask** the user permission, then repeat the tdd sequence (C) for the next section. 
 
-#### Wrap-up
+### E. Wrap-up
 
 **Consolidate the specification**
+
+Follow the following numbered steps exactly and each time you move to the next step,
+report to the user which step you are working on.
 
 1. Compare the [Specification](#specification) to the code. The code should re-state everything
    that is in the specification, in code rather than in English.
@@ -154,6 +187,7 @@ Then repeat the sequence for the next section.
    It should be no more than two paragraphs.
    It will come under a heading "Executive Summary", and will be at the top of the file.)
    Read the entire file, and generate a new summary.
-   If the file already has an "Executive Summary" section, replace it.
+   If the file already has an "Executive Summary" section — wherever it sits in the file —
+   replace it, and place the new one at the top.
 
 3. **Ask** the user if the changes committed should be pushed to git.
