@@ -52,7 +52,9 @@ reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-fil
 whose front-matter `id` belongs to a different document aborts the whole directory import. A file
 that is created during the import (its front matter carried no `id` the graph answered for) is
 rewritten in place: the new chapter's `id` and `title` are merged into its front matter, any other
-attributes being preserved; a file with a known `id` is left as it is.
+attributes being preserved; a file with a known `id` is left as it is. From a shell the walker is
+driven by `python -m dockb.cli.import_document <document_dir>`, which reads its Neo4j connection
+from `NEO4J_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` and imports as the current user.
 
 ## Contract
 
