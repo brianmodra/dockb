@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import uuid
 from dataclasses import dataclass
@@ -65,7 +66,9 @@ def apply_chapter_file(
     ``detect_changes``, validates that the named chapter belongs to *document*,
     rebuilds the chapter model from the diff, and persists the whole rebuilt
     chapter plus each changed/new paragraph's content in one unit-of-work
-    commit. The chapter title is only ever set when the chapter is new.
+    commit. The chapter title is only ever set when the chapter is new. When
+    anything changed, the new text — front matter and span-bearing body — is
+    written back to *file_path*, so the file stays the graph's source of truth.
     """
     path = Path(file_path)
     content = path.read_text(encoding="utf-8")
@@ -92,6 +95,10 @@ def apply_chapter_file(
         raise ChapterMismatchError(f"Chapter '{chapter_id}' from '{path}' is not a child of document '{document.id}'")
 
     if not diff:
+        if diff.created:
+            chapter = _build_chapter(chapter_id, diff, None)
+            _persist(uow_factory, document.id, chapter, [], [])
+            _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
         return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
 
     chapter = _build_chapter(chapter_id, diff, load_once(chapter_id))
@@ -103,6 +110,7 @@ def apply_chapter_file(
     added_paragraphs = _place_new_paragraphs(chapter, diff.new)
 
     _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs)
+    _write_back_chapter_file(path, chapter)
 
     return ChapterImportSummary(
         chapter_id=chapter.id,
@@ -137,10 +145,37 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     summaries = []
     for chapter_file in sorted(dir_path.rglob("*.md")):
         summary = apply_chapter_file(document, chapter_file, nlp, chapter_repo, uow_factory)
-        if summary.created:
-            _write_back_front_matter(chapter_file, summary)
         summaries.append(summary)
     return summaries
+
+
+def _write_back_chapter_file(chapter_file: Path, chapter: Chapter) -> None:
+    """Rewrite *chapter_file* so its text mirrors *chapter*.
+
+    The front matter keeps any existing attributes, adding the chapter's
+    ``id``/``title``; the body is serialized from the rebuilt chapter as one
+    identity span per sentence (mirroring ``SnapshotWriter``).
+    """
+    existing = chapter_file.read_text(encoding="utf-8")
+    attrs = _load_front_matter_attrs(existing)
+    attrs["id"] = chapter.id
+    attrs["title"] = chapter.title
+    front_matter = "---\n" + yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False) + "---\n"
+    body = _serialize_body(chapter)
+    trailer = f"\n{body}\n" if body else ""
+    chapter_file.write_text(front_matter + trailer, encoding="utf-8")
+
+
+def _serialize_body(chapter: Chapter) -> str:
+    """Serialize *chapter*'s paragraphs as id-spanned sentence lines, blank-line separated."""
+    blocks = []
+    for paragraph in chapter.paragraphs:
+        lines = [
+            f'<span data-par-id="{html.escape(paragraph.id, quote=True)}">{html.escape(sentence.get_text(), quote=True)}</span>'
+            for sentence in paragraph.sentences
+        ]
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 
 
 def _write_back_front_matter(chapter_file: Path, summary: ChapterImportSummary) -> None:
@@ -168,6 +203,22 @@ def _with_front_matter(content: str, chapter_id: str, title: str) -> str:
     """
     if not content.startswith("---"):
         return _front_matter_block(chapter_id, title) + content
+    attrs = _load_front_matter_attrs(content)
+    attrs["id"] = chapter_id
+    attrs["title"] = title
+    merged = yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    lines = content.splitlines(keepends=True)
+    closing = next((index for index in range(1, len(lines)) if lines[index].startswith("---")), None)
+    if closing is None:
+        raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
+    body = "".join(lines[closing + 1 :])
+    return "---\n" + merged + "---\n" + body
+
+
+def _load_front_matter_attrs(content: str) -> dict[str, object]:
+    """Return the front-matter attributes of *content*, empty when none are present."""
+    if not content.startswith("---"):
+        return {}
     lines = content.splitlines(keepends=True)
     closing = next((index for index in range(1, len(lines)) if lines[index].startswith("---")), None)
     if closing is None:
@@ -175,12 +226,7 @@ def _with_front_matter(content: str, chapter_id: str, title: str) -> str:
     attrs = yaml.safe_load("".join(lines[1:closing])) or {}
     if not isinstance(attrs, dict):
         raise ChapterMismatchError("Front matter must be a mapping of key: value pairs")
-    attrs = dict(attrs)
-    attrs["id"] = chapter_id
-    attrs["title"] = title
-    merged = yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    body = "".join(lines[closing + 1 :])
-    return "---\n" + merged + "---\n" + body
+    return dict(attrs)
 
 
 def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetadata:
@@ -225,8 +271,30 @@ def _resolve_document(
     uow = uow_factory.get_unit_of_work()
     uow.register(document)
     uow.commit()
+    _write_document_metadata(document_dir, metadata)
     logger.debug("Persisted new document %r under %s", document.id, document_dir)
     return document
+
+
+def _write_document_metadata(document_dir: Path, metadata: DocumentMetadata) -> None:
+    """Record the resolved ``title``/``author`` in the directory's metadata file.
+
+    Existing attributes are preserved; only the two fields are set. This keeps
+    the values the import derived (the directory name and current user, say)
+    explicit in the file for the next run.
+    """
+    attrs: dict[str, object] = {}
+    metadata_path = document_dir / _METADATA_FILE
+    if metadata_path.is_file():
+        parsed = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            attrs = dict(parsed)
+    attrs["title"] = metadata.title
+    attrs["author"] = metadata.author
+    metadata_path.write_text(
+        yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
 
 
 def _persist(

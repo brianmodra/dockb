@@ -135,6 +135,56 @@ class TestNewChapter:
         chapter, _ = _saved_chapter(uow)
         assert chapter.title == "Front Title"
 
+    def test_new_chapter_file_is_normalized_with_ids(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 2.md"
+        file.write_text("Para one sentence.\n\nPara two sentence.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        rewritten = file.read_text()
+        assert rewritten.startswith(f"---\nid: {summary.chapter_id}\ntitle: Chapter 2\n---\n")
+        assert "Para one sentence." in rewritten
+        assert "Para two sentence." in rewritten
+        assert rewritten.count('<span data-par-id="') == 2
+
+    def test_empty_new_chapter_persists_identity(self, nlp, tmp_path):
+        file = tmp_path / "Empty.md"
+        file.write_text("")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert summary.created is True
+        chapter, kwargs = _saved_chapter(uow)
+        assert chapter.id == summary.chapter_id
+        assert kwargs == {"document_id": "d1"}
+        assert file.read_text() == f"---\nid: {summary.chapter_id}\ntitle: Empty\n---\n"
+
+    def test_empty_new_chapter_reimport_is_a_no_op(self, nlp, tmp_path):
+        file = tmp_path / "Empty.md"
+        file.write_text("")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow_factory.get_unit_of_work.return_value = MagicMock()
+
+        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        persisted = Chapter(id=first.chapter_id, title="Empty", state=DataState.SYNC)
+        document.append_child(persisted)
+        chapter_repo.load.return_value = persisted
+        written = file.read_text()
+
+        second = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert second.created is False
+        assert file.read_text() == written
+
 
 class TestExistingChapter:
     def test_chapter_from_another_document_is_rejected(self, nlp, tmp_path, header):
@@ -164,6 +214,7 @@ class TestExistingChapter:
         assert summary.added == summary.changed == summary.deleted == 0
         uow.register.assert_not_called()
         uow.commit.assert_not_called()
+        assert file.read_text() == f'{header}\n\n<span data-par-id="p1">Only.</span>'
 
     def test_title_is_not_rewritten_for_existing_chapter(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
@@ -178,6 +229,20 @@ class TestExistingChapter:
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.title == "Old Title"
+
+    def test_changed_paragraph_writes_back_front_matter_and_body(self, nlp, tmp_path):
+        file = tmp_path / "c1.md"
+        file.write_text('---\nauthor: Brian\ntitle: Old Title\nid: c1\n---\n\n<span data-par-id="p1">New text.</span>')
+        loaded = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Old text.")))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert summary.changed == 1
+        assert file.read_text() == '---\nauthor: Brian\ntitle: Old Title\nid: c1\n---\n\n<span data-par-id="p1">New text.</span>\n'
 
     def test_changed_paragraph_replaces_sentences(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
@@ -342,13 +407,46 @@ class TestResolveDocument:
         assert result is loaded
         repo.load.assert_called_once_with("d1")
 
-    def test_creates_new_document_when_no_match(self):
+    def test_created_document_writes_metadata_file(self, tmp_path):
         repo = self._repo_with([])
         uow = MagicMock()
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert (tmp_path / "document_metadata.yaml").read_text() == "title: Linchpin\nauthor: User\n"
+
+    def test_created_document_preserves_existing_metadata_keys(self, tmp_path):
+        (tmp_path / "document_metadata.yaml").write_text("isbn: 123\n")
+        repo = self._repo_with([])
+        uow = MagicMock()
+        uow_factory = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert (tmp_path / "document_metadata.yaml").read_text() == "isbn: 123\ntitle: Linchpin\nauthor: User\n"
+
+    def test_existing_document_leaves_metadata_file_untouched(self, tmp_path):
+        metadata_file = tmp_path / "document_metadata.yaml"
+        metadata_file.write_text("title: Linchpin\nauthor: A\n")
+        repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
+        loaded = Document(id="d1", state=DataState.SYNC)
+        repo.load.return_value = loaded
+        uow_factory = MagicMock()
+
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+
+        assert metadata_file.read_text() == "title: Linchpin\nauthor: A\n"
+
+    def test_creates_new_document_when_no_match(self, tmp_path):
+        repo = self._repo_with([])
+        uow = MagicMock()
+        uow_factory = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        result = _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
 
         assert isinstance(result, Document)
         assert result.id != "d1"
@@ -358,14 +456,14 @@ class TestResolveDocument:
         uow.register.assert_called_once_with(result)
         uow.commit.assert_called_once()
 
-    def test_creates_when_load_misses(self):
+    def test_creates_when_load_misses(self, tmp_path):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
         repo.load.return_value = None
         uow = MagicMock()
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        result = _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
 
         assert result.state is DataState.NEW
         assert result.title == "Linchpin"
@@ -484,23 +582,17 @@ class TestWriteBackFrontMatter:
         with pytest.raises(ChapterMismatchError, match="closing"):
             _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c1", created=True, title="T"))
 
-    def test_walker_writes_back_only_for_created_chapters(self, nlp, tmp_path, monkeypatch):
+    def test_walker_leaves_chapter_files_to_apply_chapter_file(self, nlp, tmp_path, monkeypatch):
         new_file = tmp_path / "new.md"
         new_file.write_text("fresh")
-        kept_file = tmp_path / "kept.md"
-        kept_file.write_text("old")
         document = Document(id="d1", state=DataState.SYNC)
         monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
 
-        def fake_apply(*args):
-            chapter_file = Path(args[1])
-            if chapter_file.name == "new.md":
-                return ChapterImportSummary(chapter_id="c-new", created=True, title="New")
-            return ChapterImportSummary(chapter_id="c-old", created=False, title="Old")
+        def fake_apply(*_args):
+            return ChapterImportSummary(chapter_id="c-new", created=True, title="New")
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
 
         import_document_directory(tmp_path, "User", nlp, None, MagicMock(spec=ChapterRepository), MagicMock())
 
-        assert new_file.read_text() == "---\nid: c-new\ntitle: New\n---\nfresh"
-        assert kept_file.read_text() == "old"
+        assert new_file.read_text() == "fresh"

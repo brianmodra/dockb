@@ -10,10 +10,11 @@ checking the file's chapter really belongs to the document being edited.
 
 `import_document_directory` then drives the whole process from the shell: it walks a document's
 directory for markdown files, resolves the directory to one `Document` from its metadata
-(`document_metadata.yaml`), imports each chapter file, and writes a fresh chapter's `id` and `title`
-back into its file so the next import matches it. Read this document to learn how chapter files map
-back into the graph, which files count as new versus edited, what the caller guarantees, and how a
-document directory becomes graph data.
+(`document_metadata.yaml`), writes that metadata back when it creates the `Document`, imports each
+chapter file, and rewrites any file whose graph content changed into the canonical span format —
+front matter plus one span per sentence — so the next import matches it. Read this document to learn
+how chapter files map back into the graph, which files count as new versus edited, what the caller
+guarantees, and how a document directory becomes graph data.
 
 ## Calling context
 
@@ -41,18 +42,24 @@ absent, `title` defaults to the document directory's name and `author` to the cu
 (passed into the walker). The walker matches a directory to a graph `Document` by exact title and
 reuses it (new chapters are appended to it, existing ones changed); a directory whose title no
 document answers for becomes a new `Document` persisted before any chapter import, because the
-chapter write path requires the parent `Document` node to already exist. (Later, an `id` field in
-the yaml could replace the title-based match.)
+chapter write path requires the parent `Document` node to already exist. Creating that `Document`
+also writes the resolved `title`/`author` into `document_metadata.yaml`, preserving any other
+attributes already in the file, so the derived values are explicit on the next run. (Later, an `id`
+field in the yaml could replace the title-based match.)
 
 The function this package contracts with is a **per-chapter-file** caller: it takes one markdown
 chapter file and the hydrated `Document` it belongs to. `import_document_directory()` in
 `dockb.services.markdown_import` is the directory-aware walker: it walks a document directory,
 reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-file caller once per
 `*.md` file found recursively (in sorted order), returning one summary per file. A chapter file
-whose front-matter `id` belongs to a different document aborts the whole directory import. A file
-that is created during the import (its front matter carried no `id` the graph answered for) is
-rewritten in place: the new chapter's `id` and `title` are merged into its front matter, any other
-attributes being preserved; a file with a known `id` is left as it is. From a shell,
+whose front-matter `id` belongs to a different document aborts the whole directory import. When the
+file's diff is non-empty the caller rewrites the file in place from the rebuilt chapter: the front
+matter carries the chapter `id` and `title`, any other attributes being preserved in place, and the
+body is written in the sentence-boundary span format — one `<span data-par-id=…>` per sentence,
+paragraphs separated by blank lines — so the file stays the graph's source of truth. A file whose
+diff is empty and that is not a brand-new chapter is left untouched; a brand-new empty chapter is
+still given an identity: it is persisted as an empty chapter and its file receives the front-matter
+`id`/`title` only (with no body). From a shell,
 `python -m dockb.cli.import_document <document_dir>` drives the walker.
 
 ## Contract
@@ -191,9 +198,12 @@ to load chapters and persist models. Its steps:
 
 The chapter is always registered with `document_id=<the hydrated document's id>` — matching the
 `MATCH (d:Document {id: $document_id})` that opens the chapter write path, so the whole query runs
-(the re-link on the `PART_OF` edge is an idempotent `MERGE`). An empty diff (nothing to add,
-change, or delete) persists nothing: an unchanged file re-save is a no-op, and a brand-new empty
-chapter is reported as `created` but is not written until it gains content.
+(the re-link on the `PART_OF` edge is an idempotent `MERGE`). A non-empty diff also rewrites the
+source file from the rebuilt chapter (front matter plus span-form body), so file and graph agree
+after every change. An empty diff persists nothing *except* when the chapter is brand-new: a
+brand-new empty chapter is still registered (an empty chapter, fixing its identity in the graph) and
+its file gets the front-matter `id`/`title`, so a later re-import resolves it instead of treating it
+as a foreign id. An unchanged file re-save remains a no-op.
 
 Paragraph ordering is persisted as `index` on the `(Paragraph)-[:PART_OF]->(Chapter)` edge. The
 paragraph-level write path (`ParagraphRepository`) does **not** set this index; ordering is
