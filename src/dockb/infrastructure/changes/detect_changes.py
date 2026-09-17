@@ -7,10 +7,9 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-import yaml
 from spacy.language import Language
 
-from dockb.exceptions import ChapterMismatchError
+from dockb.infrastructure.markdown import front_matter
 from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
 
@@ -202,13 +201,11 @@ def _extract_front_matter(content: str) -> tuple[str | None, str | None, str]:
     Front matter is optional: a file without it is a new chapter (no ``id``).
     A file that opens with ``---`` but is missing the closing ``---`` is malformed.
     """
-    stripped = content.strip()
-    if not stripped.startswith("---"):
-        return None, None, content
-
-    parts = stripped.split("---", 2)
-    if len(parts) < 3:
-        raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
-
-    attrs = yaml.safe_load(parts[1]) or {}
-    return attrs.get("id"), attrs.get("title"), parts[2]
+    attrs, body = front_matter.parse(content)
+    front_id = attrs.get("id")
+    front_title = attrs.get("title")
+    return (
+        str(front_id) if front_id is not None else None,
+        str(front_title) if front_title is not None else None,
+        body,
+    )

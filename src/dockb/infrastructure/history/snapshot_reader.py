@@ -7,10 +7,10 @@ import re
 import subprocess
 from pathlib import Path
 
-import yaml
 from spacy.language import Language
 
-from dockb.exceptions import SnapshotError
+from dockb.exceptions import ChapterMismatchError, SnapshotError
+from dockb.infrastructure.markdown import front_matter
 from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
@@ -45,11 +45,15 @@ class SnapshotReader:
         return self._parse(content, chapter_id)
 
     def _parse(self, content: str, chapter_id: str) -> Chapter:
-        front_matter, body = self._split_front_matter(content)
-        attrs = yaml.safe_load(front_matter) or {}
+        if not content.startswith("---"):
+            raise SnapshotError("Snapshot file does not start with YAML front matter")
+        try:
+            attrs, body = front_matter.parse(content)
+        except ChapterMismatchError as exc:
+            raise SnapshotError(str(exc)) from exc
 
-        chapter_id_from_file = attrs.pop("id", chapter_id)
-        title = attrs.pop("title", "")
+        chapter_id_from_file = str(attrs.pop("id", chapter_id))
+        title = str(attrs.pop("title", ""))
         extras = attrs
 
         chapter = Chapter(id=chapter_id_from_file, title=title)
@@ -126,16 +130,6 @@ class SnapshotReader:
             if sentence_text.strip():
                 sentences.append(Sentence(text=sentence_text))
         return sentences
-
-    def _split_front_matter(self, content: str) -> tuple[str, str]:
-        if not content.startswith("---"):
-            raise SnapshotError("Snapshot file does not start with YAML front matter")
-
-        parts = content.split("---", 2)
-        if len(parts) < 3:
-            raise SnapshotError("Snapshot file is missing closing '---' for front matter")
-
-        return parts[1], parts[2]
 
     def list_commits(self, chapter_id: str, *, limit: int = 20, offset: int = 0) -> list[dict[str, str]]:
         """Return commit history for a chapter's snapshot file.

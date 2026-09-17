@@ -18,6 +18,7 @@ from dockb.infrastructure.changes.detect_changes import (
     NewParagraph,
     detect_changes,
 )
+from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
@@ -157,13 +158,13 @@ def _write_back_chapter_file(chapter_file: Path, chapter: Chapter) -> None:
     identity span per sentence (mirroring ``SnapshotWriter``).
     """
     existing = chapter_file.read_text(encoding="utf-8")
-    attrs = _load_front_matter_attrs(existing)
+    attrs = front_matter.parse(existing)[0]
     attrs["id"] = chapter.id
     attrs["title"] = chapter.title
-    front_matter = "---\n" + yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False) + "---\n"
+    block = front_matter.render(attrs)
     body = _serialize_body(chapter)
     trailer = f"\n{body}\n" if body else ""
-    chapter_file.write_text(front_matter + trailer, encoding="utf-8")
+    chapter_file.write_text(block + trailer, encoding="utf-8")
 
 
 def _serialize_body(chapter: Chapter) -> str:
@@ -186,47 +187,8 @@ def _write_back_front_matter(chapter_file: Path, summary: ChapterImportSummary) 
     later imports match it. Files that already carried a known id are untouched.
     """
     content = chapter_file.read_text(encoding="utf-8")
-    chapter_file.write_text(_with_front_matter(content, summary.chapter_id, summary.title), encoding="utf-8")
-
-
-def _front_matter_block(chapter_id: str, title: str) -> str:
-    attrs: dict[str, object] = {"id": chapter_id, "title": title}
-    return "---\n" + yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False) + "---\n"
-
-
-def _with_front_matter(content: str, chapter_id: str, title: str) -> str:
-    """Return *content* with ``id``/``title`` merged into its front matter.
-
-    A file with no opening ``---`` gets a front matter block prepended; one with
-    an existing block keeps its other attributes, only ``id`` and ``title`` being
-    added or overwritten.
-    """
-    if not content.startswith("---"):
-        return _front_matter_block(chapter_id, title) + content
-    attrs = _load_front_matter_attrs(content)
-    attrs["id"] = chapter_id
-    attrs["title"] = title
-    merged = yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    lines = content.splitlines(keepends=True)
-    closing = next((index for index in range(1, len(lines)) if lines[index].startswith("---")), None)
-    if closing is None:
-        raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
-    body = "".join(lines[closing + 1 :])
-    return "---\n" + merged + "---\n" + body
-
-
-def _load_front_matter_attrs(content: str) -> dict[str, object]:
-    """Return the front-matter attributes of *content*, empty when none are present."""
-    if not content.startswith("---"):
-        return {}
-    lines = content.splitlines(keepends=True)
-    closing = next((index for index in range(1, len(lines)) if lines[index].startswith("---")), None)
-    if closing is None:
-        raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
-    attrs = yaml.safe_load("".join(lines[1:closing])) or {}
-    if not isinstance(attrs, dict):
-        raise ChapterMismatchError("Front matter must be a mapping of key: value pairs")
-    return dict(attrs)
+    updates = {"id": summary.chapter_id, "title": summary.title}
+    chapter_file.write_text(front_matter.merge(content, updates), encoding="utf-8")
 
 
 def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetadata:
