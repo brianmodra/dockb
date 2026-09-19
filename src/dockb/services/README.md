@@ -11,6 +11,13 @@ One service is deliberately outside this flow: the bulk re-sync import caller
 against the graph as a one-shot, whole-chapter write instead of fine-grained edit requests. It is
 described at `../infrastructure/changes/README.md`; what follows here is the editing side.
 
+The counterpart export service, `services/markdown_export.py`, goes the other way at whole-chapter
+granularity: `reconstruct_chapter_markdown(chapter_id, chapter_repo, nlp)` loads a chapter from the
+graph and renders its canonical markdown file, and `reconstruct_chapter_file(..., path, nlp)` writes
+that file to a path. Both raise `ChapterMismatchError` when the graph has no such chapter. The
+serialization itself is owned by `../infrastructure/markdown/`, so exported files match the import
+and history formats.
+
 ## Context
 
 JobQueue and DocCache objects are specific to a user's OAuth logged in session.
