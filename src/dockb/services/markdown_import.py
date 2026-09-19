@@ -27,6 +27,8 @@ from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import InsertionMode
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
+from dockb.services.semantics.doc_cache import DocCache
+from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ def apply_chapter_file(
     if not diff:
         if diff.created:
             chapter = _build_chapter(chapter_id, diff, None)
-            _persist(uow_factory, document.id, chapter, [], [])
+            _persist(uow_factory, document.id, chapter, [], [], nlp)
             _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
         return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
 
@@ -109,7 +111,7 @@ def apply_chapter_file(
     changed_paragraphs = [_apply_changed(chapter, changed) for changed in diff.changed]
     added_paragraphs = _place_new_paragraphs(chapter, diff.new)
 
-    _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs)
+    _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp)
     _write_back_chapter_file(path, chapter, nlp)
 
     return ChapterImportSummary(
@@ -243,18 +245,26 @@ def _write_document_metadata(document_dir: Path, metadata: DocumentMetadata) -> 
     )
 
 
-def _persist(
+def _persist(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     uow_factory: UnitOfWorkFactory,
     document_id: str,
     chapter: Chapter,
     changed_paragraphs: list[Paragraph],
     added_paragraphs: list[Paragraph],
+    nlp: Language,
 ) -> None:
-    """Register the rebuilt chapter and its content-bearing paragraphs, then commit once."""
+    """Register the rebuilt chapter, its content-bearing paragraphs, and every
+    sentence of those paragraphs (tokenized with *nlp*), then commit once."""
+    tokenizer = SentenceTokenizer()
+    doc_cache = DocCache(nlp)
     uow = uow_factory.get_unit_of_work()
     uow.register(chapter, document_id=document_id)
     for paragraph in changed_paragraphs + added_paragraphs:
         uow.register(paragraph, chapter_id=chapter.id)
+        for sentence in paragraph.sentences:
+            sentence.tokens[:] = tokenizer.tokenize(sentence.text, doc_cache)
+            sentence.state = DataState.NEW
+            uow.register(sentence, paragraph_id=paragraph.id)
     uow.commit()
 
 

@@ -79,6 +79,10 @@ def _saved_paragraphs(uow):
     return [(model, kwargs) for model, kwargs in _register_calls(uow) if isinstance(model, Paragraph)]
 
 
+def _saved_sentences(uow):
+    return [(model, kwargs) for model, kwargs in _register_calls(uow) if isinstance(model, Sentence)]
+
+
 class TestNewChapter:
     def test_new_file_without_front_matter_creates_chapter(self, nlp, tmp_path):
         file = tmp_path / "Chapter 1.md"
@@ -284,6 +288,42 @@ class TestExistingChapter:
         assert all(model.id != "p2" for model, _ in _register_calls(uow))
         assert summary.deleted == 1
         uow.commit.assert_called_once()
+
+    def test_new_chapter_registers_sentences_with_tokens(self, nlp, tmp_path):
+        file = tmp_path / "c1.md"
+        file.write_text("First sentence. Second sentence.\n\nAnother paragraph.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        sentences = [model for model, _ in _saved_sentences(uow)]
+        assert len(sentences) == 3
+        for sentence in sentences:
+            assert sentence.state is DataState.NEW
+            assert list(sentence.tokens), f"expected tokens for {sentence.text!r}"
+            assert sentence.get_text() == sentence.text, "tokenization must round-trip the sentence text"
+        assert summary.added == 2
+
+    def test_changed_paragraph_registers_replacement_sentences(self, nlp, tmp_path, header):
+        file = tmp_path / "c1.md"
+        file.write_text(f'{header}\n\n<span data-par-id="p1">New text.</span>')
+        loaded = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Old text.")))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        sentences = [model for model, _ in _saved_sentences(uow)]
+        assert len(sentences) == 1
+        assert sentences[0].state is DataState.NEW
+        assert sentences[0].get_text() == "New text."
+        assert list(sentences[0].tokens)
+        assert summary.changed == 1
 
 
 class TestNewParagraphPlacement:
