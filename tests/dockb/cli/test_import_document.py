@@ -80,6 +80,26 @@ class TestImportDocument:
 
         assert excinfo.value.code == 2
 
+    def test_registers_repositories_for_every_persisted_model_type(self, _neo4j_env, monkeypatch):
+        self._patch_dependencies(monkeypatch)
+        captured = []
+        monkeypatch.setattr(
+            cli,
+            "UnitOfWorkFactory",
+            lambda **kwargs: captured.append(kwargs) or MagicMock(),
+        )
+        monkeypatch.setattr(cli, "import_document_directory", lambda *args: [])
+        from dockb.models.chapter import Chapter
+        from dockb.models.document import Document
+        from dockb.models.paragraph import Paragraph
+        from dockb.models.sentence import Sentence
+
+        cli.main(["docs/Linchpin"])
+
+        repos = captured[0]["repos"]
+        for model_type in (Document, Chapter, Paragraph, Sentence):
+            assert model_type in repos, f"no repository registered for {model_type.__name__}"
+
     def test_missing_neo4j_url_is_an_error(self, monkeypatch):
         monkeypatch.delenv("NEO4J_URL", raising=False)
         self._patch_dependencies(monkeypatch)

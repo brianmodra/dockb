@@ -21,8 +21,12 @@ from dockb.infrastructure.neo4j.session_factory import SessionFactory
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.paragraph import Paragraph
+from dockb.models.sentence import Sentence
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
+from dockb.repositories.paragraph_repository import ParagraphRepository
+from dockb.repositories.sentence_repository import SentenceRepository
 from dockb.services.markdown_import import import_document_directory
 
 
@@ -43,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
         repos: dict[type, Any] = {
             Document: DocumentRepository(session),
             Chapter: ChapterRepository(session),
+            Paragraph: ParagraphRepository(session),
+            Sentence: SentenceRepository(session),
         }
         uow_factory = UnitOfWorkFactory(repos=repos, session_factory=session_factory, reconstructor=None)
         summaries = import_document_directory(
