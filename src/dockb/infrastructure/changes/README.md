@@ -220,4 +220,5 @@ is the precedent for whole-chapter persistence.
 
 See `README_markdown_redesign.md` §4 ("The sentence-boundary format rule") and §6 ("Sentence
 metadata in the format") for the format; `../history/README.md` describes the writer/reader that
-produce and consume the same span format.
+produce and consume the same span format. Both that writer and the write-back above delegate to
+the shared serializer in `../markdown/`.

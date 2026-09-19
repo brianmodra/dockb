@@ -43,3 +43,35 @@ front matter gets a rendered block prepended.
 History snapshots always carry front matter; `SnapshotReader` enforces that by rejecting content
 that does not start with `---` (wrapping the parser's `ChapterMismatchError` as `SnapshotError`).
 The import path treats missing front matter as a new chapter instead.
+
+## Writing a chapter file
+
+`writer.render_chapter_markdown(chapter, nlp, attrs=None)` serializes one chapter to a complete
+chapter file — front matter block plus body — and `writer.write_chapter_markdown(chapter, path,
+nlp, attrs=None)` renders and writes it. `writer.serialize_body(chapter, nlp)` returns just the
+body. `nlp` is required: span-free text (a dirty chapter, or a paragraph without sentences) is
+split into sentences with spaCy before being wrapped.
+
+The body is one identity span per sentence, paragraphs separated by blank lines:
+
+```
+<span data-par-id="p-1">First sentence.</span>
+<span data-par-id="p-1">Second sentence.</span>
+
+<span data-par-id="p-2">Next paragraph.</span>
+```
+
+Rendering rules:
+
+- A paragraph without sentences is wrapped so each sentence is a fresh-id span (never reuses a
+  paragraph id); the original paragraph id is used only when the paragraph has sentences of its
+  own.
+- Sentence text is HTML-escaped; a backslash-newline hard break and soft newlines inside a
+  sentence survive because spaCy never breaks on newlines.
+- The front matter is `attrs` verbatim when given, else `{id, title}` from the chapter. The
+  front-matter block and body are joined by a blank line; an empty chapter renders as the block
+  alone.
+
+`SnapshotWriter` (history) feeds `{id, title, **chapter.model_extra}` as `attrs`; the import
+write-back feeds the file's existing attributes with `id`/`title` set to the chapter's. The reader
+and the change detector never write.

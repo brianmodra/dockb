@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import logging
 import uuid
 from dataclasses import dataclass
@@ -18,7 +17,7 @@ from dockb.infrastructure.changes.detect_changes import (
     NewParagraph,
     detect_changes,
 )
-from dockb.infrastructure.markdown import front_matter
+from dockb.infrastructure.markdown import front_matter, writer
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
@@ -111,7 +110,7 @@ def apply_chapter_file(
     added_paragraphs = _place_new_paragraphs(chapter, diff.new)
 
     _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs)
-    _write_back_chapter_file(path, chapter)
+    _write_back_chapter_file(path, chapter, nlp)
 
     return ChapterImportSummary(
         chapter_id=chapter.id,
@@ -150,33 +149,18 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     return summaries
 
 
-def _write_back_chapter_file(chapter_file: Path, chapter: Chapter) -> None:
+def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language) -> None:
     """Rewrite *chapter_file* so its text mirrors *chapter*.
 
     The front matter keeps any existing attributes, adding the chapter's
-    ``id``/``title``; the body is serialized from the rebuilt chapter as one
-    identity span per sentence (mirroring ``SnapshotWriter``).
+    ``id``/``title``; the body is the chapter serialized as one identity span
+    per sentence.
     """
     existing = chapter_file.read_text(encoding="utf-8")
     attrs = front_matter.parse(existing)[0]
     attrs["id"] = chapter.id
     attrs["title"] = chapter.title
-    block = front_matter.render(attrs)
-    body = _serialize_body(chapter)
-    trailer = f"\n{body}\n" if body else ""
-    chapter_file.write_text(block + trailer, encoding="utf-8")
-
-
-def _serialize_body(chapter: Chapter) -> str:
-    """Serialize *chapter*'s paragraphs as id-spanned sentence lines, blank-line separated."""
-    blocks = []
-    for paragraph in chapter.paragraphs:
-        lines = [
-            f'<span data-par-id="{html.escape(paragraph.id, quote=True)}">{html.escape(sentence.get_text(), quote=True)}</span>'
-            for sentence in paragraph.sentences
-        ]
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
+    chapter_file.write_text(writer.render_chapter_markdown(chapter, nlp, attrs=attrs), encoding="utf-8")
 
 
 def _write_back_front_matter(chapter_file: Path, summary: ChapterImportSummary) -> None:

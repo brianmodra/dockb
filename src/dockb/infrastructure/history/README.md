@@ -89,7 +89,7 @@ The `infrastructure/history/` package contains:
 
 | Component | Responsibility |
 |---|---|
-| `snapshot_writer.py` | Serialize a chapter to markdown (per-sentence `<span data-par-id>` lines, spaCy split for span-free text) and write to disk |
+| `snapshot_writer.py` | Serialize a chapter to markdown via `infrastructure/markdown`'s shared writer (per-sentence `<span data-par-id>` lines, spaCy split for span-free text) and write to disk |
 | `snapshot_reader.py` | Parse a markdown snapshot back into model objects (paragraph UUIDs restored from spans; spaCy-injected split for span-free text) |
 
 The `HistoryService` (in `services/`) orchestrates these components and
