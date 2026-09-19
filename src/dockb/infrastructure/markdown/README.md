@@ -26,19 +26,16 @@ title: Chapter 1
 <span data-par-id="p-1">Body sentence.</span>
 ```
 
-`front_matter.parse(content)` returns `(attrs, body)`:
+`front_matter` exposes three helpers on a chapter file's full text:
 
-- With no opening `---`, there is no front matter: `attrs` is empty and `body` is the whole
-  content unchanged.
-- With a block, `attrs` is the parsed mapping and `body` is everything after the closing `---`
-  line (including the newline that follows it).
-- A block that is opened but never closed, or whose YAML is not a mapping, raises
-  `ChapterMismatchError`.
-
-`front_matter.render(attrs)` produces a complete delimited block; `front_matter.merge(content,
-updates)` returns `content` with `updates` merged into its front matter, preserving the body and
-the position of any attributes the caller did not set (new keys are appended). A file with no
-front matter gets a rendered block prepended.
+- `parse(content)` -> `(attrs, body)`. With no opening `---` there is no front matter (`attrs` empty,
+  `body` the whole content); otherwise `attrs` is the parsed mapping and `body` is everything after
+  the closing `---` line. A block that is opened but never closed, or whose YAML is not a mapping,
+  raises `ChapterMismatchError`.
+- `render(attrs)` -> a complete delimited block.
+- `merge(content, updates)` -> `content` with `updates` merged into its front matter, body
+  untouched and existing attribute positions kept (new keys appended); a file with no front matter
+  gets a block prepended.
 
 History snapshots always carry front matter; `SnapshotReader` enforces that by rejecting content
 that does not start with `---` (wrapping the parser's `ChapterMismatchError` as `SnapshotError`).
@@ -46,13 +43,10 @@ The import path treats missing front matter as a new chapter instead.
 
 ## Writing a chapter file
 
-`writer.render_chapter_markdown(chapter, nlp, attrs=None)` serializes one chapter to a complete
-chapter file — front matter block plus body — and `writer.write_chapter_markdown(chapter, path,
-nlp, attrs=None)` renders and writes it. `writer.serialize_body(chapter, nlp)` returns just the
-body. `nlp` is required: span-free text (a dirty chapter, or a paragraph without sentences) is
-split into sentences with spaCy before being wrapped.
-
-The body is one identity span per sentence, paragraphs separated by blank lines:
+The writer turns a chapter model into a chapter file. `nlp` is required throughout because
+span-free text (a `dirty` chapter, or a paragraph without sentences) is split into sentences with
+spaCy before being wrapped. The body is one identity span per sentence, paragraphs separated by
+blank lines:
 
 ```
 <span data-par-id="p-1">First sentence.</span>

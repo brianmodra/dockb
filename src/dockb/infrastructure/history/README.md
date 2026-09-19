@@ -1,5 +1,14 @@
 # History Snapshots
 
+## Executive Summary
+
+Before every edit to a chapter, DockB rewrites a snapshot file of that chapter's full content so
+that edits can be undone or restored. This document describes that snapshot file: how it is named
+and stored in git, what its markdown structure carries, and how the snapshot writer and reader
+produce and consume it. The snapshot's markdown format is the same canonical per-sentence span
+format owned by `infrastructure/markdown/`; the writer here delegates serialization to that shared
+package.
+
 Every edit to a chapter rewrites a **snapshot file** of the chapter's full content
 *before* the edit is applied. This enables:
 
