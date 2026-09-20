@@ -7,8 +7,6 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from spacy.language import Language
-
 from dockb.infrastructure.markdown import front_matter
 from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
@@ -18,17 +16,17 @@ _SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
 
 @dataclass
 class ChangedParagraph:
-    """A paragraph present on both sides whose sentence texts differ."""
+    """A paragraph present on both sides whose text differs."""
 
     par_id: str
-    sentence_texts: list[str]
+    text: str
 
 
 @dataclass
 class NewParagraph:
     """A paragraph present only in the new markdown (no id, or id unknown to the DB)."""
 
-    sentence_texts: list[str]
+    text: str
     after_id: str | None = None
     at_start: bool = False
 
@@ -58,7 +56,6 @@ class ChapterDiff:
 
 def detect_changes(
     new_markdown: str,
-    nlp: Language,
     get_chapter: Callable[[str], Chapter | None],
     create_chapter: Callable[[str | None, str], Chapter],
     title_fallback: str = "",
@@ -66,8 +63,8 @@ def detect_changes(
     """Classify paragraph changes between a chapter and a new markdown file.
 
     Only the *new* markdown is parsed. The old side is a hydrated chapter
-    resolved through ``get_chapter`` (its paragraphs' ``get_text``-ed sentences)
-    and never re-parsed. A file with no YAML front matter (or with an id no
+    resolved through ``get_chapter`` (its paragraphs' ``get_text``) and never
+    re-parsed. A file with no YAML front matter (or with an id no
     chapter answers for) has no old side: ``create_chapter`` supplies the empty
     skeleton and receives the resolved chapter title now. The resolved title is
     the front-matter ``title`` when present, else ``title_fallback``; it is also
@@ -83,7 +80,7 @@ def detect_changes(
         created = True
 
     old_texts = {paragraph.id: _old_texts(paragraph) for paragraph in old_chapter.paragraphs}
-    changed, new, seen_ids = _classify_blocks(body, nlp, old_texts, bool(old_chapter.paragraphs))
+    changed, new, seen_ids = _classify_blocks(body, old_texts, bool(old_chapter.paragraphs))
 
     return ChapterDiff(
         changed=changed,
@@ -98,8 +95,7 @@ def detect_changes(
 
 def _classify_blocks(
     body: str,
-    nlp: Language,
-    old_texts: dict[str, list[str]],
+    old_texts: dict[str, str],
     chapter_has_paragraphs: bool,
 ) -> tuple[list[ChangedParagraph], list[NewParagraph], set[str]]:
     """Classify every block in *body*, returning ``(changed, new, seen_ids)``.
@@ -116,18 +112,22 @@ def _classify_blocks(
     for block in (part.strip() for part in body.split("\n\n")):
         if not block:
             continue
-        par_id, sentence_texts = _parse_block(block, nlp)
+        par_id, text = _parse_block(block)
+        if not text.strip():
+            if par_id is not None:
+                seen_ids.add(par_id)
+            continue
         if par_id is None or par_id not in old_texts:
             new.append(
                 NewParagraph(
-                    sentence_texts,
+                    text,
                     after_id=anchor,
                     at_start=anchor is None and chapter_has_paragraphs,
                 )
             )
         else:
-            if sentence_texts != old_texts[par_id]:
-                changed.append(ChangedParagraph(par_id, sentence_texts))
+            if text != old_texts[par_id]:
+                changed.append(ChangedParagraph(par_id, text))
             anchor = par_id
         if par_id is not None:
             seen_ids.add(par_id)
@@ -135,57 +135,42 @@ def _classify_blocks(
     return changed, new, seen_ids
 
 
-def _old_texts(paragraph: Paragraph) -> list[str]:
-    """Sentence texts for one hydrated paragraph, opaque string if it holds no sentences."""
-    if not paragraph.sentences:
-        return [paragraph.get_text()]
-    return [sentence.get_text() for sentence in paragraph.sentences]
+def _old_texts(paragraph: Paragraph) -> str:
+    """Paragraph text for one hydrated paragraph (its ``get_text``)."""
+    return paragraph.get_text()
 
 
-def _parse_block(block: str, nlp: Language) -> tuple[str | None, list[str]]:
-    """Parse one paragraph block into ``(par_id, sentence_texts)``.
+def _parse_block(block: str) -> tuple[str | None, str]:
+    """Parse one paragraph block into ``(par_id, text)``.
 
-    Span inner content is the sentence text; ``data-par-id`` is identity only.
-    Loose text around spans is NLP-split in place (mirroring ``SnapshotReader``).
+    One identity span usually wraps the whole paragraph; its inner text minus the
+    structural newlines after the open tag and before the close tag is the
+    paragraph text. Loose text before, between, and after spans is kept at its
+    position, so hand-typed content appended after the closing span still belongs
+    to the same paragraph.
     """
     matches = list(_SPAN_RE.finditer(block))
     if not matches:
-        return None, _split_sentences(block, nlp)
+        return None, block
+    if len(matches) == 1 and not _span_attr(matches[0].group(1), "data-par-id"):
+        return None, block
 
-    sentence_texts: list[str] = []
+    parts: list[str] = []
     par_id: str | None = None
     position = 0
     for match in matches:
-        gap = block[position : match.start()]
-        if gap.strip():
-            sentence_texts.extend(_split_sentences(gap, nlp))
-
+        parts.append(block[position : match.start()])
         tag = match.group(1)
-        inner = html.unescape(match.group(2))
         span_par_id = _span_attr(tag, "data-par-id")
         if par_id is None and span_par_id:
             par_id = span_par_id
-        if inner.strip():
-            sentence_texts.append(inner)
+        parts.append(html.unescape(match.group(2)).strip("\n"))
         position = match.end()
+    parts.append(block[position:])
 
-    tail = block[position:]
-    if tail.strip():
-        sentence_texts.extend(_split_sentences(tail, nlp))
-
-    return par_id, sentence_texts
-
-
-def _split_sentences(text: str, nlp: Language) -> list[str]:
-    """Split *text* on spaCy sentence boundaries, keeping whitespace up to the next sentence."""
-    spans = list(nlp(text).sents)
-    sentences = []
-    for idx, span in enumerate(spans):
-        end = spans[idx + 1].start_char if idx + 1 < len(spans) else len(text)
-        sentence_text = text[span.start_char : end]
-        if sentence_text.strip():
-            sentences.append(sentence_text)
-    return sentences
+    if par_id is None:
+        return None, "".join(parts)
+    return par_id, "".join(parts)
 
 
 def _span_attr(tag: str, name: str) -> str | None:

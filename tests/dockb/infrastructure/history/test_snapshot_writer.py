@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import uuid
 
 import pytest
 
@@ -90,7 +91,7 @@ def test_write_body_text_single_paragraph(writer, git_repo):
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000004.md").read_text()
     # Body is everything after the closing ---
     body = content.split("---", 2)[2].strip()
-    assert body == '<span data-par-id="p1">First paragraph.</span>'
+    assert body == '<span data-par-id="p1">\nFirst paragraph.\n</span>'
 
 
 def test_write_body_text_multi_paragraph(writer, git_repo):
@@ -102,7 +103,7 @@ def test_write_body_text_multi_paragraph(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000005.md").read_text()
     body = content.split("---", 2)[2].strip()
-    assert body == ('<span data-par-id="p1">Para one.</span>\n\n' '<span data-par-id="p2">Para two.</span>')
+    assert body == ('<span data-par-id="p1">\nPara one.\n</span>\n\n' '<span data-par-id="p2">\nPara two.\n</span>')
 
 
 def test_write_empty_chapter(writer, git_repo):
@@ -206,11 +207,11 @@ def test_write_sentence_per_line(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000012.md").read_text()
     body = content.split("---", 2)[2].strip()
-    assert body == ('<span data-par-id="p1">First sentence.</span>\n' '<span data-par-id="p1"> Second sentence.</span>')
+    assert body == '<span data-par-id="p1">\nFirst sentence.\n Second sentence.\n</span>'
 
 
-def test_write_dirty_chapter_splits_with_nlp(writer, git_repo):
-    """A dirty chapter's raw text is split with spaCy and wrapped in fresh-id spans."""
+def test_write_dirty_chapter_wraps_raw_text_in_single_fresh_span(writer, git_repo):
+    """A dirty chapter's raw text becomes one fresh-id paragraph span."""
     chapter = Chapter(id="c-00000000-0000-0000-0000-000000000013", title="T")
     chapter.set_text("Dr. Smith arrived. He sat down.")
 
@@ -218,9 +219,11 @@ def test_write_dirty_chapter_splits_with_nlp(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000013.md").read_text()
     body = content.split("---", 2)[2].strip()
-    inner = re.findall(r"<span[^>]*>(.*?)</span>", body, flags=re.DOTALL)
-    # "Dr." must not be treated as a sentence end: exactly two sentences
-    assert inner == ["Dr. Smith arrived. ", "He sat down."]
+    inner = re.findall(r'<span data-par-id="([^"]*)"[^>]*>\n(.*?)\n</span>', body, flags=re.DOTALL)
+    assert len(inner) == 1
+    par_id, text = inner[0]
+    uuid.UUID(par_id)
+    assert text == "Dr. Smith arrived. He sat down."
 
 
 def test_write_hard_break_preserved(writer, git_repo):
@@ -231,7 +234,7 @@ def test_write_hard_break_preserved(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000014.md").read_text()
     body = content.split("---", 2)[2].strip()
-    assert body == '<span data-par-id="p1">Line one\\\nline two. Next.</span>'
+    assert body == '<span data-par-id="p1">\nLine one\\\nline two. Next.\n</span>'
 
 
 def test_write_soft_newline_preserved(writer, git_repo):
@@ -242,7 +245,7 @@ def test_write_soft_newline_preserved(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000015.md").read_text()
     body = content.split("---", 2)[2].strip()
-    assert body == '<span data-par-id="p1">First\nline. Second.</span>'
+    assert body == '<span data-par-id="p1">\nFirst\nline. Second.\n</span>'
 
 
 def test_write_spans_carry_paragraph_ids(writer, git_repo):
@@ -255,11 +258,7 @@ def test_write_spans_carry_paragraph_ids(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000016.md").read_text()
     body = content.split("---", 2)[2].strip()
-    assert body == (
-        '<span data-par-id="para-7">Alpha.</span>\n'
-        '<span data-par-id="para-7">Beta.</span>\n\n'
-        '<span data-par-id="para-8">Gamma.</span>'
-    )
+    assert body == ('<span data-par-id="para-7">\nAlpha.\nBeta.\n</span>\n\n' '<span data-par-id="para-8">\nGamma.\n</span>')
     assert "data-sen-id" not in body
 
 
@@ -271,7 +270,7 @@ def test_write_html_escapes_sentence_text(writer, git_repo):
 
     content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000017.md").read_text()
     body = content.split("---", 2)[2].strip()
-    assert body == '<span data-par-id="p1">' "A &lt;span&gt; tag &amp; &quot;quotes&quot;.</span>"
+    assert body == '<span data-par-id="p1">\nA &lt;span&gt; tag &amp; &quot;quotes&quot;.\n</span>'
 
 
 def test_serialize_is_idempotent(writer):

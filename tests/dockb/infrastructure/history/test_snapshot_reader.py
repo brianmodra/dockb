@@ -201,9 +201,7 @@ def test_read_hard_break_preserved(reader, git_repo):
 
 def test_read_span_paragraph_ids_restore_paragraph_identity(reader, git_repo):
     body = (
-        '<span data-par-id="par-1">First.</span>\n'
-        + '<span data-par-id="par-1">Second.</span>\n\n'
-        + '<span data-par-id="par-2">Third.</span>'
+        '<span data-par-id="par-1">\nFirst sentence.\nSecond sentence.\n</span>\n\n' '<span data-par-id="par-2">\nThird sentence.\n</span>'
     )
     _write_snapshot(git_repo, chapter_id="c-nnn", title="T", body=body)
 
@@ -213,21 +211,22 @@ def test_read_span_paragraph_ids_restore_paragraph_identity(reader, git_repo):
     first, second = chapter.paragraphs
     assert first.id == "par-1"
     assert second.id == "par-2"
-    assert [s.text for s in first.sentences] == ["First.", "Second."]
-    assert second.sentences[0].text == "Third."
+    assert [s.text for s in first.sentences] == ["First sentence.\n", "Second sentence."]
+    assert second.sentences[0].text == "Third sentence."
     # Sentences carry no id in the format; they get freshly generated ones
     for sentence in [*first.sentences, *second.sentences]:
         uuid.UUID(sentence.id)
 
 
-def test_read_span_sentence_keeps_mid_sentence_newline(reader, git_repo):
-    body = '<span data-par-id="par-1">First\nline. Still first.</span>'
+def test_read_mid_sentence_newline_inside_span_is_ordinary_whitespace(reader, git_repo):
+    body = '<span data-par-id="par-1">\nFirst\nline. Still first.\n</span>'
     _write_snapshot(git_repo, chapter_id="c-ooo", title="T", body=body)
 
     chapter = reader.read_chapter("c-ooo")
 
-    assert len(chapter.paragraphs[0].sentences) == 1
-    assert chapter.paragraphs[0].sentences[0].text == "First\nline. Still first."
+    paragraph = chapter.paragraphs[0]
+    assert paragraph.get_text() == "First\nline. Still first."
+    assert [s.text for s in paragraph.sentences] == ["First\nline. ", "Still first."]
 
 
 def test_read_unescapes_span_content(reader, git_repo):
@@ -240,7 +239,7 @@ def test_read_unescapes_span_content(reader, git_repo):
 
 
 def test_read_mixed_spans_and_plain_text(reader, git_repo):
-    body = '<span data-par-id="par-1">Span one.</span>\nPlain two. Plain three.'
+    body = '<span data-par-id="par-1">\nSpan one.\n</span>\nPlain two. Plain three.'
     _write_snapshot(git_repo, chapter_id="c-qqq", title="T", body=body)
 
     chapter = reader.read_chapter("c-qqq")
@@ -248,7 +247,7 @@ def test_read_mixed_spans_and_plain_text(reader, git_repo):
     paragraph = chapter.paragraphs[0]
     assert len(paragraph.sentences) == 3
     assert paragraph.id == "par-1"
-    assert paragraph.sentences[0].text == "Span one."
+    assert paragraph.sentences[0].text == "Span one.\n"
     # The span-free text is NLP-split and given fresh ids
     assert paragraph.sentences[1].text.strip() == "Plain two."
     assert paragraph.sentences[2].text.strip() == "Plain three."
@@ -262,7 +261,7 @@ def test_read_span_bodies_become_fresh_id_sentences(reader, git_repo):
     chapter = reader.read_chapter("c-rrr")
 
     paragraph = chapter.paragraphs[0]
-    assert [s.text for s in paragraph.sentences] == ["One.", "Two."]
+    assert [s.text for s in paragraph.sentences] == ["One.\n", "Two."]
     assert paragraph.sentences[0].id != paragraph.sentences[1].id
     uuid.UUID(paragraph.sentences[0].id)
     uuid.UUID(paragraph.sentences[1].id)

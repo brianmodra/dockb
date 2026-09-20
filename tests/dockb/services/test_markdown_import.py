@@ -246,7 +246,7 @@ class TestExistingChapter:
         summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
 
         assert summary.changed == 1
-        assert file.read_text() == '---\nauthor: Brian\ntitle: Old Title\nid: c1\n---\n\n<span data-par-id="p1">New text.</span>\n'
+        assert file.read_text() == '---\nauthor: Brian\ntitle: Old Title\nid: c1\n---\n\n<span data-par-id="p1">\nNew text.\n</span>\n'
 
     def test_changed_paragraph_replaces_sentences(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"

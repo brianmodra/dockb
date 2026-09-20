@@ -42,7 +42,7 @@ def _repo(chapter: Chapter | None) -> MagicMock:
 def test_reconstruct_chapter_markdown_renders_loaded_chapter(nlp):
     chapter = _make_chapter("c1", _make_paragraph("p1", "Hi there."))
     rendered = reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
-    assert rendered == "---\nid: c1\ntitle: Chapter 1\n---\n\n" '<span data-par-id="p1">Hi there.</span>\n'
+    assert rendered == "---\nid: c1\ntitle: Chapter 1\n---\n\n" '<span data-par-id="p1">\nHi there.\n</span>\n'
 
 
 def test_reconstruct_chapter_markdown_includes_title_only_for_unknown_attrs(nlp):

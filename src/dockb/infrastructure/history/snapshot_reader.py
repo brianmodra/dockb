@@ -73,39 +73,34 @@ class SnapshotReader:
     def _parse_paragraph(self, text: str) -> tuple[Paragraph, list[Sentence]]:
         """Parse one paragraph block into a Paragraph and its Sentences.
 
-        The paragraph's UUID is restored from the ``data-par-id`` span attribute.
-        The spans delimit the sentences, which receive freshly generated UUIDs.
-        Any text outside spans (hand-typed or legacy files) is split with spaCy
-        and assigned freshly generated UUIDs.
+        The paragraph's UUID is restored from the ``data-par-id`` span attribute;
+        one identity span usually wraps the whole paragraph. The span inner text
+        minus the structural newlines after the open tag and before the close tag
+        is the paragraph text, loose text around the span kept at its position.
+        Sentences are then re-derived from the whole paragraph text with spaCy and
+        receive freshly generated UUIDs.
         """
         matches = list(_SPAN_RE.finditer(text))
         if not matches:
             return Paragraph(), self._split_sentences(text)
 
-        sentences = []
+        parts: list[str] = []
         paragraph_id: str | None = None
         position = 0
         for match in matches:
-            gap = text[position : match.start()]
-            if gap.strip():
-                sentences.extend(self._split_sentences(gap))
-
+            parts.append(text[position : match.start()])
             tag = match.group(1)
-            inner = html.unescape(match.group(2))
             par_id = self._span_attr(tag, "data-par-id")
             if paragraph_id is None and par_id:
                 paragraph_id = par_id
-            if inner.strip():
-                sentences.append(Sentence(text=inner))
+            parts.append(html.unescape(match.group(2)).strip("\n"))
             position = match.end()
-
-        tail = text[position:]
-        if tail.strip():
-            sentences.extend(self._split_sentences(tail))
+        parts.append(text[position:])
+        paragraph_text = "".join(parts)
 
         if paragraph_id is None:
-            return Paragraph(), sentences
-        return Paragraph(id=paragraph_id), sentences
+            return Paragraph(), self._split_sentences(paragraph_text)
+        return Paragraph(id=paragraph_id), self._split_sentences(paragraph_text)
 
     @staticmethod
     def _span_attr(tag: str, name: str) -> str | None:

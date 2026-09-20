@@ -98,31 +98,31 @@ def test_roundtrip_empty_chapter(writer, reader):
 
 
 def test_roundtrip_full_text_equivalence(writer, reader):
-    """The full concatenated text should match regardless of paragraph boundaries."""
+    """Inter-sentence whitespace normalizes to newlines on write; read-back is stable."""
     original = Chapter(id="c-round-005", title="Full Text")
     original.paragraphs.append(_make_paragraph_with_sentences("The quick brown fox ", "jumps over the lazy dog."))
     original.paragraphs.append(_make_paragraph_with_sentences("Pack my box ", "with five dozen liquor jugs."))
-    original_text = original.get_text()
 
     writer.write(original)
     result = reader.read_chapter("c-round-005")
 
-    assert result.get_text() == original_text
+    # First write normalizes trailing inter-sentence whitespace to a newline
+    assert result.get_text() == ("The quick brown fox\njumps over the lazy dog." "Pack my box\nwith five dozen liquor jugs.")
 
 
 def test_roundtrip_paragraph_ids_preserved_sentence_ids_recreated(writer, reader):
     """Paragraph UUIDs embedded in the spans survive a roundtrip; sentences are re-derived."""
     chapter = Chapter(id="c-round-006", title="New IDs")
-    chapter.paragraphs.append(_make_paragraph_with_sentences("One.", "Two.", p_id="par-a"))
-    chapter.paragraphs.append(_make_paragraph_with_sentences("Three.", p_id="par-b"))
+    chapter.paragraphs.append(_make_paragraph_with_sentences("First sentence.", "Second sentence.", p_id="par-a"))
+    chapter.paragraphs.append(_make_paragraph_with_sentences("Third sentence.", p_id="par-b"))
 
     writer.write(chapter)
     result = reader.read_chapter("c-round-006")
 
     assert result.id == "c-round-006"
     assert [p.id for p in result.paragraphs] == ["par-a", "par-b"]
-    assert [s.text for s in result.paragraphs[0].sentences] == ["One.", "Two."]
-    assert result.paragraphs[1].sentences[0].text == "Three."
+    assert [s.text for s in result.paragraphs[0].sentences] == ["First sentence.\n", "Second sentence."]
+    assert result.paragraphs[1].sentences[0].text == "Third sentence."
     # Sentences are not persisted in the format — they come back with fresh UUIDs
     for sentence in [
         *result.paragraphs[0].sentences,

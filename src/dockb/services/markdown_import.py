@@ -84,7 +84,6 @@ def apply_chapter_file(
 
     diff = detect_changes(
         content,
-        nlp,
         get_chapter=load_once,
         create_chapter=_skeleton,
         title_fallback=path.stem,
@@ -108,8 +107,8 @@ def apply_chapter_file(
     for paragraph_id in diff.deleted:
         chapter.delete_child(paragraph_id)
 
-    changed_paragraphs = [_apply_changed(chapter, changed) for changed in diff.changed]
-    added_paragraphs = _place_new_paragraphs(chapter, diff.new)
+    changed_paragraphs = [_apply_changed(chapter, changed, nlp) for changed in diff.changed]
+    added_paragraphs = _place_new_paragraphs(chapter, diff.new, nlp)
 
     _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp)
     _write_back_chapter_file(path, chapter, nlp)
@@ -283,24 +282,40 @@ def _skeleton(front_id: str | None, title: str) -> Chapter:
     return Chapter(id=front_id or str(uuid.uuid4()), title=title)
 
 
-def _build_paragraph(new: NewParagraph) -> Paragraph:
-    """Build a fresh NEW paragraph with a Sentence per ``new.sentence_texts`` entry."""
+def _build_paragraph(new: NewParagraph, nlp: Language) -> Paragraph:
+    """Build a fresh NEW paragraph with Sentences sliced from *new*'s text."""
     paragraph = Paragraph()
-    for text in new.sentence_texts:
-        paragraph.append_child(Sentence(text=text))
+    paragraph.sentences[:] = _split_sentences(new.text, nlp)
     paragraph.state = DataState.NEW
     return paragraph
 
 
-def _apply_changed(chapter: Chapter, changed: ChangedParagraph) -> Paragraph:
+def _apply_changed(chapter: Chapter, changed: ChangedParagraph, nlp: Language) -> Paragraph:
     """Replace *changed* paragraph's sentences and mark it CHANGED for persistence."""
     paragraph = next(p for p in chapter.paragraphs if p.id == changed.par_id)
-    paragraph.sentences[:] = [Sentence(text=text) for text in changed.sentence_texts]
+    paragraph.sentences[:] = _split_sentences(changed.text, nlp)
     paragraph.state = DataState.CHANGED
     return paragraph
 
 
-def _place_new_paragraphs(chapter: Chapter, new_paragraphs: list[NewParagraph]) -> list[Paragraph]:
+def _split_sentences(text: str, nlp: Language) -> list[Sentence]:
+    """Split *text* into Sentence models on spaCy sentence boundaries.
+
+    Newlines are never sentence delimiters: a mid-sentence newline stays inside
+    the sentence's text, and a backslash-newline hard break is preserved. Each
+    sentence keeps the whitespace up to the next sentence.
+    """
+    spans = list(nlp(text).sents)
+    sentences = []
+    for idx, span in enumerate(spans):
+        end = spans[idx + 1].start_char if idx + 1 < len(spans) else len(text)
+        sentence_text = text[span.start_char : end]
+        if sentence_text.strip():
+            sentences.append(Sentence(text=sentence_text))
+    return sentences
+
+
+def _place_new_paragraphs(chapter: Chapter, new_paragraphs: list[NewParagraph], nlp: Language) -> list[Paragraph]:
     """Insert every new paragraph and return them, in file order.
 
     Consecutive new paragraphs (same ``after_id``, or both ``at_start``) keep
@@ -311,7 +326,7 @@ def _place_new_paragraphs(chapter: Chapter, new_paragraphs: list[NewParagraph]) 
     previous_new: NewParagraph | None = None
     previous_placed: Paragraph | None = None
     for new in new_paragraphs:
-        paragraph = _build_paragraph(new)
+        paragraph = _build_paragraph(new, nlp)
         consecutive = (
             previous_new is not None
             and previous_placed is not None
