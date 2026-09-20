@@ -59,6 +59,7 @@ def detect_changes(
     get_chapter: Callable[[str], Chapter | None],
     create_chapter: Callable[[str | None, str], Chapter],
     title_fallback: str = "",
+    single_newline_paragraphs: bool = False,
 ) -> ChapterDiff:
     """Classify paragraph changes between a chapter and a new markdown file.
 
@@ -69,6 +70,10 @@ def detect_changes(
     skeleton and receives the resolved chapter title now. The resolved title is
     the front-matter ``title`` when present, else ``title_fallback``; it is also
     carried back on ``ChapterDiff.title``.
+
+    With ``single_newline_paragraphs`` every body line is a paragraph block
+    instead of a blank-line-separated one, so files whose paragraphs end in a
+    single newline and whose sentences run on inside a line import correctly.
     """
     front_id, front_title, body = _extract_front_matter(new_markdown)
     title = front_title or title_fallback
@@ -80,7 +85,7 @@ def detect_changes(
         created = True
 
     old_texts = {paragraph.id: _old_texts(paragraph) for paragraph in old_chapter.paragraphs}
-    changed, new, seen_ids = _classify_blocks(body, old_texts, bool(old_chapter.paragraphs))
+    changed, new, seen_ids = _classify_blocks(body, old_texts, bool(old_chapter.paragraphs), single_newline_paragraphs)
 
     return ChapterDiff(
         changed=changed,
@@ -97,6 +102,7 @@ def _classify_blocks(
     body: str,
     old_texts: dict[str, str],
     chapter_has_paragraphs: bool,
+    single_newline_paragraphs: bool,
 ) -> tuple[list[ChangedParagraph], list[NewParagraph], set[str]]:
     """Classify every block in *body*, returning ``(changed, new, seen_ids)``.
 
@@ -109,7 +115,7 @@ def _classify_blocks(
     new: list[NewParagraph] = []
     seen_ids: set[str] = set()
     anchor: str | None = None
-    for block in (part.strip() for part in body.split("\n\n")):
+    for block in _paragraph_blocks(body, single_newline_paragraphs):
         if not block:
             continue
         par_id, text = _parse_block(block)
@@ -138,6 +144,31 @@ def _classify_blocks(
 def _old_texts(paragraph: Paragraph) -> str:
     """Paragraph text for one hydrated paragraph (its ``get_text``)."""
     return paragraph.get_text()
+
+
+def _paragraph_blocks(body: str, single_newline: bool) -> list[str]:
+    """Split *body* into paragraph blocks.
+
+    Blocks are blank-line (``\\n\\n``) separated by default. In single-newline
+    mode every line is its own block — the lines that belong to a span-wrapped
+    paragraph (written with structural newlines around them) stay together, so a
+    canonical file re-imported under the mode is not shredded into fake blocks.
+    """
+    if not single_newline:
+        return [part.strip() for part in body.split("\n\n")]
+    blocks: list[str] = []
+    span_lines: list[str] = []
+    for line in body.split("\n"):
+        if span_lines or ("<span" in line and "</span>" not in line):
+            span_lines.append(line)
+            if "</span>" in line:
+                blocks.append("\n".join(span_lines).strip())
+                span_lines = []
+            continue
+        blocks.append(line.strip())
+    if span_lines:
+        blocks.append("\n".join(span_lines).strip())
+    return blocks
 
 
 def _parse_block(block: str) -> tuple[str | None, str]:

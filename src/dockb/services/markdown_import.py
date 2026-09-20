@@ -55,12 +55,13 @@ class DocumentMetadata:
     author: str
 
 
-def apply_chapter_file(
+def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     document: Document,
     file_path: str | Path,
     nlp: Language,
     chapter_repo: ChapterRepository,
     uow_factory: UnitOfWorkFactory,
+    single_newline_paragraphs: bool = False,
 ) -> ChapterImportSummary:
     """Persist the changes a markdown chapter file makes to *document*.
 
@@ -71,6 +72,8 @@ def apply_chapter_file(
     commit. The chapter title is only ever set when the chapter is new. When
     anything changed, the new text — front matter and span-bearing body — is
     written back to *file_path*, so the file stays the graph's source of truth.
+    With ``single_newline_paragraphs`` a line is a paragraph and sentences run
+    on inside it (see ``detect_changes``); the write-back is always canonical.
     """
     path = Path(file_path)
     content = path.read_text(encoding="utf-8")
@@ -87,6 +90,7 @@ def apply_chapter_file(
         get_chapter=load_once,
         create_chapter=_skeleton,
         title_fallback=path.stem,
+        single_newline_paragraphs=single_newline_paragraphs,
     )
     chapter_id = diff.chapter_id
 
@@ -130,13 +134,15 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     document_repo: DocumentRepository,
     chapter_repo: ChapterRepository,
     uow_factory: UnitOfWorkFactory,
+    single_newline_paragraphs: bool = False,
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
     Files are found recursively (``*.md`` anywhere beneath *document_dir*), in
     sorted order. The whole directory is imported into a single Document,
     resolved by its metadata (see ``_read_document_metadata``/``_resolve_document``),
-    and one summary is returned per chapter file.
+    and one summary is returned per chapter file. ``single_newline_paragraphs``
+    is forwarded to every ``apply_chapter_file`` call.
     """
     dir_path = Path(document_dir)
     if not dir_path.is_dir():
@@ -145,7 +151,14 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     document = _resolve_document(dir_path, metadata, document_repo, uow_factory)
     summaries = []
     for chapter_file in sorted(dir_path.rglob("*.md")):
-        summary = apply_chapter_file(document, chapter_file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(
+            document,
+            chapter_file,
+            nlp,
+            chapter_repo,
+            uow_factory,
+            single_newline_paragraphs=single_newline_paragraphs,
+        )
         summaries.append(summary)
     return summaries
 

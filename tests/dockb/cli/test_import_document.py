@@ -50,15 +50,26 @@ class TestImportDocument:
         out = capsys.readouterr().out
         assert "c1 imported: Ch 1" in out
         assert "c2 synced: Ch 2" in out
-        document_dir, user, nlp, document_repo, chapter_repo, uow_factory = captured[0]
+        document_dir, user, nlp, document_repo, chapter_repo, uow_factory, single_newline = captured[0]
         assert document_dir == Path("docs/Linchpin")
         assert user == "bob"
         assert nlp is self.nlp
         assert isinstance(document_repo, DocumentRepository)
         assert isinstance(chapter_repo, ChapterRepository)
         assert isinstance(uow_factory, UnitOfWorkFactory)
+        assert single_newline is False
         self.session_factory.session.assert_called_once_with()
         self.session_factory.close.assert_called_once_with()
+
+    def test_single_newline_paragraphs_flag_is_forwarded(self, _neo4j_env, monkeypatch):
+        self._patch_dependencies(monkeypatch)
+        captured = []
+        monkeypatch.setattr(cli, "import_document_directory", lambda *args: captured.append(args) or [])
+
+        exit_code = cli.main(["docs/Linchpin", "--single-newline-paragraphs"])
+
+        assert exit_code == 0
+        assert captured[0][6] is True
 
     def test_reads_neo4j_configuration_from_environment(self, _neo4j_env, monkeypatch):
         self._patch_dependencies(monkeypatch)

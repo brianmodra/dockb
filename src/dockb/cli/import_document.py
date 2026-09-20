@@ -34,6 +34,14 @@ def main(argv: list[str] | None = None) -> int:
     """Import *document_dir* into the graph, printing one line per chapter file."""
     parser = argparse.ArgumentParser(prog="dockb import-document", description=__doc__)
     parser.add_argument("document_dir", type=Path, help="directory of markdown chapter files")
+    parser.add_argument(
+        "--single-newline-paragraphs",
+        action="store_true",
+        help=(
+            "read each body line as one paragraph (sentences run on inside a line); "
+            "write-back always uses the canonical blank-line/sentence-line format"
+        ),
+    )
     args = parser.parse_args(argv)
 
     load_dotenv()
@@ -58,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             repos[Document],
             repos[Chapter],
             uow_factory,
+            args.single_newline_paragraphs,
         )
         session_factory.close()
     for summary in summaries:

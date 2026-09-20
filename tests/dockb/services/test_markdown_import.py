@@ -190,6 +190,62 @@ class TestNewChapter:
         assert file.read_text() == written
 
 
+class TestSingleNewlineParagraphs:
+    def test_loose_single_newline_file_imports_lines_as_paragraphs(self, nlp, tmp_path):
+        file = tmp_path / "Loose.md"
+        file.write_text("First paragraph sentence one. Second sentence.\nSecond paragraph sentence.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, single_newline_paragraphs=True)
+
+        assert summary.created is True
+        assert summary.added == 2
+        chapter, _ = _saved_chapter(uow)
+        assert [s.get_text() for p in chapter.paragraphs for s in p.sentences] == [
+            "First paragraph sentence one. ",
+            "Second sentence.",
+            "Second paragraph sentence.",
+        ]
+        rewritten = file.read_text()
+        assert rewritten.count('<span data-par-id="') == 2
+        assert "\n\n<span data-par-id=" in rewritten
+        assert "First paragraph sentence one.\nSecond sentence.\n</span>" in rewritten
+
+    def test_single_newline_mode_keeps_canonical_file_unchanged(self, nlp, tmp_path, header):
+        def paragraphs():
+            return [
+                _make_paragraph("p1", "First sentence.\n", "Second sentence."),
+                _make_paragraph("p2", "Third sentence."),
+            ]
+
+        file = tmp_path / "Loose.md"
+        file.write_text(
+            f"{header}\n\n"
+            '<span data-par-id="p1">\nFirst sentence.\nSecond sentence.\n</span>\n\n'
+            '<span data-par-id="p2">\nThird sentence.\n</span>'
+        )
+        loaded = _make_chapter("c1", *paragraphs())
+        document = _make_document("d1", _make_chapter("c1", *paragraphs()))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, single_newline_paragraphs=True)
+
+        assert summary.added == summary.changed == summary.deleted == 0
+        uow.register.assert_not_called()
+        uow.commit.assert_not_called()
+        written = (
+            f"{header}\n\n"
+            '<span data-par-id="p1">\nFirst sentence.\nSecond sentence.\n</span>\n\n'
+            '<span data-par-id="p2">\nThird sentence.\n</span>'
+        )
+        assert file.read_text() == written
+
+
 class TestExistingChapter:
     def test_chapter_from_another_document_is_rejected(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
@@ -534,7 +590,7 @@ class TestImportDocumentDirectory:
         ]
         calls: list[tuple] = []
 
-        def fake_apply(*args):
+        def fake_apply(*args, **_kwargs):
             calls.append(args)
             return summaries[len(calls) - 1]
 
@@ -564,7 +620,7 @@ class TestImportDocumentDirectory:
         monkeypatch.setattr(
             markdown_import,
             "apply_chapter_file",
-            lambda document, file, nlp, chapter_repo, uow_factory: ChapterImportSummary("c1", False),
+            lambda document, file, nlp, chapter_repo, uow_factory, **_kwargs: ChapterImportSummary("c1", False),
         )
 
         import_document_directory(tmp_path, "User", nlp, MagicMock(), chapter_repo, uow_factory)
@@ -628,7 +684,7 @@ class TestWriteBackFrontMatter:
         document = Document(id="d1", state=DataState.SYNC)
         monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
 
-        def fake_apply(*_args):
+        def fake_apply(*_args, **_kwargs):
             return ChapterImportSummary(chapter_id="c-new", created=True, title="New")
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)

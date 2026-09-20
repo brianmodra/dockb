@@ -397,3 +397,45 @@ def test_missing_closing_front_matter_raises():
 
     with pytest.raises(ChapterMismatchError):
         detect_changes(content, _get_old(old), _no_create)
+
+
+def test_single_newline_mode_splits_lines_into_paragraphs():
+    old = Chapter(id="c-1")
+    body = "First paragraph with one sentence after another. Second sentence.\nSecond paragraph only."
+
+    diff = detect_changes(
+        _front_matter() + body,
+        _get_old(old),
+        _no_create,
+        single_newline_paragraphs=True,
+    )
+
+    assert diff.new == [
+        NewParagraph(text="First paragraph with one sentence after another. Second sentence."),
+        NewParagraph(text="Second paragraph only."),
+    ]
+
+
+def test_single_newline_mode_keeps_span_regions_intact():
+    old = _chapter([("par-1", ["First sentence.\n", "Second sentence."])])
+    body = _span("par-1", "First sentence.", "Second sentence.")
+
+    diff = detect_changes(
+        _front_matter() + body,
+        _get_old(old),
+        _no_create,
+        single_newline_paragraphs=True,
+    )
+
+    assert not diff.changed
+    assert not diff.new
+    assert not diff.deleted
+
+
+def test_default_mode_does_not_split_on_single_newlines():
+    old = Chapter(id="c-1")
+    body = "One line.\nSecond line belonging to the same paragraph."
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.new == [NewParagraph(text="One line.\nSecond line belonging to the same paragraph.")]
