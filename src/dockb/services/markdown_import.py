@@ -168,7 +168,7 @@ def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language
 
     The front matter keeps any existing attributes, adding the chapter's
     ``id``/``title``; the body is the chapter serialized as one identity span
-    per sentence.
+    per paragraph.
     """
     existing = chapter_file.read_text(encoding="utf-8")
     attrs = front_matter.parse(existing)[0]

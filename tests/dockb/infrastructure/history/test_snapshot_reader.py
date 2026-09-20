@@ -201,7 +201,8 @@ def test_read_hard_break_preserved(reader, git_repo):
 
 def test_read_span_paragraph_ids_restore_paragraph_identity(reader, git_repo):
     body = (
-        '<span data-par-id="par-1">\nFirst sentence.\nSecond sentence.\n</span>\n\n' '<span data-par-id="par-2">\nThird sentence.\n</span>'
+        '<span data-par-id="par-1">\nFirst sentence.\nSecond sentence.\n</span>\n\n'
+        + '<span data-par-id="par-2">\nThird sentence.\n</span>'
     )
     _write_snapshot(git_repo, chapter_id="c-nnn", title="T", body=body)
 

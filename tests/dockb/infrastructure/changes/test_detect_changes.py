@@ -180,7 +180,7 @@ def test_merge_is_delete_plus_changed():
 
 def test_loose_text_in_span_bearing_block_is_kept_in_place():
     old = _chapter([("par-1", ["One.", "Four."])])
-    body = '<span data-par-id="par-1">\nOne.\n</span>\n' "Loose two. Loose three.\n" '<span data-par-id="par-1">\nFour.\n</span>'
+    body = '<span data-par-id="par-1">\nOne.\n</span>\n' + "Loose two. Loose three.\n" + '<span data-par-id="par-1">\nFour.\n</span>'
 
     diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
 

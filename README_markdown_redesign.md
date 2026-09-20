@@ -163,36 +163,47 @@ single-truth loop above eliminates the merge/conflict-resolver entirely: the lat
 To let `git merge-file` (line-based) resolve at **sentence granularity** rather than paragraph
 granularity, hydration normalizes the markdown so that:
 
-- **Paragraph** = a block delimited by a blank line (`\n\n`).
-- **Sentence** = one line inside a paragraph: a `<span data-par-id="…">` element
-  holding that sentence's text and its paragraph's UUID (repeated on every
-  sentence of the paragraph). The span *is* the sentence unit; each paragraph
-  is written one sentence-span per line. Sentences carry no id of their own —
-  they are re-derived at hydration time. The spaCy pipeline still resolves
-  sentence boundaries for text that arrives without spans (hand-typed edits or
-  legacy snapshots), so "Dr."
+- **Paragraph** = a block delimited by a blank line (`\n\n`), written as one
+  `<span data-par-id="…">` element wrapping the whole paragraph.
+- **Sentence** = one line inside that paragraph span. Each paragraph is written
+  as a single span holding its sentences, one per line. Sentences carry no id of
+  their own — they are re-derived at hydration time, when spaCy splits the
+  paragraph's text, so "Dr."
   and "e.g." are handled correctly there.
 
 The rules, stated symmetrically:
 
-- **Newlines are never sentence delimiters.** In span-free text, sentence-splitting uses NLP logic
-  only (`nlp(...).sents`); in span-wrapped text the spans delimit the sentences.
-- **A newline mid-sentence is ordinary whitespace.** Renderers treat it as soft wrapping; the parser
-  ignores it for sentence structure. A user may place a newline mid-sentence freely (inside a span
-  it is preserved byte-for-byte).
-- **A forced mid-sentence break** is written as `\` followed by a newline (CommonMark hard-break
-  syntax). The hydrator must preserve this and not strip or reinterpret it.
-- **Parse side:** span-wrapped sentences are read from the spans; span-free text is split on the
-  terminator regardless of the newline. The per-line layout is a *merge* convenience, not a parsing
-  requirement.
-- **Write side:** emit one sentence-span per line; span-free input is split and wrapped first.
+- **The span demarcates the paragraph, not its sentences.** The newlines after
+  the open tag and before the close tag are structural, not content; inside the
+  span, the sentence-to-sentence newline carries the canonical line layout.
+- **A newline mid-sentence is ordinary whitespace.** Renderers treat it as soft
+  wrapping; spaCy treats it as whitespace, so the sentence stays intact. A user
+  may place a newline mid-sentence freely (it is preserved byte-for-byte).
+- **A forced mid-sentence break** is written as `\` followed by a newline
+  (CommonMark hard-break syntax). The hydrator must preserve this and not strip
+  or reinterpret it.
+- **Parse side:** the paragraph text is read from the span — inner text minus
+  the structural newlines — and sentences are split from it with spaCy;
+  span-free text is split the same way. The per-line layout is a *merge*
+  convenience, not a parsing requirement.
+- **Write side:** emit one paragraph-span with its sentences one per line;
+  span-free content (a `dirty` chapter, a sentence-less paragraph) is wrapped
+  raw in a fresh-id span. Sentences are never split at write time.
 
 The one whitespace distinction to keep straight:
 
 | Whitespace | Meaning | For |
 |---|---|---|
-| Sentence-ender line break | sentence boundary (writer-inserted per span) | `git merge-file` granularity |
+| Sentence-ender line break | sentence layout (writer-inserted inside the paragraph span) | `git merge-file` granularity |
 | Blank line `\n\n` | paragraph boundary | block structure + `git merge-file` |
+
+### Importing files not in this format
+
+A loose chapter file that delimits paragraphs by a **single** newline and runs
+its sentences on inside the line imports through the CLI's
+`--single-newline-paragraphs` flag: every body line is read as a paragraph block
+(span-wrapped paragraphs stay whole), and the write-back produces the canonical
+format above, so a second import of the unchanged file detects nothing.
 
 ## 5. The cross-process, multi-tasking consideration
 
@@ -227,12 +238,12 @@ types" shell changes later.**
 ## 6. Sentence metadata in the format
 
 The snapshot writer serializes the hierarchy into markdown and wraps every
-sentence in a `<span data-par-id="…">` element carrying its paragraph's UUID
-(repeated on every sentence span of the paragraph). The parser reads the spans
+paragraph in a `<span data-par-id="…">` element carrying its UUID, holding the
+paragraph's sentences one per line. The parser reads the spans
 back onto the Paragraph model objects, so paragraph *identity* survives
 serialization. Sentences carry no id in the format: they are re-derived at
-write and parse time (from the spans' text, or with spaCy for span-free text)
-and assigned fresh UUIDs.
+parse time (spaCy over the span's text, or over span-free text) and are
+assigned fresh UUIDs.
 
 The README's aspirational metadata — JSON-in-HTML-comment blobs for non-text
 attrs (e.g. premise, elevator pitch) and `<span data-attr>` inline metadata —
@@ -273,10 +284,11 @@ Consequences and requirements:
 - **The normalized markdown is the source of truth for spans.** When rehydration runs spaCy on a
   changed sentence, the resulting triples/roles must be written **back into the markdown as spans**
   (part of the write-side normalization). This is a **format addition**: the current snapshot writer
-  does not emit spans.
+  emits only the paragraph identity spans, not semantic ones.
 - **The FE renders spans; it does not derive them.** Rendering is the only FE responsibility for
   semantics.
-- **Granularity is the sentence.** Spans are scoped to a sentence's text; a sentence split re-derives
+- **Granularity is the sentence.** Inline semantic spans sit inside a paragraph's identity span,
+  scoped to a sentence (one per line); a sentence split re-derives
   spans per resulting sentence; a merge re-derives across combined text — the same scoped
   rehydration as tokens. No global re-derivation.
 - **Version-control friendly.** Inline spans sit on one line, so they do not fight the

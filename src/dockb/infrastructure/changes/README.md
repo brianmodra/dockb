@@ -12,9 +12,9 @@ checking the file's chapter really belongs to the document being edited.
 directory for markdown files, resolves the directory to one `Document` from its metadata
 (`document_metadata.yaml`), writes that metadata back when it creates the `Document`, imports each
 chapter file, and rewrites any file whose graph content changed into the canonical span format —
-front matter plus one span per sentence — so the next import matches it. Read this document to learn
-how chapter files map back into the graph, which files count as new versus edited, what the caller
-guarantees, and how a document directory becomes graph data.
+front matter plus one identity span per paragraph — so the next import matches it. Read this document
+to learn how chapter files map back into the graph, which files count as new versus edited, what the
+caller guarantees, and how a document directory becomes graph data.
 
 ## Calling context
 
@@ -55,8 +55,9 @@ reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-fil
 whose front-matter `id` belongs to a different document aborts the whole directory import. When the
 file's diff is non-empty the caller rewrites the file in place from the rebuilt chapter: the front
 matter carries the chapter `id` and `title`, any other attributes being preserved in place, and the
-body is written in the sentence-boundary span format — one `<span data-par-id=…>` per sentence,
-paragraphs separated by blank lines — so the file stays the graph's source of truth. A file whose
+body is written in the canonical span format — one `<span data-par-id=…>` per paragraph holding its
+sentences one per line, paragraphs separated by blank lines — so the file stays the graph's source of
+truth. A file whose
 diff is empty and that is not a brand-new chapter is left untouched; a brand-new empty chapter is
 still given an identity: it is persisted as an empty chapter and its file receives the front-matter
 `id`/`title` only (with no body). From a shell,
@@ -70,17 +71,14 @@ the file name without the `.md` extension, ignoring directory path), and calls:
 ```python
 detect_changes(
     new_markdown: str,
-    nlp: Language,
     get_chapter: Callable[[str], Chapter | None],
     create_chapter: Callable[[str | None, str], Chapter],
     title_fallback: str = "",
+    single_newline_paragraphs: bool = False,
 ) -> ChapterDiff
 ```
 
 - `new_markdown` — the text of the saved file, including any YAML front matter.
-- `nlp` — the spaCy pipeline (`spacy.load("en_core_web_sm")`) injected like the history package's
-  `SnapshotReader`/`SnapshotWriter`. It splits span-free text and loose gaps into sentences; it is
-  never used to re-derive sentence boundaries inside identity spans.
 - `get_chapter` — resolves the *old* hydrated chapter (read from the knowledge graph) by chapter id.
   It is called with the file's front-matter id when the file carries one. The old side is
   **never re-parsed**; only the new markdown file is parsed.
@@ -89,6 +87,9 @@ detect_changes(
   `None` it assigns the new chapter's id itself.
 - `title_fallback` — the caller's filename-derived title. It is used only when the front matter
   carries no `title`.
+- `single_newline_paragraphs` — treat every body line as a paragraph block instead of the usual
+  blank-line separation, for files whose paragraphs end in a single newline and whose sentences run
+  on inside a line (see "Parse rules").
 
 Returns a `ChapterDiff` (see below). The old chapter is whichever of `get_chapter` (found) or
 `create_chapter` (fallback) produced the non-empty side; a file with no front matter therefore
@@ -106,17 +107,27 @@ old chapter to diff against: `get_chapter` is not called and `create_chapter` bu
 
 ## Parse rules (new markdown only)
 
-- The body splits on a blank line (`\n\n`), giving one processing unit per **paragraph block**.
-- A **span-bearing block** holds one `<span data-par-id="…">text</span>` per sentence, one per line.
-  `data-par-id` is paragraph identity **only** — never part of the sentence text. Sentence text is
-  the span's inner content, HTML-unescaped, tags stripped. The paragraph id is taken from the first
-  `data-par-id` span in the block. Loose (unspanned) text inside a span-bearing block is
-  sentence-split with `nlp` and kept at its position; nothing is dropped.
-- A **span-free block** (hand-typed, pre-hydration) is sentence-split with `nlp` and yields no
-  paragraph id.
+- The body splits on a blank line (`\n\n`), giving one processing unit per **paragraph block**
+  (with `single_newline_paragraphs`, every body line is a block instead — see below).
+- A **span-bearing block** holds one `<span data-par-id="…">` wrapping the whole paragraph; the
+  span's inner text minus the structural newlines after the open tag and before the close tag is
+  the paragraph text. `data-par-id` is paragraph identity **only** — never part of the paragraph
+  text. Loose (unspanned) text before, between, and after spans is kept at its position; nothing
+  is dropped. The paragraph id is taken from the first `data-par-id` span in the block.
+- A **span-free block** (hand-typed, pre-hydration) yields no paragraph id.
+- A block yields **raw paragraph text**, not sentences: the caller splits it with spaCy. Sentence
+  splitting is never this package's job.
 - A newline inside a span is ordinary whitespace and is preserved byte-for-byte; a `\`-newline hard
   break is preserved. Each block is compared byte-for-byte (including trailing whitespace) so the
   rehydrator can keep its minimal-write guarantee.
+
+### Single-newline paragraphs
+
+With `single_newline_paragraphs` a body line is a paragraph block instead of a blank line, so files
+whose paragraphs end in a single newline and whose sentences run on inside a line import correctly.
+The lines that belong to a span-wrapped paragraph (the structural open-tag, sentence, and close-tag
+lines) stay together as one block, so a canonical file re-imported under the mode is not shredded
+into fake paragraphs. The write-back is always canonical.
 
 ## Classification
 
