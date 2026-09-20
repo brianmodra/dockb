@@ -168,7 +168,9 @@ to the user.
 
 A single build section may contain multiple TDD sections.
 
-**Ask** the user permission, then repeat the tdd sequence (C) for the next section. 
+If there are multiple sections, and not all sections are completed after C.9, then
+**ask** the user permission to repeat the tdd sequence (C) for the next section.
+Otherwise, if all sections are compled, **ask** the user permission to proceed to wrap-up (E).
 
 ### E. Wrap-up
 
