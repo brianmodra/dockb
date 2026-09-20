@@ -1,5 +1,19 @@
 # Markdown-Based Design
 
+## Executive Summary
+
+This document is the design record for making markdown DockB's source of truth. Each chapter is a
+markdown file whose text is canonical; the backend rehydrates the knowledge graph from it, and the
+file format lays each paragraph out as one identity span holding its sentences one per line, so
+paragraph identity survives serialization and line-based git merges stay at sentence granularity.
+It records the decisions — drop the editor front end, make the save-and-rehydrate loop synchronous,
+carry paragraph identity in the format — and the alternatives that lost to them.
+
+Read this to learn why the format is what it is, what the rehydration loop does, and what is still
+open before the design can be trusted. The concrete format and its one implementation live in
+`src/dockb/infrastructure/markdown/` and its README; this document is the rationale behind them and
+the roadmap for what comes after.
+
 ## 1. The problem we were trying to solve
 
 The original front end is a React + Tiptap (ProseMirror) browser editor that talks to a FastAPI
