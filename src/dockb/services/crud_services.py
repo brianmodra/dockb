@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from dockb.exceptions import DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata
+from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -26,6 +27,8 @@ from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
 
 if TYPE_CHECKING:
+    from spacy.language import Language
+
     from dockb.infrastructure.document_store.store import DocumentStore
     from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
     from dockb.repositories.chapter_repository import ChapterRepository
@@ -50,10 +53,12 @@ class DocumentService:
         uow_factory: UnitOfWorkFactory,
         document_repo: DocumentRepository,
         document_store: DocumentStore | None = None,
+        nlp: Language | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._document_repo = document_repo
         self._document_store = document_store
+        self._nlp = nlp
 
     def list_all(self) -> list[dict[str, str]]:
         """Return lightweight summaries for every document."""
@@ -62,6 +67,29 @@ class DocumentService:
     def get(self, document_id: str) -> Document | None:
         """Load a full document hierarchy, or None."""
         return self._document_repo.load(document_id)
+
+    def open(self, document_id: str) -> Document | None:
+        """Load a document, materializing its owned file tree when absent.
+
+        When a store is configured and the document's directory does not exist
+        yet, the tree (metadata + one chapter file per graph chapter) is
+        serialized from the graph and committed to git, then the document is
+        returned.
+        """
+        doc = self._document_repo.load(document_id)
+        if doc is None:
+            return None
+        if self._document_store is not None and not self._document_store.document_exists(document_id):
+            self._materialize(self._document_store, doc)
+        return doc
+
+    def _materialize(self, store: DocumentStore, doc: Document) -> None:
+        """Write the document's owned tree from the graph and git-commit it."""
+        store.write_metadata(doc.id, DocumentMetadata(title=doc.title, author=doc.author))
+        for chapter in doc.chapters:
+            content = markdown_writer.render_chapter_markdown(chapter, self._nlp)
+            store.write_chapter(doc.id, chapter.id, content)
+        store.git_commit(doc.id, f"materialize: {doc.id[:8]}")
 
     def create(
         self,

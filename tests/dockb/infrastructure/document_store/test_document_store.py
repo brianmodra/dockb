@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
@@ -12,6 +14,14 @@ _SAFE_CHAPTER = "c-00000000-0000-0000-0000-000000000001"
 
 @pytest.fixture()
 def store(tmp_path):
+    return DocumentStore(base_dir=tmp_path)
+
+
+@pytest.fixture()
+def git_store(tmp_path):
+    subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
     return DocumentStore(base_dir=tmp_path)
 
 
@@ -135,3 +145,39 @@ def test_from_env_raises_when_unset(monkeypatch):
     monkeypatch.delenv("DOCKB_CHAPTERS_DIR", raising=False)
     with pytest.raises(ValueError, match="DOCKB_CHAPTERS_DIR"):
         DocumentStore.from_env()
+
+
+def test_git_commit_records_added_files(git_store, tmp_path):
+    git_store.write_chapter(_SAFE_ID, _SAFE_CHAPTER, "# body\n")
+    git_store.git_commit(_SAFE_ID, "materialize: doc")
+    result = subprocess.run(
+        ["git", "log", "--format=%H"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip()
+
+
+def test_git_commit_only_commits_the_document_dir(git_store, tmp_path):
+    other = DocumentStore(base_dir=tmp_path)
+    other.write_chapter("d-other", "c-other", "# other\n")
+    git_store.write_chapter(_SAFE_ID, _SAFE_CHAPTER, "# mine\n")
+    git_store.git_commit(_SAFE_ID, "materialize: doc")
+    staged = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "HEAD"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert staged.stdout.strip().splitlines() == [_SAFE_ID + "/chapter-c-00000000-0000-0000-0000-000000000001.md"]
+    assert "d-other" not in staged.stdout
+
+
+@pytest.mark.parametrize("bad_id", ["", ".", "..", "../escape", "a/b", "/etc/passwd"])
+def test_git_commit_rejects_invalid_ids(git_store, bad_id):
+    with pytest.raises(ValueError, match="not a valid id"):
+        git_store.git_commit(bad_id, "message")

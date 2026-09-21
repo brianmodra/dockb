@@ -18,10 +18,13 @@ absolute paths, control characters are all rejected).
 from __future__ import annotations
 
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from dockb.exceptions import SnapshotError
 
 _METADATA_FILE = "document_metadata.yaml"
 _CHAPTER_PREFIX = "chapter-"
@@ -116,6 +119,38 @@ class DocumentStore:
         if not directory.is_dir():
             return []
         return sorted(path for path in directory.glob(f"{_CHAPTER_PREFIX}*.md") if path.is_file())
+
+    def git_commit(self, document_id: str, message: str) -> None:
+        """Commit the document's directory to the git repo rooted at the base dir.
+
+        The base directory must be a git repository (as SnapshotWriter expects);
+        only files under *document_id* are staged. A document with nothing new
+        to commit is a no-op.
+        """
+        self.document_dir(document_id)
+        try:
+            self._git("add", "--", document_id)
+        except SnapshotError as exc:
+            if "not a git repository" in str(exc):
+                raise SnapshotError(f"{self._base_dir} is not a git repository; the document store owns the repo") from exc
+            raise
+        status = self._git("status", "--porcelain")
+        if not status.strip():
+            return
+        self._git("commit", "-m", message)
+
+    def _git(self, *args: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git", *args],
+                cwd=str(self._base_dir),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout
+        except subprocess.CalledProcessError as exc:
+            raise SnapshotError(f"git command failed: {exc.stderr.strip()}") from exc
 
     @staticmethod
     def _validate(value: str, kind: str) -> None:

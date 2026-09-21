@@ -6,6 +6,8 @@ with lightweight stubs so the tests exercise only the service logic.
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from dockb.exceptions import DuplicateTitleError
@@ -169,6 +171,65 @@ class TestDocumentService:
         doc = self.svc.create("d1", title="Faith", author="Paul")
         assert doc.id == "d1"
         assert self.uow.committed
+
+    def test_open_materializes_missing_tree(self, tmp_path, nlp) -> None:
+        from dockb.models.token import Token
+
+        chapter = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Hello world.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        chapter.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(chapter)
+        self.repo._store["d1"] = doc
+
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store, nlp=nlp)
+
+        opened = svc.open("d1")
+
+        assert opened is doc
+        assert store.read_metadata("d1") == DocumentMetadata(title="Faith", author="Paul")
+        assert store.chapter_exists("d1", "c1")
+        content = store.read_chapter("d1", "c1")
+        assert content is not None
+        assert "Hello world." in content
+        result = subprocess.run(
+            ["git", "log", "--format=%H"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip()
+
+    def test_open_does_not_overwrite_existing_tree(self, tmp_path, nlp) -> None:
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_metadata("d1", DocumentMetadata(title="Faith", author="Paul"))
+        existing = store.chapter_file("d1", "c1")
+        existing.parent.mkdir(parents=True, exist_ok=True)
+        existing.write_text("hand edit\n")
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store, nlp=nlp)
+
+        svc.open("d1")
+
+        assert store.read_chapter("d1", "c1") == "hand edit\n"
+
+    def test_open_without_store_returns_document(self, nlp) -> None:
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=None, nlp=nlp)
+        assert svc.open("d1") is doc
 
     def test_update_returns_none_when_missing(self) -> None:
         assert self.svc.update("nonexistent", "T", "A") is None

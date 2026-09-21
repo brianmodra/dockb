@@ -47,3 +47,11 @@ may add their own fields without losing them on the next write; `read_metadata`
 returns the two fields (missing ones default to empty strings), or `None` when the
 file does not exist. `DocumentMetadata` is the single definition of this pair,
 shared with the directory import in `services/markdown_import.py`.
+
+## Git
+
+The base directory is a git repository (the server owns it, as described in
+`README_markdown_redesign.md`). `git_commit(document_id, message)` stages only
+the document's directory — `git add -- <document_id>` — and commits it; a
+document with nothing new to commit is a no-op. This is how newly materialized
+trees enter history with a single commit.

@@ -66,7 +66,7 @@ def get_document(
     document_id: str,
     svc: Any = Depends(get_doc_service),
 ) -> dict[str, Any]:
-    doc = svc.get(document_id)
+    doc = svc.open(document_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}")
     return serialize_document(doc)

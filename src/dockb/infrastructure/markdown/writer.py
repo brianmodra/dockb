@@ -12,7 +12,7 @@ from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
 
 
-def serialize_body(chapter: Chapter, _nlp: Language) -> str:
+def serialize_body(chapter: Chapter, _nlp: Language | None) -> str:
     """Serialize *chapter*'s text as one id-span per paragraph, blank-line separated.
 
     A ``dirty`` chapter keeps its raw text: each blank-line block becomes a fresh
@@ -30,7 +30,7 @@ def serialize_body(chapter: Chapter, _nlp: Language) -> str:
 
 def render_chapter_markdown(
     chapter: Chapter,
-    nlp: Language,
+    nlp: Language | None,
     attrs: dict[str, object] | None = None,
 ) -> str:
     """Render *chapter* as a complete markdown file: front matter block plus body.
@@ -52,7 +52,7 @@ def render_chapter_markdown(
 def write_chapter_markdown(
     chapter: Chapter,
     path: str | Path,
-    nlp: Language,
+    nlp: Language | None,
     attrs: dict[str, object] | None = None,
 ) -> None:
     """Write *chapter*'s rendered markdown to *path*, overwriting it."""

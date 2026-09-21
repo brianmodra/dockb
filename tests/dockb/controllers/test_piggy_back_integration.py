@@ -42,6 +42,9 @@ class _MockDocService:
     def get(self, document_id: str) -> Document | None:
         return self._docs.get(document_id)
 
+    def open(self, document_id: str) -> Document | None:
+        return self._docs.get(document_id)
+
     def create(self, document_id: str, title: str, author: str) -> Document:
         doc = Document(id=document_id, title=title, author=author, state=DataState.SYNC)
         self._docs[document_id] = doc

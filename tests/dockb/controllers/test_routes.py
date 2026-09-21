@@ -50,6 +50,9 @@ class MockDocumentService:
     def get(self, document_id: str) -> Document | None:
         return self._docs.get(document_id)
 
+    def open(self, document_id: str) -> Document | None:
+        return self._docs.get(document_id)
+
     def create(self, document_id: str, title: str, author: str) -> Document:
         if any(d.title == title for d in self._docs.values()):
             raise DuplicateTitleError(title)
