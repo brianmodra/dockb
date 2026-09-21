@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.documents import CreateDocumentRequest, UpdateDocumentRequest
 from dockb.controllers.serializers import serialize_document
+from dockb.exceptions import DuplicateTitleError
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -49,11 +50,14 @@ def create_document(
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
-    svc.create(
-        document_id=body.attrs.id,
-        title=body.attrs.title,
-        author=body.attrs.author,
-    )
+    try:
+        svc.create(
+            document_id=body.attrs.id,
+            title=body.attrs.title,
+            author=body.attrs.author,
+        )
+    except DuplicateTitleError as exc:
+        raise HTTPException(status_code=409, detail=f"document_title_conflict: {exc}") from exc
     return mutation_response(session_context).model_dump()
 
 

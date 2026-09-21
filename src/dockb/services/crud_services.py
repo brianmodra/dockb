@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from dockb.exceptions import DuplicateTitleError
+from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -24,6 +26,7 @@ from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
 
 if TYPE_CHECKING:
+    from dockb.infrastructure.document_store.store import DocumentStore
     from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
     from dockb.repositories.chapter_repository import ChapterRepository
     from dockb.repositories.document_repository import DocumentRepository
@@ -46,9 +49,11 @@ class DocumentService:
         self,
         uow_factory: UnitOfWorkFactory,
         document_repo: DocumentRepository,
+        document_store: DocumentStore | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._document_repo = document_repo
+        self._document_store = document_store
 
     def list_all(self) -> list[dict[str, str]]:
         """Return lightweight summaries for every document."""
@@ -64,11 +69,21 @@ class DocumentService:
         title: str,
         author: str,
     ) -> Document:
-        """Create a new empty document and commit it."""
+        """Create a new empty document and commit it.
+
+        An exact-title match against the knowledge graph is rejected, and the
+        server-owned metadata file for the document is materialized when a
+        document store is configured.
+        """
+        if any(row["title"] == title for row in self._document_repo.list_all()):
+            raise DuplicateTitleError(title)
+
         doc = Document(id=document_id, title=title, author=author, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
         uow.commit()
+        if self._document_store is not None:
+            self._document_store.write_metadata(document_id, DocumentMetadata(title=title, author=author))
         return doc
 
     def update(

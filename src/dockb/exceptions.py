@@ -20,3 +20,7 @@ class SnapshotError(Exception):
 
 class ChapterMismatchError(Exception):
     """Raised when a markdown file's chapter identity disagrees with the chapter it is diffed against."""
+
+
+class DuplicateTitleError(Exception):
+    """Raised when a document title already exists in the knowledge graph."""

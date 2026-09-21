@@ -29,7 +29,8 @@ async def startup() -> None:
         user=os.environ["NEO4J_USER"],
         password=os.environ["NEO4J_PASSWORD"],
     )
-    wire(_session_factory)
+    document_base_dir = os.environ.get("DOCKB_CHAPTERS_DIR")
+    wire(_session_factory, document_base_dir=Path(document_base_dir) if document_base_dir else None)
 
 
 @app.on_event("shutdown")

@@ -6,6 +6,10 @@ with lightweight stubs so the tests exercise only the service logic.
 
 from __future__ import annotations
 
+import pytest
+
+from dockb.exceptions import DuplicateTitleError
+from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
 from dockb.models.base import DataState, DockbModel
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -141,6 +145,30 @@ class TestDocumentService:
     def test_create_document_no_parent_ids(self) -> None:
         self.svc.create("d1", title="T", author="A")
         assert self.uow.registered[0][1] == {}
+
+    def test_create_rejects_exact_title_duplicate(self) -> None:
+        existing = Document(id="d0", title="Faith", author="Paul", state=DataState.SYNC)
+        self.repo._store["d0"] = existing
+        with pytest.raises(DuplicateTitleError):
+            self.svc.create("d1", title="Faith", author="Paul")
+
+    def test_create_accepts_distinct_title(self) -> None:
+        existing = Document(id="d0", title="Faith", author="Paul", state=DataState.SYNC)
+        self.repo._store["d0"] = existing
+        doc = self.svc.create("d1", title="Hope", author="Paul")
+        assert doc.id == "d1"
+        assert self.uow.committed
+
+    def test_create_writes_document_metadata(self, tmp_path) -> None:
+        store = DocumentStore(base_dir=tmp_path)
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store)
+        svc.create("d1", title="Faith", author="Paul")
+        assert store.read_metadata("d1") == DocumentMetadata(title="Faith", author="Paul")
+
+    def test_create_without_store_skips_metadata(self) -> None:
+        doc = self.svc.create("d1", title="Faith", author="Paul")
+        assert doc.id == "d1"
+        assert self.uow.committed
 
     def test_update_returns_none_when_missing(self) -> None:
         assert self.svc.update("nonexistent", "T", "A") is None

@@ -201,6 +201,31 @@ class TestWireServices:
 
         assert get_history_service() is not None
 
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_passes_document_store_to_doc_service(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+    ) -> None:
+        from dockb.composition import wire
+        from dockb.controllers.documents import get_doc_service
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf, document_base_dir=tmp_path)
+
+        svc = get_doc_service()
+        assert svc._document_store is not None  # pylint: disable=protected-access
+
     def test_unwire_clears_services(self) -> None:
         from dockb.composition import unwire
         from dockb.controllers.chapters import get_ch_service

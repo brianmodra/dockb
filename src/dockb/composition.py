@@ -20,6 +20,7 @@ from dockb.controllers.history import set_history_service
 from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
 from dockb.controllers.sentences import set_sent_service
+from dockb.infrastructure.document_store import DocumentStore
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.chapter import Chapter
@@ -37,7 +38,7 @@ from dockb.services.session_context import SessionContext
 _stack: ExitStack | None = None
 
 
-def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None) -> SessionContext:
+def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None, document_base_dir: Path | None = None) -> SessionContext:
     """Wire repositories, services, and session context to route DI globals.
 
     Returns the created SessionContext for use by the caller (e.g. startup
@@ -60,7 +61,8 @@ def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None) -> Sess
         reconstructor=None,
     )
 
-    doc_svc = DocumentService(uow_factory=uow_factory, document_repo=repos[Document])
+    document_store = DocumentStore(base_dir=document_base_dir) if document_base_dir is not None else None
+    doc_svc = DocumentService(uow_factory=uow_factory, document_repo=repos[Document], document_store=document_store)
     ch_svc = ChapterService(uow_factory=uow_factory, chapter_repo=repos[Chapter])
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])
     sent_svc = SentenceService(uow_factory=uow_factory, sentence_repo=repos[Sentence])

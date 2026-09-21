@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from dockb.exceptions import DuplicateTitleError
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -50,6 +51,8 @@ class MockDocumentService:
         return self._docs.get(document_id)
 
     def create(self, document_id: str, title: str, author: str) -> Document:
+        if any(d.title == title for d in self._docs.values()):
+            raise DuplicateTitleError(title)
         doc = _make_doc(document_id, title, author)
         self._docs[document_id] = doc
         return doc
@@ -237,6 +240,14 @@ class TestDocumentRoutes:
             json={"attrs": {"title": "T", "author": "A"}},
         )
         assert resp.status_code == 422
+
+    def test_create_document_duplicate_title_conflict(self) -> None:
+        self.svc.create("d1", "T", "A")
+        resp = self.client.post(
+            "/api/documents",
+            json={"attrs": {"id": "d2", "title": "T", "author": "A"}},
+        )
+        assert resp.status_code == 409
 
     def test_update_document(self) -> None:
         self.svc.create("d1", "Old", "Old")
