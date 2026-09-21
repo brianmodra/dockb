@@ -50,6 +50,11 @@ RETURN c.id AS id, c.title AS title
 ORDER BY c.id
 """
 
+_FIND_DOCUMENT_CYPHER = """
+MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document)
+RETURN d.id AS document_id
+"""
+
 _LOAD_CYPHER = """
 MATCH (c:Chapter {id: $chapter_id})
 OPTIONAL MATCH (p:Paragraph)-[rp:PART_OF]->(c)
@@ -96,6 +101,13 @@ class ChapterRepository(BaseRepository[Chapter]):
         """Return ``[{id, title}]`` summaries for chapters belonging to *document_id*."""
         records = list(self._session.run(_LIST_BY_DOCUMENT_CYPHER, {"document_id": document_id}))
         return [{"id": r["id"], "title": r.get("title") or ""} for r in records]
+
+    def find_document_id(self, chapter_id: str) -> str | None:
+        """Return the id of the owning document, or None when the chapter is orphaned."""
+        records = list(self._session.run(_FIND_DOCUMENT_CYPHER, {"chapter_id": chapter_id}))
+        if not records:
+            return None
+        return str(records[0].get("document_id")) if records[0].get("document_id") is not None else None
 
     def load(self, chapter_id: str) -> Chapter | None:  # pylint: disable=too-many-locals
         """Load a Chapter and its full child hierarchy from Neo4j.

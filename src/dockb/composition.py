@@ -62,8 +62,9 @@ def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None, documen
     )
 
     document_store = DocumentStore(base_dir=document_base_dir) if document_base_dir is not None else None
-    doc_svc = DocumentService(uow_factory=uow_factory, document_repo=repos[Document], document_store=document_store)
-    ch_svc = ChapterService(uow_factory=uow_factory, chapter_repo=repos[Chapter])
+    nlp = spacy.load("en_core_web_sm") if (document_base_dir is not None or snapshot_base_dir is not None) else None
+    doc_svc = DocumentService(uow_factory=uow_factory, document_repo=repos[Document], document_store=document_store, nlp=nlp)
+    ch_svc = ChapterService(uow_factory=uow_factory, chapter_repo=repos[Chapter], document_store=document_store, nlp=nlp)
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])
     sent_svc = SentenceService(uow_factory=uow_factory, sentence_repo=repos[Sentence])
 
@@ -76,7 +77,8 @@ def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None, documen
     set_session_context(ctx)
 
     if snapshot_base_dir is not None:
-        reader = SnapshotReader(base_dir=snapshot_base_dir, nlp=spacy.load("en_core_web_sm"))
+        assert nlp is not None
+        reader = SnapshotReader(base_dir=snapshot_base_dir, nlp=nlp)
         history_svc = HistoryService(reader=reader, chapter_repo=repos[Chapter], uow_factory=uow_factory)
         set_history_service(history_svc)
 

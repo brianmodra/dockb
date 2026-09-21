@@ -275,3 +275,25 @@ class TestLoadChapter:
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_title": "X"}]
         ch = chapter_repo.load("ch-1")
         assert ch.state == DataState.SYNC
+
+
+class TestFindDocumentId:
+    """Behaviour of ChapterRepository.find_document_id()."""
+
+    def test_returns_parent_document_id(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"document_id": "d-1"}]
+        assert chapter_repo.find_document_id("ch-1") == "d-1"
+
+    def test_calls_reverse_part_of_cypher(self, chapter_repo, neo4j_session):
+        chapter_repo.find_document_id("ch-1")
+        cypher, params = extract_call(neo4j_session)
+        assert "-[:PART_OF]->" in cypher
+        assert params == {"chapter_id": "ch-1"}
+
+    def test_returns_none_when_orphan(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert chapter_repo.find_document_id("ch-1") is None
+
+    def test_returns_none_when_null_id(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"document_id": None}]
+        assert chapter_repo.find_document_id("ch-1") is None

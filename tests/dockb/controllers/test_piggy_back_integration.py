@@ -72,6 +72,9 @@ class _MockChService:
     def get(self, chapter_id: str) -> Chapter | None:
         return self._chapters.get(chapter_id)
 
+    def open(self, chapter_id: str) -> Chapter | None:
+        return self._chapters.get(chapter_id)
+
     def create(self, chapter_id: str, title: str, document_id: str) -> Chapter:
         ch = Chapter(id=chapter_id, title=title, state=DataState.SYNC)
         self._chapters[chapter_id] = ch

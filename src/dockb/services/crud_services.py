@@ -156,9 +156,13 @@ class ChapterService:
         self,
         uow_factory: UnitOfWorkFactory,
         chapter_repo: ChapterRepository,
+        document_store: DocumentStore | None = None,
+        nlp: Language | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
+        self._document_store = document_store
+        self._nlp = nlp
 
     def list_by_document(self, document_id: str) -> list[dict[str, str]]:
         """Return chapter summaries for a document."""
@@ -167,6 +171,32 @@ class ChapterService:
     def get(self, chapter_id: str) -> Chapter | None:
         """Load a full chapter hierarchy, or None."""
         return self._chapter_repo.load(chapter_id)
+
+    def open(self, chapter_id: str) -> Chapter | None:
+        """Load a chapter, materializing its owned markdown file when absent.
+
+        When a store is configured, the chapter's owning document is resolved
+        from the graph and, if ``chapter-{id}.md`` does not exist yet, the file
+        is serialized from the graph and git-committed. Documents without a
+        graph parent (orphans) are returned as-is.
+        """
+        ch = self._chapter_repo.load(chapter_id)
+        if ch is None:
+            return None
+        if self._document_store is None:
+            return ch
+        document_id = self._chapter_repo.find_document_id(chapter_id)
+        if document_id is None:
+            return ch
+        if not self._document_store.chapter_exists(document_id, chapter_id):
+            self._materialize_chapter(self._document_store, document_id, ch)
+        return ch
+
+    def _materialize_chapter(self, store: DocumentStore, document_id: str, ch: Chapter) -> None:
+        """Write the chapter's owned markdown file from the graph and git-commit it."""
+        content = markdown_writer.render_chapter_markdown(ch, self._nlp)
+        store.write_chapter(document_id, ch.id, content)
+        store.git_commit(document_id, f"materialize: chapter {ch.id[:8]}")
 
     def create(
         self,

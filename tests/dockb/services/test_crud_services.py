@@ -54,6 +54,16 @@ class StubDocumentRepo(StubRepo):
 
 
 class StubChapterRepo(StubRepo):
+    def __init__(self) -> None:
+        super().__init__()
+        self._document_of: dict[str, str] = {}
+
+    def set_document(self, chapter_id: str, document_id: str) -> None:
+        self._document_of[chapter_id] = document_id
+
+    def find_document_id(self, chapter_id: str) -> str | None:
+        return self._document_of.get(chapter_id)
+
     def list_by_document(self, document_id: str) -> list[dict[str, str]]:
         return super().list_by_parent(document_id)
 
@@ -311,6 +321,66 @@ class TestChapterService:
         self.repo._store["c1"] = ch
         assert self.svc.delete("c1") is True
         assert ch.state == DataState.DELETED
+
+    def test_open_returns_none_when_missing(self) -> None:
+        assert self.svc.open("nonexistent") is None
+
+    def test_open_without_store_returns_chapter(self) -> None:
+        ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        assert self.svc.open("c1") is ch
+
+    def test_open_materializes_missing_chapter_file(self, tmp_path, nlp) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store, nlp=nlp)
+
+        opened = svc.open("c1")
+
+        assert opened is ch
+        content = store.read_chapter("d1", "c1")
+        assert content is not None
+        assert content.startswith("---")
+        assert "Intro" in content
+        result = subprocess.run(
+            ["git", "log", "--format=%H"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip()
+
+    def test_open_does_not_overwrite_existing_chapter_file(self, tmp_path, nlp) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_chapter("d1", "c1", "hand edit\n")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store, nlp=nlp)
+
+        opened = svc.open("c1")
+
+        assert opened is ch
+        assert store.read_chapter("d1", "c1") == "hand edit\n"
+
+    def test_open_without_document_skips_materialization(self, tmp_path, nlp) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store, nlp=nlp)
+
+        opened = svc.open("c1")
+
+        assert opened is ch
+        assert store.read_chapter("d1", "c1") is None
 
 
 # ---------------------------------------------------------------------------

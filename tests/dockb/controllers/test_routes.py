@@ -7,6 +7,8 @@ Uses mocked services and ``TestClient`` — no Neo4j required.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -80,6 +82,9 @@ class MockChapterService:
         return [{"id": ch.id} for ch in self._chapters.values()]
 
     def get(self, chapter_id: str) -> Chapter | None:
+        return self._chapters.get(chapter_id)
+
+    def open(self, chapter_id: str) -> Chapter | None:
         return self._chapters.get(chapter_id)
 
     def create(self, chapter_id: str, title: str, document_id: str) -> Chapter:
@@ -310,6 +315,12 @@ class TestChapterRoutes:
         assert data["attrs"]["id"] == "c1"
         assert data["attrs"]["title"] == "Intro"
         assert data["content"] == []
+
+    def test_get_chapter_calls_open(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        with patch.object(self.ch_svc, "open", wraps=self.ch_svc.open) as open_mock:
+            self.client.get("/api/chapters/c1")
+            open_mock.assert_called_once_with("c1")
 
     def test_create_chapter(self) -> None:
         resp = self.client.post(

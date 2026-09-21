@@ -56,7 +56,7 @@ def get_chapter(
     chapter_id: str,
     svc: Any = Depends(get_ch_service),
 ) -> dict[str, Any]:
-    ch = svc.get(chapter_id)
+    ch = svc.open(chapter_id)
     if ch is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return serialize_chapter(ch).model_dump()
