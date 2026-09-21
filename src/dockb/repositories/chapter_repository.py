@@ -16,11 +16,7 @@ logger = logging.getLogger(__name__)
 # Write Cypher
 # ---------------------------------------------------------------------------
 
-_NEW_CYPHER = """
-MATCH (d:Document {id: $document_id})
-MERGE (c:Chapter {id: $chapter_id})
-SET c.title = $title
-MERGE (c)-[:PART_OF]->(d)
+_PARAGRAPH_UNWIND_CYPHER = """
 WITH c
 UNWIND $paragraphs AS p
 MERGE (para:Paragraph {id: p.id})
@@ -28,7 +24,26 @@ MERGE (para)-[r:PART_OF]->(c)
 SET r.index = p.index
 """
 
-_CHANGED_CYPHER = _NEW_CYPHER + """
+_NEW_CYPHER = f"""
+MATCH (d:Document {{id: $document_id}})
+MERGE (c:Chapter {{id: $chapter_id}})
+SET c.title = $title
+MERGE (c)-[rc:PART_OF]->(d)
+SET rc.index = $index
+WITH d, c
+OPTIONAL MATCH (other:Chapter)-[er:PART_OF]->(d)
+WHERE other.id <> c.id AND er.index >= $index
+WITH c, collect(er) AS later_rels
+FOREACH (e IN later_rels | SET e.index = e.index + 1)
+{_PARAGRAPH_UNWIND_CYPHER}
+"""
+
+_CHANGED_CYPHER = f"""
+MATCH (d:Document {{id: $document_id}})
+MERGE (c:Chapter {{id: $chapter_id}})
+SET c.title = $title
+MERGE (c)-[:PART_OF]->(d)
+{_PARAGRAPH_UNWIND_CYPHER}
 WITH c, COLLECT(p.id) AS keep_ids
 OPTIONAL MATCH (c)<-[r:PART_OF]-(orphan:Paragraph)
 WHERE NOT orphan.id IN keep_ids
@@ -45,9 +60,9 @@ DETACH DELETE c
 # ---------------------------------------------------------------------------
 
 _LIST_BY_DOCUMENT_CYPHER = """
-MATCH (c:Chapter)-[:PART_OF]->(d:Document {id: $document_id})
-RETURN c.id AS id, c.title AS title
-ORDER BY c.id
+MATCH (c:Chapter)-[r:PART_OF]->(d:Document {id: $document_id})
+RETURN c.id AS id, c.title AS title, r.index AS index
+ORDER BY r.index
 """
 
 _FIND_DOCUMENT_CYPHER = """
@@ -94,13 +109,14 @@ class ChapterRepository(BaseRepository[Chapter]):
             "document_id": parent_ids["document_id"],
             "chapter_id": model.id,
             "title": model.title,
+            "index": int(parent_ids.get("index", "0")),
             "paragraphs": [{"id": p.id, "index": i} for i, p in enumerate(model.paragraphs)],
         }
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str]]:
-        """Return ``[{id, title}]`` summaries for chapters belonging to *document_id*."""
+    def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
+        """Return ``[{id, title, index}]`` summaries for chapters belonging to *document_id*."""
         records = list(self._session.run(_LIST_BY_DOCUMENT_CYPHER, {"document_id": document_id}))
-        return [{"id": r["id"], "title": r.get("title") or ""} for r in records]
+        return [{"id": r["id"], "title": r.get("title") or "", "index": r.get("index") or 0} for r in records]
 
     def find_document_id(self, chapter_id: str) -> str | None:
         """Return the id of the owning document, or None when the chapter is orphaned."""

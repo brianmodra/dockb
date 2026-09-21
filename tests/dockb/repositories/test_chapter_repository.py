@@ -101,6 +101,34 @@ class TestSaveNewChapter:
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" not in cypher or "DETACH DELETE" not in cypher
 
+    def test_sets_chapter_document_edge_index(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+
+        chapter_repo.save(chapter, document_id="d1", index=2)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MERGE (c)-[rc:PART_OF]->(d)" in cypher
+        assert "SET rc.index = $index" in cypher
+        assert params["index"] == 2
+
+    def test_defaults_index_to_zero(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        _, params = extract_call(neo4j_session)
+        assert params["index"] == 0
+
+    def test_reindexes_later_chapters(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+
+        chapter_repo.save(chapter, document_id="d1", index=1)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "other.id <> c.id" in cypher
+        assert "er.index >= $index" in cypher
+        assert "SET e.index = e.index + 1" in cypher
+
 
 class TestSaveChangedChapter:
     """Behaviour when chapter.state == DataState.CHANGED."""
@@ -173,10 +201,22 @@ class TestSaveDirtyChapter:  # pylint: disable=too-few-public-methods
 class TestListByDocument:
     """Behaviour of ChapterRepository.list_by_document()."""
 
-    def test_returns_id_and_title(self, chapter_repo, neo4j_session):
-        neo4j_session.run.return_value = [{"id": "ch-1", "title": "Chapter 1"}, {"id": "ch-2", "title": "Chapter 2"}]
+    def test_returns_id_title_and_index(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "ch-1", "title": "Chapter 1", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "index": 1},
+        ]
         result = chapter_repo.list_by_document("d-1")
-        assert result == [{"id": "ch-1", "title": "Chapter 1"}, {"id": "ch-2", "title": "Chapter 2"}]
+        assert result == [
+            {"id": "ch-1", "title": "Chapter 1", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "index": 1},
+        ]
+
+    def test_orders_by_relationship_index(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        chapter_repo.list_by_document("d-1")
+        cypher, _ = extract_call(neo4j_session)
+        assert "ORDER BY r.index" in cypher
 
     def test_returns_empty_list_when_no_chapters(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
@@ -190,7 +230,7 @@ class TestListByDocument:
         assert params["document_id"] == "d-999"
 
     def test_defaults_missing_title_to_empty(self, chapter_repo, neo4j_session):
-        neo4j_session.run.return_value = [{"id": "ch-1", "title": None}]
+        neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "index": 0}]
         result = chapter_repo.list_by_document("d-1")
         assert result[0]["title"] == ""
 

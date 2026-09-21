@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from dockb.exceptions import DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
@@ -164,8 +164,8 @@ class ChapterService:
         self._document_store = document_store
         self._nlp = nlp
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str]]:
-        """Return chapter summaries for a document."""
+    def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
+        """Return chapter summaries (ordered by index) for a document."""
         return self._chapter_repo.list_by_document(document_id)
 
     def get(self, chapter_id: str) -> Chapter | None:
@@ -203,13 +203,37 @@ class ChapterService:
         chapter_id: str,
         title: str,
         document_id: str,
+        after_chapter_id: str | None = None,
     ) -> Chapter:
-        """Create a new empty chapter and commit it."""
+        """Create a new empty chapter, placed after *after_chapter_id*, and commit it.
+
+        ``after_chapter_id=None`` places the chapter first (index 0). The empty
+        ``chapter-{id}.md`` (front matter only) is written when a document store
+        is configured.
+        """
+        index = self._resolve_index(document_id, after_chapter_id)
         ch = Chapter(id=chapter_id, title=title, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id=document_id)
+        uow.register(ch, document_id=document_id, index=str(index))
         uow.commit()
+        if self._document_store is not None:
+            self._materialize_new_chapter(self._document_store, document_id, ch)
         return ch
+
+    def _resolve_index(self, document_id: str, after_chapter_id: str | None) -> int:
+        """Return the index of a new chapter placed after *after_chapter_id*."""
+        if after_chapter_id is None:
+            return 0
+        for row in self._chapter_repo.list_by_document(document_id):
+            if row["id"] == after_chapter_id:
+                return int(row["index"]) + 1
+        raise ChapterAfterNotFoundError(after_chapter_id)
+
+    def _materialize_new_chapter(self, store: DocumentStore, document_id: str, ch: Chapter) -> None:
+        """Write the new chapter's empty owned markdown file and git-commit it."""
+        content = markdown_writer.render_chapter_markdown(ch, self._nlp)
+        store.write_chapter(document_id, ch.id, content)
+        store.git_commit(document_id, f"create: chapter {ch.id[:8]}")
 
     def update(
         self,

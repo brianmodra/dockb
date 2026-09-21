@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from dockb.exceptions import DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
 from dockb.models.base import DataState, DockbModel
 from dockb.models.chapter import Chapter
@@ -57,15 +57,20 @@ class StubChapterRepo(StubRepo):
     def __init__(self) -> None:
         super().__init__()
         self._document_of: dict[str, str] = {}
+        self._index_of: dict[str, int] = {}
 
     def set_document(self, chapter_id: str, document_id: str) -> None:
         self._document_of[chapter_id] = document_id
 
+    def set_index(self, chapter_id: str, index: int) -> None:
+        self._index_of[chapter_id] = index
+
     def find_document_id(self, chapter_id: str) -> str | None:
         return self._document_of.get(chapter_id)
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str]]:
-        return super().list_by_parent(document_id)
+    def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
+        _ = document_id
+        return [{"id": m.id, "title": m.title, "index": self._index_of.get(m.id, 0)} for m in self._store.values()]
 
     def load(self, model_id: str) -> Chapter | None:
         return super().load(model_id)  # type: ignore[return-value]
@@ -283,8 +288,9 @@ class TestChapterService:
     def test_list_by_document_returns_summaries(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
+        self.repo.set_index("c1", 2)
         result = self.svc.list_by_document("doc1")
-        assert result == [{"id": "c1"}]
+        assert result == [{"id": "c1", "title": "Ch1", "index": 2}]
 
     def test_get_returns_none_when_missing(self) -> None:
         assert self.svc.get("nonexistent") is None
@@ -300,7 +306,50 @@ class TestChapterService:
         assert ch.title == "Intro"
         assert ch.state == DataState.NEW
         assert self.uow.committed
-        assert self.uow.registered[0][1] == {"document_id": "d1"}
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0"}
+
+    def test_create_without_after_places_first(self) -> None:
+        self.svc.create("c1", title="Intro", document_id="d1", after_chapter_id=None)
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0"}
+
+    def test_create_after_chapter_uses_next_index(self) -> None:
+        first = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = first
+        self.repo.set_index("c1", 0)
+
+        self.svc.create("c2", title="Ch2", document_id="d1", after_chapter_id="c1")
+
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "1"}
+
+    def test_create_after_middle_chapter_uses_next_index(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo.set_index("c1", 1)
+        self.repo._store["c3"] = Chapter(id="c3", title="Ch3", state=DataState.SYNC)
+        self.repo.set_index("c3", 2)
+
+        self.svc.create("c2", title="Ch2", document_id="d1", after_chapter_id="c1")
+
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "2"}
+
+    def test_create_after_unknown_chapter_raises(self) -> None:
+        with pytest.raises(ChapterAfterNotFoundError):
+            self.svc.create("c2", title="Ch2", document_id="d1", after_chapter_id="ghost")
+
+    def test_create_materializes_empty_chapter_file(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store)
+
+        svc.create("c1", title="Intro", document_id="d1")
+
+        content = store.read_chapter("d1", "c1")
+        assert content is not None
+        assert content.startswith("---")
+        assert "id: c1" in content
+        assert "title: Intro" in content
+        assert "data-par-id" not in content
 
     def test_update_modifies_title(self) -> None:
         ch = Chapter(id="c1", title="Old", state=DataState.SYNC)

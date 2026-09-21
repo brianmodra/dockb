@@ -200,6 +200,7 @@ explicit:
 - `after_chapter_id` names the chapter the new one goes **after**.
 - `after_chapter_id = null` means the new chapter becomes the **first** (index 0). To append, the
   caller passes the currently-last chapter's id — there is no separate "last" sentinel.
+- An `after_chapter_id` that is not a chapter of the document is rejected (404).
 
 When a chapter is inserted into the middle, the server renumbers every chapter at or after the
 insertion point (a single Cypher increment) so `index` remains 0..n-1 and the listing

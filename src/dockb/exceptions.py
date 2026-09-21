@@ -24,3 +24,7 @@ class ChapterMismatchError(Exception):
 
 class DuplicateTitleError(Exception):
     """Raised when a document title already exists in the knowledge graph."""
+
+
+class ChapterAfterNotFoundError(Exception):
+    """Raised when after_chapter_id names a chapter that does not belong to the document."""

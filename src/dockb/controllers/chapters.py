@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.chapters import CreateChapterRequest, UpdateChapterRequest
 from dockb.controllers.serializers import serialize_chapter
+from dockb.exceptions import ChapterAfterNotFoundError
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/chapters", tags=["chapters"])
@@ -43,11 +44,15 @@ def create_chapter(
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
-    svc.create(
-        chapter_id=body.attrs.id,
-        title=body.attrs.title,
-        document_id=body.relations.document_id,
-    )
+    try:
+        svc.create(
+            chapter_id=body.attrs.id,
+            title=body.attrs.title,
+            document_id=body.relations.document_id,
+            after_chapter_id=body.relations.after_chapter_id,
+        )
+    except ChapterAfterNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc
     return mutation_response(session_context).model_dump()
 
 

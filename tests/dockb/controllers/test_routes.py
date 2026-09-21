@@ -12,7 +12,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dockb.exceptions import DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -87,7 +87,7 @@ class MockChapterService:
     def open(self, chapter_id: str) -> Chapter | None:
         return self._chapters.get(chapter_id)
 
-    def create(self, chapter_id: str, title: str, document_id: str) -> Chapter:
+    def create(self, chapter_id: str, title: str, document_id: str, after_chapter_id: str | None = None) -> Chapter:
         ch = _make_chapter(chapter_id, title)
         self._chapters[chapter_id] = ch
         return ch
@@ -332,6 +332,34 @@ class TestChapterRoutes:
         )
         assert resp.status_code == 200
         assert resp.json()["status"]["code"] == "ok"
+
+    def test_create_chapter_passes_after_chapter_id(self) -> None:
+        with patch.object(self.ch_svc, "create", wraps=self.ch_svc.create) as create_mock:
+            resp = self.client.post(
+                "/api/chapters",
+                json={
+                    "attrs": {"id": "c2", "title": "Ch2"},
+                    "relations": {"document_id": "d1", "after_chapter_id": "c1"},
+                },
+            )
+        assert resp.status_code == 200
+        create_mock.assert_called_once_with(
+            chapter_id="c2",
+            title="Ch2",
+            document_id="d1",
+            after_chapter_id="c1",
+        )
+
+    def test_create_chapter_after_not_found(self) -> None:
+        with patch.object(self.ch_svc, "create", side_effect=ChapterAfterNotFoundError("ghost")):
+            resp = self.client.post(
+                "/api/chapters",
+                json={
+                    "attrs": {"id": "c2", "title": "Ch2"},
+                    "relations": {"document_id": "d1", "after_chapter_id": "ghost"},
+                },
+            )
+        assert resp.status_code == 404
 
     def test_update_chapter(self) -> None:
         self.ch_svc.create("c1", "Old", "d1")
