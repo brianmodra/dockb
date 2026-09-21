@@ -6,13 +6,14 @@ This document is the design record for making markdown DockB's source of truth. 
 markdown file whose text is canonical; the backend rehydrates the knowledge graph from it, and the
 file format lays each paragraph out as one identity span holding its sentences one per line, so
 paragraph identity survives serialization and line-based git merges stay at sentence granularity.
-It records the decisions — drop the editor front end, make the save-and-rehydrate loop synchronous,
-carry paragraph identity in the format — and the alternatives that lost to them.
+It records the decisions — drop the editor front end, make the save-and-rehydrate path synchronous,
+carry paragraph identity in the format, give the backend ownership of the markdown files and the
+git repo — and the alternatives that lost to them.
 
-Read this to learn why the format is what it is, what the rehydration loop does, and what is still
-open before the design can be trusted. The concrete format and its one implementation live in
-`src/dockb/infrastructure/markdown/` and its README; this document is the rationale behind them and
-the roadmap for what comes after.
+Read this to learn why the format is what it is, how saving rehydrates through the backend, and what
+is still open before the design can be trusted. The concrete format and its one implementation live
+in `src/dockb/infrastructure/markdown/` and its README; this document is the rationale behind them
+and the roadmap for what comes after.
 
 ## 1. The problem we were trying to solve
 
@@ -47,14 +48,15 @@ This dissolves the editor-framework problem entirely. Any markdown editor — `v
 Cursor, an off-the-shelf editor — can edit the file. The backend rehydration engine does not care
 who writes the file.
 
-### The working loop is a separate process calling the API
+### The backend owns the markdown files and the git repo
 
-The working loop is **its own process**, distinct from both the markdown editor and the FastAPI
-backend. It owns the markdown files and the git repo, and it drives the backend by calling the
-**existing REST API**, which gets a small number of **new endpoints** (see **New API endpoints**
-below). All work that touches the knowledge graph (tokenization, sentence/paragraph splitting,
-persistence) stays behind the API; the loop is a dumb-but-careful client that never reaches into the
-services or repositories directly.
+There is **no separate loop process**. The FastAPI backend owns the markdown chapter files — in a
+directory it controls (per-document, `chapter-{id}.md` under an environment-configured base) — and
+the git repo. The only writer of record is the API implementation itself: when the editor saves, it
+sends the chapter text to an endpoint, the backend writes the file, rehydrates the graph from it,
+and returns the canonical text. The editor is a thin client that never touches a filesystem path,
+and all work that touches the knowledge graph (tokenization, sentence/paragraph splitting,
+persistence) stays behind the API.
 
 ### Synchronous save-and-rehydrate (hard design change, supersedes the async loop below)
 
@@ -69,15 +71,24 @@ The save is synchronous with re-hydration: the editor is blocked (or the update 
 until the knowledge graph is current, so the editor always works against hydrated truth and there is
 never stale-client state to reconcile.
 
+Concretely, a save is the editor sending the current text to `PUT /api/chapters/{id}/document`.
+The backend writes that text to the chapter file it owns (this is the only place the file on disk
+is written by the editor's action — through the API, never by the editor touching the filesystem),
+runs `apply_chapter_file()`, canonicalizes, git-snapshots, and returns the canonical span-form text
+plus a change summary. Saves to one chapter serialize under a per-chapter lock (last-write-wins
+within the queue) because `apply_chapter_file()` reads the file.
+
 Consequences:
 
-- The rehydrate endpoints (`PUT /api/chapters/{id}/rehydrate`,
-  `PUT /api/paragraphs/{id}/rehydrate`, `PUT /api/sentences/{id}/rehydrate`) are **all kept**; the
-  design may iterate and whole-chapter or single-sentence rehydration remain needed.
+- The save path is the **document lifecycle endpoints** (see **New API endpoints** below) wrapping
+  `apply_chapter_file()`; the fine-grained rehydrate endpoints (`PUT /api/chapters/{id}/rehydrate`,
+  `PUT /api/paragraphs/{id}/rehydrate`, `PUT /api/sentences/{id}/rehydrate`) remain for clients that
+  edit via fine-grained CRUD.
 - Change detection against the **old** side does **not** re-parse the previous markdown file. The
   previous (hydrated) chapter is read from the **knowledge graph**; the new markdown file is the
   only text parsed. `data-par-id` on spans identifies paragraphs, not sentence content.
-- **The editor and file-save mechanics are deferred** (a later feature).
+- **The editor and file-save mechanics are deferred** (a later feature): the editing UI is out of
+  scope today, so the lifecycle endpoints are exercised by tests and any client.
 
 ### The working loop (superseded)
 
@@ -111,66 +122,94 @@ The diff is not asked to infer sentence structure; it only scopes the work.
 ### New API endpoints
 
 The existing API is **fine-grained, already-structured CRUD** (create/update single nodes from
-pre-delimited ProseMirror JSON). The loop's fundamental operation is different: **replace a whole
-unit from raw markdown text.** This mismatch is the bulk of the API work. We add a family of
-rehydrate-from-text endpoints:
+pre-delimited ProseMirror JSON). The backend-owned file model adds a second, whole-file family of
+operations — the **document lifecycle**:
 
 ```
-PUT /api/chapters/{id}/rehydrate     # body = raw markdown text → rebuild paragraphs+sentences+tokens
-PUT /api/paragraphs/{id}/rehydrate   # body = raw text → sentence split + tokens
-PUT /api/sentences/{id}/rehydrate    # body = text → re-tokenize only
+POST /api/documents                        # create document (unique title + author, materialize dir+metadata)
+GET  /api/documents/{id}                   # open a document: auto-materialize the tree if missing
+GET  /api/chapters/{id}                    # open a chapter: auto-materialize chapter-{id}.md if missing
+POST /api/chapters                         # add a chapter in sequence (after_chapter_id; null = new first)
+GET  /api/chapters/{id}/document           # read canonical file (reconcile-on-open absorbs hand edits)
+PUT  /api/chapters/{id}/document           # save: write file → apply_chapter_file → snapshot → return canonical
 ```
 
-Each folds a **cascade replace** (delete descendants, then rebuild) into one atomic call and enqueues
-the DeleteJob/ReconstructJob flow — the same logic the bulk-import hydrators already perform
-internally, now exposed as an endpoint. These delegate to the existing hydrators/services; no new
-behavior is invented.
+Each save is a **cascade replace** (delete descendants, then rebuild) in one atomic call that
+delegates to the existing `apply_chapter_file()` service; no new rehydration behavior is invented.
+The `GET` variants are materializing and reconciling: opening a document/chapter creates the owned
+file from the graph when missing, and absorbs any hand edit to the file through the same
+`apply_chapter_file()` path before returning canonical text.
 
 Two smaller changes:
 
-- **Read-back for the git merge.** The loop needs the *normalized markdown* (newline-after-sentence)
-  of the hydration result to diff3 against the file. Add an optional `?format=markdown` to the
-  existing `GET /api/chapters/{id}` (and siblings) so normalization lives in one place instead of
-  being duplicated in the loop.
+- **Per-chapter save lock.** Saves to one chapter serialize under a lock keyed by chapter id
+  (last-write-wins within the queue) — `apply_chapter_file()` reads the file, so interleaved saves
+  would read and clobber each other.
 - **Session/auth.** The services are bound to a per-user OAuth `SessionContext` (JobQueue, DocCache).
-  The loop process authenticates as a user to call the API — a client concern only, no endpoint
-  change. The loop relies on that session's cancel-and-rerun semantics for discard-and-restart.
+  The editor authenticates as a user to call the API — a client concern only, no endpoint change.
 
-What does **not** change: `GET /api/notifications` already returns the async split payloads
-(`sentence_split` / `paragraph_split`), which the loop consumes and merges back into the file.
+What does **not** change: `GET /api/notifications` still returns the async split payloads
+(`sentence_split` / `paragraph_split`); the synchronous save makes them redundant for the save path,
+but they remain available to clients that edit via fine-grained CRUD.
 
-### Moving history (git) to the loop process
+### Git stays with the backend (no loop process)
 
-The git-based **history/versioning** logic — `SnapshotWriter`, `SnapshotReader`, and any git
-command work — is moved **out of the main service and into the loop process**, because the
-as-yet-to-be-created markdown editing UI will use it directly. `SnapshotWriter`/`SnapshotReader` are
-pure filesystem + git + markdown with no backend dependency (the `Chapter` import is only taken for
-attribute access), so they move cleanly; in a non-Python loop they are a trivial reimplementation.
+The git-based **history/versioning** logic — `SnapshotWriter`, `SnapshotReader`, and the git
+command work — **stays in the backend**, because the backend owns the markdown files. Each save
+writes the canonical `chapter-{id}.md` (the same file `SnapshotWriter` produces) and commits it;
+with the backend as the only writer of both the file and the repo there is exactly one owner and no
+two-writer conflict to manage.
 
 This leaves a clean split:
 
-- **Loop process (owns the git repo):** file-watch, `git diff` classification, `git merge-file
-  --diff3 -p`, `git add`/`git commit`, markdown serialization, snapshot listing and restore-from-git
-  for the editor UI. The backend **never touches git** — there is exactly one owner of the repo to
-  avoid two writers.
-- **Backend (owns the knowledge graph):** only the *persistence* half of a restore. `HistoryService.
-  restore()` currently reads from git *and* writes to Neo4j; only the Neo4j write (repository + unit
-  of work) stays. The PATCH body changes from `{commit_id}` (backend looks it up in git) to carrying
-  the restored content, which the loop has already read from git.
+- **Backend (owns the files + git + knowledge graph):** writes the canonical file on save, `git add`
+  / `git commit` per save, markdown serialization, snapshot listing and restore-from-git, and the
+  persistence half of a restore. The editor never touches the filesystem or git.
+- **Editor (thin client):** sends raw text and receives canonical text; never reaches into services,
+  repositories, the filesystem, or git.
 
 Consequence for the history API:
 
-- `GET /api/history/{chapter_id}` (list commits) **moves to the loop** — the loop owns the git repo,
-  so backend-side listing becomes obsolete.
-- `PATCH /api/history/{chapter_id}` (restore) changes shape: the loop reads the commit from git and
-  sends the restored content up; the backend persists it.
+- `GET /api/history/{chapter_id}` (list commits) **stays on the backend**.
+- `PATCH /api/history/{chapter_id}` (restore) **keeps its shape**: the backend reads the commit
+  from git and persists it to Neo4j.
+
+### Document lifecycle and chapter ordering
+
+The owned directory tree is the editor's entire world, delivered through the API:
+
+- **Start:** `POST /api/documents` with `{id, title, author}`. The title must be **unique** — an
+  exact-title match against the knowledge graph is rejected (409) rather than silently reused. The
+  server creates the document's directory and `document_metadata.yaml` (title/author) next to it.
+- **Open:** `GET /api/documents/{id}` materializes the tree when missing — the document directory,
+  `document_metadata.yaml`, and one `chapter-{id}.md` per chapter serialized from the graph — then
+  returns the document. `GET /api/chapters/{id}` does the same for a single chapter file.
+- **New chapter:** `POST /api/chapters` with `{id, title, document_id, after_chapter_id}`. The new
+  chapter is placed in sequence and the server writes an **empty** `chapter-{id}.md` (front matter
+  with `id`/`title`, no body).
+- **Save:** `PUT /api/chapters/{id}/document` as described above.
+- **Open/reconcile:** `GET /api/chapters/{id}/document` returns the canonical text; if the file
+  differs from the last-persisted state (a hand edit), it is absorbed through `apply_chapter_file()`
+  first, then returned.
+
+**Chapter ordering.** Chapters of a document are ordered by the `index` property on their
+`PART_OF` relationship to the document (`rc.index` in the document load Cypher). Insertion is
+explicit:
+
+- `after_chapter_id` names the chapter the new one goes **after**.
+- `after_chapter_id = null` means the new chapter becomes the **first** (index 0). To append, the
+  caller passes the currently-last chapter's id — there is no separate "last" sentinel.
+
+When a chapter is inserted into the middle, the server renumbers every chapter at or after the
+insertion point (a single Cypher increment) so `index` remains 0..n-1 and the listing
+(`GET /api/chapters?document=...`, ordered by `index`) matches the assigned sequence.
 
 ### git branch approach rejected
 
 An earlier variant used git branches: branch, commit the unstaged changes, rehydrate in the
 background, merge the branch, resolve conflicts. This was rejected because **conflict resolution
 became the product** — an always-on edit-edit merge under an actively-typed cursor. The synchronous
-single-truth loop above eliminates the merge/conflict-resolver entirely: the latest file always wins.
+single-truth save path eliminates the merge/conflict-resolver entirely: the latest file always wins.
 
 ## 4. The sentence-boundary format rule (settled)
 
@@ -219,35 +258,36 @@ its sentences on inside the line imports through the CLI's
 (span-wrapped paragraphs stay whole), and the write-back produces the canonical
 format above, so a second import of the unchanged file detects nothing.
 
-## 5. The cross-process, multi-tasking consideration
+## 5. The concurrency and multi-writer consideration
 
-The markdown editor runs in a separate process from the rehydrator. Because of multi-tasking, file
-changes can arrive *while* rehydration is running. The synchronous loop handles this by
-discarding-and-restarting on conflict, rather than trying to run concurrent work or merge.
+The markdown editor runs in a different process from the backend, but the backend is the **only
+writer of record** for the chapter files, so multi-tasking cannot race the rehydrator the way the
+old loop feared. Two kinds of events still interleave with a save:
+
+- **Concurrent saves to one chapter** serialize under the per-chapter lock — `apply_chapter_file()`
+  reads the file, so overlapping saves are queued (last-write-wins) rather than run concurrently or
+  merged.
+- **Hand edits outside the editor/API** are a second, accepted writer. They are not watched; the
+  file and the graph simply diverge until the chapter is next **opened**, at which point the
+  reconcile-on-open path absorbs the difference through the same `apply_chapter_file()` service
+  (synchronously), canonicalizes, snapshots, and returns. Until that open, the graph is stale with
+  respect to the hand edit — the accepted staleness window.
 
 ### Idempotent, minimal-diff hydration requirement
 
 The scheme depends on rehydration's **write** being **minimal-diff** — it must touch only the
 changed paragraph/sentence and preserve the rest byte-for-byte. If hydration rewrote the whole
-chapter, every save would conflict. **This minimal-write property is load-bearing and must be
-verified/guaranteed.**
+chapter, every save would rewrite the file and the editor would lose its anchor. **This
+minimal-write property is load-bearing and must be verified/guaranteed.**
 
-### Starvation and the fail-tolerance setting
+### Save latency and the freeze
 
-If file changes are frequent and overlapping, rehydration may not complete for several iterations.
-The mitigation is a configured **fail-tolerance**: a number of allowed consecutive failures, after
-which file changes are **halted (the editor frozen)** so rehydration can finish. This is
-configurable and is a **later feature**, because freezing requires owning the editor.
-
-### The freeze vs editor-agnostic tension
-
-"Freeze the editor to let rehydration finish" is incompatible with *any off-the-shelf* markdown
-editor (you cannot freeze VSCode/nano). In the off-the-shelf phase, starvation is bounded by the
-fail-tolerance + debounce/drain, accepting that the knowledge graph may lag the file. The freeze —
-and frequent-save push updates — only become possible once we own the editor.
-
-So the design is: **the rehydration engine is editor-agnostic and durable; only the "how the user
-types" shell changes later.**
+A save is synchronous, so the editor appears frozen for its duration. The freeze is a freeze of
+*edits*, not of input: the editor's event loop keeps running, the editor is set read-only, and a
+bounded number of further input events are buffered and replayed after the restore (the cursor/view
+are recovered by paragraph identity, not byte offset, since the returned canonical text differs
+from what the user typed). Keeping the pipeline warm (spaCy model, the per-chapter lock) keeps this
+under a second in the common case.
 
 ## 6. Sentence metadata in the format
 
@@ -265,10 +305,10 @@ remains out of scope; only the paragraph identity spans (`data-par-id`) are
 implemented today. They reuse the span mechanism described below for the
 later NLP-derived spans.
 
-With the single-truth loop there is only ever one writer of record; embedding
+With the single-truth save path — the backend as the only writer of record — embedding
 paragraph-level identity in the format keeps the graph aligned with the file
-across rehydration and makes paragraph identity stable for the merge
-and freeze features to come, at negligible cost.
+across rehydration and makes paragraph identity stable for the reconcile
+and save-atomicity features to come, at negligible cost.
 
 ### Semantic spans inline in the text (pivotal)
 
@@ -322,53 +362,52 @@ whatever client renders the spans.
 This is the order we expect to build, matching the dependencies above; it is subject to adjustment
 during planning.
 
-1. **Backend API additions:** new `.../rehydrate` endpoints (chapter/paragraph/sentence) and the
-   optional `?format=markdown` on GET; the history restore endpoint is reduced to persistence-only
-   (accept resolved content, stop reading git). The rehydrate path must also **emit semantic spans**
-   (`data-triple`/`data-spo` and other NLP attributes) back into the normalized markdown. Remove
-   backend code no longer needed (delete, per the requirement to delete unused code).
-2. **Synchronous save-and-rehydrate engine** (editor-agnostic): owns the markdown files + git repo.
-   On save: parse the new markdown file, diff it against the chapter read from the knowledge graph
-   (changed / new / deleted paragraphs, classified from `data-par-id` identity + parsed sentence
-   text), then rehydrate synchronously before the editor continues. Owns snapshot listing and
-   restore-from-git. Editor and file-save mechanics are deferred (later). The former async loop
-   (file-watch, `git merge-file --diff3 -p`, cancel-and-rerun) is dropped per **Synchronous
-   save-and-rehydrate** above.
+1. **Document-store foundation:** the owned directory tree (per-document directory, metadata,
+   chapter files, path-from-ids safety) and the foundational CRUD behaviors the lifecycle builds on
+   (unique document title, chapter ordering). The fine-grained `.../rehydrate` endpoints and the
+   `?format=markdown` GET option are retained for CRUD clients, not part of this work.
+2. **Synchronous document lifecycle on the backend.** The backend owns the markdown files + git
+   repo (no loop process): document create with unique-title check and materialized tree; open a
+   document / open a chapter auto-materialize the owned file(s) from the graph; save
+   (`PUT /api/chapters/{id}/document`) writes the file, diffs against the chapter read from the
+   knowledge graph (changed / new / deleted paragraphs, classified from `data-par-id` identity +
+   parsed sentence text), rehydrates synchronously through `apply_chapter_file()`, canonicalizes,
+   snapshots, and returns canonical text; open reconciles hand edits to the file (reconcile-on-open),
+   accepting a staleness window until then. The former async loop (file-watch,
+   `git merge-file --diff3 -p`, cancel-and-rerun) is dropped per **Synchronous save-and-rehydrate**
+   above.
    - Enforce the sentence-boundary / minimal-write normalization rules.
-   - `SnapshotWriter`/`SnapshotReader` and all git logic are moved here from the backend.
+   - `SnapshotWriter`/`SnapshotReader` and all git logic stay in the backend (they already live there).
 3. **Remove the old front end** (React + Tiptap/ProseMirror) and any backend code only it used.
 4. **Editor integration** (later): wires the editor's save into the synchronous rehydrate step.
    Paragraph identity is already in the format (`data-par-id` spans).
 
-### Front-end & loop platform (PC-only variant, decided)
+### Front-end platform (PC-only variant, decided)
 
 For the **PC-only** target (Linux/macOS/Windows) with a WYSIWYG-primary editor plus a CodeMirror
-markdown source mode and the NLP span views: **Electron + TypeScript, with the editor and the loop
-in the same Node process.** Only Tauri was a serious alternative; it was rejected because its shell
-is Rust, which would force the loop into a second language or a Rust sidecar. Keeping both the editor
-and the loop in one Node process means one language for the whole PC-local stack.
+markdown source mode and the NLP span views: **Electron + TypeScript.** Only Tauri was a serious
+alternative; it was rejected because its shell is Rust, which would force the backend machinery
+and the editor's sync logic into two languages. Keeping the editor in one Node process means one
+language for the whole PC-frontend stack.
 
 Concretely:
 
 - **Editor:** CodeMirror 6 for the markdown source mode; browser markdown rendering / WYSIWYG
   (markdown-it + HTML, or TipTap) for the primary view; the NLP semantics render as styled/clickable
-  spans already present in the text (`data-triple` / `data-spo`, etc.). The editor and the sync
-  engine share the markdown serializer and the git/file logic.
-- **Sync engine (same process):** parses the saved markdown file, diffs against the knowledge graph,
-  rehydrates synchronously through the API, then `git add` / `git commit`. Also owns snapshot
-  listing and restore-from-git.
+  spans already present in the text (`data-triple` / `data-spo`, etc.). The editor talks to the API
+  only — it never touches files, git, services, or repositories.
+- **Sync engine (on the backend):** owns the markdown files + git repo, applies
+  `apply_chapter_file()` on save, reconciles hand edits on open, snapshots and restores from git.
 - **Portability note:** this decision is for PC-only. If mobile/iPad ever becomes a requirement, the
-  flat markdown + span format is unchanged and a Flutter client could drive the same loop via the API;
-  only the editor shell differs.
-
-The earlier "loop process language" open question is resolved by this decision.
+  flat markdown + span format is unchanged and a Flutter client could drive the same backend lifecycle
+  via the API; only the editor shell differs.
 
 ## 8. Alternatives considered (and why not)
 
 - **Terminal SPA (`ink`, Go bubbletea, Rust ratatui).** Clean for a desktop tool, but **cannot
   reach iOS/Android** — incompatible with the real requirement. Rejected on portability, not on merit.
 - **Browser + hand-rolled markdown editor.** Viable (reduces to flat-text→sentence logic), but the
-  loop above makes *any* editor work, so an own-editor is deferred and optional.
+  backend-owned lifecycle makes *any* editor work, so an own-editor is deferred and optional.
 - **Flutter + a structure-aware editor (AppFlowy Editor / Super Editor).** A strong rewrite path for a
   native app; its tree model matches our hierarchy. Not chosen as the primary path because the
   file-based rehydration engine is editor-agnostic; Flutter (or any client) could later drive it.
@@ -382,12 +421,13 @@ The earlier "loop process language" open question is resolved by this decision.
 These must be settled before/while building, not deferred silently:
 
 1. **Minimal-write guarantee** — confirm the rehydrator writes only the changed region, or make it
-   so. This is the load-bearing assumption.
-2. **Cost vs frequency** — is a single rehydrate pass cheap enough that discard-and-rerun is
-   acceptable under realistic save rates? (Drives the fail-tolerance default.)
-3. **Conflict-policy granularity** — with paragraph-level diff3 conflicts firing on benign overlaps,
-   do we (a) accept discard-and-rerun at paragraph granularity, or (b) reserve sentence-level merging
-   for the own-editor phase?
+   so. This is the load-bearing assumption: it keeps the returned canonical text close to what the
+   editor sent, so cursor/view anchors survive a save.
+2. **Save latency** — is a synchronous `apply_chapter_file()` pass cheap enough to stay under a
+   second for a typical chapter (the spaCy tokenization of changed/new sentences is the floor)?
+3. **Reconcile granularity on open** — when a hand edit is absorbed on open, the absorption is
+   whole-chapter through `apply_chapter_file()`; confirm the resulting diff touches only the edited
+   paragraphs so an unrelated chapter-preserving hand edit does not rewrite surrounding content.
 4. **`\` hard-break preservation** — ensure the write-side normalizer never mangles a user's explicit
    backslash-newline.
 5. **Span re-derivation on sentence re-split** — confirm how the rehydrator emits/re-emits spans
