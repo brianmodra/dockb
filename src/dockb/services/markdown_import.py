@@ -17,6 +17,7 @@ from dockb.infrastructure.changes.detect_changes import (
     NewParagraph,
     detect_changes,
 )
+from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import front_matter, writer
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.base import DataState
@@ -45,14 +46,6 @@ class ChapterImportSummary:
     changed: int = 0
     added: int = 0
     deleted: int = 0
-
-
-@dataclass
-class DocumentMetadata:
-    """The document's title and author, as located by the directory walker."""
-
-    title: str
-    author: str
 
 
 def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals

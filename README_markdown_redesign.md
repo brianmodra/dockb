@@ -51,7 +51,8 @@ who writes the file.
 ### The backend owns the markdown files and the git repo
 
 There is **no separate loop process**. The FastAPI backend owns the markdown chapter files — in a
-directory it controls (per-document, `chapter-{id}.md` under an environment-configured base) — and
+directory it controls (per-document, `chapter-{id}.md` under an environment-configured base, as the
+`DocumentStore` in `src/dockb/infrastructure/document_store/` maps it) — and
 the git repo. The only writer of record is the API implementation itself: when the editor saves, it
 sends the chapter text to an endpoint, the backend writes the file, rehydrates the graph from it,
 and returns the canonical text. The editor is a thin client that never touches a filesystem path,
