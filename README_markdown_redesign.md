@@ -124,16 +124,9 @@ The diff is not asked to infer sentence structure; it only scopes the work.
 
 The existing API is **fine-grained, already-structured CRUD** (create/update single nodes from
 pre-delimited ProseMirror JSON). The backend-owned file model adds a second, whole-file family of
-operations — the **document lifecycle**:
-
-```
-POST /api/documents                        # create document (unique title + author, materialize dir+metadata)
-GET  /api/documents/{id}                   # open a document: auto-materialize the tree if missing
-GET  /api/chapters/{id}                    # open a chapter: auto-materialize chapter-{id}.md if missing
-POST /api/chapters                         # add a chapter in sequence (after_chapter_id; null = new first)
-GET  /api/chapters/{id}/document           # read canonical file (reconcile-on-open absorbs hand edits)
-PUT  /api/chapters/{id}/document           # save: write file → apply_chapter_file → snapshot → return canonical
-```
+operations — the **document lifecycle**: document create and open, chapter create with explicit
+ordering, and a per-chapter document read/save pair (see **Document lifecycle and chapter ordering**
+below for the semantics of each).
 
 Each save is a **cascade replace** (delete descendants, then rebuild) in one atomic call that
 delegates to the existing `apply_chapter_file()` service; no new rehydration behavior is invented.
