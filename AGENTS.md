@@ -161,16 +161,17 @@ to the user.
    - Use domain words to say what it is for. (Not the mechanism or other details.)
    - Use present tense, verb first, no subject.
    Commit the changes.
-   After the commit, pause and **ask** the user whether to continue with the next section of the
-   breakdown ([D. Loop](#d-loop)) or move to [E. Wrap-up](#e-wrap-up).
+   After the commit, pause for [D. Loop](#d-loop). Do **not** offer [E. Wrap-up](#e-wrap-up)
+   until every section of the breakdown is complete.
 
 ### D. Loop
 
 A single build section may contain multiple TDD sections.
 
 If there are multiple sections, and not all sections are completed after C.9, then
-**ask** the user permission to repeat the tdd sequence (C) for the next section.
-Otherwise, if all sections are compled, **ask** the user permission to proceed to wrap-up (E).
+**ask** the user permission to repeat the tdd sequence (C) for the next section. Do not
+mention [E. Wrap-up](#e-wrap-up) while sections remain.
+Otherwise, if all sections are complete, **ask** the user permission to proceed to wrap-up (E).
 
 ### E. Wrap-up
 

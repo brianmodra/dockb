@@ -432,6 +432,23 @@ def test_single_newline_mode_keeps_span_regions_intact():
     assert not diff.deleted
 
 
+def test_single_newline_mode_span_wrapped_new_paragraph_keeps_clean_text():
+    old = Chapter(id="c-1")
+    body = _span("par-9", "First line.", "Second.") + "\nLoose second paragraph."
+
+    diff = detect_changes(
+        _front_matter() + body,
+        _get_old(old),
+        _no_create,
+        single_newline_paragraphs=True,
+    )
+
+    assert diff.new == [
+        NewParagraph(text="First line.\nSecond."),
+        NewParagraph(text="Loose second paragraph."),
+    ]
+
+
 def test_default_mode_does_not_split_on_single_newlines():
     old = Chapter(id="c-1")
     body = "One line.\nSecond line belonging to the same paragraph."

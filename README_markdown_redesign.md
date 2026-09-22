@@ -8,10 +8,12 @@ file format lays each paragraph out as one identity span holding its sentences o
 paragraph identity survives serialization and line-based git merges stay at sentence granularity.
 It records the decisions — drop the editor front end, make the save-and-rehydrate path synchronous,
 carry paragraph identity in the format, give the backend ownership of the markdown files and the
-git repo — and the alternatives that lost to them.
+git repo, and check syntax in two interactive layers — remark-lint structure lint in the editor and
+backend prose/NLP validation, neither part of the save path — and the alternatives that lost to them.
 
-Read this to learn why the format is what it is, how saving rehydrates through the backend, and what
-is still open before the design can be trusted. The concrete format and its one implementation live
+Read this to learn why the format is what it is, how saving rehydrates through the backend, how
+validity surfaces interactively as diagnostics anchored to the sentence text, and what is still open
+before the design can be trusted. The concrete format and its one implementation live
 in `src/dockb/infrastructure/markdown/` and its README; this document is the rationale behind them
 and the roadmap for what comes after.
 
@@ -359,7 +361,63 @@ semantics": we do not, because the semantics live in the text we already control
 editor-agnostic markdown core stands unchanged; the rich NLP UI becomes a *rendering* concern for
 whatever client renders the spans.
 
-## 7. Sequence of implementation
+## 7. Syntax checking and diagnostics (decided)
+
+A chapter's *syntax* is checked in two layers, both **interactive only**: remark-lint in the editor
+for structure, and backend prose/NLP validation for prose. Neither is part of the synchronous save
+path (see **Synchronous save-and-rehydrate** above): saves stay a lean canonicalizing
+`apply_chapter_file()` pass, and nothing the user does while typing is written to the file, sent
+through the save endpoint, or folded into the canonical text. Diagnostics are view-only decorations
+of the text as displayed.
+
+### Structure lint in the editor: remark-lint (decided)
+
+The CodeMirror 6 source mode hosts edition-time structure linting with remark-lint. The canonical
+format is **not** GFM — paragraph identity and semantics ride in inline HTML spans (`data-par-id`,
+`data-spo`), and sentences run one per line — so two remark defaults conflict with it by design and
+are **disabled**:
+
+- **`maximum-line-length`** — a sentence is one line, so line length tracks sentence length, not
+  hard wrapping; long valid sentences must not be flagged.
+- **`no-inline-html`** — inline spans are the format's own identity and semantics mechanism; the
+  lint must target the prose *inside* the spans, not reject the spans.
+
+Remaining remark rules run against the paragraph text inside the identity spans. Lint follows the
+editor's transaction stream, debounced over keystrokes — it reacts to typing, never to saves, and
+never writes to the file or git. Positions map onto the canonical text through the span-aware CM
+language extension and render as diagnostics on the sentence text as displayed, in the source mode
+and the WYSIWYG view alike. The editor flags; it derives and rewrites nothing.
+
+### Prose and NLP validation in the backend (decided)
+
+Prose/NLP validation is an interactive feature over the same chapter text, computed by the backend:
+
+- spaCy sentence segmentation — the same segmentation hydration applies — keys every diagnostic to
+  the originating sentence, so a flag stays attached to its sentence text whichever view displays
+  it.
+- Diagnostics are delivered over the retained async notifications channel, debounced as the user
+  types; they are not part of the save request, the save response, or the canonical text. The
+  backend remains the only writer of record and diagnostics never touch files or git.
+- The checks are spaCy/proselint assertions on sentence text — unterminated or fragmentary
+  sentences, sentence length, terminology consistency, flagged overused words. They are opinions,
+  not mutations.
+
+This is deliberately distinct from the canonicalized `data-spo` semantics (see **Semantic spans
+inline in the text** above): curated semantics serialize into the file as spans; validation
+diagnostics are ephemeral decorations that never reach the file, so the minimal-diff guarantee is
+untouched by validation depth.
+
+Consequences:
+
+- Save latency is unaffected by validation depth: both layers run off the save path.
+- Sentences are the shared anchor both views project, so diagnostics attach to sentence text *as
+  displayed* — inline markers and squiggles on the sentence text, in the WYSIWYG view and the source
+  mode alike.
+- No new writer of record and no format addition; the save/git/hydration invariants are unchanged.
+- A diagnostic that arrives after the text has moved must not point at the wrong sentence; the
+  anchoring semantics are listed in **Open questions** below.
+
+## 8. Sequence of implementation
 
 This is the order we expect to build, matching the dependencies above; it is subject to adjustment
 during planning.
@@ -381,8 +439,11 @@ during planning.
    - Enforce the sentence-boundary / minimal-write normalization rules.
    - `SnapshotWriter`/`SnapshotReader` and all git logic stay in the backend (they already live there).
 3. **Remove the old front end** (React + Tiptap/ProseMirror) and any backend code only it used.
-4. **Editor integration** (later): wires the editor's save into the synchronous rehydrate step.
-   Paragraph identity is already in the format (`data-par-id` spans).
+4. **Editor integration** (later): wires the editor's save into the synchronous rehydrate step,
+   and hooks in syntax checking and diagnostics (see **Syntax checking and diagnostics** above): the
+   remark-lint config for the span format and the sentence-anchored rendering of backend
+   diagnostics, both interactive only. Paragraph identity is already in the format (`data-par-id`
+   spans).
 
 ### Front-end platform (PC-only variant, decided)
 
@@ -396,7 +457,10 @@ Concretely:
 
 - **Editor:** CodeMirror 6 for the markdown source mode; browser markdown rendering / WYSIWYG
   (markdown-it + HTML, or TipTap) for the primary view; the NLP semantics render as styled/clickable
-  spans already present in the text (`data-triple` / `data-spo`, etc.). The editor talks to the API
+  spans already present in the text (`data-triple` / `data-spo`, etc.). Structure is linted in-editor
+  with remark-lint (`maximum-line-length` and `no-inline-html` disabled for the span format); backend
+  prose/NLP diagnostics render sentence-anchored in both views. Both layers are interactive only,
+  never part of a save. The editor talks to the API
   only — it never touches files, git, services, or repositories.
 - **Sync engine (on the backend):** owns the markdown files + git repo, applies
   `apply_chapter_file()` on save, reconciles hand edits on open, snapshots and restores from git.
@@ -404,7 +468,7 @@ Concretely:
   flat markdown + span format is unchanged and a Flutter client could drive the same backend lifecycle
   via the API; only the editor shell differs.
 
-## 8. Alternatives considered (and why not)
+## 9. Alternatives considered (and why not)
 
 - **Terminal SPA (`ink`, Go bubbletea, Rust ratatui).** Clean for a desktop tool, but **cannot
   reach iOS/Android** — incompatible with the real requirement. Rejected on portability, not on merit.
@@ -418,7 +482,7 @@ Concretely:
   lower value than the file-based redesign.
 - **git-branch merge scheme.** Rejected; see §3.
 
-## 9. Open questions before trust
+## 10. Open questions before trust
 
 These must be settled before/while building, not deferred silently:
 
@@ -434,3 +498,6 @@ These must be settled before/while building, not deferred silently:
    backslash-newline.
 5. **Span re-derivation on sentence re-split** — confirm how the rehydrator emits/re-emits spans
    when a sentence splits/merges, and that this is scoped and idempotent.
+6. **Diagnostic anchoring while typing** — debounced interactive diagnostics arrive after the text
+   has moved; define whether stale diagnostics are dropped, re-keyed to the latest segmentation, or
+   held until the next pass, so a flag never points at the wrong sentence.
