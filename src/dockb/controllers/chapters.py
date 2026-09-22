@@ -9,7 +9,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from dockb.controllers.notifications import get_session_context, mutation_response
-from dockb.controllers.schemas.chapters import CreateChapterRequest, UpdateChapterRequest
+from dockb.controllers.schemas.chapters import (
+    ChapterDocumentRequest,
+    ChapterDocumentResponse,
+    ChapterImportSummaryWire,
+    CreateChapterRequest,
+    UpdateChapterRequest,
+)
 from dockb.controllers.serializers import serialize_chapter
 from dockb.exceptions import ChapterAfterNotFoundError
 from dockb.services.session_context import SessionContext
@@ -65,6 +71,38 @@ def get_chapter(
     if ch is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return serialize_chapter(ch).model_dump()
+
+
+@router.get("/{chapter_id}/document")
+def get_chapter_document(
+    chapter_id: str,
+    svc: Any = Depends(get_ch_service),
+) -> dict[str, Any]:
+    content = svc.open_document(chapter_id)
+    if content is None:
+        raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
+    return ChapterDocumentResponse(content=content).model_dump()
+
+
+@router.put("/{chapter_id}/document")
+def put_chapter_document(
+    chapter_id: str,
+    body: ChapterDocumentRequest,
+    svc: Any = Depends(get_ch_service),
+) -> dict[str, Any]:
+    result = svc.save_document(chapter_id, body.content)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
+    summary = result.summary
+    return ChapterDocumentResponse(
+        content=result.content,
+        summary=ChapterImportSummaryWire(
+            created=summary.created,
+            changed=summary.changed,
+            added=summary.added,
+            deleted=summary.deleted,
+        ),
+    ).model_dump()
 
 
 @router.put("/{chapter_id}")

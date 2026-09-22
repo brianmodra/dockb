@@ -7,6 +7,7 @@ Uses mocked services and ``TestClient`` — no Neo4j required.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -77,6 +78,7 @@ class MockDocumentService:
 class MockChapterService:
     def __init__(self) -> None:
         self._chapters: dict[str, Chapter] = {}
+        self._documents: dict[str, str] = {}
 
     def list_by_document(self, document_id: str) -> list[dict[str, str]]:
         return [{"id": ch.id} for ch in self._chapters.values()]
@@ -101,6 +103,20 @@ class MockChapterService:
 
     def delete(self, chapter_id: str) -> bool:
         return self._chapters.pop(chapter_id, None) is not None
+
+    def open_document(self, chapter_id: str) -> str | None:
+        if chapter_id not in self._chapters:
+            return None
+        return self._documents.setdefault(chapter_id, "# New\n")
+
+    def save_document(self, chapter_id: str, content: str) -> SimpleNamespace:
+        if chapter_id not in self._chapters:
+            return None
+        self._documents[chapter_id] = content
+        return SimpleNamespace(
+            content=content,
+            summary=SimpleNamespace(created=False, changed=1, added=0, deleted=0),
+        )
 
 
 class MockParagraphService:
@@ -384,6 +400,36 @@ class TestChapterRoutes:
     def test_delete_chapter_not_found(self) -> None:
         resp = self.client.delete("/api/chapters/nonexistent")
         assert resp.status_code == 404
+
+    def test_get_chapter_document(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        resp = self.client.get("/api/chapters/c1/document")
+        assert resp.status_code == 200
+        assert resp.json() == {"content": "# New\n", "summary": None}
+
+    def test_get_chapter_document_not_found(self) -> None:
+        resp = self.client.get("/api/chapters/nonexistent/document")
+        assert resp.status_code == 404
+
+    def test_put_chapter_document(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        resp = self.client.put("/api/chapters/c1/document", json={"content": "## Body\n"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == "## Body\n"
+        assert data["summary"]["created"] is False
+        assert data["summary"]["changed"] == 1
+        assert data["summary"]["added"] == 0
+        assert data["summary"]["deleted"] == 0
+
+    def test_put_chapter_document_not_found(self) -> None:
+        resp = self.client.put("/api/chapters/nonexistent/document", json={"content": "x"})
+        assert resp.status_code == 404
+
+    def test_put_chapter_document_requires_content(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        resp = self.client.put("/api/chapters/c1/document", json={})
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------

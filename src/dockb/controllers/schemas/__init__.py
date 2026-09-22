@@ -1,6 +1,9 @@
 """Pydantic wire-format schemas for the DockB API."""
 
 from dockb.controllers.schemas.chapters import (
+    ChapterDocumentRequest,
+    ChapterDocumentResponse,
+    ChapterImportSummaryWire,
     ChapterRelations,
     CreateChapterRequest,
     UpdateChapterRequest,
@@ -67,6 +70,9 @@ __all__ = [
     "ChapterRelations",
     "CreateChapterRequest",
     "UpdateChapterRequest",
+    "ChapterDocumentRequest",
+    "ChapterDocumentResponse",
+    "ChapterImportSummaryWire",
     # paragraphs
     "ParagraphRelations",
     "UpdateParagraphRelations",

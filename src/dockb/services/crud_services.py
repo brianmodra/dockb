@@ -13,16 +13,22 @@ commit synchronously.
 from __future__ import annotations
 
 import logging
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata
+from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
 
@@ -38,6 +44,14 @@ if TYPE_CHECKING:
     from dockb.services.session_context import SessionContext
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ChapterSaveResult:
+    """What saving a chapter's owned markdown file returned: canonical text plus a change summary."""
+
+    content: str
+    summary: ChapterImportSummary
 
 
 # ---------------------------------------------------------------------------
@@ -152,17 +166,65 @@ class DocumentService:
 class ChapterService:
     """CRUD operations for Chapter entities."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         uow_factory: UnitOfWorkFactory,
         chapter_repo: ChapterRepository,
+        document_repo: DocumentRepository | None = None,
         document_store: DocumentStore | None = None,
         nlp: Language | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
+        self._document_repo = document_repo
         self._document_store = document_store
         self._nlp = nlp
+        self._save_locks: dict[str, threading.Lock] = {}
+        self._save_users: dict[str, int] = {}
+        self._save_registry_guard = threading.Lock()
+
+    def _save_lock(self, chapter_id: str) -> threading.Lock:
+        """Return the per-chapter save lock, registering *chapter_id* as in use.
+
+        The caller must balance this with ``_save_release`` (use ``_save_scope``
+        for a self-balancing context manager).
+        """
+        with self._save_registry_guard:
+            lock = self._save_locks.get(chapter_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._save_locks[chapter_id] = lock
+            self._save_users[chapter_id] = self._save_users.get(chapter_id, 0) + 1
+            return lock
+
+    def _save_release(self, chapter_id: str) -> None:
+        """Release a ``_save_lock`` registration, evicting the entry when idle.
+
+        The entry is dropped only once no holder and no waiter remain, so the
+        registry does not grow per chapter id over a server's lifetime.
+        """
+        with self._save_registry_guard:
+            users = self._save_users.get(chapter_id, 0) - 1
+            if users <= 0:
+                self._save_users.pop(chapter_id, None)
+                self._save_locks.pop(chapter_id, None)
+            else:
+                self._save_users[chapter_id] = users
+
+    @contextmanager
+    def _save_scope(self, chapter_id: str) -> Iterator[None]:
+        """Run one save/reconcile for *chapter_id* under its per-chapter lock.
+
+        Saves to one chapter serialize (last-write-wins within the queue);
+        distinct chapters proceed concurrently. Balances registration so the
+        lock entry is evicted when idle.
+        """
+        lock = self._save_lock(chapter_id)
+        try:
+            with lock:
+                yield
+        finally:
+            self._save_release(chapter_id)
 
     def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
         """Return chapter summaries (ordered by index) for a document."""
@@ -191,6 +253,76 @@ class ChapterService:
         if not self._document_store.chapter_exists(document_id, chapter_id):
             self._materialize_chapter(self._document_store, document_id, ch)
         return ch
+
+    def save_document(self, chapter_id: str, content: str) -> ChapterSaveResult | None:
+        """Save a chapter: write *content* to its owned file, rehydrate the graph, git-snap.
+
+        The chapter's ``id``/``title`` are forced into the file's front matter
+        (the server, not the editor, owns identity). The returned ``content`` is
+        the canonical span-form text and ``summary`` records what changed.
+        Returns ``None`` for a missing chapter, an orphan, or when no store /
+        nlp is configured (the endpoint reports 404).
+        """
+        if self._document_store is None or self._nlp is None or self._document_repo is None:
+            return None
+        ch = self._chapter_repo.load(chapter_id)
+        if ch is None:
+            return None
+        document_id = self._chapter_repo.find_document_id(chapter_id)
+        if document_id is None:
+            return None
+        document = self._document_repo.load(document_id)
+        if document is None:
+            return None
+        with self._save_scope(chapter_id):
+            self._document_store.write_chapter(
+                document_id,
+                chapter_id,
+                front_matter.merge(content, {"id": chapter_id, "title": ch.title}),
+            )
+            summary = apply_chapter_file(
+                document,
+                self._document_store.chapter_file(document_id, chapter_id),
+                self._nlp,
+                self._chapter_repo,
+                self._uow_factory,
+            )
+            self._document_store.git_commit(document_id, f"save: chapter {chapter_id[:8]}")
+        canonical = self._document_store.read_chapter(document_id, chapter_id)
+        return ChapterSaveResult(content=canonical or "", summary=summary)
+
+    def open_document(self, chapter_id: str) -> str | None:
+        """Read a chapter's owned file as canonical text, reconciling it first.
+
+        Materializes ``chapter-{id}.md`` from the graph when it is missing,
+        otherwise absorbs any hand edit through ``apply_chapter_file()``, then
+        git-snaps and returns the canonical text. Returns ``None`` for a missing
+        chapter, an orphan, or when no store / nlp is configured (404).
+        """
+        if self._document_store is None or self._nlp is None or self._document_repo is None:
+            return None
+        ch = self._chapter_repo.load(chapter_id)
+        if ch is None:
+            return None
+        document_id = self._chapter_repo.find_document_id(chapter_id)
+        if document_id is None:
+            return None
+        document = self._document_repo.load(document_id)
+        if document is None:
+            return None
+        with self._save_scope(chapter_id):
+            if not self._document_store.chapter_exists(document_id, chapter_id):
+                self._materialize_chapter(self._document_store, document_id, ch)
+            else:
+                apply_chapter_file(
+                    document,
+                    self._document_store.chapter_file(document_id, chapter_id),
+                    self._nlp,
+                    self._chapter_repo,
+                    self._uow_factory,
+                )
+                self._document_store.git_commit(document_id, f"open: chapter {chapter_id[:8]}")
+        return self._document_store.read_chapter(document_id, chapter_id)
 
     def _materialize_chapter(self, store: DocumentStore, document_id: str, ch: Chapter) -> None:
         """Write the chapter's owned markdown file from the graph and git-commit it."""

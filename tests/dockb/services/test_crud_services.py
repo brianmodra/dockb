@@ -119,6 +119,11 @@ class StubUnitOfWorkFactory:  # pylint: disable=too-few-public-methods
         return self.uow
 
 
+@pytest.fixture()
+def doc_repo() -> StubDocumentRepo:
+    return StubDocumentRepo()
+
+
 # ---------------------------------------------------------------------------
 # DocumentService
 # ---------------------------------------------------------------------------
@@ -275,7 +280,7 @@ class TestDocumentService:
 # ---------------------------------------------------------------------------
 
 
-class TestChapterService:
+class TestChapterService:  # pylint: disable=too-many-public-methods
     def setup_method(self) -> None:
         self.repo = StubChapterRepo()
         self.uow = StubUnitOfWork()
@@ -430,6 +435,237 @@ class TestChapterService:
 
         assert opened is ch
         assert store.read_chapter("d1", "c1") is None
+
+    def test_save_lock_shared_per_chapter(self) -> None:
+        assert self.svc._save_lock("c1") is self.svc._save_lock("c1")
+        assert self.svc._save_lock("c1") is not self.svc._save_lock("c2")
+
+    def test_save_lock_evicts_when_idle(self) -> None:
+        first = self.svc._save_lock("c1")
+        self.svc._save_release("c1")
+        assert "c1" not in self.svc._save_locks
+        second = self.svc._save_lock("c1")
+        assert second is not first
+        self.svc._save_release("c1")
+
+    def test_save_document_returns_none_when_missing(self) -> None:
+        assert self.svc.save_document("nonexistent", "Hello") is None
+
+    def test_save_document_returns_none_without_store(self, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo)
+        assert svc.save_document("c1", "Hello") is None
+
+    def test_save_document_returns_none_for_orphan(self, tmp_path, nlp) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=StubDocumentRepo(),
+            document_store=store,
+            nlp=nlp,
+        )
+        assert svc.save_document("c1", "Hello") is None
+
+    def test_save_document_writes_force_identity_applies_and_snaps(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        result = svc.save_document("c1", "Hello there.\n\nSecond paragraph.")
+
+        assert result is not None
+        assert result.summary.created is False
+        assert result.summary.added == 2
+        assert "Hello there." in result.content
+        assert "data-par-id" in result.content
+        content = store.read_chapter("d1", "c1")
+        assert content is not None
+        assert "id: c1" in content
+        assert "title: Intro" in content
+        log = subprocess.run(["git", "log", "--format=%H"], cwd=str(tmp_path), capture_output=True, text=True, check=False)
+        assert log.returncode == 0
+        assert log.stdout.strip()
+
+    def test_save_document_overwrites_conflicting_identity(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        result = svc.save_document(
+            "c1",
+            "---\nid: other-one\ntitle: Wrong\n---\nConflicting identity here.",
+        )
+
+        assert result is not None
+        content = store.read_chapter("d1", "c1")
+        assert content is not None
+        assert "id: c1" in content
+        assert "title: Intro" in content
+        assert "id: other-one" not in content
+
+    def test_save_document_absorbs_changed_paragraph(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.models.token import Token
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Old text here.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        ch.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        result = svc.save_document("c1", '<span data-par-id="p1">\nNew text here.\n</span>')
+
+        assert result is not None
+        assert result.summary.changed == 1
+        assert "New text here." in result.content
+
+    def test_open_document_returns_none_when_missing(self) -> None:
+        assert self.svc.open_document("nonexistent") is None
+
+    def test_open_document_returns_none_without_store(self, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo)
+        assert svc.open_document("c1") is None
+
+    def test_open_document_returns_none_for_orphan(self, tmp_path, nlp) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=StubDocumentRepo(),
+            document_store=store,
+            nlp=nlp,
+        )
+        assert svc.open_document("c1") is None
+
+    def test_open_document_materializes_missing_file(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.models.token import Token
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Hello world.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        ch.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        content = svc.open_document("c1")
+
+        assert content is not None
+        assert "Hello world." in content
+        assert content.startswith("---")
+        log = subprocess.run(["git", "log", "--format=%H"], cwd=str(tmp_path), capture_output=True, text=True, check=False)
+        assert log.returncode == 0
+        assert log.stdout.strip()
+
+    def test_open_document_absorbs_hand_edit(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.models.token import Token
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Old text.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        ch.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_chapter("d1", "c1", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        content = svc.open_document("c1")
+
+        assert content is not None
+        assert "Edited text." in content
+        log = subprocess.run(["git", "log", "--format=%H"], cwd=str(tmp_path), capture_output=True, text=True, check=False)
+        assert log.returncode == 0
+        assert log.stdout.strip()
 
 
 # ---------------------------------------------------------------------------

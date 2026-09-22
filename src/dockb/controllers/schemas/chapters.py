@@ -25,3 +25,25 @@ class UpdateChapterRequest(BaseModel):
     """PUT /api/chapters/{id} request body."""
 
     attrs: ChapterAttrs
+
+
+class ChapterImportSummaryWire(BaseModel):
+    """What a save imported into the graph (omitted on read-only GETs)."""
+
+    created: bool
+    changed: int
+    added: int
+    deleted: int
+
+
+class ChapterDocumentRequest(BaseModel):
+    """PUT /api/chapters/{id}/document request body — the editor's loose text."""
+
+    content: str
+
+
+class ChapterDocumentResponse(BaseModel):
+    """GET/PUT /api/chapters/{id}/document response — canonical text plus change summary."""
+
+    content: str
+    summary: ChapterImportSummaryWire | None = None

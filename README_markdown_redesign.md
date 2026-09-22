@@ -145,7 +145,8 @@ Two smaller changes:
 
 - **Per-chapter save lock.** Saves to one chapter serialize under a lock keyed by chapter id
   (last-write-wins within the queue) — `apply_chapter_file()` reads the file, so interleaved saves
-  would read and clobber each other.
+  would read and clobber each other. The lock entry is ref-counted and evicted when idle, so the
+  registry does not grow over a server's lifetime; waiters always observe the same lock object.
 - **Session/auth.** The services are bound to a per-user OAuth `SessionContext` (JobQueue, DocCache).
   The editor authenticates as a user to call the API — a client concern only, no endpoint change.
 
@@ -188,10 +189,16 @@ The owned directory tree is the editor's entire world, delivered through the API
 - **New chapter:** `POST /api/chapters` with `{id, title, document_id, after_chapter_id}`. The new
   chapter is placed in sequence and the server writes an **empty** `chapter-{id}.md` (front matter
   with `id`/`title`, no body).
-- **Save:** `PUT /api/chapters/{id}/document` as described above.
-- **Open/reconcile:** `GET /api/chapters/{id}/document` returns the canonical text; if the file
-  differs from the last-persisted state (a hand edit), it is absorbed through `apply_chapter_file()`
-  first, then returned.
+- **Save:** `PUT /api/chapters/{id}/document` as described above. The request body is the editor's
+  loose text. The server writes it to the owned file, forcing the chapter's `id`/`title` into the
+  front matter (the server, not the editor, owns identity), runs `apply_chapter_file()`, git-snaps,
+  and returns the canonical span-form text plus a change summary (`created`/`changed`/`added`/`deleted`).
+- **Open/reconcile:** `GET /api/chapters/{id}/document` materializes the owned file when missing
+  (canonical serialization of the graph, git-snapped) and returns the canonical text; when the file
+  differs from the last-persisted state (a hand edit), the edit is absorbed through
+  `apply_chapter_file()` first, then the canonical text is returned.
+- **No store:** without a configured document store (`DOCKB_CHAPTERS_DIR` unset) the
+  `.../document` endpoints report the chapter as not found (404).
 
 **Chapter ordering.** Chapters of a document are ordered by the `index` property on their
 `PART_OF` relationship to the document (`rc.index` in the document load Cypher). Insertion is
