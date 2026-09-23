@@ -17,6 +17,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onSave: () => {
       void editPanel?.save();
     },
+    onMode: (mode) => {
+      editPanel?.setMode(mode);
+    },
   });
   root.append(layout.element);
 

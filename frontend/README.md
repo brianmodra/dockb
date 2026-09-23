@@ -54,13 +54,20 @@ The editor shell lives in `src/renderer/layout/` and matches
   panel widths and the edit Mode (WYSIWYG | Raw MD), exposes `pushMessage` for
   the message console, and is what `mountShell` renders. The `onSave` option
   wires the File → Save menu item to the caller.
-- `editPanel.ts` — the raw-MD edit surface: a CodeMirror 6 view holding the
-  current chapter's canonical text. `load` fetches a chapter document
-  (`GET /api/chapters/{id}/document`) and records the returned text as the
-  clean baseline; `save` PUTs the editor text and adopts the returned canonical
-  text as the new baseline, so `isDirty()` is always *current buffer vs. last
-  canonical* (UI README §8). Save results and load/save errors are reported
-  through `onMessage`.
+- `editPanel.ts` — the chapter edit surface: two views of the same canonical
+  text. In raw mode a CodeMirror 6 view shows the markdown; in WYSIWYG mode a
+  ProseMirror view (`wysiwyg.ts`) shows the prose. Toggling Mode re-syncs both
+  views from the active buffer, so the text is never serialized out (UI README
+  §5). `load` fetches a chapter document (`GET /api/chapters/{id}/document`)
+  and records the returned text as the clean baseline; `save` PUTs the editor
+  text and adopts the returned canonical text as the new baseline, so
+  `isDirty()` is always *current buffer vs. last canonical* (UI README §8).
+  Save results and load/save errors are reported through `onMessage`.
+- `wysiwyg.ts` — the WYSIWYG view: a ProseMirror editor holding the canonical
+  text as a paragraph-per-line document (byte-stable round trip by
+  construction, no serializer), with markdown-it heading detection fed to a
+  node decoration that styles heading paragraphs. Edits flow back through
+  `onChange`; `setContent`/`content` round-trip the buffer byte-for-byte.
 - `ResizeHandle.ts` — the single parametric seam component: vertical
   (left↔edit, edit↔right, `ew-resize`) or horizontal (edit⇕message,
   `ns-resize`), each with a grip of three bars, faint by default, gaining
@@ -68,9 +75,9 @@ The editor shell lives in `src/renderer/layout/` and matches
   deltas to the layout, which enforces minima (left panel ≥ 120px) and keeps
   the right panel grippable from its zero-width default.
 - `menubar.ts` — the in-window HTML menubar: **File** (Save → `onSave`, Quit),
-  **Mode** (WYSIWYG, Raw MD — reported to the layout), **Settings** (⚙,
-  General, a no-op). Quit is wired to the quit flow in section 9; here it
-  renders.
+  **Mode** (WYSIWYG, Raw MD — reported to the layout, which forwards it to the
+  edit panel's `setMode`), **Settings** (⚙, General, a no-op). Quit is wired
+  to the quit flow in section 9; here it renders.
 - `chapterList.ts` — the chapter selector: chapters grouped into contiguous
   act runs (`groupByAct`), each under a collapsible header (empty act labelled
   "No act"); rows are selectable (`select`/click) and emit a context-menu

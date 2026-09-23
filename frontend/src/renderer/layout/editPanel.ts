@@ -6,6 +6,8 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from "@codem
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
+import { WysiwygView } from "./wysiwyg";
+import type { Mode } from "./menubar";
 
 export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDocument">;
 
@@ -20,6 +22,10 @@ export class EditPanel {
   api: EditPanelApi;
   onMessage?: (text: string) => void;
   private view: EditorView;
+  private readonly wysiwyg: WysiwygView;
+  private readonly rawHost: HTMLElement;
+  private readonly wysiwygHost: HTMLElement;
+  private mode: Mode = "wysiwyg";
   private chapterId: string | null = null;
   private lastCanonicalText: string | null = null;
 
@@ -29,6 +35,12 @@ export class EditPanel {
     this.element = document.createElement("div");
     this.element.className = "edit-panel";
     this.element.dataset.testid = "edit-panel";
+
+    this.rawHost = document.createElement("div");
+    this.rawHost.dataset.testid = "edit-raw";
+    this.wysiwygHost = document.createElement("div");
+    this.wysiwygHost.dataset.testid = "edit-wysiwyg";
+    this.element.append(this.rawHost, this.wysiwygHost);
 
     const state = EditorState.create({
       doc: "",
@@ -41,7 +53,20 @@ export class EditPanel {
         markdown(),
       ],
     });
-    this.view = new EditorView({ state, parent: this.element });
+    this.view = new EditorView({ state, parent: this.rawHost });
+    this.wysiwyg = new WysiwygView();
+    this.wysiwygHost.append(this.wysiwyg.element);
+    this.applyMode();
+  }
+
+  setMode(mode: Mode): void {
+    if (mode === this.mode) {
+      return;
+    }
+    const text = this.content();
+    this.mode = mode;
+    this.applyMode();
+    this.replaceDoc(text);
   }
 
   async load(chapterId: string): Promise<void> {
@@ -60,7 +85,7 @@ export class EditPanel {
   }
 
   content(): string {
-    return this.view.state.doc.toString();
+    return this.mode === "raw" ? this.view.state.doc.toString() : this.wysiwyg.content();
   }
 
   isDirty(): boolean {
@@ -94,6 +119,14 @@ export class EditPanel {
     this.view.dispatch({
       changes: { from: 0, to: this.view.state.doc.length, insert: text },
     });
+    this.wysiwyg.setContent(text);
+  }
+
+  private applyMode(): void {
+    const raw = this.mode === "raw";
+    this.rawHost.hidden = !raw;
+    this.wysiwygHost.hidden = raw;
+    this.element.dataset.mode = this.mode;
   }
 }
 
