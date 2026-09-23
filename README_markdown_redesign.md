@@ -185,8 +185,9 @@ The owned directory tree is the editor's entire world, delivered through the API
   chapter is placed in sequence and the server writes an **empty** `chapter-{id}.md` (front matter
   with `id`/`title`, no body).
 - **Save:** `PUT /api/chapters/{id}/document` as described above. The request body is the editor's
-  loose text. The server writes it to the owned file, forcing the chapter's `id`/`title` into the
-  front matter (the server, not the editor, owns identity), runs `apply_chapter_file()`, git-snaps,
+  loose text. The server writes it to the owned file, forcing the chapter's `id`/`title` (and its
+  `act` when set) into the front matter — the server, not the editor, owns identity — runs
+  `apply_chapter_file()`, git-snaps,
   and returns the canonical span-form text plus a change summary (`created`/`changed`/`added`/`deleted`).
 - **Open/reconcile:** `GET /api/chapters/{id}/document` materializes the owned file when missing
   (canonical serialization of the graph, git-snapped) and returns the canonical text; when the file
@@ -207,6 +208,12 @@ explicit:
 When a chapter is inserted into the middle, the server renumbers every chapter at or after the
 insertion point (a single Cypher increment) so `index` remains 0..n-1 and the listing
 (`GET /api/chapters?document=...`, ordered by `index`) matches the assigned sequence.
+
+**Acts.** Acts are not a separate model entity: they are the `act` front-matter attribute persisted
+on each chapter (and stored in the graph like the chapter's other attrs). The chapter listing
+(`GET /api/chapters?document=...`) carries `act` so the editor can group chapters under act headers.
+A chapter moved to a position whose neighbours belong to a different act adopting that act is
+decided server-side at the move (reorder) — the editor only sends the order change.
 
 ### git branch approach rejected
 

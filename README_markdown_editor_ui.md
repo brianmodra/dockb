@@ -14,10 +14,12 @@ File (save, quit), Mode (view toggle) and a cog Settings menu, and startup resto
 document when app state has one, otherwise prompts for one.
 
 This document records the decisions — the window layout, the in-window menubar, the parametric
-resize-handle component, the modals, the interaction patterns — and the questions still open (where
-app state lives, whether acts are grouping headers or model entities, the message panel's exact
-role). The backend story and the canonical format live in `README_markdown_redesign.md`; this
-document is only about the editor's shape and interactions.
+resize-handle component, the modals, the interaction patterns. The only items then open — where app
+state lives, and whether acts are grouping headers or model entities — have since been settled:
+acts are grouping headers fed by each chapter's `act` front-matter attribute, and app state is a
+per-user backend endpoint backed by SQLite (see `README_auth.md`). The backend story and the
+canonical format live in `README_markdown_redesign.md`; this document is only about the editor's
+shape and interactions.
 
 ## 1. Context and constraints
 
@@ -96,9 +98,11 @@ stays identical across platforms.
 
 ## 4. Left panel: document and chapter selector (decided)
 
-- Lists documents; each shows its chapters grouped under **act headers** (collapsible). Beyond the
-  current document, other documents appear here too — character descriptions, place descriptions,
-  world building, supporting research — to be defined later.
+- Lists documents; each shows its chapters grouped under **act headers** (collapsible). Group
+  membership comes from each chapter's `act` front-matter attribute: a chapter moved into a run of
+  chapters belonging to a different act adopts that act. Beyond the current document, other
+  documents appear here too — character descriptions, place descriptions, world building,
+  supporting research — to be defined later.
 - Width is user-resizable via the vertical seam.
 - Right-clicking a chapter opens the context menu: **Edit, Rename, Move, Delete**. (A metadata YAML
   entry is a later addition once per-chapter `*.yaml` meta files exist.)
@@ -108,8 +112,9 @@ stays identical across platforms.
 - **Move** — enter move mode: a **solid bar** is drawn under the chapter name nearest the mouse.
   Moving to the bottom/top of the list scrolls it; the further above top (or below bottom) the mouse
   goes, the faster it scrolls, and the bar reappears under the newly revealed chapters. Clicking
-  commits the move at that position (reorder via `after_chapter_id`). Esc cancels move mode (see
-  **Open questions**).
+  commits the move at that position (reorder via `after_chapter_id`); the chapter it lands next to
+  determines the act it adopts (decided server-side). **Esc** or a **click outside the list**
+  cancels move mode.
 
 ## 5. Edit panel (decided)
 
@@ -122,12 +127,12 @@ save.
 (The editor rendering itself — CodeMirror 6 source mode, the WYSIWYG renderer, the span-aware
 language extension — is the editor implementation, decided at `README_markdown_redesign.md` §8.)
 
-## 6. Message panel (decided shape, role to confirm)
+## 6. Message panel (decided)
 
 A strip under the edit panel showing one line of text by default. Dragging the horizontal seam makes
-it taller, revealing a **scrollback console** of earlier messages. Intended home: save results
-(canonicalized, change summary), errors, and delivered diagnostics. The exact message set is yet to
-confirm (see **Open questions**).
+it taller, revealing a **scrollback console** of earlier messages. Its role is the console: save
+results (canonicalized, change summary), errors, and delivered diagnostics — plus further message
+kinds to be designed later.
 
 ## 7. Right panel (decided shape, no role yet)
 
@@ -153,21 +158,19 @@ reformats. A visual dirty indicator on the chapter row (and/or menubar) makes th
 
 On launch the editor restores the **last document** from app state. If there is one, it `GET`s the
 document and restores the chapter list (panel widths and mode live in the same state). If there is
-none, it shows the **select a document** modal first. Where that state lives is open (below).
+none, it shows the **select a document** modal first. The state is stored per-user on the backend:
+`GET/PUT /api/app/state` backed by the SQLite `app_state` table (see `README_auth.md`), keeping the
+editor file-and-disk-free and the state following the user once OAuth login exists.
 
-## 10. Open questions before trust
+## 10. Resolved questions
 
-1. **Where app state lives** (last document, panel widths, current mode). Recommended: a small
-   backend endpoint (per-user `GET/PUT /api/app/state`), keeping the editor file-and-disk-free and
-   the state following the user; the alternative is a local Electron `appData` JSON. Settle before
-   the state store is built.
-2. **Acts: grouping only, or model entities?** The backend orders chapters flat (`index` /
-   `after_chapter_id`); there is no act in the model. Decide whether acts are just collapsible
-   headers (recommended initially) — and if so, whether a move across an act boundary is simply an
-   order change across the boundary or is restricted.
-3. **Message panel message set** — confirm it is the console for save results, errors, and async
-   diagnostics.
-4. **Move-mode cancellation** — Esc to cancel is proposed; confirm, and whether clicking outside the
-   list also cancels.
-5. **Menubar placement** — in-window (HTML) is decided; a native Electron menu is the rejected
-   alternative (it cannot carry our styling). Recorded here so the choice is not revisited silently.
+The open questions in earlier revisions have been settled:
+
+- **App state** — backend per-user `GET/PUT /api/app/state` over the SQLite `app_state` table
+  (`README_auth.md`), not a local Electron `appData` file.
+- **Acts** — grouping headers only, not model entities; membership comes from each chapter's `act`
+  front-matter attribute, adopted server-side when a chapter is moved.
+- **Message panel** — the console for save results, errors, and delivered diagnostics, plus further
+  message kinds to be designed later.
+- **Move-mode cancellation** — Esc or a click outside the list.
+- **Menubar** — in-window (HTML), not the native Electron menu.
