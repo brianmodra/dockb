@@ -3,6 +3,7 @@ export type Mode = "wysiwyg" | "raw";
 export interface MenubarOptions {
   mode?: Mode;
   onMode?: (mode: Mode) => void;
+  onSave?: () => void;
 }
 
 interface MenuSpec {
@@ -84,6 +85,8 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
       if (menu.key === "Mode") {
         const mode: Mode = item.key === "raw" ? "raw" : "wysiwyg";
         options.onMode?.(mode);
+      } else if (menu.key === "File" && item.key === "save") {
+        options.onSave?.();
       }
     });
     dropdown.append(button);

@@ -44,6 +44,20 @@ describe("LeftPanel", () => {
     expect(headers.map((h) => h.textContent)).toEqual(["I", "II"]);
   });
 
+  it("routes load failures into the message panel", async () => {
+    const onMessage = vi.fn();
+    const api = fakeApi({
+      listChapters: vi.fn(async () => {
+        throw new Error("backend down");
+      }),
+    });
+    const panel = new LeftPanel({ api, onMessage });
+    document.body.append(panel.element);
+
+    await panel.load("d1");
+    expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("backend down"));
+  });
+
   it("opens the document editor on Edit", async () => {
     const onEdit = vi.fn();
     const panel = new LeftPanel({

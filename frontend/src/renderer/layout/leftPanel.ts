@@ -3,6 +3,7 @@ import { ChapterList } from "./chapterList";
 import { openContextMenu } from "./contextMenu";
 import { confirmModal, promptModal } from "./modals";
 import { MoveMode } from "./moveMode";
+import { reportError } from "../log";
 import type { ApiClient } from "../api/client";
 
 export type LeftPanelApi = Pick<
@@ -42,9 +43,13 @@ export class LeftPanel {
   }
 
   async load(documentId: string): Promise<void> {
-    this.documentId = documentId;
-    this.chapters = await this.api.listChapters(documentId);
-    this.chapterList.setChapters(this.chapters);
+    try {
+      this.documentId = documentId;
+      this.chapters = await this.api.listChapters(documentId);
+      this.chapterList.setChapters(this.chapters);
+    } catch (error) {
+      reportError("Load chapters", error, this.onMessage);
+    }
   }
 
   select(chapterId: string | null): void {
@@ -74,8 +79,12 @@ export class LeftPanel {
     if (value !== "confirm" || !this.documentId) {
       return;
     }
-    await this.api.updateChapter(chapterId, { title: input });
-    await this.load(this.documentId);
+    try {
+      await this.api.updateChapter(chapterId, { title: input });
+      await this.load(this.documentId);
+    } catch (error) {
+      reportError("Rename chapter", error, this.onMessage);
+    }
   }
 
   private async delete(chapterId: string, title: string): Promise<void> {
@@ -87,8 +96,12 @@ export class LeftPanel {
     if (!confirmed || !this.documentId) {
       return;
     }
-    await this.api.deleteChapter(chapterId);
-    await this.load(this.documentId);
+    try {
+      await this.api.deleteChapter(chapterId);
+      await this.load(this.documentId);
+    } catch (error) {
+      reportError("Delete chapter", error, this.onMessage);
+    }
   }
 
   private startMove(chapterId: string): void {
@@ -111,8 +124,12 @@ export class LeftPanel {
     if (!this.documentId) {
       return;
     }
-    const response = await this.api.reorderChapter(chapterId, afterChapterId);
-    this.onMessage?.(response.status.message);
-    await this.load(this.documentId);
+    try {
+      const response = await this.api.reorderChapter(chapterId, afterChapterId);
+      this.onMessage?.(response.status.message);
+      await this.load(this.documentId);
+    } catch (error) {
+      reportError("Move chapter", error, this.onMessage);
+    }
   }
 }

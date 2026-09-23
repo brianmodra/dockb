@@ -4,6 +4,7 @@ import { buildMenubar, type Mode } from "./menubar";
 export interface AppLayoutOptions {
   initialMode?: Mode;
   onMode?: (mode: Mode) => void;
+  onSave?: () => void;
 }
 
 const MIN_LEFT_WIDTH = 120;
@@ -16,8 +17,12 @@ export class AppLayout {
   mode: Mode;
 
   private readonly leftPanel: HTMLElement;
+  private editPanel!: HTMLElement;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
+  }
+  editPanelEl(): HTMLElement {
+    return this.editPanel;
   }
   private readonly rightPanel: HTMLElement;
   private readonly messagePanel: HTMLElement;
@@ -39,10 +44,12 @@ export class AppLayout {
         this.applyMode();
         options.onMode?.(mode);
       },
+      onSave: options.onSave,
     });
 
     this.leftPanel = this.panel("panel-left");
     const editPanel = this.panel("panel-edit");
+    this.editPanel = editPanel;
     this.rightPanel = this.panel("panel-right");
     this.messagePanel = this.panel("panel-message");
 

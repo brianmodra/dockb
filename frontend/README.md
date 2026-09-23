@@ -47,22 +47,30 @@ Run these from `frontend/`:
 ## Window layout
 
 The editor shell lives in `src/renderer/layout/` and matches
-`../README_markdown_editor_ui.md` §2–§4:
+`../README_markdown_editor_ui.md` §2–§5:
 
 - `layout.ts` — `AppLayout`: assembles the in-window menubar above a main row
   (left panel, edit panel, right panel) over the message panel. It owns the
   panel widths and the edit Mode (WYSIWYG | Raw MD), exposes `pushMessage` for
-  the message console, and is what `mountShell` renders.
+  the message console, and is what `mountShell` renders. The `onSave` option
+  wires the File → Save menu item to the caller.
+- `editPanel.ts` — the raw-MD edit surface: a CodeMirror 6 view holding the
+  current chapter's canonical text. `load` fetches a chapter document
+  (`GET /api/chapters/{id}/document`) and records the returned text as the
+  clean baseline; `save` PUTs the editor text and adopts the returned canonical
+  text as the new baseline, so `isDirty()` is always *current buffer vs. last
+  canonical* (UI README §8). Save results and load/save errors are reported
+  through `onMessage`.
 - `ResizeHandle.ts` — the single parametric seam component: vertical
   (left↔edit, edit↔right, `ew-resize`) or horizontal (edit⇕message,
   `ns-resize`), each with a grip of three bars, faint by default, gaining
   contrast on hover and highlighting while a drag is held. It reports pixel
   deltas to the layout, which enforces minima (left panel ≥ 120px) and keeps
   the right panel grippable from its zero-width default.
-- `menubar.ts` — the in-window HTML menubar: **File** (Save, Quit), **Mode**
-  (WYSIWYG, Raw MD — reported to the layout), **Settings** (⚙, General, a
-  no-op). File/Save and Quit are wired to the document lifecycle and quit flow
-  in later sections; here they render.
+- `menubar.ts` — the in-window HTML menubar: **File** (Save → `onSave`, Quit),
+  **Mode** (WYSIWYG, Raw MD — reported to the layout), **Settings** (⚙,
+  General, a no-op). Quit is wired to the quit flow in section 9; here it
+  renders.
 - `chapterList.ts` — the chapter selector: chapters grouped into contiguous
   act runs (`groupByAct`), each under a collapsible header (empty act labelled
   "No act"); rows are selectable (`select`/click) and emit a context-menu
@@ -87,6 +95,12 @@ The editor shell lives in `src/renderer/layout/` and matches
 Panels are plain elements built with `createElement`/`textContent` — no user
 data ever enters the DOM as HTML.
 
+### Error reporting
+
+All user-facing failures follow one rule: report to the terminal log (via
+`console.error` in `log.ts`'s `reportError`) **and** to the bottom message
+panel through `onMessage`. This applies to load/save, rename, delete, and move.
+
 ## Layout
 
 - `src/main/main.ts` — Electron main: creates a sandboxed, context-isolated
@@ -95,8 +109,9 @@ data ever enters the DOM as HTML.
 - `src/main/preload.ts` — contextBridge preload (currently exposes
   `window.dockb` platform + `openExternal`).
 - `src/renderer/` — renderer entry (`main.ts` mounts the shell; `mountShell`
-  accepts an optional `ApiClient` + document id to populate the left panel);
-  `api/` holds the typed backend client and session/login helpers.
+  accepts an optional `ApiClient` + document id to populate the left panel and
+  the edit panel); `api/` holds the typed backend client and session/login
+  helpers; `log.ts` holds the shared error reporter.
 - `vite.config.mts` — Vite/Vitest config with the :3000 dev server and `/api`
   proxy.
 - `tests/` — Vitest tests for the config, the shell, and the Electron main.

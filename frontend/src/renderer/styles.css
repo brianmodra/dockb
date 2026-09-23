@@ -261,6 +261,21 @@ body {
   background: #fff;
 }
 
+.edit-panel {
+  height: 100%;
+}
+
+.edit-panel .cm-editor {
+  height: 100%;
+}
+
+.edit-panel .cm-scroller {
+  overflow: auto;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 [data-testid="panel-right"] {
   border-left: none;
   background: #f7f7f5;
