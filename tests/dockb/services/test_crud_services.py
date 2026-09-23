@@ -58,6 +58,7 @@ class StubChapterRepo(StubRepo):
         super().__init__()
         self._document_of: dict[str, str] = {}
         self._index_of: dict[str, int] = {}
+        self._reorders: list[tuple[str, list[str]]] = []
 
     def set_document(self, chapter_id: str, document_id: str) -> None:
         self._document_of[chapter_id] = document_id
@@ -70,7 +71,12 @@ class StubChapterRepo(StubRepo):
 
     def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
         _ = document_id
-        return [{"id": m.id, "title": m.title, "index": self._index_of.get(m.id, 0)} for m in self._store.values()]
+        rows = [{"id": m.id, "title": m.title, "index": self._index_of.get(m.id, 0)} for m in self._store.values()]
+        rows.sort(key=lambda row: int(row["index"]))
+        return rows
+
+    def reorder(self, document_id: str, ordered_ids: list[str]) -> None:
+        self._reorders.append((document_id, list(ordered_ids)))
 
     def load(self, model_id: str) -> Chapter | None:
         return super().load(model_id)  # type: ignore[return-value]
@@ -375,6 +381,55 @@ class TestChapterService:  # pylint: disable=too-many-public-methods
         self.repo._store["c1"] = ch
         assert self.svc.delete("c1") is True
         assert ch.state == DataState.DELETED
+
+    def test_move_returns_none_when_missing(self) -> None:
+        assert self.svc.move("nonexistent", after_chapter_id=None) is None
+
+    def test_move_returns_none_when_orphaned(self) -> None:
+        ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        assert self.svc.move("c1", after_chapter_id=None) is None
+
+    def test_move_after_itself_is_noop(self) -> None:
+        ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        result = self.svc.move("c1", after_chapter_id="c1")
+        assert result is ch
+        assert not self.repo._reorders
+
+    def test_move_first_orders_chapter_at_head(self) -> None:
+        c1 = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        c2 = Chapter(id="c2", title="Ch2", state=DataState.SYNC)
+        for ch in (c1, c2):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, list((c1, c2)).index(ch))
+
+        self.svc.move("c2", after_chapter_id=None)
+
+        assert self.repo._reorders == [("d1", ["c2", "c1"])]
+
+    def test_move_after_chapter_uses_new_order(self) -> None:
+        c1 = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        c2 = Chapter(id="c2", title="Ch2", state=DataState.SYNC)
+        c3 = Chapter(id="c3", title="Ch3", state=DataState.SYNC)
+        for ch in (c1, c2, c3):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, list((c1, c2, c3)).index(ch))
+
+        self.svc.move("c3", after_chapter_id="c1")
+
+        assert self.repo._reorders == [("d1", ["c1", "c3", "c2"])]
+
+    def test_move_after_unknown_chapter_raises(self) -> None:
+        ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        with pytest.raises(ChapterAfterNotFoundError):
+            self.svc.move("c1", after_chapter_id="ghost")
+        assert not self.repo._reorders
 
     def test_open_returns_none_when_missing(self) -> None:
         assert self.svc.open("nonexistent") is None

@@ -104,6 +104,13 @@ class MockChapterService:
     def delete(self, chapter_id: str) -> bool:
         return self._chapters.pop(chapter_id, None) is not None
 
+    def move(self, chapter_id: str, after_chapter_id: str | None) -> Chapter | None:
+        if chapter_id not in self._chapters:
+            return None
+        if after_chapter_id is not None and after_chapter_id not in self._chapters:
+            raise ChapterAfterNotFoundError(after_chapter_id)
+        return self._chapters[chapter_id]
+
     def open_document(self, chapter_id: str) -> str | None:
         if chapter_id not in self._chapters:
             return None
@@ -306,7 +313,7 @@ class TestDocumentRoutes:
 # ---------------------------------------------------------------------------
 
 
-class TestChapterRoutes:
+class TestChapterRoutes:  # pylint: disable=too-many-public-methods
     def setup_method(self) -> None:
         self.doc_svc = MockDocumentService()
         self.ch_svc = MockChapterService()
@@ -399,6 +406,44 @@ class TestChapterRoutes:
 
     def test_delete_chapter_not_found(self) -> None:
         resp = self.client.delete("/api/chapters/nonexistent")
+        assert resp.status_code == 404
+
+    def test_reorder_chapter(self) -> None:
+        self.ch_svc.create("c1", "Ch1", "d1")
+        self.ch_svc.create("c3", "Ch3", "d1")
+        with patch.object(self.ch_svc, "move", wraps=self.ch_svc.move) as move_mock:
+            resp = self.client.post(
+                "/api/chapters/c3/reorder",
+                json={"after_chapter_id": "c1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"]["code"] == "ok"
+        move_mock.assert_called_once_with(chapter_id="c3", after_chapter_id="c1")
+
+    def test_reorder_chapter_first(self) -> None:
+        self.ch_svc.create("c1", "Ch1", "d1")
+        self.ch_svc.create("c2", "Ch2", "d1")
+        with patch.object(self.ch_svc, "move", wraps=self.ch_svc.move) as move_mock:
+            resp = self.client.post(
+                "/api/chapters/c2/reorder",
+                json={"after_chapter_id": None},
+            )
+        assert resp.status_code == 200
+        move_mock.assert_called_once_with(chapter_id="c2", after_chapter_id=None)
+
+    def test_reorder_chapter_not_found(self) -> None:
+        resp = self.client.post(
+            "/api/chapters/nonexistent/reorder",
+            json={"after_chapter_id": None},
+        )
+        assert resp.status_code == 404
+
+    def test_reorder_after_unknown_chapter(self) -> None:
+        self.ch_svc.create("c1", "Ch1", "d1")
+        resp = self.client.post(
+            "/api/chapters/c1/reorder",
+            json={"after_chapter_id": "ghost"},
+        )
         assert resp.status_code == 404
 
     def test_get_chapter_document(self) -> None:

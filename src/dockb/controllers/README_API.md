@@ -188,6 +188,7 @@ Note that the GET list of chapters is filtered by document_id.
 | `POST` | `/api/chapters` | Create an empty chapter from the supplied data (See **POST Chapter Data**) |
 | `GET` | `/api/chapters/{id}` | Returns the full chapter as a ProseMirror JSON tree (paragraphs → sentences → text) |
 | `PUT` | `/api/chapters/{id}` | Replace the attributes of a chapter with the supplied data (See **PUT Chapter Data**) |
+| `POST` | `/api/chapters/{id}/reorder` | Move the chapter to follow another chapter (See **POST Reorder Data**) |
 | `DELETE` | `/api/chapters/{id}` | Delete chapter + all children |
 
 #### POST Chapter Data
@@ -232,6 +233,18 @@ E.g.
 ``` json
 {
   "attrs": { "title": "Chapter 3" }
+}
+```
+
+#### POST Reorder Data
+
+The body of a POST to `/api/chapters/{id}/reorder` names the chapter the moved chapter goes
+**after**; `after_chapter_id: null` moves it first. An `after_chapter_id` that is not a chapter
+of the same document is rejected (404). Moving a chapter after itself is a no-op.
+
+``` json
+{
+  "after_chapter_id": "c-uuid-1"
 }
 ```
 

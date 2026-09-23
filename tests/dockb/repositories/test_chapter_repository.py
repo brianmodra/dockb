@@ -337,3 +337,32 @@ class TestFindDocumentId:
     def test_returns_none_when_null_id(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"document_id": None}]
         assert chapter_repo.find_document_id("ch-1") is None
+
+
+# ---------------------------------------------------------------------------
+# reorder
+# ---------------------------------------------------------------------------
+
+
+class TestReorder:
+    """Behaviour of ChapterRepository.reorder()."""
+
+    def test_rewrites_indices_from_ordered_ids(self, chapter_repo, neo4j_session):
+        chapter_repo.reorder("d-1", ["ch-1", "ch-2", "ch-3"])
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document" in cypher
+        assert "<-[r:PART_OF]-(c:Chapter" in cypher
+        assert "SET r.index = entry.index" in cypher
+        assert params["document_id"] == "d-1"
+        assert params["entries"] == [
+            {"id": "ch-1", "index": 0},
+            {"id": "ch-2", "index": 1},
+            {"id": "ch-3", "index": 2},
+        ]
+
+    def test_renumbers_a_single_chapter(self, chapter_repo, neo4j_session):
+        chapter_repo.reorder("d-1", ["ch-9"])
+
+        _, params = extract_call(neo4j_session)
+        assert params["entries"] == [{"id": "ch-9", "index": 0}]

@@ -55,6 +55,12 @@ MATCH (c:Chapter {id: $chapter_id})
 DETACH DELETE c
 """
 
+_REORDER_CYPHER = """
+UNWIND $entries AS entry
+MATCH (d:Document {id: $document_id})<-[r:PART_OF]-(c:Chapter {id: entry.id})
+SET r.index = entry.index
+"""
+
 # ---------------------------------------------------------------------------
 # Read Cypher
 # ---------------------------------------------------------------------------
@@ -124,6 +130,11 @@ class ChapterRepository(BaseRepository[Chapter]):
         if not records:
             return None
         return str(records[0].get("document_id")) if records[0].get("document_id") is not None else None
+
+    def reorder(self, document_id: str, ordered_ids: list[str]) -> None:
+        """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
+        entries = [{"id": chapter_id, "index": i} for i, chapter_id in enumerate(ordered_ids)]
+        self._session.run(_REORDER_CYPHER, {"document_id": document_id, "entries": entries})
 
     def load(self, chapter_id: str) -> Chapter | None:  # pylint: disable=too-many-locals
         """Load a Chapter and its full child hierarchy from Neo4j.

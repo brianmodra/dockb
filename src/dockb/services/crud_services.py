@@ -367,6 +367,31 @@ class ChapterService:
         store.write_chapter(document_id, ch.id, content)
         store.git_commit(document_id, f"create: chapter {ch.id[:8]}")
 
+    def move(self, chapter_id: str, after_chapter_id: str | None) -> Chapter | None:
+        """Move *chapter_id* to follow *after_chapter_id*, or first when None.
+
+        Returns None when the chapter does not exist or is orphaned, raises
+        ``ChapterAfterNotFoundError`` when *after_chapter_id* is not a chapter
+        of the same document.  Moving a chapter after itself is a no-op.
+        """
+        ch = self._chapter_repo.load(chapter_id)
+        if ch is None or chapter_id == after_chapter_id:
+            return ch
+        document_id = self._chapter_repo.find_document_id(chapter_id)
+        if document_id is None:
+            return None
+        members = self._chapter_repo.list_by_document(document_id)
+        if after_chapter_id is not None and after_chapter_id not in {row["id"] for row in members}:
+            raise ChapterAfterNotFoundError(after_chapter_id)
+        ordered_ids = [str(row["id"]) for row in members]
+        ordered_ids.remove(chapter_id)
+        if after_chapter_id is None:
+            ordered_ids.insert(0, chapter_id)
+        else:
+            ordered_ids.insert(ordered_ids.index(after_chapter_id) + 1, chapter_id)
+        self._chapter_repo.reorder(document_id, ordered_ids)
+        return ch
+
     def update(
         self,
         chapter_id: str,

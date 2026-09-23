@@ -33,7 +33,7 @@ shape and interactions.
   - edit → `GET /api/chapters/{id}/document`
   - save → `PUT /api/chapters/{id}/document`
   - rename → `PUT /api/chapters/{id}` (title)
-  - move → `POST /api/chapters` with `after_chapter_id` (reorders via `index`)
+  - move → `POST /api/chapters/{id}/reorder` with `{after_chapter_id}` (`null` = first)
   - delete → `DELETE /api/chapters/{id}`
   - open document → `GET /api/documents/{id}`
 - **Editing state.** WYSIWYG and Raw MD are two views of the same canonical document; toggling Mode
@@ -124,8 +124,49 @@ the selected Mode (WYSIWYG | Raw MD) and is where the interactive syntax checkin
 prose/NLP diagnostics, anchored to the sentence text as displayed, in both views, never part of a
 save.
 
-(The editor rendering itself — CodeMirror 6 source mode, the WYSIWYG renderer, the span-aware
-language extension — is the editor implementation, decided at `README_markdown_redesign.md` §8.)
+Both views edit the **same canonical document**: the text is the model, and toggling Mode changes
+rendering, not the document behind the editor. The WYSIWYG is an editing surface, *not* a semantic
+editor — the user types and edits prose in it (editing is allowed in either view), but nothing in
+it restructures the document or the knowledge graph.
+
+### Editor implementation (decided)
+
+The Raw MD view is CodeMirror 6 with the span-aware language extension. The WYSIWYG view is
+ProseMirror holding the canonical text as its document, rendered by markdown-it and styled by
+ProseMirror decorations — so Mode toggling never serializes text back out and the round trip is
+byte-stable by construction; the inline HTML spans (`data-par-id`, `data-triple`, `data-spo`) pass
+through untouched. This supersedes the earlier open option "markdown-it + HTML, or TipTap":
+TipTap was rejected because it is a structured-document (serializer-out) editor, which would turn
+the span-bearing canonical format into a serialization risk, and no custom AST engine is built in
+its place.
+
+**Decorations** are ProseMirror's mechanism for rendering over text without changing it. A
+decoration applies a CSS class, style, or injected DOM element to a range of the flat document
+text, keyed to document positions so it maps automatically as the user types. Three kinds suffice
+here:
+
+- **Inline decoration** — a class/style over a range of text (e.g. `em` over `*text*`, or a class
+  over a `data-spo` span).
+- **Node decoration** — attributes/class on a whole block node (e.g. styling one highlighted
+  paragraph).
+- **Widget decoration** — an extra DOM element at a position, not part of the text (e.g. a grip, a
+  chip).
+
+In Raw Mode the markdown markup is shown (`show-markup`); in WYSIWYG it is hidden (`hide-markup`) or
+styled — the two views are the same document with different decorations.
+
+### Paragraph-anchored operations (planned)
+
+Paragraph identity already lives in the text (`data-par-id` spans), so paragraph-anchored oper-
+ations reduce to locating an id in the buffer and decorating its range. The first planned example:
+
+- **Find a paragraph by id and highlight it** — the editor finds the paragraph whose `data-par-id`
+  matches, scrolls it into view, and highlights it (a decoration over its range, visible in both
+  views). Clients include diagnostics jumping to a flagged sentence and the left-panel navigation.
+
+This is one instance of a general paragraph-anchored find/highlight capability, kept cheap by the
+text-is-the-model architecture; further instances are anticipated. The same identity mechanism
+underlies cursor/view recovery after a save (`README_markdown_redesign.md` §5).
 
 ## 6. Message panel (decided)
 

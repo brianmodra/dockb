@@ -27,6 +27,12 @@ class UpdateChapterRequest(BaseModel):
     attrs: ChapterAttrs
 
 
+class ReorderChapterRequest(BaseModel):
+    """POST /api/chapters/{id}/reorder request body."""
+
+    after_chapter_id: str | None = None
+
+
 class ChapterImportSummaryWire(BaseModel):
     """What a save imported into the graph (omitted on read-only GETs)."""
 

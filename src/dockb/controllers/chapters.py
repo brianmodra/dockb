@@ -14,6 +14,7 @@ from dockb.controllers.schemas.chapters import (
     ChapterDocumentResponse,
     ChapterImportSummaryWire,
     CreateChapterRequest,
+    ReorderChapterRequest,
     UpdateChapterRequest,
 )
 from dockb.controllers.serializers import serialize_chapter
@@ -103,6 +104,22 @@ def put_chapter_document(
             deleted=summary.deleted,
         ),
     ).model_dump()
+
+
+@router.post("/{chapter_id}/reorder")
+def reorder_chapter(
+    chapter_id: str,
+    body: ReorderChapterRequest,
+    svc: Any = Depends(get_ch_service),
+    session_context: SessionContext | None = Depends(get_session_context),
+) -> dict[str, Any]:
+    try:
+        ch = svc.move(chapter_id=chapter_id, after_chapter_id=body.after_chapter_id)
+    except ChapterAfterNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc
+    if ch is None:
+        raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
+    return mutation_response(session_context).model_dump()
 
 
 @router.put("/{chapter_id}")

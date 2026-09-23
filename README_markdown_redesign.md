@@ -184,6 +184,9 @@ The owned directory tree is the editor's entire world, delivered through the API
 - **New chapter:** `POST /api/chapters` with `{id, title, document_id, after_chapter_id}`. The new
   chapter is placed in sequence and the server writes an **empty** `chapter-{id}.md` (front matter
   with `id`/`title`, no body).
+- **Move chapter:** `POST /api/chapters/{id}/reorder` with `{after_chapter_id}`. The chapter is
+  relocated to follow *after_chapter_id* (`null` = first) and the server renumbers so `index`
+  remains 0..n-1.
 - **Save:** `PUT /api/chapters/{id}/document` as described above. The request body is the editor's
   loose text. The server writes it to the owned file, forcing the chapter's `id`/`title` (and its
   `act` when set) into the front matter — the server, not the editor, owns identity — runs
@@ -197,17 +200,18 @@ The owned directory tree is the editor's entire world, delivered through the API
   `.../document` endpoints report the chapter as not found (404).
 
 **Chapter ordering.** Chapters of a document are ordered by the `index` property on their
-`PART_OF` relationship to the document (`rc.index` in the document load Cypher). Insertion is
-explicit:
+`PART_OF` relationship to the document (`rc.index` in the document load Cypher). Insertion and
+moving are both explicit:
 
 - `after_chapter_id` names the chapter the new one goes **after**.
-- `after_chapter_id = null` means the new chapter becomes the **first** (index 0). To append, the
+- `after_chapter_id = null` means the chapter becomes the **first** (index 0). To append, the
   caller passes the currently-last chapter's id — there is no separate "last" sentinel.
 - An `after_chapter_id` that is not a chapter of the document is rejected (404).
+- Moving a chapter **after itself** is a no-op success (the document is not rewritten).
 
-When a chapter is inserted into the middle, the server renumbers every chapter at or after the
-insertion point (a single Cypher increment) so `index` remains 0..n-1 and the listing
-(`GET /api/chapters?document=...`, ordered by `index`) matches the assigned sequence.
+When a chapter is inserted or moved, the server renumbers chapters so `index` remains 0..n-1
+and the listing (`GET /api/chapters?document=...`, ordered by `index`) matches the assigned
+sequence.
 
 **Acts.** Acts are not a separate model entity: they are the `act` front-matter attribute persisted
 on each chapter (and stored in the graph like the chapter's other attrs). The chapter listing
@@ -358,10 +362,10 @@ Consequences and requirements:
   rehydration as tokens. No global re-derivation.
 - **Version-control friendly.** Inline spans sit on one line, so they do not fight the
   newline-after-sentence line-based merge, and git sees them like any text change.
-- **Renderer caveat:** markdown renderers vary in inline-HTML support. Browser `markdown-it`/HTML or
-  TipTap handle them; CodeMirror needs a small language tokenizing `data-spo`/`data-*` spans;
-  Flutter's `flutter_markdown` does **not** support inline HTML, so a Flutter client needs an
-  attr_list/span extension or a custom span parser instead.
+- **Renderer caveat:** markdown renderers vary in inline-HTML support. The `markdown-it` renderer
+  inside the ProseMirror WYSIWYG handles them; CodeMirror needs a small language tokenizing
+  `data-spo`/`data-*` spans; Flutter's `flutter_markdown` does **not** support inline HTML, so a
+  Flutter client needs an attr_list/span extension or a custom span parser instead.
 
 This resolves the earlier question of whether we "need a tree-based WYSIWYG framework to show
 semantics": we do not, because the semantics live in the text we already control. The flat,
@@ -462,10 +466,14 @@ language for the whole PC-frontend stack.
 
 Concretely:
 
-- **Editor:** CodeMirror 6 for the markdown source mode; browser markdown rendering / WYSIWYG
-  (markdown-it + HTML, or TipTap) for the primary view; the NLP semantics render as styled/clickable
-  spans already present in the text (`data-triple` / `data-spo`, etc.). Structure is linted in-editor
-  with remark-lint (`maximum-line-length` and `no-inline-html` disabled for the span format); backend
+- **Editor:** CodeMirror 6 for the markdown source mode and a ProseMirror WYSIWYG for the primary
+  view — both edit the same canonical text, which the WYSIWYG renders with markdown-it and styles
+  with ProseMirror decorations, so no serializer exists and the round trip is byte-stable (this
+  supersedes the earlier "markdown-it + HTML, or TipTap" option; the mechanics and the
+  paragraph-anchored find/highlight requirement are in `README_markdown_editor_ui.md` §5). The NLP
+  semantics render as styled/clickable spans already present in the text (`data-triple` /
+  `data-spo`, etc.). Structure is linted in-editor with remark-lint (`maximum-line-length` and
+  `no-inline-html` disabled for the span format); backend
   prose/NLP diagnostics render sentence-anchored in both views. Both layers are interactive only,
   never part of a save. The editor talks to the API
   only — it never touches files, git, services, or repositories.
