@@ -44,6 +44,29 @@ Run these from `frontend/`:
 - `npm run lint` — ESLint.
 - `npm start` — run the built Electron app (`electron .`).
 
+## Window layout
+
+The editor shell lives in `src/renderer/layout/` and matches
+`../README_markdown_editor_ui.md` §2–§3:
+
+- `layout.ts` — `AppLayout`: assembles the in-window menubar above a main row
+  (left panel, edit panel, right panel) over the message panel. It owns the
+  panel widths and the edit Mode (WYSIWYG | Raw MD), exposes `pushMessage` for
+  the message console, and is what `mountShell` renders.
+- `ResizeHandle.ts` — the single parametric seam component: vertical
+  (left↔edit, edit↔right, `ew-resize`) or horizontal (edit⇕message,
+  `ns-resize`), each with a grip of three bars, faint by default, gaining
+  contrast on hover and highlighting while a drag is held. It reports pixel
+  deltas to the layout, which enforces minima (left panel ≥ 120px) and keeps
+  the right panel grippable from its zero-width default.
+- `menubar.ts` — the in-window HTML menubar: **File** (Save, Quit), **Mode**
+  (WYSIWYG, Raw MD — reported to the layout), **Settings** (⚙, General, a
+  no-op). File/Save and Quit are wired to the document lifecycle and quit flow
+  in later sections; here they render.
+
+Panels are plain elements built with `createElement`/`textContent` — no user
+data ever enters the DOM as HTML.
+
 ## Layout
 
 - `src/main/main.ts` — Electron main: creates a sandboxed, context-isolated

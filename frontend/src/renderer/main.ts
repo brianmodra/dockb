@@ -1,9 +1,8 @@
-export function mountShell(root: HTMLElement): void {
+import { AppLayout } from "./layout/layout";
+
+export function mountShell(root: HTMLElement): AppLayout {
   root.replaceChildren();
-  const shell = document.createElement("div");
-  shell.dataset.testid = "app-shell";
-  const menubar = document.createElement("div");
-  menubar.dataset.testid = "menubar";
-  shell.append(menubar);
-  root.append(shell);
+  const layout = new AppLayout();
+  root.append(layout.element);
+  return layout;
 }
