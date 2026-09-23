@@ -13,7 +13,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
 from dockb.services.auth_service import InvalidLoginStateError, UnknownProviderError
@@ -86,3 +86,46 @@ def auth_callback(
     response = HTMLResponse(_SUCCESS_PAGE)
     response.set_cookie(_SESSION_COOKIE, token, max_age=svc.session_ttl_seconds, httponly=True, samesite="lax", path="/")
     return response
+
+
+def get_current_user(
+    request: Request,
+    svc: Any = Depends(get_auth_service),
+) -> str:
+    """Resolve the authenticated user id from the session cookie (401 when absent)."""
+    if svc is None:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    token = request.cookies.get(_SESSION_COOKIE, "")
+    user_id: str | None = svc.authenticate_cookie(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    return user_id
+
+
+def get_current_session_context(
+    user_id: str = Depends(get_current_user),
+    svc: Any = Depends(get_auth_service),
+) -> Any:
+    """Resolve the user's live SessionContext (401 when the server session is gone)."""
+    ctx = svc.session_for(user_id)
+    if ctx is None:
+        raise HTTPException(status_code=401, detail="session_expired_relogin")
+    return ctx
+
+
+@router.get("/api/auth/me")
+def auth_me(
+    user_id: str = Depends(get_current_user),
+    svc: Any = Depends(get_auth_service),
+) -> dict[str, Any]:
+    profile = svc.get_user(user_id)
+    if profile is None:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    return {
+        "user": {
+            "id": profile["id"],
+            "email": profile["email"],
+            "display_name": profile["display_name"],
+            "avatar_url": profile["avatar_url"],
+        }
+    }

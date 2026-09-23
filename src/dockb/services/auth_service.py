@@ -78,6 +78,18 @@ class AuthService:
         """Return a signed session cookie for *user_id*."""
         return self._signer.sign(user_id)
 
+    def authenticate_cookie(self, token: str) -> str | None:
+        """Return the user id a session cookie belongs to, or None."""
+        return self._signer.verify(token)
+
+    def get_user(self, user_id: str) -> dict[str, object] | None:
+        """Return the stored profile for *user_id*, or None."""
+        return self._accounts.get_user(user_id)
+
+    def session_for(self, user_id: str) -> object | None:
+        """Return the live SessionContext for *user_id*, possibly None (e.g. after restart)."""
+        return self._sessions.get(user_id)
+
     @property
     def session_ttl_seconds(self) -> int:
         """How long a session cookie stays valid."""

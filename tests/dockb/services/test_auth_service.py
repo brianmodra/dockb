@@ -85,3 +85,37 @@ def test_session_cookie_round_trip(tmp_path) -> None:
     assert cookie
     assert cookie != "user-1"
     assert service.session_ttl_seconds == 2 * 3600
+
+
+def test_authenticate_cookie_round_trip(tmp_path) -> None:
+    service, _, _, _ = _build(tmp_path)
+    cookie = service.session_cookie("user-1")
+    assert service.authenticate_cookie(cookie) == "user-1"
+    assert service.authenticate_cookie("garbage") is None
+
+
+def test_get_user_returns_profile(tmp_path) -> None:
+    service, _, _, _ = _build(tmp_path)
+    state = service.begin_login("fake").split("state=")[1].split("&")[0]
+    user_id = service.complete_login(state, "code")
+    profile = service.get_user(user_id)
+    assert profile is not None
+    assert profile["email"] == "abby@example.com"
+    assert profile["display_name"] == "Abby"
+
+
+def test_get_user_unknown_returns_none(tmp_path) -> None:
+    service, _, _, _ = _build(tmp_path)
+    assert service.get_user("no-such-user") is None
+
+
+def test_session_for_after_login_is_live(tmp_path) -> None:
+    service, _, _, _ = _build(tmp_path)
+    state = service.begin_login("fake").split("state=")[1].split("&")[0]
+    user_id = service.complete_login(state, "code")
+    assert service.session_for(user_id) is not None
+
+
+def test_session_for_unknown_user_is_none(tmp_path) -> None:
+    service, _, _, _ = _build(tmp_path)
+    assert service.session_for("no-such-user") is None
