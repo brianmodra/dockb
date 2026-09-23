@@ -16,6 +16,9 @@ export class AppLayout {
   mode: Mode;
 
   private readonly leftPanel: HTMLElement;
+  leftPanelEl(): HTMLElement {
+    return this.leftPanel;
+  }
   private readonly rightPanel: HTMLElement;
   private readonly messagePanel: HTMLElement;
   private leftWidth = DEFAULT_LEFT_WIDTH;

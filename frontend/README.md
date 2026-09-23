@@ -47,7 +47,7 @@ Run these from `frontend/`:
 ## Window layout
 
 The editor shell lives in `src/renderer/layout/` and matches
-`../README_markdown_editor_ui.md` §2–§3:
+`../README_markdown_editor_ui.md` §2–§4:
 
 - `layout.ts` — `AppLayout`: assembles the in-window menubar above a main row
   (left panel, edit panel, right panel) over the message panel. It owns the
@@ -63,6 +63,26 @@ The editor shell lives in `src/renderer/layout/` and matches
   (WYSIWYG, Raw MD — reported to the layout), **Settings** (⚙, General, a
   no-op). File/Save and Quit are wired to the document lifecycle and quit flow
   in later sections; here they render.
+- `chapterList.ts` — the chapter selector: chapters grouped into contiguous
+  act runs (`groupByAct`), each under a collapsible header (empty act labelled
+  "No act"); rows are selectable (`select`/click) and emit a context-menu
+  signal on right-click.
+- `contextMenu.ts` — the right-click menu; it renders items at the pointer,
+  fires the chosen item's callback, and closes on an outside mousedown or Esc.
+- `modals.ts` — promise-based in-window modals (`openModal`, `confirmModal`,
+  `promptModal`) used by rename/delete here and by the quit and document
+  picker in section 9; buttons resolve a value and remove the overlay.
+- `moveMode.ts` — the Move drop-bar interaction: `MoveMode` draws a bar under
+  the chapter nearest the pointer, auto-scrolls when the pointer crosses the
+  list edges, commits the reorder via `reorderChapter` on a within-list click,
+  and cancels on Esc or an outside click. `computeAfterForY` maps a pointer
+  Y to the nearest chapter slot (above the first midpoint → null = move to
+  front).
+- `leftPanel.ts` — `LeftPanel` ties it together: loads a document's chapters
+  through `listChapters`, wires the context menu to **Edit** (open chapter),
+  **Rename** (prompt modal → `updateChapter`), **Delete** (confirm →
+  `deleteChapter`), and **Move** (`MoveMode` → `reorderChapter`), reloading the
+  list after each mutation.
 
 Panels are plain elements built with `createElement`/`textContent` — no user
 data ever enters the DOM as HTML.
@@ -72,9 +92,11 @@ data ever enters the DOM as HTML.
 - `src/main/main.ts` — Electron main: creates a sandboxed, context-isolated
   `BrowserWindow`, loads the Vite dev server when `VITE_DEV_SERVER_URL` is set,
   otherwise the built `dist/index.html`.
-- `src/main/preload.ts` — contextBridge preload (currently exposes platform).
-- `src/renderer/` — renderer entry that mounts the shell window; `api/` holds
-  the typed backend client and session/login helpers.
+- `src/main/preload.ts` — contextBridge preload (currently exposes
+  `window.dockb` platform + `openExternal`).
+- `src/renderer/` — renderer entry (`main.ts` mounts the shell; `mountShell`
+  accepts an optional `ApiClient` + document id to populate the left panel);
+  `api/` holds the typed backend client and session/login helpers.
 - `vite.config.mts` — Vite/Vitest config with the :3000 dev server and `/api`
   proxy.
 - `tests/` — Vitest tests for the config, the shell, and the Electron main.

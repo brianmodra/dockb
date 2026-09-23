@@ -98,6 +98,164 @@ body {
   background: #f7f7f5;
 }
 
+/* ---- left panel chapter list ---- */
+
+.left-panel {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.chapter-list {
+  padding: 4px 0;
+}
+
+.act-run {
+  position: relative;
+}
+
+.act-header {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: #e8e8e5;
+  font: inherit;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.act-header:hover {
+  background: #dededb;
+}
+
+.act-run.is-collapsed .act-body {
+  display: none;
+}
+
+.chapter-row {
+  padding: 3px 10px 3px 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chapter-row:hover {
+  background: #ececea;
+}
+
+.chapter-row.is-selected {
+  background: #d6e4f0;
+}
+
+/* ---- context menu ---- */
+
+.context-menu {
+  position: absolute;
+  z-index: 100;
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  padding: 2px 0;
+}
+
+.context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  font: inherit;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.context-item:hover {
+  background: #e8e8e5;
+}
+
+/* ---- move drop bar ---- */
+
+.chapter-list.is-moving {
+  cursor: grab;
+}
+
+.move-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #4a90d9;
+  pointer-events: none;
+}
+
+/* ---- modals ---- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-dialog {
+  min-width: 320px;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  padding: 16px;
+}
+
+.modal-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.modal-body {
+  margin-bottom: 12px;
+}
+
+.modal-field-label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.modal-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-button {
+  border: 1px solid #888;
+  background: #f2f2f0;
+  font: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.modal-button.is-primary {
+  background: #4a90d9;
+  border-color: #3a80c9;
+  color: #fff;
+}
+
 [data-testid="panel-edit"] {
   flex: 1;
   background: #fff;
