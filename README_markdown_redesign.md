@@ -468,6 +468,8 @@ Concretely:
   flat markdown + span format is unchanged and a Flutter client could drive the same backend lifecycle
   via the API; only the editor shell differs.
 
+The editor shell's layout and interactions are specified in `README_markdown_editor_ui.md`.
+
 ## 9. Alternatives considered (and why not)
 
 - **Terminal SPA (`ink`, Go bubbletea, Rust ratatui).** Clean for a desktop tool, but **cannot
