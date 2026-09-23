@@ -7,4 +7,6 @@ __pycache__
 #*#
 run/
 **/node_modules
+frontend/dist
+frontend/dist-electron
 .codegraph
