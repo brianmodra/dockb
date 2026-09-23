@@ -5,6 +5,8 @@ export interface AppLayoutOptions {
   initialMode?: Mode;
   onMode?: (mode: Mode) => void;
   onSave?: () => void;
+  onQuit?: () => void;
+  onWidthsChange?: (widths: Record<string, number>) => void;
 }
 
 const MIN_LEFT_WIDTH = 120;
@@ -16,6 +18,7 @@ export class AppLayout {
   readonly element: HTMLElement;
   mode: Mode;
 
+  private readonly options: AppLayoutOptions;
   private readonly leftPanel: HTMLElement;
   private editPanel!: HTMLElement;
   leftPanelEl(): HTMLElement {
@@ -31,6 +34,7 @@ export class AppLayout {
   private messageHeight = MIN_MESSAGE_HEIGHT;
 
   constructor(options: AppLayoutOptions = {}) {
+    this.options = options;
     this.mode = options.initialMode ?? "wysiwyg";
 
     this.element = document.createElement("div");
@@ -45,6 +49,7 @@ export class AppLayout {
         options.onMode?.(mode);
       },
       onSave: options.onSave,
+      onQuit: options.onQuit,
     });
 
     this.leftPanel = this.panel("panel-left");
@@ -60,11 +65,13 @@ export class AppLayout {
       this.seam("resize-handle-v-left", "vertical", (delta) => {
         this.leftWidth = Math.max(MIN_LEFT_WIDTH, this.leftWidth + delta);
         this.leftPanel.style.width = `${this.leftWidth}px`;
+        this.options.onWidthsChange?.(this.panelWidths());
       }),
       editPanel,
       this.seam("resize-handle-v-right", "vertical", (delta) => {
         this.rightWidth = Math.max(0, Math.min(MAX_RIGHT_WIDTH, this.rightWidth + delta));
         this.rightPanel.style.width = `${this.rightWidth}px`;
+        this.options.onWidthsChange?.(this.panelWidths());
       }),
       this.rightPanel,
     );
@@ -75,6 +82,7 @@ export class AppLayout {
       this.seam("resize-handle-h-bottom", "horizontal", (delta) => {
         this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight - delta);
         this.messagePanel.style.height = `${this.messageHeight}px`;
+        this.options.onWidthsChange?.(this.panelWidths());
       }),
       this.messagePanel,
     );
@@ -90,6 +98,38 @@ export class AppLayout {
     line.className = "message-line";
     line.textContent = text;
     this.messagePanel.append(line);
+  }
+
+  setMode(mode: Mode): void {
+    this.mode = mode;
+    this.applyMode();
+    this.options.onMode?.(mode);
+  }
+
+  restoreState(state: { panel_widths?: Record<string, number> | null; edit_mode?: string | null }): void {
+    if (state.edit_mode === "wysiwyg" || state.edit_mode === "raw") {
+      this.setMode(state.edit_mode);
+    }
+    const widths = state.panel_widths;
+    if (widths) {
+      if (typeof widths.left === "number") {
+        this.leftWidth = widths.left;
+        this.leftPanel.style.width = `${this.leftWidth}px`;
+      }
+      if (typeof widths.right === "number") {
+        this.rightWidth = widths.right;
+        this.rightPanel.style.width = `${this.rightWidth}px`;
+      }
+      if (typeof widths.message === "number") {
+        this.messageHeight = widths.message;
+        this.messagePanel.style.height = `${this.messageHeight}px`;
+      }
+      this.options.onWidthsChange?.(this.panelWidths());
+    }
+  }
+
+  panelWidths(): Record<string, number> {
+    return { left: this.leftWidth, right: this.rightWidth, message: this.messageHeight };
   }
 
   private panel(name: string): HTMLElement {

@@ -4,6 +4,7 @@ export interface MenubarOptions {
   mode?: Mode;
   onMode?: (mode: Mode) => void;
   onSave?: () => void;
+  onQuit?: () => void;
 }
 
 interface MenuSpec {
@@ -87,6 +88,8 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
         options.onMode?.(mode);
       } else if (menu.key === "File" && item.key === "save") {
         options.onSave?.();
+      } else if (menu.key === "File" && item.key === "quit") {
+        options.onQuit?.();
       }
     });
     dropdown.append(button);

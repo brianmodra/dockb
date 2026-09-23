@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import * as path from "path";
-import { registerOpenExternal } from "./ipc";
+import { registerOpenExternal, registerQuit } from "./ipc";
 
 export function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -24,6 +24,7 @@ export function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   registerOpenExternal();
+  registerQuit();
   createWindow();
 
   app.on("activate", () => {

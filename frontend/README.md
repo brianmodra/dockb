@@ -27,9 +27,10 @@ system browser).
 Opening the system browser crosses the Electron sandbox boundary through a
 single vetted IPC channel. `src/main/ipc.ts` registers an `open-external`
 handler that accepts **only** `http:`/`https:` URLs (rejecting `file:`,
-`javascript:`, and other schemes) before calling Electron's `shell.openExternal`; the
-preload (`src/main/preload.ts`) exposes it to the renderer as
-`window.dockb.openExternal(url)` alongside `platform`. The login itself stays
+`javascript:`, and other schemes) before calling Electron's `shell.openExternal`, and
+a `quit` handler that calls `app.quit()`. The
+preload (`src/main/preload.ts`) exposes them to the renderer as
+`window.dockb.openExternal(url)` and `window.dockb.quit()` alongside `platform`. The login itself stays
 server-side (see `README_auth.md` §6): the backend exchanges the code and sets
 the HttpOnly session cookie, which the client presents on every API call.
 
@@ -52,8 +53,12 @@ The editor shell lives in `src/renderer/layout/` and matches
 - `layout.ts` — `AppLayout`: assembles the in-window menubar above a main row
   (left panel, edit panel, right panel) over the message panel. It owns the
   panel widths and the edit Mode (WYSIWYG | Raw MD), exposes `pushMessage` for
-  the message console, and is what `mountShell` renders. The `onSave` option
-  wires the File → Save menu item to the caller.
+  the message console, and is what `mountShell` renders. `setMode`,
+  `restoreState`, and `panelWidths` give the shell a way to restore and persist
+  the layout: the user's drags and mode picks are reported through
+  `onWidthsChange`/`onMode`, and `restoreState` reapplies saved widths and
+  mode. The `onSave`/`onQuit` options wire File → Save and File → Quit to the
+  caller.
 - `editPanel.ts` — the chapter edit surface: two views of the same canonical
   text. In raw mode a CodeMirror 6 view shows the markdown; in WYSIWYG mode a
   ProseMirror view (`wysiwyg.ts`) shows the prose. Toggling Mode re-syncs both
@@ -74,10 +79,9 @@ The editor shell lives in `src/renderer/layout/` and matches
   contrast on hover and highlighting while a drag is held. It reports pixel
   deltas to the layout, which enforces minima (left panel ≥ 120px) and keeps
   the right panel grippable from its zero-width default.
-- `menubar.ts` — the in-window HTML menubar: **File** (Save → `onSave`, Quit),
-  **Mode** (WYSIWYG, Raw MD — reported to the layout, which forwards it to the
-  edit panel's `setMode`), **Settings** (⚙, General, a no-op). Quit is wired
-  to the quit flow in section 9; here it renders.
+- `menubar.ts` — the in-window HTML menubar: **File** (Save → `onSave`, Quit →
+  `onQuit`), **Mode** (WYSIWYG, Raw MD — reported through `onMode`), and
+  **Settings** (⚙, General, a no-op).
 - `chapterList.ts` — the chapter selector: chapters grouped into contiguous
   act runs (`groupByAct`), each under a collapsible header (empty act labelled
   "No act"); rows are selectable (`select`/click) and emit a context-menu
@@ -85,8 +89,23 @@ The editor shell lives in `src/renderer/layout/` and matches
 - `contextMenu.ts` — the right-click menu; it renders items at the pointer,
   fires the chosen item's callback, and closes on an outside mousedown or Esc.
 - `modals.ts` — promise-based in-window modals (`openModal`, `confirmModal`,
-  `promptModal`) used by rename/delete here and by the quit and document
-  picker in section 9; buttons resolve a value and remove the overlay.
+  `promptModal`) used by rename/delete, the quit-save choice, and the document
+  picker; buttons resolve a value and remove the overlay.
+- `documentPicker.ts` — `openDocumentPicker`: a modal listing the available
+  documents (`listDocuments`), resolving with the chosen id or `null` on
+  Cancel; shows an empty-state row when there are none and routes load failures
+  through the error rule.
+- `state/appState.ts` — `AppStateController`: thin async wrapper over
+  `GET/PUT /api/app/state` (`load`, `saveLastDocument`, `saveEditMode`,
+  `savePanelWidths`). Load failures degrade to a blank state, save failures
+  are logged and surfaced through `onMessage` — never thrown.
+- `state/startup.ts` — `runStartup`: applies the saved panel widths and edit
+  mode, then either loads the saved last document or opens the document
+  picker when none is saved, loading the picked document if one is chosen.
+- `state/quit.ts` — `quitApp`: quits immediately when the editor is clean;
+  otherwise raises the "Save chapter first?" modal with **Cancel** /
+  **Discard** / **Save and Quit**, saving (and bailing out if the save fails)
+  before quitting.
 - `moveMode.ts` — the Move drop-bar interaction: `MoveMode` draws a bar under
   the chapter nearest the pointer, auto-scrolls when the pointer crosses the
   list edges, commits the reorder via `reorderChapter` on a within-list click,
@@ -106,19 +125,34 @@ data ever enters the DOM as HTML.
 
 All user-facing failures follow one rule: report to the terminal log (via
 `console.error` in `log.ts`'s `reportError`) **and** to the bottom message
-panel through `onMessage`. This applies to load/save, rename, delete, and move.
+panel through `onMessage`. This applies to load/save, rename, delete, move,
+and the app-state and document-list calls behind startup.
+
+### Startup and quit
+
+`mountShell` (in `src/renderer/main.ts`) wires the shell together: it renders
+the layout, mounts the edit and left panels, and — when given an `ApiClient` —
+runs `runStartup` against the saved app state so the user returns to their last
+document, panel widths, and edit mode, or lands on the document picker when no
+document is saved. The chosen document is remembered via
+`saveLastDocument`. Mode picks and panel drags are persisted back through
+`AppStateController`, and File → Save is wired to the edit panel. File → Quit
+runs `quitApp`, which saves (after asking, when there are unsaved changes) and
+then signals the main process over the `quit` IPC channel; `src/main/ipc.ts`
+registers it to `app.quit()`.
 
 ## Layout
 
 - `src/main/main.ts` — Electron main: creates a sandboxed, context-isolated
   `BrowserWindow`, loads the Vite dev server when `VITE_DEV_SERVER_URL` is set,
   otherwise the built `dist/index.html`.
-- `src/main/preload.ts` — contextBridge preload (currently exposes
-  `window.dockb` platform + `openExternal`).
+- `src/main/preload.ts` — contextBridge preload exposing `window.dockb` with
+  `platform`, `openExternal` (invoke over the `open-external` channel), and
+  `quit` (send over the `quit` channel).
 - `src/renderer/` — renderer entry (`main.ts` mounts the shell; `mountShell`
-  accepts an optional `ApiClient` + document id to populate the left panel and
-  the edit panel); `api/` holds the typed backend client and session/login
-  helpers; `log.ts` holds the shared error reporter.
+  accepts an optional `ApiClient` and drives startup and quit as described
+  above); `api/` holds the typed backend client and session/login helpers;
+  `log.ts` holds the shared error reporter.
 - `vite.config.mts` — Vite/Vitest config with the :3000 dev server and `/api`
   proxy.
 - `tests/` — Vitest tests for the config, the shell, and the Electron main.

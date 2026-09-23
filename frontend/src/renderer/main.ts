@@ -2,16 +2,20 @@ import type { ApiClient } from "./api/client";
 import { AppLayout } from "./layout/layout";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
+import { openDocumentPicker } from "./layout/documentPicker";
+import { AppStateController } from "./state/appState";
+import { runStartup } from "./state/startup";
+import { quitApp } from "./state/quit";
 
 export interface MountShellOptions {
   api?: ApiClient;
-  documentId?: string;
 }
 
 export function mountShell(root: HTMLElement, options: MountShellOptions = {}): AppLayout {
   root.replaceChildren();
 
   const editPanel = options.api ? new EditPanel({ api: options.api }) : null;
+  let stateController: AppStateController | null = null;
 
   const layout = new AppLayout({
     onSave: () => {
@@ -19,11 +23,28 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     },
     onMode: (mode) => {
       editPanel?.setMode(mode);
+      void stateController?.saveEditMode(mode);
+    },
+    onQuit: () => {
+      void quitApp({
+        isDirty: () => editPanel?.isDirty() ?? false,
+        save: () => editPanel?.save() ?? Promise.resolve(null),
+        onQuit: () => {
+          window.dockb?.quit();
+        },
+      });
+    },
+    onWidthsChange: (widths) => {
+      void stateController?.savePanelWidths(widths);
     },
   });
   root.append(layout.element);
 
   if (options.api && editPanel) {
+    const controller = new AppStateController(options.api, {
+      onMessage: (text) => layout.pushMessage(text),
+    });
+    stateController = controller;
     editPanel.onMessage = (text) => layout.pushMessage(text);
     layout.editPanelEl().append(editPanel.element);
 
@@ -36,9 +57,17 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
 
-    if (options.documentId) {
-      void panel.load(options.documentId);
-    }
+    void controller.load().then((savedState) =>
+      runStartup({
+        savedState,
+        restoreView: (panelWidths, editMode) => layout.restoreState({ panel_widths: panelWidths, edit_mode: editMode }),
+        pickDocument: () => openDocumentPicker(options.api!),
+        loadDocument: async (documentId) => {
+          await panel.load(documentId);
+          await controller.saveLastDocument(documentId);
+        },
+      }),
+    );
   }
 
   return layout;

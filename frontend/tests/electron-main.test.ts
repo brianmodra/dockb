@@ -18,7 +18,7 @@ const { BrowserWindow, app, ipcMain } = vi.hoisted(() => {
       on: vi.fn(),
       quit: vi.fn(),
     },
-    ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
+    ipcMain: { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn() },
     instances,
   };
 });

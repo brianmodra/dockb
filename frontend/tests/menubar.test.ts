@@ -46,6 +46,24 @@ describe("menubar", () => {
     }
   });
 
+  it("reports File → Quit to onQuit", () => {
+    const onQuit = vi.fn();
+    const bar = buildMenubar({ onQuit });
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    bar.element.querySelector('[data-testid="menu-item-quit"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onQuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports File → Save to onSave", () => {
+    const onSave = vi.fn();
+    const bar = buildMenubar({ onSave });
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    bar.element.querySelector('[data-testid="menu-item-save"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
   it("offers WYSIWYG and Raw MD modes, reporting the selection", () => {
     const onMode = vi.fn();
     const bar = buildMenubar({ onMode });

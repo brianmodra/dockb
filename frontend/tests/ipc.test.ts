@@ -1,17 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { ipcMain, shell } = vi.hoisted(() => ({
-  ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
+  ipcMain: {
+    handle: vi.fn(),
+    removeHandler: vi.fn(),
+    on: vi.fn(),
+  },
   shell: { openExternal: vi.fn(async () => undefined) },
 }));
 
-vi.mock("electron", () => ({ ipcMain, shell }));
+vi.mock("electron", () => ({ ipcMain, shell, app: { quit: vi.fn() } }));
 
-import { registerOpenExternal } from "../src/main/ipc";
+import { registerOpenExternal, registerQuit } from "../src/main/ipc";
 
 beforeEach(() => {
   vi.clearAllMocks();
   registerOpenExternal();
+  registerQuit();
 });
 
 afterEach(() => {
@@ -52,5 +57,11 @@ describe("open-external handler", () => {
     const fn = handler();
     await expect(fn({ sender: {} }, 42)).rejects.toThrow();
     expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+});
+
+describe("quit handler", () => {
+  it("registers the quit channel", () => {
+    expect(ipcMain.on).toHaveBeenCalledWith("quit", expect.any(Function));
   });
 });
