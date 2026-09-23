@@ -216,8 +216,11 @@ sequence.
 **Acts.** Acts are not a separate model entity: they are the `act` front-matter attribute persisted
 on each chapter (and stored in the graph like the chapter's other attrs). The chapter listing
 (`GET /api/chapters?document=...`) carries `act` so the editor can group chapters under act headers.
-A chapter moved to a position whose neighbours belong to a different act adopting that act is
-decided server-side at the move (reorder) — the editor only sends the order change.
+When a chapter is moved, it **adopts its predecessor's act** (the chapter it is placed after);
+when moved first (`after_chapter_id = null`) it adopts the act of the chapter it is placed before
+(the document's old first chapter). The adoption overwrites the moved chapter's act, even to empty —
+the server, not the editor, owns the attribute — so a chapter moved into a run of chapters
+belonging to a different act joins that run. The editor only sends the order change.
 
 ### git branch approach rejected
 

@@ -35,11 +35,17 @@ def render_chapter_markdown(
 ) -> str:
     """Render *chapter* as a complete markdown file: front matter block plus body.
 
-    *attrs* becomes the front matter; it defaults to the chapter's own ``id`` and
-    ``title``. The body is appended after a blank line (or omitted entirely when
-    the chapter has no text), mirroring the history snapshot format.
+    *attrs* becomes the front matter; it defaults to the chapter's own ``id``
+    and ``title`` (plus ``act`` when set). The body is appended after a blank
+    line (or omitted entirely when the chapter has no text), mirroring the
+    history snapshot format.
     """
-    front_attrs = dict(attrs) if attrs is not None else {"id": chapter.id, "title": chapter.title}
+    if attrs is not None:
+        front_attrs = dict(attrs)
+    else:
+        front_attrs = {"id": chapter.id, "title": chapter.title}
+        if chapter.act:
+            front_attrs["act"] = chapter.act
     body = serialize_body(chapter, nlp)
     parts = [front_matter.render(front_attrs)]
     if body:

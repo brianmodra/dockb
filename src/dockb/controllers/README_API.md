@@ -73,7 +73,7 @@ and a flat list of chapter summaries (attrs only, no child content):
 {
   "attrs": { "id": "doc-uuid", "title": "Forgiveness", "author": "Wes Almond" },
   "chapter_summaries": [
-    { "id": "ch-uuid-1", "title": "Chapter 1" }
+    { "id": "ch-uuid-1", "title": "Chapter 1", "act": "" }
   ]
 }
 ```
@@ -84,8 +84,8 @@ The FE loads a chapter via `GET /api/chapters/{id}` to get its full tree.
 
 ```
 document: { attrs: { id: string, title: string, author: string }, chapter_summaries: chapter_summary* }
-chapter_summary: { id: string, title: string }
-chapter:   { content: "paragraph+", attrs: { id: string, title: string } }
+chapter_summary: { id: string, title: string, act: string }
+chapter:   { content: "paragraph+", attrs: { id: string, title: string, act: string } }
 paragraph: { content: "sentence+",  attrs: { id: string } }
 sentence:  { content: "text*",      attrs: { id: string } }
 text:      { inline: true,          attrs: {} }
@@ -180,7 +180,8 @@ E.g.
 
 ### Chapter CRUD
 
-Note that the GET list of chapters is filtered by document_id.
+Note that the GET list of chapters is filtered by document_id. Each summary carries the
+chapter's `act` attribute, so the editor can group chapters under act headers.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -198,7 +199,7 @@ it creates an empty chapter with the supplied attributes.
 The body of a POST method to the /api/chapter endpoint will conform to the following schema:
 
 ```
-chapter: { attrs: { id: string, title: string }, relations: { document_id: string, after_chapter_id?: string } }
+chapter: { attrs: { id: string, title: string, act?: string }, relations: { document_id: string, after_chapter_id?: string } }
 ```
 
 E.g.
@@ -226,7 +227,7 @@ Or, to add after an existing chapter:
 The body of a PUT method to the /api/chapter endpoint will conform to the following schema:
 
 ```
-chapter: { attrs: { id?: string, title: string } }
+chapter: { attrs: { id?: string, title: string, act?: string } }
 ```
 
 E.g.
@@ -241,6 +242,10 @@ E.g.
 The body of a POST to `/api/chapters/{id}/reorder` names the chapter the moved chapter goes
 **after**; `after_chapter_id: null` moves it first. An `after_chapter_id` that is not a chapter
 of the same document is rejected (404). Moving a chapter after itself is a no-op.
+
+The moved chapter **adopts its predecessor's act** — the act of the chapter it is placed after,
+or, when moved first, the act of the chapter it is placed before (the document's old first
+chapter). The adoption overwrites the moved chapter's act server-side, even to empty.
 
 ``` json
 {

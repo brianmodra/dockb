@@ -81,7 +81,7 @@ class MockChapterService:
         self._documents: dict[str, str] = {}
 
     def list_by_document(self, document_id: str) -> list[dict[str, str]]:
-        return [{"id": ch.id} for ch in self._chapters.values()]
+        return [{"id": ch.id, "title": ch.title, "act": ch.act} for ch in self._chapters.values()]
 
     def get(self, chapter_id: str) -> Chapter | None:
         return self._chapters.get(chapter_id)
@@ -325,6 +325,14 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
         assert resp.status_code == 200
         assert resp.json() == []
 
+    def test_list_chapters_carries_act(self) -> None:
+        ch = Chapter(id="c1", title="Intro", act="Act I")
+        self.ch_svc._chapters["c1"] = ch
+        resp = self.client.get("/api/chapters", params={"document": "d1"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == [{"id": "c1", "title": "Intro", "act": "Act I"}]
+
     def test_get_chapter_not_found(self) -> None:
         resp = self.client.get("/api/chapters/nonexistent")
         assert resp.status_code == 404
@@ -338,6 +346,13 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
         assert data["attrs"]["id"] == "c1"
         assert data["attrs"]["title"] == "Intro"
         assert data["content"] == []
+
+    def test_get_chapter_carries_act(self) -> None:
+        ch = Chapter(id="c1", title="Intro", act="Act I")
+        self.ch_svc._chapters["c1"] = ch
+        resp = self.client.get("/api/chapters/c1")
+        assert resp.status_code == 200
+        assert resp.json()["attrs"]["act"] == "Act I"
 
     def test_get_chapter_calls_open(self) -> None:
         self.ch_svc.create("c1", "Intro", "d1")

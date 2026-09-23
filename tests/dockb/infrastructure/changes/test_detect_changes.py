@@ -39,6 +39,10 @@ def _front_matter(chapter_id: str = "c-1") -> str:
     return f'---\nid: "{chapter_id}"\ntitle: "T"\n---\n\n'
 
 
+def _front_matter_with_act(act: str = "Act I", chapter_id: str = "c-1") -> str:
+    return f'---\nid: "{chapter_id}"\ntitle: "T"\nact: "{act}"\n---\n\n'
+
+
 def _get_old(old: Chapter) -> Callable[[str], Chapter | None]:
     """A get_chapter stub returning *old* for its own id, None otherwise."""
 
@@ -267,6 +271,34 @@ def test_front_matter_without_id_is_a_new_chapter():
     assert diff.front_id is None
     assert diff.created is True
     assert diff.new == [NewParagraph(text="Lonesome paragraph.")]
+
+
+def test_front_matter_act_is_carried_on_diff():
+    old = _chapter([("par-1", ["One."])])
+    diff = detect_changes(
+        _front_matter_with_act("Act II") + _span("par-1", "One."),
+        _get_old(old),
+        _no_create,
+    )
+
+    assert diff.act == "Act II"
+
+
+def test_missing_front_matter_act_defaults_empty():
+    old = _chapter([("par-1", ["One."])])
+    diff = detect_changes(_front_matter() + _span("par-1", "One."), _get_old(old), _no_create)
+
+    assert diff.act == ""
+
+
+def test_changed_paragraph_survives_act_bearing_front_matter():
+    old = _chapter([("par-1", ["First.", "Second."])])
+    body = _span("par-1", "First changed.", "Second.")
+
+    diff = detect_changes(_front_matter_with_act("Act III") + body, _get_old(old), _no_create)
+
+    assert diff.act == "Act III"
+    assert diff.changed == [ChangedParagraph(par_id="par-1", text="First changed.\nSecond.")]
 
 
 def test_front_matter_id_is_used_to_lookup_the_old_chapter():

@@ -160,13 +160,15 @@ def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language
     """Rewrite *chapter_file* so its text mirrors *chapter*.
 
     The front matter keeps any existing attributes, adding the chapter's
-    ``id``/``title``; the body is the chapter serialized as one identity span
-    per paragraph.
+    ``id``/``title`` (and its ``act`` when set); the body is the chapter
+    serialized as one identity span per paragraph.
     """
     existing = chapter_file.read_text(encoding="utf-8")
     attrs = front_matter.parse(existing)[0]
     attrs["id"] = chapter.id
     attrs["title"] = chapter.title
+    if chapter.act:
+        attrs["act"] = chapter.act
     chapter_file.write_text(writer.render_chapter_markdown(chapter, nlp, attrs=attrs), encoding="utf-8")
 
 
@@ -276,7 +278,7 @@ def _persist(  # pylint: disable=too-many-arguments,too-many-positional-argument
 def _build_chapter(chapter_id: str, diff: ChapterDiff, loaded: Chapter | None) -> Chapter:
     """Return the NEW chapter skeleton, or the already-loaded old chapter marked CHANGED."""
     if diff.created:
-        return Chapter(id=chapter_id, title=diff.title, state=DataState.NEW)
+        return Chapter(id=chapter_id, title=diff.title, act=diff.act, state=DataState.NEW)
     if loaded is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
     loaded.state = DataState.CHANGED

@@ -26,8 +26,8 @@ def _make_paragraph(*texts: str, p_id: str = "p1") -> Paragraph:
     return paragraph
 
 
-def _chapter(*paragraphs: Paragraph, c_id: str = "c1", title: str = "T") -> Chapter:
-    chapter = Chapter(id=c_id, title=title)
+def _chapter(*paragraphs: Paragraph, c_id: str = "c1", title: str = "T", act: str = "") -> Chapter:
+    chapter = Chapter(id=c_id, title=title, act=act)
     for paragraph in paragraphs:
         chapter.paragraphs.append(paragraph)
     return chapter
@@ -101,6 +101,15 @@ class TestRenderChapterMarkdown:
         assert writer.render_chapter_markdown(chapter, nlp) == ("---\nid: c1\ntitle: T\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n')
 
     def test_renders_front_matter_only_for_empty_chapter(self, nlp):
+        assert writer.render_chapter_markdown(_chapter(), nlp) == "---\nid: c1\ntitle: T\n---\n"
+
+    def test_renders_act_in_front_matter_when_set(self, nlp):
+        chapter = _chapter(_make_paragraph("Hi.", p_id="p1"), act="Act I")
+        assert writer.render_chapter_markdown(chapter, nlp) == (
+            "---\nid: c1\ntitle: T\nact: Act I\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n'
+        )
+
+    def test_default_attrs_omit_empty_act(self, nlp):
         assert writer.render_chapter_markdown(_chapter(), nlp) == "---\nid: c1\ntitle: T\n---\n"
 
     def test_attrs_drive_front_matter_verbatim(self, nlp):

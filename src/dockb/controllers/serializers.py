@@ -53,14 +53,14 @@ def serialize_paragraph(paragraph: Paragraph) -> ParagraphNode:
 def serialize_chapter(chapter: Chapter) -> ChapterNode:
     """Convert a Chapter model into a ProseMirror ChapterNode."""
     return ChapterNode(
-        attrs=ChapterAttrs(id=chapter.id, title=chapter.title),
+        attrs=ChapterAttrs(id=chapter.id, title=chapter.title, act=chapter.act),
         content=[serialize_paragraph(p) for p in chapter.paragraphs],
     )
 
 
 def serialize_chapter_summary(chapter: Chapter) -> ChapterSummary:
     """Extract a lightweight ChapterSummary (attrs only) from a Chapter model."""
-    return ChapterSummary(id=chapter.id, title=chapter.title)
+    return ChapterSummary(id=chapter.id, title=chapter.title, act=chapter.act)
 
 
 def serialize_document(document: Document) -> dict[str, Any]:

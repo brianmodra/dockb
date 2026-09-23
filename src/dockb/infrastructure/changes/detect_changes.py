@@ -47,6 +47,7 @@ class ChapterDiff:
     deleted: list[str] = field(default_factory=list)
     chapter_id: str = ""
     title: str = ""
+    act: str = ""
     front_id: str | None = None
     created: bool = False
 
@@ -54,7 +55,7 @@ class ChapterDiff:
         return bool(self.changed or self.new or self.deleted)
 
 
-def detect_changes(
+def detect_changes(  # pylint: disable=too-many-locals
     new_markdown: str,
     get_chapter: Callable[[str], Chapter | None],
     create_chapter: Callable[[str | None, str], Chapter],
@@ -75,7 +76,7 @@ def detect_changes(
     instead of a blank-line-separated one, so files whose paragraphs end in a
     single newline and whose sentences run on inside a line import correctly.
     """
-    front_id, front_title, body = _extract_front_matter(new_markdown)
+    front_id, front_title, front_act, body = _extract_front_matter(new_markdown)
     title = front_title or title_fallback
 
     old_chapter = get_chapter(front_id) if front_id is not None else None
@@ -93,6 +94,7 @@ def detect_changes(
         deleted=[paragraph.id for paragraph in old_chapter.paragraphs if paragraph.id not in seen_ids],
         chapter_id=old_chapter.id,
         title=title,
+        act=front_act or "",
         front_id=front_id,
         created=created,
     )
@@ -211,8 +213,8 @@ def _span_attr(tag: str, name: str) -> str | None:
     return html.unescape(match.group(1))
 
 
-def _extract_front_matter(content: str) -> tuple[str | None, str | None, str]:
-    """Read an optional YAML front matter block; return its ``id``, ``title``, and the body.
+def _extract_front_matter(content: str) -> tuple[str | None, str | None, str | None, str]:
+    """Read an optional YAML front matter block; return its ``id``, ``title``, ``act``, and the body.
 
     Front matter is optional: a file without it is a new chapter (no ``id``).
     A file that opens with ``---`` but is missing the closing ``---`` is malformed.
@@ -220,8 +222,10 @@ def _extract_front_matter(content: str) -> tuple[str | None, str | None, str]:
     attrs, body = front_matter.parse(content)
     front_id = attrs.get("id")
     front_title = attrs.get("title")
+    front_act = attrs.get("act")
     return (
         str(front_id) if front_id is not None else None,
         str(front_title) if front_title is not None else None,
+        str(front_act) if front_act is not None else None,
         body,
     )

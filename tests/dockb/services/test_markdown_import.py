@@ -139,6 +139,19 @@ class TestNewChapter:
         chapter, _ = _saved_chapter(uow)
         assert chapter.title == "Front Title"
 
+    def test_new_chapter_carries_act_from_front_matter(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text('---\ntitle: Front Title\nact: "Act I"\n---\n\nBody.')
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.act == "Act I"
+
     def test_new_chapter_file_is_normalized_with_ids(self, nlp, tmp_path):
         file = tmp_path / "Chapter 2.md"
         file.write_text("Para one sentence.\n\nPara two sentence.")

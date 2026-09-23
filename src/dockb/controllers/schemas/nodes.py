@@ -42,6 +42,7 @@ class ChapterAttrs(BaseModel):
 
     id: str | None = None
     title: str
+    act: str = ""
 
 
 class ChapterSummary(BaseModel):
@@ -49,6 +50,7 @@ class ChapterSummary(BaseModel):
 
     id: str
     title: str
+    act: str = ""
 
 
 # ---------------------------------------------------------------------------

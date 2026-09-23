@@ -40,6 +40,15 @@ def test_update_chapter_request():
     assert req.attrs.title == "Updated"
 
 
+def test_chapter_attrs_accepts_act():
+    attrs = ChapterAttrs(id="ch-1", title="Ch", act="Act I")
+    assert attrs.act == "Act I"
+
+
+def test_chapter_attrs_act_defaults_empty():
+    assert ChapterAttrs(id="ch-1", title="Ch").act == ""
+
+
 def test_create_chapter_requires_relations():
     with pytest.raises(ValidationError):
         CreateChapterRequest(attrs=ChapterAttrs(id="ch-1", title="Ch"))

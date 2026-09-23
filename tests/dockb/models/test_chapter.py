@@ -15,6 +15,14 @@ def test_each_chapter_has_unique_id():
     assert isinstance(c1.id, str)
 
 
+def test_act_defaults_to_empty():
+    assert Chapter().act == ""
+
+
+def test_act_can_be_set():
+    assert Chapter(act="Act I").act == "Act I"
+
+
 def test_get_text_aggregates_children_when_not_dirty():
     ch = Chapter()
     ch.text = "Original"

@@ -14,6 +14,7 @@ class Chapter(DockbModel):
     """A chapter containing a list of paragraphs."""
 
     title: str = ""
+    act: str = ""
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

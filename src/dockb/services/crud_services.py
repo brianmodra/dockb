@@ -257,11 +257,12 @@ class ChapterService:
     def save_document(self, chapter_id: str, content: str) -> ChapterSaveResult | None:
         """Save a chapter: write *content* to its owned file, rehydrate the graph, git-snap.
 
-        The chapter's ``id``/``title`` are forced into the file's front matter
-        (the server, not the editor, owns identity). The returned ``content`` is
-        the canonical span-form text and ``summary`` records what changed.
-        Returns ``None`` for a missing chapter, an orphan, or when no store /
-        nlp is configured (the endpoint reports 404).
+        The chapter's ``id``/``title`` (and its ``act`` when set) are forced
+        into the file's front matter — the server, not the editor, owns
+        identity. The returned ``content`` is the canonical span-form text and
+        ``summary`` records what changed. Returns ``None`` for a missing
+        chapter, an orphan, or when no store / nlp is configured (the endpoint
+        reports 404).
         """
         if self._document_store is None or self._nlp is None or self._document_repo is None:
             return None
@@ -275,10 +276,13 @@ class ChapterService:
         if document is None:
             return None
         with self._save_scope(chapter_id):
+            updates = {"id": chapter_id, "title": ch.title}
+            if ch.act:
+                updates["act"] = ch.act
             self._document_store.write_chapter(
                 document_id,
                 chapter_id,
-                front_matter.merge(content, {"id": chapter_id, "title": ch.title}),
+                front_matter.merge(content, updates),
             )
             summary = apply_chapter_file(
                 document,
@@ -373,6 +377,12 @@ class ChapterService:
         Returns None when the chapter does not exist or is orphaned, raises
         ``ChapterAfterNotFoundError`` when *after_chapter_id* is not a chapter
         of the same document.  Moving a chapter after itself is a no-op.
+
+        The moved chapter adopts its neighbour's ``act`` (the server owns it):
+        the act of the chapter it is placed after, or — when moved first — the
+        act of the chapter it is placed before (the document's old first
+        chapter). The adoption is skipped when the move leaves the order
+        unchanged.
         """
         ch = self._chapter_repo.load(chapter_id)
         if ch is None or chapter_id == after_chapter_id:
@@ -384,11 +394,23 @@ class ChapterService:
         if after_chapter_id is not None and after_chapter_id not in {row["id"] for row in members}:
             raise ChapterAfterNotFoundError(after_chapter_id)
         ordered_ids = [str(row["id"]) for row in members]
+        old_order = list(ordered_ids)
         ordered_ids.remove(chapter_id)
         if after_chapter_id is None:
             ordered_ids.insert(0, chapter_id)
         else:
             ordered_ids.insert(ordered_ids.index(after_chapter_id) + 1, chapter_id)
+        if ordered_ids != old_order:
+            if after_chapter_id is None:
+                adopted_act = str(members[0].get("act") or "")
+            else:
+                adopted_act = str(next(row.get("act") or "" for row in members if row["id"] == after_chapter_id))
+            if ch.act != adopted_act:
+                ch.act = adopted_act
+                ch.state = DataState.CHANGED
+                uow = self._uow_factory.get_unit_of_work()
+                uow.register(ch, document_id=document_id)
+                uow.commit()
         self._chapter_repo.reorder(document_id, ordered_ids)
         return ch
 

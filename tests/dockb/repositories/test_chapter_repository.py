@@ -62,6 +62,15 @@ class TestSaveNewChapter:
         assert params["chapter_id"] == chapter.id
         assert params["title"] == chapter.title
 
+    def test_passes_act(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+        chapter.act = "Act I"
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        _, params = extract_call(neo4j_session)
+        assert params["act"] == "Act I"
+
     def test_passes_paragraph_ids(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
         para = Paragraph(text="First paragraph.")
@@ -203,13 +212,13 @@ class TestListByDocument:
 
     def test_returns_id_title_and_index(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "ch-1", "title": "Chapter 1", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "", "index": 1},
         ]
         result = chapter_repo.list_by_document("d-1")
         assert result == [
-            {"id": "ch-1", "title": "Chapter 1", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "", "index": 1},
         ]
 
     def test_orders_by_relationship_index(self, chapter_repo, neo4j_session):
@@ -228,6 +237,22 @@ class TestListByDocument:
         chapter_repo.list_by_document("d-999")
         _, params = extract_call(neo4j_session)
         assert params["document_id"] == "d-999"
+
+    def test_returns_act(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "index": 1},
+        ]
+        result = chapter_repo.list_by_document("d-1")
+        assert result == [
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "index": 1},
+        ]
+
+    def test_defaults_missing_act_to_empty(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "act": None, "index": 0}]
+        result = chapter_repo.list_by_document("d-1")
+        assert result[0]["act"] == ""
 
     def test_defaults_missing_title_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "index": 0}]
@@ -315,6 +340,39 @@ class TestLoadChapter:
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_title": "X"}]
         ch = chapter_repo.load("ch-1")
         assert ch.state == DataState.SYNC
+
+    def test_loads_act_from_graph(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "chapter_id": "ch-1",
+                "chapter_title": "Intro",
+                "chapter_act": "Act I",
+                "paragraph_id": None,
+                "paragraph_index": None,
+                "sentence_id": None,
+                "sentence_index": None,
+                "token_id": None,
+                "token_index": None,
+                "token_text": None,
+                "token_type": None,
+                "token_trailing_ws": None,
+                "token_pos": None,
+                "token_lemma": None,
+                "token_is_digit": None,
+                "token_like_num": None,
+                "token_is_alpha": None,
+                "token_is_stop": None,
+            }
+        ]
+        ch = chapter_repo.load("ch-1")
+        assert ch is not None
+        assert ch.act == "Act I"
+
+    def test_defaults_null_act_to_empty(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_act": None}]
+        ch = chapter_repo.load("ch-1")
+        assert ch is not None
+        assert ch.act == ""
 
 
 class TestFindDocumentId:

@@ -7,6 +7,7 @@ with lightweight stubs so the tests exercise only the service logic.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -71,7 +72,7 @@ class StubChapterRepo(StubRepo):
 
     def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
         _ = document_id
-        rows = [{"id": m.id, "title": m.title, "index": self._index_of.get(m.id, 0)} for m in self._store.values()]
+        rows = [{"id": m.id, "title": m.title, "act": m.act, "index": self._index_of.get(m.id, 0)} for m in self._store.values()]
         rows.sort(key=lambda row: int(row["index"]))
         return rows
 
@@ -128,6 +129,10 @@ class StubUnitOfWorkFactory:  # pylint: disable=too-few-public-methods
 @pytest.fixture()
 def doc_repo() -> StubDocumentRepo:
     return StubDocumentRepo()
+
+
+def read_file(path: str | Path) -> str:
+    return Path(path).read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +306,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods
         self.repo._store["c1"] = ch
         self.repo.set_index("c1", 2)
         result = self.svc.list_by_document("doc1")
-        assert result == [{"id": "c1", "title": "Ch1", "index": 2}]
+        assert result == [{"id": "c1", "title": "Ch1", "act": "", "index": 2}]
 
     def test_get_returns_none_when_missing(self) -> None:
         assert self.svc.get("nonexistent") is None
@@ -431,6 +436,71 @@ class TestChapterService:  # pylint: disable=too-many-public-methods
             self.svc.move("c1", after_chapter_id="ghost")
         assert not self.repo._reorders
 
+    def test_move_after_chapter_adopts_predecessor_act(self) -> None:
+        c1 = Chapter(id="c1", title="Ch1", act="Act I", state=DataState.SYNC)
+        c2 = Chapter(id="c2", title="Ch2", act="Act II", state=DataState.SYNC)
+        c3 = Chapter(id="c3", title="Ch3", act="Act III", state=DataState.SYNC)
+        for ch in (c1, c2, c3):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, list((c1, c2, c3)).index(ch))
+
+        self.svc.move("c3", after_chapter_id="c1")
+
+        assert c3.act == "Act I"
+        assert c3.state == DataState.CHANGED
+        assert c1.act == "Act I"
+        assert c2.act == "Act II"
+        assert self.uow.registered and self.uow.registered[0][0] is c3
+        assert self.uow.committed
+        assert self.repo._reorders == [("d1", ["c1", "c3", "c2"])]
+
+    def test_move_first_adopts_old_first_chapter_act(self) -> None:
+        c1 = Chapter(id="c1", title="Ch1", act="Act I", state=DataState.SYNC)
+        c2 = Chapter(id="c2", title="Ch2", act="Act II", state=DataState.SYNC)
+        for ch in (c1, c2):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, list((c1, c2)).index(ch))
+
+        self.svc.move("c2", after_chapter_id=None)
+
+        assert c2.act == "Act I"
+        assert c1.act == "Act I"
+        assert self.uow.committed
+        assert self.repo._reorders == [("d1", ["c2", "c1"])]
+
+    def test_move_overwrites_act_even_to_empty(self) -> None:
+        c1 = Chapter(id="c1", title="Ch1", act="", state=DataState.SYNC)
+        c2 = Chapter(id="c2", title="Ch2", act="Act II", state=DataState.SYNC)
+        for ch in (c1, c2):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+        self.repo.set_index("c1", 1)
+        self.repo.set_index("c2", 0)
+
+        self.svc.move("c2", after_chapter_id="c1")
+
+        assert c2.act == ""
+        assert self.uow.committed
+        assert self.repo._reorders == [("d1", ["c1", "c2"])]
+
+    def test_move_does_not_register_act_when_order_unchanged(self) -> None:
+        c1 = Chapter(id="c1", title="Ch1", act="Act I", state=DataState.SYNC)
+        c2 = Chapter(id="c2", title="Ch2", act="", state=DataState.SYNC)
+        for ch in (c1, c2):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, list((c1, c2)).index(ch))
+
+        self.svc.move("c1", after_chapter_id=None)
+
+        assert c1.act == "Act I"
+        assert c2.act == ""
+        assert not self.uow.registered
+        assert not self.uow.committed
+        assert self.repo._reorders == [("d1", ["c1", "c2"])]
+
     def test_open_returns_none_when_missing(self) -> None:
         assert self.svc.open("nonexistent") is None
 
@@ -559,6 +629,54 @@ class TestChapterService:  # pylint: disable=too-many-public-methods
         log = subprocess.run(["git", "log", "--format=%H"], cwd=str(tmp_path), capture_output=True, text=True, check=False)
         assert log.returncode == 0
         assert log.stdout.strip()
+
+    def test_save_document_forces_act_into_front_matter(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", act="Act I", state=DataState.SYNC)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        svc.save_document("c1", "Body text.")
+
+        content = read_file(store.chapter_file("d1", "c1"))
+        assert "act: Act I" in content
+
+    def test_save_document_does_not_force_empty_act(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        svc.save_document("c1", "Body text.")
+
+        content = read_file(store.chapter_file("d1", "c1"))
+        assert "act" not in content
 
     def test_save_document_overwrites_conflicting_identity(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)

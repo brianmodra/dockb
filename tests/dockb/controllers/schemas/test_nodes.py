@@ -162,4 +162,4 @@ def test_chapter_attrs_requires_id_and_title():
 def test_chapter_summary():
     s = ChapterSummary(id="ch-1", title="Intro")
     d = s.model_dump()
-    assert d == {"id": "ch-1", "title": "Intro"}
+    assert d == {"id": "ch-1", "title": "Intro", "act": ""}
