@@ -67,14 +67,9 @@ composed `AuthService` receives as its `base_dir`. This keeps all server-owned o
 place, with zero-ops on a single machine. Foreign keys are enforced (`PRAGMA foreign_keys=ON`), so
 deleting a user cascades to its OAuth links and app state.
 
-Three tables:
-
-- **users** — `id`, `email`, `display_name`, `avatar_url`, `created_at`.
-- **oauth_accounts** — `user_id`, `provider` (google/github), `provider_account_id`
-  (a composite primary key with `provider`), `token` (the encrypted refresh token) and
-  `expires_at` (token validity end).
-- **app_state** — `user_id` (primary key), `last_document_id`, `panel_widths`, `edit_mode`,
-  `updated_at` (the per-user state the editor UI record keeps open).
+Three tables (`src/dockb/infrastructure/accounts/store.py` owns the exact schema):
+`users`, `oauth_accounts` (per provider account, holding the encrypted refresh `token` and its
+`expires_at`), and `app_state` (per user, holding the editor state the UI record keeps open).
 
 The refresh-token `token` column is encrypted with Fernet under a key derived from the server
 secret (`DOCKB_SECRET_KEY`), so the store doubles as a credential store and is treated as one.
