@@ -1,14 +1,19 @@
 import type { ApiClient } from "./api/client";
+import type { DockbBridge } from "./api/bridge";
+import { checkSession } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker } from "./layout/documentPicker";
+import { openSignInGate } from "./layout/signInGate";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
 import { quitApp } from "./state/quit";
 
 export interface MountShellOptions {
   api?: ApiClient;
+  bridge?: DockbBridge;
+  provider?: string;
 }
 
 export function mountShell(root: HTMLElement, options: MountShellOptions = {}): AppLayout {
@@ -46,6 +51,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     stateController = controller;
     editPanel.onMessage = (text) => layout.pushMessage(text);
+    editPanel.onDirtyChange = (dirty) => layout.setDirty(dirty);
     layout.editPanelEl().append(editPanel.element);
 
     const panel = new LeftPanel({
@@ -57,18 +63,47 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
 
-    void controller.load().then((savedState) =>
-      runStartup({
-        savedState,
-        restoreView: (panelWidths, editMode) => layout.restoreState({ panel_widths: panelWidths, edit_mode: editMode }),
-        pickDocument: () => openDocumentPicker(options.api!),
-        loadDocument: async (documentId) => {
-          await panel.load(documentId);
-          await controller.saveLastDocument(documentId);
-        },
-      }),
-    );
+    void boot(options.api, options.bridge ?? window.dockb, options.provider, layout, panel, controller);
   }
 
   return layout;
+}
+
+async function boot(
+  api: ApiClient,
+  bridge: DockbBridge | undefined,
+  provider: string | undefined,
+  layout: AppLayout,
+  panel: LeftPanel,
+  controller: AppStateController,
+): Promise<void> {
+  let signedIn = true;
+  try {
+    signedIn = (await checkSession(api)) !== null;
+  } catch {
+    signedIn = false;
+  }
+  if (!signedIn) {
+    if (!bridge) {
+      return;
+    }
+    const ok = await openSignInGate(api, bridge, {
+      provider,
+      onMessage: (text) => layout.pushMessage(text),
+    });
+    if (!ok) {
+      return;
+    }
+  }
+
+  const savedState = await controller.load();
+  await runStartup({
+    savedState,
+    restoreView: (panelWidths, editMode) => layout.restoreState({ panel_widths: panelWidths, edit_mode: editMode }),
+    pickDocument: () => openDocumentPicker(api),
+    loadDocument: async (documentId) => {
+      await panel.load(documentId);
+      await controller.saveLastDocument(documentId);
+    },
+  });
 }

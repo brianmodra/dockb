@@ -93,4 +93,15 @@ describe("AppLayout", () => {
     const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
     expect(message.textContent).toContain("hello console");
   });
+
+  it("shows the dirty indicator when there are unsaved changes", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const badge = layout.element.querySelector<HTMLElement>('[data-testid="dirty-indicator"]')!;
+    expect(badge.hidden).toBe(true);
+    layout.setDirty(true);
+    expect(badge.hidden).toBe(false);
+    layout.setDirty(false);
+    expect(badge.hidden).toBe(true);
+  });
 });

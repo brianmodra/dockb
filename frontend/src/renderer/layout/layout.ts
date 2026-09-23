@@ -21,6 +21,7 @@ export class AppLayout {
   private readonly options: AppLayoutOptions;
   private readonly leftPanel: HTMLElement;
   private editPanel!: HTMLElement;
+  private readonly dirtyIndicator: HTMLElement;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
   }
@@ -53,6 +54,15 @@ export class AppLayout {
     });
 
     this.leftPanel = this.panel("panel-left");
+
+    const dirty = document.createElement("div");
+    dirty.dataset.testid = "dirty-indicator";
+    dirty.className = "dirty-indicator";
+    dirty.textContent = "● Unsaved";
+    dirty.hidden = true;
+    menubar.element.append(dirty);
+    this.dirtyIndicator = dirty;
+
     const editPanel = this.panel("panel-edit");
     this.editPanel = editPanel;
     this.rightPanel = this.panel("panel-right");
@@ -130,6 +140,10 @@ export class AppLayout {
 
   panelWidths(): Record<string, number> {
     return { left: this.leftWidth, right: this.rightWidth, message: this.messageHeight };
+  }
+
+  setDirty(dirty: boolean): void {
+    this.dirtyIndicator.hidden = !dirty;
   }
 
   private panel(name: string): HTMLElement {

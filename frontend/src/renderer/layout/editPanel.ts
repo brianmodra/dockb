@@ -14,6 +14,7 @@ export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDo
 export interface EditPanelOptions {
   api: EditPanelApi;
   onMessage?: (text: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export class EditPanel {
@@ -21,6 +22,7 @@ export class EditPanel {
 
   api: EditPanelApi;
   onMessage?: (text: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
   private view: EditorView;
   private readonly wysiwyg: WysiwygView;
   private readonly rawHost: HTMLElement;
@@ -28,10 +30,13 @@ export class EditPanel {
   private mode: Mode = "wysiwyg";
   private chapterId: string | null = null;
   private lastCanonicalText: string | null = null;
+  private lastDirty: boolean | null = null;
 
   constructor(options: EditPanelOptions) {
     this.api = options.api;
     this.onMessage = options.onMessage;
+    this.onDirtyChange = options.onDirtyChange;
+
     this.element = document.createElement("div");
     this.element.className = "edit-panel";
     this.element.dataset.testid = "edit-panel";
@@ -51,10 +56,15 @@ export class EditPanel {
         indentOnInput(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         markdown(),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            this.notifyDirty();
+          }
+        }),
       ],
     });
     this.view = new EditorView({ state, parent: this.rawHost });
-    this.wysiwyg = new WysiwygView();
+    this.wysiwyg = new WysiwygView({ onChange: () => this.notifyDirty() });
     this.wysiwygHost.append(this.wysiwyg.element);
     this.applyMode();
   }
@@ -75,6 +85,7 @@ export class EditPanel {
       this.chapterId = chapterId;
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
+      this.notifyDirty();
     } catch (error) {
       reportError("Load chapter", error, this.onMessage);
     }
@@ -99,6 +110,15 @@ export class EditPanel {
     return this.lastCanonicalText;
   }
 
+  private notifyDirty(): void {
+    const dirty = this.isDirty();
+    if (dirty === this.lastDirty) {
+      return;
+    }
+    this.lastDirty = dirty;
+    this.onDirtyChange?.(dirty);
+  }
+
   async save(): Promise<DocumentContentResponse | null> {
     if (this.chapterId === null) {
       return null;
@@ -107,6 +127,7 @@ export class EditPanel {
       const response = await this.api.saveChapterDocument(this.chapterId, this.content());
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
+      this.notifyDirty();
       this.onMessage?.(saveMessage(response));
       return response;
     } catch (error) {
@@ -116,10 +137,10 @@ export class EditPanel {
   }
 
   private replaceDoc(text: string): void {
+    this.wysiwyg.setContent(text);
     this.view.dispatch({
       changes: { from: 0, to: this.view.state.doc.length, insert: text },
     });
-    this.wysiwyg.setContent(text);
   }
 
   private applyMode(): void {

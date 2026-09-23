@@ -57,8 +57,9 @@ The editor shell lives in `src/renderer/layout/` and matches
   `restoreState`, and `panelWidths` give the shell a way to restore and persist
   the layout: the user's drags and mode picks are reported through
   `onWidthsChange`/`onMode`, and `restoreState` reapplies saved widths and
-  mode. The `onSave`/`onQuit` options wire File → Save and File → Quit to the
-  caller.
+  mode. `setDirty` toggles a menubar badge (`● Unsaved`) when the editor has
+  local changes. The `onSave`/`onQuit` options wire File → Save and File → Quit
+  to the caller.
 - `editPanel.ts` — the chapter edit surface: two views of the same canonical
   text. In raw mode a CodeMirror 6 view shows the markdown; in WYSIWYG mode a
   ProseMirror view (`wysiwyg.ts`) shows the prose. Toggling Mode re-syncs both
@@ -67,7 +68,9 @@ The editor shell lives in `src/renderer/layout/` and matches
   and records the returned text as the clean baseline; `save` PUTs the editor
   text and adopts the returned canonical text as the new baseline, so
   `isDirty()` is always *current buffer vs. last canonical* (UI README §8).
-  Save results and load/save errors are reported through `onMessage`.
+  `onDirtyChange` reports that flag whenever it flips, so the menubar badge
+  can follow. Save results and load/save errors are reported through
+  `onMessage`.
 - `wysiwyg.ts` — the WYSIWYG view: a ProseMirror editor holding the canonical
   text as a paragraph-per-line document (byte-stable round trip by
   construction, no serializer), with markdown-it heading detection fed to a
@@ -95,6 +98,11 @@ The editor shell lives in `src/renderer/layout/` and matches
   documents (`listDocuments`), resolving with the chosen id or `null` on
   Cancel; shows an empty-state row when there are none and routes load failures
   through the error rule.
+- `signInGate.ts` — `openSignInGate`: first-run modal with **Sign in** /
+  **Cancel**. Sign in runs `login` (fetch the provider URL, open it in the
+  system browser) then `checkSession`; a live session closes the gate, a
+  missing session or a failed login is reported and the gate stays open so
+  the user can retry after finishing consent in the browser.
 - `state/appState.ts` — `AppStateController`: thin async wrapper over
   `GET/PUT /api/app/state` (`load`, `saveLastDocument`, `saveEditMode`,
   `savePanelWidths`). Load failures degrade to a blank state, save failures
@@ -126,13 +134,15 @@ data ever enters the DOM as HTML.
 All user-facing failures follow one rule: report to the terminal log (via
 `console.error` in `log.ts`'s `reportError`) **and** to the bottom message
 panel through `onMessage`. This applies to load/save, rename, delete, move,
-and the app-state and document-list calls behind startup.
+the app-state and document-list calls behind startup, and sign-in.
 
 ### Startup and quit
 
 `mountShell` (in `src/renderer/main.ts`) wires the shell together: it renders
 the layout, mounts the edit and left panels, and — when given an `ApiClient` —
-runs `runStartup` against the saved app state so the user returns to their last
+checks the session first. No session opens the sign-in gate; cancelling it
+leaves the shell idle. Once signed in it runs `runStartup` against the saved
+app state so the user returns to their last
 document, panel widths, and edit mode, or lands on the document picker when no
 document is saved. The chosen document is remembered via
 `saveLastDocument`. Mode picks and panel drags are persisted back through

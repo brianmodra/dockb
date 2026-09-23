@@ -151,3 +151,30 @@ describe("EditPanel", () => {
     expect(saveChapterDocument).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("EditPanel dirty change reporting", () => {
+  it("reports clean on load, dirty on edit, and clean again on save", async () => {
+    const onDirtyChange = vi.fn();
+    const panel = new EditPanel({ api: fakeApi(), onDirtyChange });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+    await panel.setContent(" extra");
+    await panel.save();
+
+    expect(onDirtyChange.mock.calls.map((call) => call[0])).toEqual([false, true, false]);
+  });
+
+  it("does not repeat an unchanged dirty state", async () => {
+    const onDirtyChange = vi.fn();
+    const panel = new EditPanel({ api: fakeApi(), onDirtyChange });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+    await panel.setContent(" same");
+    await panel.setContent("same ");
+
+    expect(onDirtyChange).toHaveBeenCalledWith(false);
+    expect(onDirtyChange.mock.calls.map((call) => call[0])).toEqual([false, true]);
+  });
+});
