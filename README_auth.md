@@ -5,11 +5,16 @@
 This document records the design for user authentication and account storage in DockB's backend:
 OAuth 2.0 Authorization Code with PKCE, the backend acting as a confidential OAuth client, and a
 relational database beside the backend's owned file tree. Users sign in through an identity
-provider (Google and GitHub initially, configured via environment variables), the backend exchanges
-the authorization code itself and mints its own session, and provider tokens never reach the
-editor. Accounts, refresh tokens, and per-user app state live in a small SQLite database managed by
-SQLAlchemy, so the store is transactional and a future Postgres migration is a connection-string
-change.
+provider (Google and GitHub, configured via environment variables), the backend exchanges the
+authorization code itself and mints its own session, and provider tokens never reach the editor.
+Accounts, refresh tokens, and per-user app state live in a small SQLite database (`dockb_app.db`,
+managed with the Python standard library `sqlite3`).
+
+The design is implemented: the auth routes (`GET /api/auth/login`, the loopback `GET /callback`,
+`GET /api/auth/me`), the session-cookie dependency that gates per-user endpoints, and the per-user
+`GET/PUT /api/app/state` endpoints are wired into the FastAPI app and back a small SQLite store.
+The editor is a thin client that presents the web login pages and carries the HttpOnly session
+cookie; it never touches provider credentials.
 
 Read this to learn how a user session starts, where tokens and state are stored, and what security
 properties the design holds — and the choices the editor and backend each make in the flow. It
@@ -25,10 +30,11 @@ relates to `README_markdown_redesign.md` (the editor is a thin client) and
   design — the provider's tokens. It authenticates to the backend and that is all.
 - Mobile (iOS/Android) is a real future requirement, so an account model must exist now rather than
   being bolted on later; the flow below does not presume a browser shell and works for any client.
-- OAuth login is not implemented yet. The existing `TokenValidator`
-  (`src/dockb/infrastructure/session/token_validator.py`) and `SessionManager`
-  (`.../session_manager.py`) are unwired scaffolding for token validation and per-account session
-  contexts; this document is the design that wires them.
+- OAuth login is implemented. The backend's own session is a **signed HttpOnly cookie**
+  (`dockb_session`, issued by `SessionSigner`); the in-memory `SessionManager`
+  (`src/dockb/infrastructure/session/session_manager.py`) keeps a live `SessionContext` per
+  account while the process runs, so a backend restart invalidates login — the user signs in again.
+  The earlier `TokenValidator` scaffolding is superseded by the signed cookie.
 
 ## 2. Decision: backend is the confidential OAuth client (decided)
 
@@ -55,20 +61,25 @@ Consequences:
 
 ## 3. Decision: accounts and state live in SQLite (decided)
 
-The relational store is **SQLite via SQLAlchemy**, its file **beside the backend's owned
-directory** (`DOCKB_CHAPTERS_DIR`; see `src/dockb/infrastructure/document_store/README.md`). This
-keeps all server-owned on-disk state in one place, with zero-ops on a single machine.
+The relational store is **SQLite via the Python standard library `sqlite3`** (no ORM), its file
+`dockb_app.db` **beside the backend's owned directory** (`DOCKB_CHAPTERS_DIR`) — the directory the
+composed `AuthService` receives as its `base_dir`. This keeps all server-owned on-disk state in one
+place, with zero-ops on a single machine. Foreign keys are enforced (`PRAGMA foreign_keys=ON`), so
+deleting a user cascades to its OAuth links and app state.
 
 Three tables:
 
 - **users** — `id`, `email`, `display_name`, `avatar_url`, `created_at`.
-- **oauth_accounts** — `user_id`, `provider` (google/github), `provider_account_id`,
-  `provider_id` unique per provider, `token` (encrypted refresh token), `expires_at`.
+- **oauth_accounts** — `user_id`, `provider` (google/github), `provider_account_id`
+  (a composite primary key with `provider`), `token` (the encrypted refresh token) and
+  `expires_at` (token validity end).
 - **app_state** — `user_id` (primary key), `last_document_id`, `panel_widths`, `edit_mode`,
   `updated_at` (the per-user state the editor UI record keeps open).
 
-SQLAlchemy's abstraction leaves the migration to Postgres as a connection-string change when the
-backend becomes a shared service; no feature work trails it.
+The refresh-token `token` column is encrypted with Fernet under a key derived from the server
+secret (`DOCKB_SECRET_KEY`), so the store doubles as a credential store and is treated as one.
+Moving to Postgres later means re-implementing the small `AccountStore` against a new driver; the
+store interface and route-controller call sites do not change.
 
 ## 4. Security properties (decided)
 
@@ -91,6 +102,9 @@ Google and GitHub, configured by environment variables:
 - `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET`
 - `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET`
 - `OAUTH_CALLBACK_PORT` (the loopback port for the login redirect)
+- `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens and the
+  session-cookie signer key). Auth wiring only runs when this is set.
+- `OAUTH_SESSION_TTL_HOURS` (session cookie lifetime, default 48)
 
 Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from the
 consent URL and the token exchange profile.
@@ -105,15 +119,26 @@ consent URL and the token exchange profile.
 4. The backend verifies `state`, exchanges the code (with `code_verifier`), stores the encrypted
    refresh token, upserts the user, and sets its own HttpOnly session cookie.
 5. The editor reads that session; every API call after carries it. `GET /api/app/state` and
-   `PUT /api/app/state` are then per-user as the UI record requires.
+   `PUT /api/app/state` are then per-user as the UI record requires; `GET /api/auth/me` returns the
+   signed-in user's profile and doubles as a session check from the editor.
 
-## 7. Open questions before trust
+## 7. Open questions
 
-1. Account merging — the same email under two providers. Decide whether to link
-   `oauth_accounts` rows to one `users` row by verified email or keep them separate.
-2. Session lifetime — cookie expiry and whether sessions survive a backend restart (the in-memory
-   `SessionManager` does not). A re-login on restart is acceptable for a desktop app; confirm.
-3. First-run UX — the editor opens with no session; the login button route and "select a document"
-   modal must coexist in the start-up flow.
-4. Postgres readiness — confirm SQLAlchemy sync vs async keeps the current controller wiring simple
-   (async SQLAlchemy is the likely choice given the async FastAPI stack).
+1. Account merging — the same email under two providers. Currently each provider account is its own
+   `users` row; decide whether to link by verified email.
+2. First-run UX — the editor opens with no session; the login button route and "select a document"
+   modal must coexist in the start-up flow (an editor-side question).
+
+## 8. Resolved questions
+
+Settled while the design was implemented:
+
+- **Session lifetime** — the session cookie lives for `OAUTH_SESSION_TTL_HOURS` (default 48)
+  hours; sessions do not survive a backend restart (the in-memory `SessionManager` does not), and
+  a re-login on restart is accepted for the desktop app.
+- **SQL storage** — the SQLite store uses the stdlib `sqlite3` module with sync handlers, not
+  SQLAlchemy; the store is small, local, and single-process, and an ORM adds nothing there. A
+  future Postgres migration re-implements `AccountStore` behind the same interface.
+- **State/PKCE memory** — pending login states (with their PKCE verifiers) are valid for 10
+  minutes and single-use; storing them alongside the code-swap protects logins against CSRF and
+  code-swapping, matching the security goals in §4.

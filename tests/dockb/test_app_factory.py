@@ -59,6 +59,22 @@ class TestCreateApp:
         routes = {r.path for r in app.routes if hasattr(r, "path")}
         assert "/api/notifications" in routes
 
+    def test_auth_routers_registered(self) -> None:
+        from dockb.app_factory import create_app
+
+        app = create_app()
+        routes = {r.path for r in app.routes if hasattr(r, "path")}
+        assert "/api/auth/login" in routes
+        assert "/callback" in routes
+        assert "/api/auth/me" in routes
+
+    def test_app_state_router_registered(self) -> None:
+        from dockb.app_factory import create_app
+
+        app = create_app()
+        routes = {r.path for r in app.routes if hasattr(r, "path")}
+        assert "/api/app/state" in routes
+
     def test_all_http_methods_present(self) -> None:
         from dockb.app_factory import create_app
 
@@ -241,3 +257,67 @@ class TestWireServices:
         assert get_para_service() is None
         assert get_sent_service() is None
         assert get_history_service() is None
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_injects_auth_service_when_secret_present(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        from dockb.composition import unwire, wire
+        from dockb.controllers.auth import get_auth_service
+        from dockb.services.auth_service import AuthService
+
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "test-secret")
+        monkeypatch.setenv("OAUTH_GITHUB_CLIENT_ID", "gh-id")
+        monkeypatch.setenv("OAUTH_GITHUB_CLIENT_SECRET", "gh-secret")
+        monkeypatch.setenv("OAUTH_SESSION_TTL_HOURS", "2")
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf, document_base_dir=tmp_path)
+        try:
+            svc = get_auth_service()
+            assert isinstance(svc, AuthService)
+        finally:
+            unwire()
+        assert get_auth_service() is None
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_skips_auth_service_without_secret(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        from dockb.composition import unwire, wire
+        from dockb.controllers.auth import get_auth_service
+
+        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf, document_base_dir=tmp_path)
+        try:
+            assert get_auth_service() is None
+        finally:
+            unwire()

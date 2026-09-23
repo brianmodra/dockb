@@ -7,6 +7,8 @@ registered.  Service wiring is handled separately by ``composition.wire()``.
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
+from dockb.controllers.app_state import router as app_state_router
+from dockb.controllers.auth import router as auth_router
 from dockb.controllers.chapters import router as chapters_router
 from dockb.controllers.documents import router as documents_router
 from dockb.controllers.history import router as history_router
@@ -20,6 +22,8 @@ def create_app() -> FastAPI:
     application = FastAPI(title="DockB")
     application.add_middleware(GZipMiddleware, minimum_size=500)
     application.include_router(documents_router)
+    application.include_router(auth_router)
+    application.include_router(app_state_router)
     application.include_router(chapters_router)
     application.include_router(paragraphs_router)
     application.include_router(sentences_router)

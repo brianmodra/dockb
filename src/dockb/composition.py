@@ -8,21 +8,28 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
 import spacy
 
+from dockb.controllers.auth import set_auth_service
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import set_doc_service
 from dockb.controllers.history import set_history_service
 from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
 from dockb.controllers.sentences import set_sent_service
+from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.document_store import DocumentStore
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
+from dockb.infrastructure.oauth.factory import providers_from_env
+from dockb.infrastructure.oauth.pending_login import PendingLoginStore
+from dockb.infrastructure.session.session_cookie import SessionSigner
+from dockb.infrastructure.session.session_manager import SessionManager
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
@@ -31,6 +38,7 @@ from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
 from dockb.repositories.paragraph_repository import ParagraphRepository
 from dockb.repositories.sentence_repository import SentenceRepository
+from dockb.services.auth_service import AuthService
 from dockb.services.crud_services import ChapterService, DocumentService, ParagraphService, SentenceService
 from dockb.services.history_service import HistoryService
 from dockb.services.session_context import SessionContext
@@ -88,12 +96,27 @@ def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None, documen
         history_svc = HistoryService(reader=reader, chapter_repo=repos[Chapter], uow_factory=uow_factory)
         set_history_service(history_svc)
 
+    if os.environ.get("DOCKB_SECRET_KEY") is not None and document_base_dir is not None:
+        set_auth_service(
+            AuthService(
+                providers=providers_from_env(),
+                pending_store=PendingLoginStore(),
+                account_store=AccountStore(base_dir=document_base_dir, secret=os.environ["DOCKB_SECRET_KEY"]),
+                session_manager=SessionManager(),
+                signer=SessionSigner(
+                    os.environ["DOCKB_SECRET_KEY"],
+                    ttl_hours=int(os.environ.get("OAUTH_SESSION_TTL_HOURS", "48")),
+                ),
+            )
+        )
+
     return ctx
 
 
 def unwire() -> None:
     """Clear all route-level DI globals and release resources."""
     global _stack  # noqa: PLW0603
+    set_auth_service(None)
     set_doc_service(None)
     set_ch_service(None)
     set_para_service(None)
