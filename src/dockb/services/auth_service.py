@@ -90,6 +90,14 @@ class AuthService:
         """Return the live SessionContext for *user_id*, possibly None (e.g. after restart)."""
         return self._sessions.get(user_id)
 
+    def get_app_state(self, user_id: str) -> dict[str, object] | None:
+        """Return the user's stored app-state row, or None."""
+        return self._accounts.get_app_state(user_id)
+
+    def set_app_state(self, user_id: str, state: dict[str, object]) -> None:
+        """Upsert the user's app state as a whole."""
+        self._accounts.set_app_state(user_id, state)
+
     @property
     def session_ttl_seconds(self) -> int:
         """How long a session cookie stays valid."""
