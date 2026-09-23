@@ -37,6 +37,30 @@ def test_get_user_by_provider_account_missing_returns_none(tmp_path) -> None:
     assert _store(tmp_path).get_user_by_provider_account(_PROVIDER, _ACCOUNT_ID) is None
 
 
+def test_upsert_provider_user_creates_and_links_on_first_login(tmp_path) -> None:
+    store = _store(tmp_path)
+    user_id = store.upsert_provider_user(_PROVIDER, _ACCOUNT_ID, email=_EMAIL, display_name="Abby", avatar_url="", token=_REFRESH_TOKEN)
+    assert user_id
+    row = store.get_user_by_provider_account(_PROVIDER, _ACCOUNT_ID)
+    assert row is not None
+    assert row["id"] == user_id
+    assert row["email"] == _EMAIL
+    account = store.get_provider_account(_PROVIDER, _ACCOUNT_ID)
+    assert account is not None
+    assert account["token"] == _REFRESH_TOKEN
+
+
+def test_upsert_provider_user_updates_profile_on_second_login(tmp_path) -> None:
+    store = _store(tmp_path)
+    first = store.upsert_provider_user(_PROVIDER, _ACCOUNT_ID, email=_EMAIL, display_name="Abby", avatar_url="")
+    second = store.upsert_provider_user(_PROVIDER, _ACCOUNT_ID, email=_EMAIL, display_name="Abigail", avatar_url="http://img/new.png")
+    assert first == second
+    row = store.get_user(second)
+    assert row is not None
+    assert row["display_name"] == "Abigail"
+    assert row["avatar_url"] == "http://img/new.png"
+
+
 def test_get_user_by_provider_account_round_trip(tmp_path) -> None:
     store = _store(tmp_path)
     user_id = store.create_user(email=_EMAIL, display_name="Abby", avatar_url="")

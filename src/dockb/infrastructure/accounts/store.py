@@ -116,6 +116,56 @@ class AccountStore:
             connection.close()
         return dict(row) if row is not None else None
 
+    def upsert_provider_user(  # pylint: disable=too-many-arguments
+        # token/expires_at are keyword-only and keep the login call site readable
+        self,
+        provider: str,
+        provider_account_id: str,
+        *,
+        email: str,
+        display_name: str,
+        avatar_url: str,
+        token: str | None = None,
+        expires_at: str | None = None,
+    ) -> str:
+        """Return the user id for a provider account, creating or refreshing the profile.
+
+        First login creates a ``users`` row and links it to the provider account;
+        later logins refresh profile fields (and the encrypted token) in place with
+        no account merging across providers.
+        """
+        user = self.get_user_by_provider_account(provider, provider_account_id)
+        ciphertext = self._encryptor.encrypt(token) if token is not None else None
+        connection = self._connect()
+        try:
+            if user is None:
+                user_id = str(uuid.uuid4())
+                connection.execute(
+                    "INSERT INTO users (id, email, display_name, avatar_url) VALUES (?, ?, ?, ?)",
+                    (user_id, email, display_name, avatar_url),
+                )
+            else:
+                user_id = user["id"]
+                connection.execute(
+                    "UPDATE users SET email = ?, display_name = ?, avatar_url = ? WHERE id = ?",
+                    (email, display_name, avatar_url, user_id),
+                )
+            connection.execute(
+                """
+                INSERT INTO oauth_accounts (provider, provider_account_id, user_id, token, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (provider, provider_account_id) DO UPDATE SET
+                    user_id = excluded.user_id,
+                    token = excluded.token,
+                    expires_at = excluded.expires_at
+                """,
+                (provider, provider_account_id, user_id, ciphertext, expires_at),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        return user_id
+
     # ----------------------------------------------------------- oauth links
 
     def link_provider_account(  # pylint: disable=too-many-arguments
