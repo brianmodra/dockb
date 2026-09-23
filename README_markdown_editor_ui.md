@@ -2,24 +2,16 @@
 
 ## Executive Summary
 
-This document records the UI design for DockB's new front end: an Electron + TypeScript markdown
-editor that replaces the removed React + Tiptap editor. It is the thin client of the markdown
-redesign (see `README_markdown_redesign.md`): it sends raw text and receives canonical text, and
-never touches files, git, services, or repositories. The layout is a top menubar over an edit panel
-flanked by a resizable left document/chapter selector and a far-right panel that starts at zero
-width, with a bottom message console. The edit panel toggles between WYSIWYG and raw markdown views
-of the same canonical document. Chapters are managed from the left column via a right-click context
-menu — edit, rename, move (a drop-bar interaction), delete (with confirmation) — the menubar carries
-File (save, quit), Mode (view toggle) and a cog Settings menu, and startup restores the last
-document when app state has one, otherwise prompts for one.
+This is the UI design for DockB's desktop markdown editor. It is a thin client:
+it sends raw text and gets canonical text back, and never touches files or git.
+The window has a menubar, a left chapter list, a central edit panel (WYSIWYG or
+raw markdown of the same document), a bottom message console, and a right panel
+that starts closed. Startup signs the user in if needed, then restores the last
+document or asks them to pick one.
 
-This document records the decisions — the window layout, the in-window menubar, the parametric
-resize-handle component, the modals, the interaction patterns. The only items then open — where app
-state lives, and whether acts are grouping headers or model entities — have since been settled:
-acts are grouping headers fed by each chapter's `act` front-matter attribute, and app state is a
-per-user backend endpoint backed by SQLite (see `README_auth.md`). The backend story and the
-canonical format live in `README_markdown_redesign.md`; this document is only about the editor's
-shape and interactions.
+Read this for the layout, menus, modals, and how chapters are renamed, moved,
+and deleted. The backend and the canonical markdown format are in
+`README_markdown_redesign.md`; login and app state are in `README_auth.md`.
 
 ## 1. Context and constraints
 
@@ -131,14 +123,13 @@ it restructures the document or the knowledge graph.
 
 ### Editor implementation (decided)
 
-The Raw MD view is CodeMirror 6 with the span-aware language extension. The WYSIWYG view is
-ProseMirror holding the canonical text as its document, rendered by markdown-it and styled by
-ProseMirror decorations — so Mode toggling never serializes text back out and the round trip is
-byte-stable by construction; the inline HTML spans (`data-par-id`, `data-triple`, `data-spo`) pass
-through untouched. This supersedes the earlier open option "markdown-it + HTML, or TipTap":
-TipTap was rejected because it is a structured-document (serializer-out) editor, which would turn
-the span-bearing canonical format into a serialization risk, and no custom AST engine is built in
-its place.
+The Raw MD view is CodeMirror 6 (`@codemirror/lang-markdown`). The WYSIWYG view is ProseMirror
+holding the canonical text as a paragraph-per-line document, with markdown-it heading detection
+fed to node decorations — so Mode toggling never serializes text back out and the round trip is
+byte-stable by construction. Span-aware highlighting of the inline HTML (`data-par-id`,
+`data-triple`, `data-spo`) and remark-lint / NLP diagnostics in the edit panel are still planned
+(`README_markdown_redesign.md` §7). This supersedes the earlier open option "markdown-it + HTML,
+or TipTap": TipTap was rejected because it is a structured-document (serializer-out) editor.
 
 **Decorations** are ProseMirror's mechanism for rendering over text without changing it. A
 decoration applies a CSS class, style, or injected DOM element to a range of the flat document
@@ -185,23 +176,25 @@ Far right, zero width by default, opened by dragging its seam. Purpose reserved 
 - **Rename chapter** — name field + **Cancel / Rename**.
 - **Delete confirmation** — "Are you sure you want to delete <chapter>?" with **Cancel / Delete**,
   shown before any delete runs.
-- **Quit with changes** — when there are local (unsaved) changes: "Save <chapter> first?" with
+- **Quit with changes** — when there are local (unsaved) changes: "Save chapter first?" with
   **Cancel / Discard / Save and Quit**.
 - **No last document on start** — a list to pick a document from, when app state has none.
+- **Sign in** — first-run (no session): **Sign in** / **Cancel**. Sign in opens the provider in
+  the system browser; after consent, Sign in again to pick up the session.
 
 ### Unsaved-change detection (decided)
 
 "Local changes" for the Quit modal compares the editor text against the last **canonical** text the
 backend returned — not against what the user most recently typed — because the canonical round trip
-reformats. A visual dirty indicator on the chapter row (and/or menubar) makes the state visible.
+reformats. A menubar badge (`● Unsaved`) makes the state visible.
 
 ## 9. Start-up behaviour (decided)
 
-On launch the editor restores the **last document** from app state. If there is one, it `GET`s the
-document and restores the chapter list (panel widths and mode live in the same state). If there is
-none, it shows the **select a document** modal first. The state is stored per-user on the backend:
-`GET/PUT /api/app/state` backed by the SQLite `app_state` table (see `README_auth.md`), keeping the
-editor file-and-disk-free and the state following the user once OAuth login exists.
+On launch the editor checks the session (`GET /api/auth/me`). With no session it shows the
+**Sign in** gate first. Once signed in it restores the **last document** from app state. If there
+is one, it loads the chapter list (panel widths and mode live in the same state). If there is
+none, it shows the **select a document** modal. The state is stored per-user on the backend:
+`GET/PUT /api/app/state` backed by the SQLite `app_state` table (see `README_auth.md`).
 
 ## 10. Resolved questions
 

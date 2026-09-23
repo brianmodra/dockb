@@ -2,17 +2,29 @@
 
 ## Executive Summary
 
-DockB is a writing tool that treats every book as a knowledge graph: each document is stored as a strict hierarchy of Document → Chapter → Paragraph → Sentence → Token in a Neo4j graph database. A FastAPI backend exposes a REST API for this hierarchy and uses spaCy to tokenize sentences (POS, lemmas, etc.) and to detect sentence and paragraph splits as the text changes. Its purpose is to give authors rich, language-aware structure over their manuscripts that a plain text editor cannot.
+DockB is a writing tool that stores each book as a knowledge graph
+(Document → Chapter → Paragraph → Sentence → Token) in Neo4j, with a FastAPI
+backend and spaCy for language analysis. Authors get structure a plain text
+editor cannot: sentence splits, parts of speech, and a version history of every
+chapter.
 
-The front end treats the markdown file (one per chapter) as the single source of truth. An author edits a plain markdown file with whatever editor they like while the backend stays in step. (Later a custom MD editor will be created as a more slick FE.) A "sync engine" process watches the file, detects what changed, and calls the backend to refresh the knowledge graph before the writer continues.
+The desktop editor (`frontend/`) is a thin API client. Writers edit canonical
+markdown in WYSIWYG or raw view; the editor never writes files or git. Hand
+edits to the owned markdown files are absorbed the next time a chapter is
+opened.
 
 ## Summary
 
 ### Front End
 
-The front end is the part of DockB that a writer sees and types into. It is a desktop writing app (custom markdown editor) with the markdown file as the single source of truth. The writer types in a flat markdown editor — CodeMirror 6 for the source view, with a normal rendered view layered on top — so editing behaves like any familiar plain-text tool.
+The front end is the part of DockB that a writer sees and types into: a desktop Electron app
+with CodeMirror 6 (raw markdown) and ProseMirror (WYSIWYG) as two views of the same canonical
+chapter. It is a thin API client — save and open go through
+`GET/PUT /api/chapters/{id}/document`; app state and login live on the backend.
 
-The backend's analysis of the text (sentence and word annotations) is embedded directly in the markdown as spans, and the front end's job is only to render those spans as styled highlights. Because the analysis lives in the text itself, the editor stays a simple markdown surface and the two pieces never go out of step.
+The backend's analysis of the text (sentence and word annotations) is embedded in the markdown
+as spans. Rendering those spans as highlights in the editor is still planned; until then the
+editor treats the canonical buffer as plain text.
 
 ### Back End
 
@@ -26,8 +38,8 @@ The back end also keeps a version history of each chapter. Every time a chapter 
 - Backend: [`src/dockb/controllers/README_API.md`](src/dockb/controllers/README_API.md) (API design), [`src/dockb/services/README.md`](src/dockb/services/README.md) (hydrators, reconstructors, jobs), [`src/dockb/services/semantics/README.md`](src/dockb/services/semantics/README.md), [`src/dockb/infrastructure/history/README.md`](src/dockb/infrastructure/history/README.md), [`src/dockb/models/README.md`](src/dockb/models/README.md), [`src/dockb/repositories/README.md`](src/dockb/repositories/README.md), [`src/dockb/cli/README.md`](src/dockb/cli/README.md) (command-line tools).
 - Frontend: [`frontend/README.md`](frontend/README.md).
 - Deferred work: [`README_todo.md`](README_todo.md) — a log of known-but-not-yet-done tasks
-  discovered while building (e.g. OAuth login, the import HTTP endpoint), with pointers to the
-  design docs for each.
+  discovered while building (e.g. the import HTTP endpoint), with pointers to the design docs
+  for each.
 - Development workflow: [`AGENTS.md`](AGENTS.md).
 
 ## Install

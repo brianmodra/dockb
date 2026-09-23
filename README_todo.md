@@ -1,5 +1,11 @@
 # README_todo.md — deferred work
 
+## Executive Summary
+
+This is a running list of DockB work that is known but not done yet. Each
+entry says what is missing and points at the design doc for it. Delete an
+entry when it is finished.
+
 ## Purpose
 
 This file is a running log of things we discover while developing DockB that have not been done
@@ -10,10 +16,6 @@ entry is completed, delete it.
 
 ## Entries
 
-- **OAuth login support** — `infrastructure/session/` is only stubs: `TokenValidator.validate`
-  always returns `None`, `UserStore` does not exist, and `SessionManager`/`TokenValidator` are not
-  wired into the app or any request middleware. There is no login flow, so no caller can yet
-  identify the current user through the API. Design: `infrastructure/session/README.md`.
 - **Import endpoint and composition wiring** — the directory walker
   (`services/markdown_import.py`) is driven today only by the command line
   (`python -m dockb.cli.import_document`); nothing in `controllers/` exposes it over HTTP and

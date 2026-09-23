@@ -2,24 +2,15 @@
 
 ## Executive Summary
 
-This document records the design for user authentication and account storage in DockB's backend:
-OAuth 2.0 Authorization Code with PKCE, the backend acting as a confidential OAuth client, and a
-relational database beside the backend's owned file tree. Users sign in through an identity
-provider (Google and GitHub, configured via environment variables), the backend exchanges the
-authorization code itself and mints its own session, and provider tokens never reach the editor.
-Accounts, refresh tokens, and per-user app state live in a small SQLite database (`dockb_app.db`,
-managed with the Python standard library `sqlite3`).
+This document explains how DockB users sign in and where their accounts live.
+They authenticate with Google or GitHub; the backend (not the editor) exchanges
+the code, mints its own session cookie, and stores accounts, tokens, and
+per-user app state in a small SQLite database. Provider tokens never reach the
+editor.
 
-The design is implemented: the auth routes (`GET /api/auth/login`, the loopback `GET /callback`,
-`GET /api/auth/me`), the session-cookie dependency that gates per-user endpoints, and the per-user
-`GET/PUT /api/app/state` endpoints are wired into the FastAPI app and back a small SQLite store.
-The editor is a thin client that presents the web login pages and carries the HttpOnly session
-cookie; it never touches provider credentials.
-
-Read this to learn how a user session starts, where tokens and state are stored, and what security
-properties the design holds — and the choices the editor and backend each make in the flow. It
-relates to `README_markdown_redesign.md` (the editor is a thin client) and
-`README_markdown_editor_ui.md` (per-user app state).
+The routes, session gate, and app-state endpoints are implemented. On first run
+the editor shows a Sign-in button, then restores the last document or asks the
+user to pick one. Read this for the login flow, storage, and security choices.
 
 ## 1. Context and constraints
 
@@ -121,13 +112,13 @@ consent URL and the token exchange profile.
 
 1. Account merging — the same email under two providers. Currently each provider account is its own
    `users` row; decide whether to link by verified email.
-2. First-run UX — the editor opens with no session; the login button route and "select a document"
-   modal must coexist in the start-up flow (an editor-side question).
 
 ## 8. Resolved questions
 
 Settled while the design was implemented:
 
+- **First-run UX** — no session opens the Sign-in gate; after a live session the editor restores
+  the last document or shows the select-document modal (`README_markdown_editor_ui.md` §9).
 - **Session lifetime** — the session cookie lives for `OAUTH_SESSION_TTL_HOURS` (default 48)
   hours; sessions do not survive a backend restart (the in-memory `SessionManager` does not), and
   a re-login on restart is accepted for the desktop app.
