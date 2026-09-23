@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { BrowserWindow, app } = vi.hoisted(() => {
+const { BrowserWindow, app, ipcMain } = vi.hoisted(() => {
   const instances: Array<Record<string, unknown>> = [];
   const BrowserWindow = vi.fn(() => {
     const win: Record<string, unknown> = {
@@ -18,11 +18,12 @@ const { BrowserWindow, app } = vi.hoisted(() => {
       on: vi.fn(),
       quit: vi.fn(),
     },
+    ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
     instances,
   };
 });
 
-vi.mock("electron", () => ({ app, BrowserWindow }));
+vi.mock("electron", () => ({ app, BrowserWindow, ipcMain }));
 
 import { createWindow } from "../src/main/main";
 import type { BrowserWindow as BrowserWindowType } from "electron";
