@@ -104,4 +104,28 @@ describe("EditPanel mode switching", () => {
     await panel.save();
     expect(panel.isDirty()).toBe(false);
   });
+
+  it("shows the full canonical markup in the raw view when nothing was edited", async () => {
+    const canonicalFile = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1">',
+      "Chapter text.",
+      "</span>",
+    ].join("\n");
+    const api = fakeApi();
+    api.getChapterDocument = vi.fn(async () => doc(canonicalFile));
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    panel.setMode("raw");
+
+    const rawEditor = panel.element.querySelector<HTMLElement>(".cm-editor")!;
+    expect(rawEditor.textContent).toContain("title: Opening 1");
+    expect(rawEditor.textContent).toContain('<span data-par-id="p-1">');
+  });
 });

@@ -23,8 +23,15 @@ chapter. It is a thin API client — save and open go through
 `GET/PUT /api/chapters/{id}/document`; app state and login live on the backend.
 
 The backend's analysis of the text (sentence and word annotations) is embedded in the markdown
-as spans. Rendering those spans as highlights in the editor is still planned; until then the
-editor treats the canonical buffer as plain text.
+as spans, and the chapter's identity lives in the YAML front matter. The raw view shows the
+canonical file exactly as stored. The WYSIWYG view shows only the body text: front matter and
+span markup are hidden, and edits there save as loose body text that the backend re-imports into
+canonical form.
+
+Inside a span the sentence-delimiting newlines are read as a single space, so the sentences of
+a paragraph flow and wrap together. A line ending in a backslash is an escape: the backslash is
+hidden and the newline stays a line break. The double-newline paragraph delimiter renders as a
+single line gap between paragraphs.
 
 ### Back End
 

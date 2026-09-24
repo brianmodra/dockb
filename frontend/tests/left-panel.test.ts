@@ -58,6 +58,41 @@ describe("LeftPanel", () => {
     expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("backend down"));
   });
 
+  it("opens the document editor on chapter row click", async () => {
+    const onEdit = vi.fn();
+    const panel = new LeftPanel({
+      api: fakeApi({
+        listChapters: vi.fn(
+          async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"]),
+        ),
+      }),
+      onEdit,
+    });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onEdit).toHaveBeenCalledWith("a");
+  });
+
+  it("only highlights when right-clicking a chapter, without opening the editor", async () => {
+    const onEdit = vi.fn();
+    const panel = new LeftPanel({
+      api: fakeApi({
+        listChapters: vi.fn(
+          async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"]),
+        ),
+      }),
+      onEdit,
+    });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    expect(document.querySelector("[data-testid='context-menu']")).not.toBeNull();
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
   it("opens the document editor on Edit", async () => {
     const onEdit = vi.fn();
     const panel = new LeftPanel({

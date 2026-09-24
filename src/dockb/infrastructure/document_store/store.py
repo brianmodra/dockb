@@ -124,8 +124,9 @@ class DocumentStore:
         """Commit the document's directory to the git repo rooted at the base dir.
 
         The base directory must be a git repository (as SnapshotWriter expects);
-        only files under *document_id* are staged. A document with nothing new
-        to commit is a no-op.
+        only files under *document_id* are staged. When the document has nothing
+        new to commit — even if unrelated untracked files (e.g. runtime state)
+        exist elsewhere in the tree — the call is a no-op.
         """
         self.document_dir(document_id)
         try:
@@ -134,8 +135,8 @@ class DocumentStore:
             if "not a git repository" in str(exc):
                 raise SnapshotError(f"{self._base_dir} is not a git repository; the document store owns the repo") from exc
             raise
-        status = self._git("status", "--porcelain")
-        if not status.strip():
+        changed = self._git("status", "--porcelain", "--", document_id)
+        if not changed.strip():
             return
         self._git("commit", "-m", message)
 

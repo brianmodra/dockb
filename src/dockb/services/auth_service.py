@@ -53,6 +53,11 @@ class AuthService:
         """Whether OAuth login is required (True) or local mode is active (False)."""
         return bool(self._providers)
 
+    @property
+    def providers(self) -> list[str]:
+        """The names of the configured OAuth providers (empty in local mode)."""
+        return list(self._providers)
+
     def local_username(self) -> str:
         """The OS username that is the local-mode identity ($USER, else getpass)."""
         return os.environ.get("USER") or getpass.getuser()

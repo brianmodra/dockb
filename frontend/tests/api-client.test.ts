@@ -210,6 +210,15 @@ describe("ApiClient errors and auth", () => {
     expect(url).toContain("accounts.google.com");
     expect(fetchCalls()[0].url).toBe("/api/auth/login?provider=google");
   });
+
+  it("reads the auth config from the backend", async () => {
+    mockFetch(200, { login_required: false, providers: [] });
+    const client = new ApiClient();
+    const config = await client.getAuthConfig();
+    expect(config.login_required).toBe(false);
+    expect(config.providers).toEqual([]);
+    expect(fetchCalls()[0].url).toBe("/api/auth/config");
+  });
 });
 
 describe("ApiClient error envelope", () => {

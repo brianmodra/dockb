@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu } from "electron";
 import * as path from "path";
 import { registerOpenExternal, registerQuit } from "./ipc";
 
@@ -22,16 +22,19 @@ export function createWindow(): BrowserWindow {
   return win;
 }
 
-app.whenReady().then(() => {
+export function onAppReady(): void {
+  Menu.setApplicationMenu(null);
   registerOpenExternal();
   registerQuit();
   createWindow();
+}
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+app.whenReady().then(onAppReady);
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
 });
 
 app.on("window-all-closed", () => {

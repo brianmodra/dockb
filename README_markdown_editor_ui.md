@@ -40,8 +40,8 @@ and deleted. The backend and the canonical markdown format are in
 │ 📚 document ▾        │                                              │ ║      │
 │   ▸ Act I ▾          │           E D I T   P A N E L                 │ ║ right│
 │     · Chapter 1      │    WYSIWYG shown; Mode ▾ switches to Raw MD   │ │ 3px  │
-│     · Chapter 2      │                                              │ ║ 0-w  │
-│   ▾ Act II           │                                              │ ║      │
+│     · Chapter 2      │                                              │ ║ 10px │
+│   ▾ Act II           │                                              │ ║ floor│
 │     · Chapter 3      │              <same canonical doc>            │ ║ │││ ▓ │
 │ ▕││▌◂ 7×13 grip      │                                              │ ║      │
 │ ▕││││││▔ 3px seam    │                                              │ ║      │
@@ -54,14 +54,15 @@ and deleted. The backend and the canonical markdown format are in
 
 Regions:
 
-1. **Top menu bar** (in-window, full width): File, Mode, Settings (cog).
+1. **Top menu bar** (in-window, full width): File, Mode, Settings (cog); the
+   signed-in username sits at the right edge.
 2. **Left panel**: document and chapter selector, resizable.
 3. **Edit panel**: the bulk of the window; WYSIWYG or Raw MD source of the current chapter.
 4. **Message panel**: one line by default, growable upward into a scrollback console.
-5. **Far-right panel**: zero width by default, resizable open; placeholder for later features.
+5. **Far-right panel**: ten pixels wide by default, resizable open; placeholder for later features.
 
-Regions 2–4 are separated by resize seams (below); the right panel sits on its own seam so it stays
-grippable at zero width.
+Regions 2–4 are separated by resize seams (below); the right panel stays on its own seam, kept at a
+ten-pixel floor so the divider never vanishes.
 
 ### Resize handles (decided)
 
@@ -75,18 +76,21 @@ All seams use one parametric `ResizeHandle` component, orientation-parameterised
 
 Handles are always faintly visible, gain contrast on hover, and highlight while a drag is held. The
 figure's numbers (~3px seam, ~7×13px grip) are **illustrative only**; real values come from the
-visual spec. Adjacent panels enforce minimum sizes (left panel min-width, message-panel ceiling),
-and the right panel's seam stays available even at zero width.
+visual spec. Every panel enforces a minimum size so no divider becomes impossible to grab:
+`AppLayout` clamps each panel to at least 10px (the left chapter list stays at 120px minimum and the
+message console at 24px minimum height), and the right panel starts at its 10px floor.
 
 ## 3. Menus (decided)
 
-- **File ▾** — **Save** (current chapter; `PUT /api/chapters/{id}/document`) and **Quit**.
+- **File ▾** — **Open** (the select-document modal, §8), **Save** (current chapter;
+  `PUT /api/chapters/{id}/document`) and **Quit**.
 - **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". One item, **General**; it will
   later open a modal, currently it does nothing.
 
 The menu bar is drawn in-window (HTML), not the native Electron menu, so its styling is ours and
-stays identical across platforms.
+stays identical across platforms; the native menu is removed at startup
+(`Menu.setApplicationMenu(null)`), so the in-window bar is the only one.
 
 ## 4. Left panel: document and chapter selector (decided)
 
@@ -168,8 +172,8 @@ kinds to be designed later.
 
 ## 7. Right panel (decided shape, no role yet)
 
-Far right, zero width by default, opened by dragging its seam. Purpose reserved for later features
-(undecided).
+Far right, ten pixels wide by default, opened by dragging its seam. Purpose reserved for later
+features (undecided).
 
 ## 8. Modals (decided)
 
@@ -179,9 +183,13 @@ Far right, zero width by default, opened by dragging its seam. Purpose reserved 
 - **Quit with changes** — when there are local (unsaved) changes: "Save chapter first?" with
   **Cancel / Discard / Save and Quit**.
 - **No last document on start** — a list to pick a document from, when app state has none.
-- **Sign in** — first-run (no session): **Sign in** / **Cancel**. Sign in opens the provider in
-  the system browser; after consent, Sign in again to pick up the session. In **local mode** (no
-  OAuth provider configured) this gate is skipped entirely — the backend answers `/api/auth/me`
+- **Open document** (File → Open) — a scrollable list of documents by title, fetched from
+  `GET /api/documents`. Clicking a row selects it and enables the **Open** button (disabled
+  until a row is chosen); **Open** loads the chosen document, **Cancel** dismisses the modal.
+- **Sign in** — first-run when login is required: **Sign in** / **Cancel**. Sign in opens the
+  provider in the system browser; after consent, Sign in again to pick up the session. In
+  **local mode** (no OAuth provider configured) this gate is skipped entirely — the editor
+  learns this from `GET /api/auth/config` (`login_required: false`) and `/api/auth/me` answers
   from the OS username (`README_auth.md` §6).
 
 ### Unsaved-change detection (decided)
@@ -192,11 +200,13 @@ reformats. A menubar badge (`● Unsaved`) makes the state visible.
 
 ## 9. Start-up behaviour (decided)
 
-On launch the editor checks the session (`GET /api/auth/me`). With no session it shows the
-**Sign in** gate first. Once signed in it restores the **last document** from app state. If there
-is one, it loads the chapter list (panel widths and mode live in the same state). If there is
-none, it shows the **select a document** modal. The state is stored per-user on the backend:
-`GET/PUT /api/app/state` backed by the SQLite `app_state` table (see `README_auth.md`).
+On launch the editor asks `GET /api/auth/config` and opens the **Sign in** gate only when login
+is required (an OAuth provider is configured); in local mode the OS username is read from
+`GET /api/auth/me` and shown in the menubar. Once signed in it restores the **last document**
+from app state. If there is one, it loads the chapter list (panel widths and mode live in the
+same state). If there is none, it shows the **select a document** modal. The state is stored
+per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_state` table (see
+`README_auth.md`).
 
 ## 10. Resolved questions
 

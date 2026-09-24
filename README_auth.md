@@ -54,8 +54,10 @@ Consequences:
 ## 3. Decision: accounts and state live in SQLite (decided)
 
 The relational store is **SQLite via the Python standard library `sqlite3`** (no ORM), its file
-`dockb_app.db` **beside the backend's owned directory** (`DOCKB_CHAPTERS_DIR`) — the directory the
-composed `AuthService` receives as its `base_dir`. This keeps all server-owned on-disk state in one
+`dockb_app.db` **beside the backend's owned directory** — the chapters directory the composed
+`AuthService` receives as its `base_dir`. The chapters directory is `DOCKB_CHAPTERS_DIR`, defaulting
+to `cwd`/`dockb_chapters_dir` when unset, and is created (and git-initialized) when missing
+(`resolve_document_base_dir` in `composition.py`). This keeps all server-owned on-disk state in one
 place, with zero-ops on a single machine. Foreign keys are enforced (`PRAGMA foreign_keys=ON`), so
 deleting a user cascades to its OAuth links and app state.
 
@@ -94,7 +96,8 @@ Google and GitHub, configured by environment variables:
 - `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET`
 - `OAUTH_CALLBACK_PORT` (the loopback port for the login redirect)
 - `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens and the
-  session-cookie signer key). Auth wiring only runs when this is set.
+  session-cookie signer key). Its presence selects OAuth mode; without it the backend runs in
+  **local mode** with an ephemeral key (see §6).
 - `OAUTH_SESSION_TTL_HOURS` (session cookie lifetime, default 48)
 
 Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from the
@@ -111,15 +114,26 @@ are both present.
 - The session cookie is not required; `get_current_user` falls back to the local username and
   `ensure_local_user` creates the minimal `users` row lazily (display name = username, empty
   email/avatar).
-- `/api/auth/me` answers with that local profile, so the editor's first-run gate is skipped
-  automatically.
-- Auth wiring still requires the plain wiring (see §7): `DOCKB_SECRET_KEY` + `DOCKB_CHAPTERS_DIR`.
+- `/api/auth/me` answers with that local profile. `GET /api/auth/config` reports
+  `{"login_required": false, "providers": []}`, and the editor opens its Sign-in gate **only**
+  when that response says login is required (a provider is configured) — so in local mode the
+  gate never appears and the menubar simply shows the OS username.
+- The built Electron shell loads the renderer from `file://`, a cross-origin (`null`) client.
+  `app_factory.py` registers a CORS middleware that admits that origin (and the Vite dev origins)
+  so the editor can read the API responses.
+- Auth wiring runs whenever there is an accounts directory, which is always: the chapters directory,
+  resolved by `resolve_document_base_dir` (`DOCKB_CHAPTERS_DIR`, defaulting to `cwd`/`dockb_chapters_dir`
+  and provisioned when missing). `DOCKB_SECRET_KEY` is not required: without it the backend uses an
+  ephemeral signer/encryption key in memory (nothing is signed or encrypted in local mode, and the
+  accounts DB may be recreated on restart), and OAuth providers are ignored even if their id/secret
+  pairs are set — a provider is only enabled when a secret is present.
 - Per-user app state is keyed by the local username, so two OS users on the same machine get
   separate state.
 
 ## 7. Flow in full (reference)
 
-1. User clicks "Sign in" in the editor. The editor asks the backend for a login URL
+1. The editor asks `GET /api/auth/config` and only shows the Sign-in gate when `login_required`
+   is true. User clicks "Sign in"; the editor asks the backend for a login URL
    (`GET /api/auth/login?provider=google`), which returns the provider consent URL with `state` and
    a PKCE `code_verifier` the backend remembers.
 2. The editor opens that URL in the system browser; the user consents.

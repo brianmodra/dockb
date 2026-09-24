@@ -5,7 +5,14 @@ from __future__ import annotations
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from dockb.controllers.auth import auth_callback, auth_login, auth_me, get_current_session_context, set_auth_service
+from dockb.controllers.auth import (
+    auth_callback,
+    auth_config,
+    auth_login,
+    auth_me,
+    get_current_session_context,
+    set_auth_service,
+)
 from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.oauth.fake import FakeOAuthProvider
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
@@ -21,6 +28,7 @@ def _make_app() -> FastAPI:
         return {"ok": "yes"}
 
     app.add_api_route("/api/auth/login", auth_login, methods=["GET"])
+    app.add_api_route("/api/auth/config", auth_config, methods=["GET"])
     app.add_api_route("/callback", auth_callback, methods=["GET"])
     app.add_api_route("/api/auth/me", auth_me, methods=["GET"])
     app.add_api_route("/api/auth/context-check", context_check, methods=["GET"])
@@ -201,6 +209,32 @@ class TestMeEndpoint:
         set_auth_service(_build_service(tmp_path))
         resp = self.client.get("/api/auth/me")
         assert resp.status_code == 401
+
+
+class TestConfigEndpoint:
+    def setup_method(self) -> None:
+        self.app = _make_app()
+        self.client = TestClient(self.app)
+
+    def teardown_method(self) -> None:
+        set_auth_service(None)
+
+    def test_config_reports_oauth_login_when_providers_configured(self, tmp_path) -> None:
+        set_auth_service(_build_service(tmp_path))
+        resp = self.client.get("/api/auth/config")
+        assert resp.status_code == 200
+        assert resp.json() == {"login_required": True, "providers": ["fake"]}
+
+    def test_config_reports_local_mode_when_no_providers(self, tmp_path) -> None:
+        set_auth_service(_build_local_service(tmp_path))
+        resp = self.client.get("/api/auth/config")
+        assert resp.status_code == 200
+        assert resp.json() == {"login_required": False, "providers": []}
+
+    def test_config_without_service_reports_no_login(self) -> None:
+        resp = self.client.get("/api/auth/config")
+        assert resp.status_code == 200
+        assert resp.json() == {"login_required": False, "providers": []}
 
 
 class TestLocalModeMe:

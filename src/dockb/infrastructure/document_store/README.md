@@ -14,7 +14,10 @@ Read this to learn what the on-disk layout is, and where a document's files live
 ## Layout
 
 Everything lives under one base directory, configured with the `DOCKB_CHAPTERS_DIR`
-environment variable (`DocumentStore.from_env()`). The tree:
+environment variable (`DocumentStore.from_env()` requires it set; at server startup
+`resolve_document_base_dir` in `composition.py` defaults it to `cwd`/`dockb_chapters_dir`
+when unset, creating the directory and git-initializing it so the store can own the repo).
+The tree:
 
 ```
 <base>/
@@ -52,6 +55,9 @@ shared with the directory import in `services/markdown_import.py`.
 
 The base directory is a git repository (the server owns it, as described in
 `README_markdown_redesign.md`). `git_commit(document_id, message)` stages only
-the document's directory — `git add -- <document_id>` — and commits it; a
-document with nothing new to commit is a no-op. This is how newly materialized
-trees enter history with a single commit.
+the document's directory — `git add -- <document_id>` — and commits it;
+whether anything is staged is decided by `git status --porcelain -- <document_id>`
+alone, so unrelated untracked files left in the tree (e.g. runtime state) are
+never committed and never trip the commit. A document with nothing new to
+commit is a no-op — the call does not fail on git's "nothing to commit". This
+is how newly materialized trees enter history with a single commit.

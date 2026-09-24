@@ -9,7 +9,7 @@ import uvicorn
 from dotenv import load_dotenv
 
 from dockb.app_factory import create_app
-from dockb.composition import unwire, wire
+from dockb.composition import resolve_document_base_dir, unwire, wire
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
 
 app = create_app()
@@ -29,8 +29,12 @@ async def startup() -> None:
         user=os.environ["NEO4J_USER"],
         password=os.environ["NEO4J_PASSWORD"],
     )
-    document_base_dir = os.environ.get("DOCKB_CHAPTERS_DIR")
-    wire(_session_factory, document_base_dir=Path(document_base_dir) if document_base_dir else None)
+    document_base_dir = resolve_document_base_dir()
+    wire(
+        _session_factory,
+        document_base_dir=document_base_dir,
+        accounts_base_dir=document_base_dir.parent,
+    )
 
 
 @app.on_event("shutdown")

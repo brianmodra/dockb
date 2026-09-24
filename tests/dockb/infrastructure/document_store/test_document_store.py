@@ -177,6 +177,23 @@ def test_git_commit_only_commits_the_document_dir(git_store, tmp_path):
     assert "d-other" not in staged.stdout
 
 
+def test_git_commit_tolerates_unrelated_untracked_files_when_nothing_staged(git_store, tmp_path):
+    (tmp_path / "dockb_app.db").write_text("sqlite", encoding="utf-8")
+    git_store.write_chapter(_SAFE_ID, _SAFE_CHAPTER, "# body\n")
+    git_store.git_commit(_SAFE_ID, "materialize: chapter")
+    git_store.git_commit(_SAFE_ID, "open: chapter")
+
+    result = subprocess.run(
+        ["git", "log", "--format=%s"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert "open: chapter" not in result.stdout
+    assert "dockb_app.db" not in result.stdout
+
+
 @pytest.mark.parametrize("bad_id", ["", ".", "..", "../escape", "a/b", "/etc/passwd"])
 def test_git_commit_rejects_invalid_ids(git_store, bad_id):
     with pytest.raises(ValueError, match="not a valid id"):

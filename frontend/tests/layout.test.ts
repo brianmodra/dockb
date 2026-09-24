@@ -35,11 +35,11 @@ describe("AppLayout", () => {
     expect(layout.element.querySelector('[data-testid="panel-message"]')).not.toBeNull();
   });
 
-  it("starts with the right panel at zero width and the seam still available", () => {
+  it("starts with the right panel at ten pixels and the seam still available", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const right = layout.element.querySelector<HTMLElement>('[data-testid="panel-right"]')!;
-    expect(right.style.width).toBe("0px");
+    expect(right.style.width).toBe("10px");
     expect(layout.element.querySelector('[data-testid="resize-handle-v-right"]')).not.toBeNull();
   });
 
@@ -52,20 +52,28 @@ describe("AppLayout", () => {
     expect(parseInt(left.style.width, 10)).toBe(startWidth + 60);
   });
 
-  it("opens the right panel by dragging its seam rightwards", () => {
+  it("opens the right panel by dragging its seam leftwards, following the mouse", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const right = layout.element.querySelector<HTMLElement>('[data-testid="panel-right"]')!;
-    drag(rightHandle(layout), 900, 100, 80, 0);
-    expect(parseInt(right.style.width, 10)).toBe(80);
+    drag(rightHandle(layout), 900, 100, -80, 0);
+    expect(parseInt(right.style.width, 10)).toBe(90);
   });
 
-  it("grows the message panel upward through the bottom seam", () => {
+  it("closes the right panel when dragging its seam rightwards", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const right = layout.element.querySelector<HTMLElement>('[data-testid="panel-right"]')!;
+    drag(rightHandle(layout), 900, 100, 1000, 0);
+    expect(parseInt(right.style.width, 10)).toBe(10);
+  });
+
+  it("grows the message panel downward through the bottom seam, following the mouse", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
-    drag(bottomHandle(layout), 100, 500, 0, -60);
-    expect(parseInt(message.style.height, 10)).toBeGreaterThan(0);
+    drag(bottomHandle(layout), 100, 500, 0, 60);
+    expect(parseInt(message.style.height, 10)).toBe(84);
   });
 
   it("enforces a minimum left-panel width", () => {
@@ -74,6 +82,22 @@ describe("AppLayout", () => {
     const left = layout.element.querySelector<HTMLElement>('[data-testid="panel-left"]')!;
     drag(leftHandle(layout), 200, 100, -1000, 0);
     expect(parseInt(left.style.width, 10)).toBeGreaterThanOrEqual(120);
+  });
+
+  it("keeps a ten-pixel minimum right-panel width when dragging the seam rightwards", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const right = layout.element.querySelector<HTMLElement>('[data-testid="panel-right"]')!;
+    drag(rightHandle(layout), 900, 100, 5000, 0);
+    expect(parseInt(right.style.width, 10)).toBeGreaterThanOrEqual(10);
+  });
+
+  it("enforces a minimum message-panel height", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    drag(bottomHandle(layout), 100, 500, 0, 5000);
+    expect(parseInt(message.style.height, 10)).toBeGreaterThanOrEqual(24);
   });
 
   it("reports mode through the menubar and updates the edit panel", () => {

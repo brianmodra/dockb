@@ -1,4 +1,8 @@
-import { openDocumentPicker, type DocumentPickerApi } from "../src/renderer/layout/documentPicker";
+import {
+  openDocumentPicker,
+  openDocumentPickerConfirm,
+  type DocumentPickerApi,
+} from "../src/renderer/layout/documentPicker";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentWire } from "../src/renderer/api/types";
 
@@ -68,6 +72,66 @@ describe("openDocumentPicker", () => {
     await flush();
     const empty = modal()!.querySelector("[data-testid='document-picker-empty']");
     expect(empty).not.toBeNull();
+    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
+    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
+  });
+});
+
+describe("openDocumentPickerConfirm", () => {
+  it("keeps Open disabled until a document is selected", async () => {
+    const api = fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith"), doc("d2", "Sight")]) });
+    const promise = openDocumentPickerConfirm(api);
+    await flush();
+    const open = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-open']")!;
+    expect(open.disabled).toBe(true);
+
+    const items = modal()!.querySelectorAll<HTMLElement>("[data-testid='document-picker-item']");
+    items[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(open.disabled).toBe(false);
+
+    open.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBe("d2");
+    expect(modal()).toBeNull();
+  });
+
+  it("highlights only the selected document", async () => {
+    const api = fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith"), doc("d2", "Sight")]) });
+    void openDocumentPickerConfirm(api);
+    await flush();
+    const items = modal()!.querySelectorAll<HTMLElement>("[data-testid='document-picker-item']");
+    items[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    items[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(items[0].classList.contains("document-picker-item--selected")).toBe(false);
+    expect(items[1].classList.contains("document-picker-item--selected")).toBe(true);
+  });
+
+  it("resolves null when the user cancels", async () => {
+    const promise = openDocumentPickerConfirm(fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith")]) }));
+    await flush();
+    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
+    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
+  });
+
+  it("does not open when Open is clicked with no selection", async () => {
+    const promise = openDocumentPickerConfirm(fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith")]) }));
+    await flush();
+    const open = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-open']")!;
+    open.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(modal()).not.toBeNull();
+    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
+    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
+  });
+
+  it("shows an empty-state row and resolves null when there are no documents", async () => {
+    const promise = openDocumentPickerConfirm(fakeApi());
+    await flush();
+    const empty = modal()!.querySelector("[data-testid='document-picker-empty']");
+    expect(empty).not.toBeNull();
+    const open = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-open']")!;
+    expect(open.disabled).toBe(true);
     const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
     cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(await promise).toBeNull();

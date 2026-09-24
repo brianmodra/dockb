@@ -6,7 +6,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from "@codem
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
-import { WysiwygView } from "./wysiwyg";
+import { WysiwygView, chapterBody } from "./wysiwyg";
 import type { Mode } from "./menubar";
 
 export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDocument">;
@@ -73,7 +73,7 @@ export class EditPanel {
     if (mode === this.mode) {
       return;
     }
-    const text = this.content();
+    const text = this.isDirty() ? this.content() : (this.lastCanonicalText ?? this.content());
     this.mode = mode;
     this.applyMode();
     this.replaceDoc(text);
@@ -103,7 +103,9 @@ export class EditPanel {
     if (this.lastCanonicalText === null) {
       return false;
     }
-    return this.content() !== this.lastCanonicalText;
+    return this.mode === "raw"
+      ? this.view.state.doc.toString() !== this.lastCanonicalText
+      : this.wysiwyg.content() !== chapterBody(this.lastCanonicalText);
   }
 
   lastCanonical(): string | null {

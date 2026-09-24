@@ -150,6 +150,49 @@ describe("EditPanel", () => {
     await panel.save();
     expect(saveChapterDocument).toHaveBeenCalledTimes(1);
   });
+
+  it("shows only the visible body in wysiwyg and stays clean after loading a canonical file", async () => {
+    const canonicalFile = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1">',
+      "Chapter text.",
+      "</span>",
+    ].join("\n");
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc(canonicalFile)) });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    expect(panel.content()).toBe("Chapter text.");
+    expect(panel.isDirty()).toBe(false);
+  });
+
+  it("sends the visible body to the backend when saving an unchanged canonical file", async () => {
+    const canonicalFile = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1">',
+      "Chapter text.",
+      "</span>",
+    ].join("\n");
+    const saveChapterDocument = vi.fn(async (_id: string, c: string) => doc(c));
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc(canonicalFile)), saveChapterDocument });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+    await panel.save();
+
+    expect(saveChapterDocument).toHaveBeenCalledWith("c1", "Chapter text.");
+  });
 });
 
 describe("EditPanel dirty change reporting", () => {

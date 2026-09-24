@@ -33,6 +33,25 @@ describe("AppLayout state restore", () => {
     expect(onMode).toHaveBeenCalledWith("raw");
   });
 
+  it("wires File → Open in the menubar to onOpen", () => {
+    const onOpen = vi.fn();
+    const layout = new AppLayout({ onOpen });
+    document.body.append(layout.element);
+    layout.element.querySelector<HTMLElement>("[data-testid='menu-File']")?.click();
+    layout.element.querySelector<HTMLElement>("[data-testid='menu-item-open']")?.click();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps restored widths to the panel minimums", () => {
+    const layout = new AppLayout();
+    document.body.append(layout.element);
+    layout.restoreState({ panel_widths: { left: 8, right: 2, message: 3 } });
+
+    expect(layout.panelWidths().left).toBe(120);
+    expect(layout.panelWidths().right).toBe(10);
+    expect(layout.panelWidths().message).toBe(24);
+  });
+
   it("reports width changes through onWidthsChange after restore", () => {
     const onWidthsChange = vi.fn();
     const layout = new AppLayout({ onWidthsChange });

@@ -67,6 +67,16 @@ def auth_login(
     return {"authorization_url": authorization_url}
 
 
+@router.get("/api/auth/config")
+def auth_config(
+    svc: Any = Depends(get_auth_service),
+) -> dict[str, Any]:
+    """Describe whether OAuth login is required, so the editor can skip its gate in local mode."""
+    if svc is None:
+        return {"login_required": False, "providers": []}
+    return {"login_required": svc.requires_login, "providers": svc.providers}
+
+
 @router.get("/callback")
 def auth_callback(
     code: str = Query(""),

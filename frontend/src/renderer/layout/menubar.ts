@@ -4,6 +4,7 @@ export interface MenubarOptions {
   mode?: Mode;
   onMode?: (mode: Mode) => void;
   onSave?: () => void;
+  onOpen?: () => void;
   onQuit?: () => void;
 }
 
@@ -23,6 +24,7 @@ const MENUS: MenuSpec[] = [
     key: "File",
     label: "File",
     items: [
+      { key: "open", label: "Open" },
       { key: "save", label: "Save" },
       { key: "quit", label: "Quit" },
     ],
@@ -71,8 +73,34 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
   const dropdown = document.createElement("div");
   dropdown.className = "menu-dropdown";
   dropdown.dataset.testid = `menu-${menu.key}-dropdown`;
+
+  const close = (): void => {
+    dropdown.classList.remove("menu-dropdown--open");
+    document.removeEventListener("mousedown", onBackgroundMousedown, true);
+    window.removeEventListener("keydown", onKeydown);
+  };
+
+  const onBackgroundMousedown = (event: MouseEvent): void => {
+    if (!container.contains(event.target as Node)) {
+      close();
+    }
+  };
+
+  const onKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") {
+      close();
+    }
+  };
+
   label.addEventListener("click", () => {
-    dropdown.classList.toggle("menu-dropdown--open");
+    const opening = !dropdown.classList.contains("menu-dropdown--open");
+    if (opening) {
+      document.addEventListener("mousedown", onBackgroundMousedown, true);
+      window.addEventListener("keydown", onKeydown);
+    } else {
+      close();
+    }
+    dropdown.classList.toggle("menu-dropdown--open", opening);
   });
 
   for (const item of menu.items) {
@@ -82,12 +110,14 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
     button.dataset.testid = `menu-item-${item.key}`;
     button.textContent = item.label;
     button.addEventListener("click", () => {
-      dropdown.classList.remove("menu-dropdown--open");
+      close();
       if (menu.key === "Mode") {
         const mode: Mode = item.key === "raw" ? "raw" : "wysiwyg";
         options.onMode?.(mode);
       } else if (menu.key === "File" && item.key === "save") {
         options.onSave?.();
+      } else if (menu.key === "File" && item.key === "open") {
+        options.onOpen?.();
       } else if (menu.key === "File" && item.key === "quit") {
         options.onQuit?.();
       }

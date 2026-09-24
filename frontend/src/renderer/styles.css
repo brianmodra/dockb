@@ -263,6 +263,36 @@ body {
   color: #fff;
 }
 
+.modal-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.document-picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.document-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.document-picker-item:hover {
+  background: #f2f2f0;
+}
+
+.document-picker-item--selected {
+  background: #e8f1fb;
+}
+
 [data-testid="panel-edit"] {
   flex: 1;
   background: #fff;
@@ -274,6 +304,24 @@ body {
 
 .edit-panel .cm-editor {
   height: 100%;
+}
+
+.edit-panel .ProseMirror {
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.edit-panel .ProseMirror p {
+  margin: 0 0 1.5em;
+}
+
+.edit-panel .ProseMirror p:last-child {
+  margin-bottom: 0;
 }
 
 .edit-panel .cm-scroller {

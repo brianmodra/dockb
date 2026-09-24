@@ -2,6 +2,7 @@ import { request } from "./http";
 import type {
   AppState,
   AppStatePatch,
+  AuthConfig,
   ChapterAttrs,
   ChapterListRow,
   ChapterNode,
@@ -134,6 +135,10 @@ export class ApiClient {
   async getMe(): Promise<UserProfile> {
     const response = await request<{ user: UserProfile }>(this.url("/auth/me"));
     return response.user;
+  }
+
+  async getAuthConfig(): Promise<AuthConfig> {
+    return request<AuthConfig>(this.url("/auth/config"));
   }
 
   async getLoginUrl(provider: string): Promise<string> {

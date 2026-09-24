@@ -35,6 +35,30 @@ class TestCreateApp:
         middleware_classes = [m.cls for m in app.user_middleware]
         assert GZipMiddleware in middleware_classes
 
+    def test_cors_middleware_allows_the_desktop_client(self) -> None:
+        from dockb.app_factory import create_app
+
+        app = create_app()
+        from fastapi.middleware.cors import CORSMiddleware
+
+        cors = next(m for m in app.user_middleware if m.cls is CORSMiddleware)
+        assert cors.kwargs["allow_credentials"] is True
+        assert set(cors.kwargs["allow_origins"]) == {
+            "null",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        }
+
+    def test_cors_headers_on_responses_to_the_file_origin(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from dockb.app_factory import create_app
+
+        client = TestClient(create_app())
+        response = client.get("/api/auth/login", headers={"Origin": "null"})
+        assert response.headers["access-control-allow-origin"] == "null"
+        assert response.headers.get("access-control-allow-credentials") == "true"
+
     def test_all_crud_routers_registered(self) -> None:
         from dockb.app_factory import create_app
 
@@ -289,6 +313,8 @@ class TestWireServices:
         try:
             svc = get_auth_service()
             assert isinstance(svc, AuthService)
+            assert svc.requires_login is True
+            assert svc.providers == ["github"]
         finally:
             unwire()
         assert get_auth_service() is None
@@ -298,7 +324,7 @@ class TestWireServices:
     @patch("dockb.composition.ParagraphRepository")
     @patch("dockb.composition.SentenceRepository")
     @patch("dockb.composition.UnitOfWorkFactory")
-    def test_wire_skips_auth_service_without_secret(
+    def test_wire_injects_local_mode_auth_service_without_secret(
         self,
         mock_uow_factory: MagicMock,
         mock_sent_repo: MagicMock,
@@ -310,14 +336,152 @@ class TestWireServices:
     ) -> None:
         from dockb.composition import unwire, wire
         from dockb.controllers.auth import get_auth_service
+        from dockb.services.auth_service import AuthService
 
         monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
 
         mock_sf = MagicMock()
         mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
 
         wire(mock_sf, document_base_dir=tmp_path)
         try:
-            assert get_auth_service() is None
+            svc = get_auth_service()
+            assert isinstance(svc, AuthService)
+            assert svc.requires_login is False
+            assert svc.providers == []
         finally:
             unwire()
+        assert get_auth_service() is None
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_local_mode_me_and_app_state_work_without_a_secret(  # pylint: disable=too-many-locals
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        from dockb.app_factory import create_app
+        from dockb.composition import unwire, wire
+
+        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
+        monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-id")
+        monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+        monkeypatch.setenv("USER", "dave")
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf, document_base_dir=tmp_path)
+        try:
+            client = TestClient(create_app())
+            me = client.get("/api/auth/me")
+            assert me.status_code == 200
+            assert me.json()["user"]["username"] == "dave"
+
+            state = client.get("/api/app/state")
+            assert state.status_code == 200
+            put = client.put("/api/app/state", json={"last_document_id": "d1"})
+            assert put.status_code == 200
+            assert put.json()["last_document_id"] == "d1"
+        finally:
+            unwire()
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_accounts_base_dir_enables_local_mode_me_and_app_state(  # pylint: disable=too-many-locals
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        from dockb.app_factory import create_app
+        from dockb.composition import unwire, wire
+
+        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
+        monkeypatch.setenv("USER", "dave")
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf, accounts_base_dir=tmp_path)
+        try:
+            client = TestClient(create_app())
+            me = client.get("/api/auth/me")
+            assert me.status_code == 200
+            assert me.json()["user"]["username"] == "dave"
+
+            put = client.put("/api/app/state", json={"last_document_id": "d1"})
+            assert put.status_code == 200
+            assert client.get("/api/app/state").json()["last_document_id"] == "d1"
+        finally:
+            unwire()
+
+
+class TestResolveDocumentBaseDir:
+    """resolve_document_base_dir provisions the server-owned markdown tree."""
+
+    def test_defaults_to_cwd_dockb_chapters_dir_and_git_inits_it(self, tmp_path, monkeypatch) -> None:
+        from pathlib import Path
+
+        from dockb.composition import resolve_document_base_dir
+
+        monkeypatch.delenv("DOCKB_CHAPTERS_DIR", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        base = resolve_document_base_dir()
+
+        expected = Path(tmp_path) / "dockb_chapters_dir"
+        assert base == expected
+        assert base.is_dir()
+        assert (base / ".git").is_dir()
+
+    def test_uses_configured_dir_and_git_inits_when_missing(self, tmp_path, monkeypatch) -> None:
+        from dockb.composition import resolve_document_base_dir
+
+        target = tmp_path / "chapters"
+        monkeypatch.setenv("DOCKB_CHAPTERS_DIR", str(target))
+
+        base = resolve_document_base_dir()
+
+        assert base == target
+        assert base.is_dir()
+        assert (base / ".git").is_dir()
+
+    def test_returns_existing_dir_without_clobbering(self, tmp_path, monkeypatch) -> None:
+
+        from dockb.composition import resolve_document_base_dir
+
+        existing = tmp_path / "chapters"
+        existing.mkdir()
+        marker = existing / "keep.txt"
+        marker.write_text("hello", encoding="utf-8")
+
+        base = resolve_document_base_dir(existing)
+
+        assert base == existing
+        assert marker.read_text(encoding="utf-8") == "hello"

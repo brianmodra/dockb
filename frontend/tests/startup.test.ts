@@ -71,6 +71,7 @@ describe("runStartup", () => {
 describe("mountShell startup integration", () => {
   it("mounts the shell, restoring the saved document", async () => {
     const api = {
+      getAuthConfig: vi.fn(async () => ({ login_required: false, providers: [] })),
       getMe: vi.fn(async () => user()),
       getAppState: vi.fn(async () => state()),
       listDocuments: vi.fn(async () => []),
@@ -83,8 +84,9 @@ describe("mountShell startup integration", () => {
     expect(document.querySelector("[data-testid='app-shell']")).not.toBeNull();
   });
 
-  it("shows the sign-in gate when there is no session", async () => {
+  it("shows the sign-in gate when a session is required but missing", async () => {
     const api = {
+      getAuthConfig: vi.fn(async () => ({ login_required: true, providers: ["google"] })),
       getMe: vi.fn(async () => {
         throw new ApiError(401, "not_authenticated");
       }),
@@ -100,6 +102,7 @@ describe("mountShell startup integration", () => {
 
   it("stays idle when the sign-in gate is cancelled", async () => {
     const api = {
+      getAuthConfig: vi.fn(async () => ({ login_required: true, providers: ["google"] })),
       getMe: vi.fn(async () => {
         throw new ApiError(401, "not_authenticated");
       }),

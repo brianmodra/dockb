@@ -5,12 +5,14 @@ export interface AppLayoutOptions {
   initialMode?: Mode;
   onMode?: (mode: Mode) => void;
   onSave?: () => void;
+  onOpen?: () => void;
   onQuit?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
 }
 
 const MIN_LEFT_WIDTH = 120;
 const DEFAULT_LEFT_WIDTH = 240;
+const MIN_RIGHT_WIDTH = 10;
 const MAX_RIGHT_WIDTH = 600;
 const MIN_MESSAGE_HEIGHT = 24;
 
@@ -32,7 +34,7 @@ export class AppLayout {
   private readonly rightPanel: HTMLElement;
   private readonly messagePanel: HTMLElement;
   private leftWidth = DEFAULT_LEFT_WIDTH;
-  private rightWidth = 0;
+  private rightWidth = MIN_RIGHT_WIDTH;
   private messageHeight = MIN_MESSAGE_HEIGHT;
 
   constructor(options: AppLayoutOptions = {}) {
@@ -51,6 +53,7 @@ export class AppLayout {
         options.onMode?.(mode);
       },
       onSave: options.onSave,
+      onOpen: options.onOpen,
       onQuit: options.onQuit,
     });
 
@@ -87,7 +90,7 @@ export class AppLayout {
       }),
       editPanel,
       this.seam("resize-handle-v-right", "vertical", (delta) => {
-        this.rightWidth = Math.max(0, Math.min(MAX_RIGHT_WIDTH, this.rightWidth + delta));
+        this.rightWidth = Math.max(MIN_RIGHT_WIDTH, Math.min(MAX_RIGHT_WIDTH, this.rightWidth - delta));
         this.rightPanel.style.width = `${this.rightWidth}px`;
         this.options.onWidthsChange?.(this.panelWidths());
       }),
@@ -98,7 +101,7 @@ export class AppLayout {
       menubar.element,
       mainRow,
       this.seam("resize-handle-h-bottom", "horizontal", (delta) => {
-        this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight - delta);
+        this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight + delta);
         this.messagePanel.style.height = `${this.messageHeight}px`;
         this.options.onWidthsChange?.(this.panelWidths());
       }),
@@ -106,7 +109,7 @@ export class AppLayout {
     );
 
     this.leftPanel.style.width = `${this.leftWidth}px`;
-    this.rightPanel.style.width = "0px";
+    this.rightPanel.style.width = `${this.rightWidth}px`;
     this.messagePanel.style.height = `${this.messageHeight}px`;
     this.applyMode();
   }
@@ -131,15 +134,15 @@ export class AppLayout {
     const widths = state.panel_widths;
     if (widths) {
       if (typeof widths.left === "number") {
-        this.leftWidth = widths.left;
+        this.leftWidth = Math.max(MIN_LEFT_WIDTH, widths.left);
         this.leftPanel.style.width = `${this.leftWidth}px`;
       }
       if (typeof widths.right === "number") {
-        this.rightWidth = widths.right;
+        this.rightWidth = Math.max(MIN_RIGHT_WIDTH, Math.min(MAX_RIGHT_WIDTH, widths.right));
         this.rightPanel.style.width = `${this.rightWidth}px`;
       }
       if (typeof widths.message === "number") {
-        this.messageHeight = widths.message;
+        this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, widths.message);
         this.messagePanel.style.height = `${this.messageHeight}px`;
       }
       this.options.onWidthsChange?.(this.panelWidths());

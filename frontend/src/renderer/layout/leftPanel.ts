@@ -36,7 +36,10 @@ export class LeftPanel {
     this.element.className = "left-panel";
 
     this.chapterList = new ChapterList({
-      onSelect: (chapterId) => this.select(chapterId),
+      onSelect: (chapterId) => {
+        this.select(chapterId);
+        this.onEdit?.(chapterId);
+      },
       onContext: (chapterId, event) => this.handleContext(chapterId, event),
     });
     this.element.append(this.chapterList.element);

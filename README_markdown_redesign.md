@@ -196,8 +196,9 @@ The owned directory tree is the editor's entire world, delivered through the API
   (canonical serialization of the graph, git-snapped) and returns the canonical text; when the file
   differs from the last-persisted state (a hand edit), the edit is absorbed through
   `apply_chapter_file()` first, then the canonical text is returned.
-- **No store:** without a configured document store (`DOCKB_CHAPTERS_DIR` unset) the
-  `.../document` endpoints report the chapter as not found (404).
+- **No store:** when the store is not wired (`wire()` called without a base dir, e.g. in tests) the
+  `.../document` endpoints report the chapter as not found (404). The running server always wires one:
+  `DOCKB_CHAPTERS_DIR` defaults to `cwd`/`dockb_chapters_dir` and is created + git-initialized when missing.
 
 **Chapter ordering.** Chapters of a document are ordered by the `index` property on their
 `PART_OF` relationship to the document (`rc.index` in the document load Cypher). Insertion and

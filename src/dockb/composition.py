@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import os
+import secrets
+import subprocess
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -45,8 +47,69 @@ from dockb.services.session_context import SessionContext
 
 _stack: ExitStack | None = None
 
+_DOCUMENTS_DIR_NAME = "dockb_chapters_dir"
 
-def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None, document_base_dir: Path | None = None) -> SessionContext:
+
+def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
+    """Return the effective server-owned markdown base directory, provisioning it.
+
+    Defaults to ``cwd/dockb_chapters_dir`` when neither ``DOCKB_CHAPTERS_DIR``
+    nor *base_dir* is set. A missing directory is created, and a directory that
+    is not yet a git repository is ``git init``-ed — the document store owns
+    the repo (its ``git_commit`` requires one).
+    """
+    if base_dir is not None:
+        base = Path(base_dir)
+    else:
+        configured = os.environ.get("DOCKB_CHAPTERS_DIR")
+        if configured:
+            base = Path(configured)
+        else:
+            base = Path.cwd() / _DOCUMENTS_DIR_NAME
+    if not (base / ".git").is_dir():
+        base.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init"],
+            cwd=str(base),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    return base
+
+
+def _build_auth_service(document_base_dir: Path) -> AuthService:
+    """Build the AuthService wired for *document_base_dir*.
+
+    With ``DOCKB_SECRET_KEY`` set the configured OAuth providers (id + secret
+    pairs) enable the login flow. Without a secret there is nothing to sign
+    cookies or encrypt tokens with, so the backend runs in **local mode**: the
+    identity is the OS username, no login is required, and an ephemeral key is
+    used in memory (nothing is signed or encrypted in local mode).
+    """
+    secret = os.environ.get("DOCKB_SECRET_KEY")
+    providers = providers_from_env() if secret is not None else {}
+    if secret is None:
+        secret = secrets.token_hex(32)
+    return AuthService(
+        providers=providers,
+        pending_store=PendingLoginStore(),
+        account_store=AccountStore(base_dir=document_base_dir, secret=secret),
+        session_manager=SessionManager(),
+        signer=SessionSigner(
+            secret,
+            ttl_hours=int(os.environ.get("OAUTH_SESSION_TTL_HOURS", "48")),
+        ),
+    )
+
+
+def wire(  # pylint: disable=too-many-locals
+    session_factory: Any,
+    *,
+    snapshot_base_dir: Path | None = None,
+    document_base_dir: Path | None = None,
+    accounts_base_dir: Path | None = None,
+) -> SessionContext:
     """Wire repositories, services, and session context to route DI globals.
 
     Returns the created SessionContext for use by the caller (e.g. startup
@@ -96,19 +159,9 @@ def wire(session_factory: Any, *, snapshot_base_dir: Path | None = None, documen
         history_svc = HistoryService(reader=reader, chapter_repo=repos[Chapter], uow_factory=uow_factory)
         set_history_service(history_svc)
 
-    if os.environ.get("DOCKB_SECRET_KEY") is not None and document_base_dir is not None:
-        set_auth_service(
-            AuthService(
-                providers=providers_from_env(),
-                pending_store=PendingLoginStore(),
-                account_store=AccountStore(base_dir=document_base_dir, secret=os.environ["DOCKB_SECRET_KEY"]),
-                session_manager=SessionManager(),
-                signer=SessionSigner(
-                    os.environ["DOCKB_SECRET_KEY"],
-                    ttl_hours=int(os.environ.get("OAUTH_SESSION_TTL_HOURS", "48")),
-                ),
-            )
-        )
+    auth_base_dir = accounts_base_dir if accounts_base_dir is not None else document_base_dir
+    if auth_base_dir is not None:
+        set_auth_service(_build_auth_service(auth_base_dir))
 
     return ctx
 

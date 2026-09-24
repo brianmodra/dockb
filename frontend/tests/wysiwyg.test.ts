@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   WysiwygView,
   bufferToDoc,
+  chapterBody,
   docToString,
   findHeadingLines,
 } from "../src/renderer/layout/wysiwyg";
@@ -27,9 +28,9 @@ describe("WysiwygView buffer model", () => {
     expect(docToString(bufferToDoc(buffer))).toBe(buffer);
   });
 
-  it("builds one paragraph per line", () => {
+  it("groups consecutive sentence lines into a single paragraph", () => {
     const doc = bufferToDoc("one\ntwo\nthree") as { childCount: number };
-    expect(doc.childCount).toBe(3);
+    expect(doc.childCount).toBe(1);
   });
 
   it("uses a flat doc with no heading semantics", () => {
@@ -45,6 +46,88 @@ describe("WysiwygView buffer model", () => {
     );
     expect(first.type.name).toBe("paragraph");
     expect(first.textContent).toBe("# H1");
+  });
+
+  it("joins a paragraph's sentence lines with a single space", () => {
+    const doc = bufferToDoc("one\ntwo");
+    const first = (doc as { child: (i: number) => { type: { name: string }; textContent: string } }).child(
+      0,
+    );
+    expect(first.type.name).toBe("paragraph");
+    expect(first.textContent).toBe("one two");
+  });
+
+  it("keeps paragraphs separated by a blank line without an empty paragraph", () => {
+    const doc = bufferToDoc("a\n\nb") as { childCount: number };
+    expect(doc.childCount).toBe(2);
+  });
+
+  it("turns a trailing backslash into a hard line break and hides the escape", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("Line one.\\\nLine two.");
+
+    expect(view.content()).toBe("Line one.\\\nLine two.");
+    expect(view.element.querySelector("br")).not.toBeNull();
+    expect(view.element.textContent).not.toContain("\\");
+  });
+
+  it("splits escaped lines inside a paragraph without empty paragraph blocks", () => {
+    const doc = bufferToDoc("first\\\nsecond");
+    const first = (doc as { child: (i: number) => { type: { name: string } } }).child(0);
+    expect(first.type.name).toBe("paragraph");
+    const firstNode = first as unknown as { forEach: (fn: (n: { type: { name: string }; textContent?: string }) => void) => void };
+    const names: string[] = [];
+    firstNode.forEach((n) => names.push(n.type.name));
+    expect(names).toEqual(["text", "hardBreak", "text"]);
+  });
+
+  it("renders a blank-line paragraph delimiter as a single newline gap", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("One.\n\nTwo.");
+
+    const paragraphs = [...view.element.querySelectorAll("p")];
+    expect(paragraphs).toHaveLength(2);
+    expect(paragraphs.map((p) => p.textContent)).toEqual(["One.", "Two."]);
+    expect(view.content()).toBe("One.\n\nTwo.");
+  });
+});
+
+describe("chapterBody (canonical file → visible body)", () => {
+  it("strips the front-matter block", () => {
+    const buffer = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      "Body text.",
+    ].join("\n");
+    expect(chapterBody(buffer)).toBe("Body text.");
+  });
+
+  it("leaves a buffer without front matter untouched", () => {
+    expect(chapterBody("# Head\n\nBody.")).toBe("# Head\n\nBody.");
+  });
+
+  it("removes paragraph span tags and their own lines", () => {
+    const buffer = [
+      '<span data-par-id="p-1">',
+      "First paragraph line.",
+      "Second line.",
+      "</span>",
+      "",
+      '<span data-par-id="p-2">',
+      "Next paragraph.",
+      "</span>",
+    ].join("\n");
+    expect(chapterBody(buffer)).toBe("First paragraph line.\nSecond line.\n\nNext paragraph.");
+  });
+
+  it("strips inline span tags and unescapes entities", () => {
+    const buffer = 'A <span data-par-id="p-1">Tom &amp; Jerry said &quot;hi&quot;</span>.';
+    expect(chapterBody(buffer)).toBe('A Tom & Jerry said "hi".');
   });
 });
 
@@ -78,7 +161,7 @@ describe("WysiwygView", () => {
     view.setContent("hello\nworld");
 
     expect(view.content()).toBe("hello\nworld");
-    expect(view.element.querySelector("p")?.textContent).toBe("hello");
+    expect(view.element.querySelector("p")?.textContent).toBe("hello world");
   });
 
   it("does not fire onChange for programmatic setContent", () => {
@@ -97,11 +180,11 @@ describe("WysiwygView", () => {
     view.setContent("a\nb");
 
     const tr = view.view.state.tr;
-    tr.insertText("X", 2);
+    tr.insertText("X", 4);
     view.view.dispatch(tr);
 
-    expect(onChange).toHaveBeenCalledWith("aX\nb");
-    expect(view.content()).toBe("aX\nb");
+    expect(onChange).toHaveBeenCalledWith("a\nbX");
+    expect(view.content()).toBe("a\nbX");
   });
 
   it("styling marks heading paragraphs through markdown-it decorations", () => {
@@ -113,13 +196,35 @@ describe("WysiwygView", () => {
     expect(heading?.textContent).toBe("# Title");
   });
 
-  it("decorates each heading line without skipping non-heading lines", () => {
+  it("decorates a heading that starts a paragraph even when followed by body lines", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
     view.setContent("# One\nBody.\n\n## Two");
 
     const headings = [...view.element.querySelectorAll<HTMLElement>(".prose-heading")];
-    expect(headings.map((h) => h.textContent)).toEqual(["# One", "## Two"]);
+    expect(headings.map((h) => h.textContent)).toEqual(["# One Body.", "## Two"]);
+  });
+
+  it("renders the file's body without front matter or span markup", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    const file = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1">',
+      "Chapter text.",
+      "</span>",
+    ].join("\n");
+    view.setContent(file);
+
+    expect(view.content()).toBe("Chapter text.");
+    expect(view.element.querySelector("span")).toBeNull();
+    expect(view.element.textContent).not.toContain("<span");
+    expect(view.element.textContent).not.toContain("title:");
+    expect(view.element.querySelector("p")?.textContent).toBe("Chapter text.");
   });
 
   it("destroy detaches the editor", () => {

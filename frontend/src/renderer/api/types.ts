@@ -6,6 +6,11 @@ export interface UserProfile {
   avatar_url: string;
 }
 
+export interface AuthConfig {
+  login_required: boolean;
+  providers: string[];
+}
+
 export interface DocumentAttrs {
   id: string;
   title: string;

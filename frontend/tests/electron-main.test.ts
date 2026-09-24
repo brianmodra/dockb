@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { BrowserWindow, app, ipcMain } = vi.hoisted(() => {
+const { BrowserWindow, app, ipcMain, Menu } = vi.hoisted(() => {
   const instances: Array<Record<string, unknown>> = [];
   const BrowserWindow = vi.fn(() => {
     const win: Record<string, unknown> = {
@@ -18,14 +18,15 @@ const { BrowserWindow, app, ipcMain } = vi.hoisted(() => {
       on: vi.fn(),
       quit: vi.fn(),
     },
+    Menu: { setApplicationMenu: vi.fn() },
     ipcMain: { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn() },
     instances,
   };
 });
 
-vi.mock("electron", () => ({ app, BrowserWindow, ipcMain }));
+vi.mock("electron", () => ({ app, BrowserWindow, ipcMain, Menu }));
 
-import { createWindow } from "../src/main/main";
+import { createWindow, onAppReady } from "../src/main/main";
 import type { BrowserWindow as BrowserWindowType } from "electron";
 
 beforeEach(() => {
@@ -66,5 +67,10 @@ describe("electron main", () => {
     const win = createWindow() as BrowserWindowType;
     await vi.waitFor(() => expect((win.loadFile as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0));
     expect((win.loadFile as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain("index.html");
+  });
+
+  it("removes the default application menu so the in-window menubar stands alone", () => {
+    onAppReady();
+    expect(Menu.setApplicationMenu).toHaveBeenCalledWith(null);
   });
 });
