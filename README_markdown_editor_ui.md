@@ -180,7 +180,9 @@ Far right, zero width by default, opened by dragging its seam. Purpose reserved 
   **Cancel / Discard / Save and Quit**.
 - **No last document on start** — a list to pick a document from, when app state has none.
 - **Sign in** — first-run (no session): **Sign in** / **Cancel**. Sign in opens the provider in
-  the system browser; after consent, Sign in again to pick up the session.
+  the system browser; after consent, Sign in again to pick up the session. In **local mode** (no
+  OAuth provider configured) this gate is skipped entirely — the backend answers `/api/auth/me`
+  from the OS username (`README_auth.md` §6).
 
 ### Unsaved-change detection (decided)
 
