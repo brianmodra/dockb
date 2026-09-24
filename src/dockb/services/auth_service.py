@@ -65,6 +65,7 @@ class AuthService:
         user_id = self._accounts.upsert_provider_user(
             provider=profile.provider,
             provider_account_id=profile.provider_account_id,
+            username=profile.username,
             email=profile.email,
             display_name=profile.display_name,
             avatar_url=profile.avatar_url,

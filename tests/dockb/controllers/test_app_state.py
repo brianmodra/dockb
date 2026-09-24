@@ -92,7 +92,7 @@ class TestAppState:
         pending = PendingLoginStore()
         sessions = SessionManager()
         signer = SessionSigner("secret", ttl_hours=2)
-        fake = FakeOAuthProvider(provider_account_id="fake-bob", email="bob@example.com", display_name="Bob")
+        fake = FakeOAuthProvider(provider_account_id="fake-bob", username="bob", email="bob@example.com", display_name="Bob")
         set_auth_service(AuthService({"fake": fake}, pending, store, sessions, signer))
         login = self.client.get("/api/auth/login", params={"provider": "fake"})
         state = login.json()["authorization_url"].split("state=")[1].split("&")[0]

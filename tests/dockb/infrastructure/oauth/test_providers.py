@@ -111,6 +111,7 @@ def test_google_profile_parses_userinfo() -> None:
     profile = provider.fetch_profile("at-1")
     assert profile.provider == "google"
     assert profile.provider_account_id == "112233"
+    assert profile.username == "abby@example.com"
     assert profile.email == "abby@example.com"
     assert profile.display_name == "Abby"
     assert profile.avatar_url == "https://img/a.png"
@@ -123,6 +124,7 @@ def test_github_profile_uses_id_and_login() -> None:
 
     profile = _mock_github(handler).fetch_profile("at-1")
     assert profile.provider_account_id == "42"
+    assert profile.username == "abby"
     assert profile.email == "abby@example.com"
     assert profile.display_name == "abby"
 

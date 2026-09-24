@@ -61,6 +61,10 @@ deleting a user cascades to its OAuth links and app state.
 Three tables (`src/dockb/infrastructure/accounts/store.py` owns the exact schema):
 `users`, `oauth_accounts` (per provider account, holding the encrypted refresh `token` and its
 `expires_at`), and `app_state` (per user, holding the editor state the UI record keeps open).
+User identity is the unique `users.username` column everywhere: sessions, cookies, and app state
+carry the username — the OS user in local (non-OAuth) mode, the OAuth profile username otherwise.
+`users` keeps an internal UUID `id` only for the `oauth_accounts` foreign key; `app_state` and the
+public store accessors are keyed by `username`.
 
 The refresh-token `token` column is encrypted with Fernet under a key derived from the server
 secret (`DOCKB_SECRET_KEY`), so the store doubles as a credential store and is treated as one.

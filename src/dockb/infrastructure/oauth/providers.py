@@ -24,6 +24,7 @@ class GoogleProvider(OAuthProvider):
         return OAuthProfile(
             provider=self.name,
             provider_account_id=str(data["sub"]),
+            username=data.get("email", ""),
             email=data.get("email", ""),
             display_name=data.get("name", ""),
             avatar_url=data.get("picture", ""),
@@ -48,6 +49,7 @@ class GitHubProvider(OAuthProvider):
         return OAuthProfile(
             provider=self.name,
             provider_account_id=str(data["id"]),
+            username=str(data.get("login", "")),
             email=email,
             display_name=cast_str(data.get("name")) or str(data.get("login", "")),
             avatar_url=cast_str(data.get("avatar_url")) or "",

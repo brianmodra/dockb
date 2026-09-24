@@ -72,4 +72,10 @@ def test_fake_provider_exchange_and_profile() -> None:
     profile = provider.fetch_profile(result.access_token)
     assert profile.provider == "fake"
     assert profile.provider_account_id == "fake-1"
+    assert profile.username == "fake-user"
     assert profile.email == "real@example.com"
+
+
+def test_fake_provider_custom_username() -> None:
+    profile = FakeOAuthProvider(username="brian").fetch_profile("at")
+    assert profile.username == "brian"

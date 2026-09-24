@@ -28,6 +28,7 @@ class OAuthProfile:
 
     provider: str
     provider_account_id: str
+    username: str
     email: str
     display_name: str
     avatar_url: str

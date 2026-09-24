@@ -25,12 +25,14 @@ class FakeOAuthProvider(OAuthProvider):
         callback_port: int = 8123,
         *,
         provider_account_id: str = "fake-1",
+        username: str = "fake-user",
         email: str = "fake@example.com",
         display_name: str = "Fake User",
         avatar_url: str = "https://fake.example/avatar.png",
     ) -> None:
         super().__init__(client_id, client_secret, callback_port)
         self._account_id = provider_account_id
+        self._username = username
         self._email = email
         self._display_name = display_name
         self._avatar_url = avatar_url
@@ -46,6 +48,7 @@ class FakeOAuthProvider(OAuthProvider):
         return OAuthProfile(
             provider=self.name,
             provider_account_id=self._account_id,
+            username=self._username,
             email=self._email,
             display_name=self._display_name,
             avatar_url=self._avatar_url,
