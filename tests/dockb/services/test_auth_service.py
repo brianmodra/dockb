@@ -29,6 +29,15 @@ def _build(tmp_path):
     return service, store, sessions, fake
 
 
+def _build_local(tmp_path):
+    store = AccountStore(base_dir=tmp_path, secret="secret")
+    pending = PendingLoginStore()
+    sessions = SessionManager()
+    signer = SessionSigner("secret", ttl_hours=2)
+    service = AuthService({}, pending, store, sessions, signer)
+    return service, store, sessions
+
+
 def test_begin_login_returns_consent_url(tmp_path) -> None:
     service, _, _, _ = _build(tmp_path)
     url = service.begin_login("fake")
@@ -102,6 +111,69 @@ def test_get_user_returns_profile(tmp_path) -> None:
     assert profile is not None
     assert profile["email"] == "abby@example.com"
     assert profile["display_name"] == "Abby"
+
+
+def test_complete_login_returns_username(tmp_path) -> None:
+    service, store, sessions, fake = _build(tmp_path)
+    state = service.begin_login("fake").split("state=")[1].split("&")[0]
+    username = service.complete_login(state, "code")
+    assert username == fake.fetch_profile("t").username
+    assert store.get_user(username) is not None
+    assert sessions.get(username) is not None
+
+
+def test_requires_login_is_true_when_providers_configured(tmp_path) -> None:
+    service, _, _, _ = _build(tmp_path)
+    assert service.requires_login
+
+
+def test_requires_login_is_false_in_local_mode(tmp_path) -> None:
+    service, _, _ = _build_local(tmp_path)
+    assert not service.requires_login
+
+
+def test_local_username_from_env(monkeypatch, tmp_path) -> None:
+    service, _, _ = _build_local(tmp_path)
+    monkeypatch.setenv("USER", "dave")
+    assert service.local_username() == "dave"
+
+
+def test_local_username_falls_back_to_getpass(monkeypatch, tmp_path) -> None:
+    import getpass
+
+    service, _, _ = _build_local(tmp_path)
+    monkeypatch.delenv("USER", raising=False)
+    monkeypatch.setattr(getpass, "getuser", lambda: "getpass-user")
+    assert service.local_username() == "getpass-user"
+
+
+def test_ensure_local_user_creates_row(tmp_path) -> None:
+    service, store, _ = _build_local(tmp_path)
+    username = service.ensure_local_user("dave")
+    assert username == "dave"
+    row = store.get_user("dave")
+    assert row is not None
+    assert row["username"] == "dave"
+    assert row["display_name"] == "dave"
+
+
+def test_ensure_local_user_is_idempotent(tmp_path) -> None:
+    service, store, _ = _build_local(tmp_path)
+    first = service.ensure_local_user("dave")
+    second = service.ensure_local_user("dave")
+    assert first == second == "dave"
+    rows = store._connect().execute("SELECT COUNT(*) AS n FROM users WHERE username = ?", ("dave",)).fetchone()
+    assert rows["n"] == 1
+
+
+def test_get_app_state_and_set_keyed_by_username(tmp_path) -> None:
+    service, _, _ = _build_local(tmp_path)
+    service.ensure_local_user("dave")
+    service.set_app_state("dave", {"last_document_id": "doc-2", "edit_mode": "raw"})
+    state = service.get_app_state("dave")
+    assert state is not None
+    assert state["last_document_id"] == "doc-2"
+    assert state["edit_mode"] == "raw"
 
 
 def test_get_user_unknown_returns_none(tmp_path) -> None:

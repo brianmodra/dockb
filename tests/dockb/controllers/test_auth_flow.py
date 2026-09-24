@@ -36,6 +36,14 @@ def _build_service(tmp_path) -> AuthService:
     return AuthService({"fake": fake}, pending, store, sessions, signer)
 
 
+def _build_local_service(tmp_path) -> AuthService:
+    store = AccountStore(base_dir=tmp_path, secret="secret")
+    pending = PendingLoginStore()
+    sessions = SessionManager()
+    signer = SessionSigner("secret", ttl_hours=2)
+    return AuthService({}, pending, store, sessions, signer)
+
+
 class TestLoginEndpoint:
     def setup_method(self) -> None:
         self.app = _make_app()
@@ -142,6 +150,13 @@ class TestMeEndpoint:
         assert user["display_name"] == "Abby"
         assert user["avatar_url"]
 
+    def test_me_returns_username_of_authenticated_user(self, tmp_path) -> None:
+        cookie = self._authenticated_cookie(tmp_path)
+        self.client.cookies.set("dockb_session", cookie)
+        resp = self.client.get("/api/auth/me")
+        assert resp.status_code == 200
+        assert resp.json()["user"]["username"] == "fake-user"
+
     def test_me_with_tampered_cookie_returns_401(self, tmp_path) -> None:
         self._authenticated_cookie(tmp_path)
         self.client.cookies.set("dockb_session", "forged-session")
@@ -154,6 +169,52 @@ class TestMeEndpoint:
         self.client.cookies.set("dockb_session", service.session_cookie("no-such-user"))
         resp = self.client.get("/api/auth/me")
         assert resp.status_code == 401
+
+    def test_me_in_local_mode_without_cookie_returns_local_profile(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("USER", "dave")
+        set_auth_service(_build_local_service(tmp_path))
+        resp = self.client.get("/api/auth/me")
+        assert resp.status_code == 200
+        user = resp.json()["user"]
+        assert user["username"] == "dave"
+        assert user["display_name"] == "dave"
+        assert user["email"] == ""
+
+    def test_me_in_local_mode_is_idempotent(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("USER", "dave")
+        set_auth_service(_build_local_service(tmp_path))
+        assert self.client.get("/api/auth/me").status_code == 200
+        assert self.client.get("/api/auth/me").status_code == 200
+
+    def test_me_in_local_mode_falls_back_to_getpass(self, tmp_path, monkeypatch) -> None:
+        import getpass
+
+        monkeypatch.delenv("USER", raising=False)
+        monkeypatch.setattr(getpass, "getuser", lambda: "local-user")
+        set_auth_service(_build_local_service(tmp_path))
+        resp = self.client.get("/api/auth/me")
+        user = resp.json()["user"]
+        assert user["username"] == "local-user"
+        assert user["avatar_url"] == ""
+
+    def test_me_in_oauth_mode_without_cookie_returns_401(self, tmp_path) -> None:
+        set_auth_service(_build_service(tmp_path))
+        resp = self.client.get("/api/auth/me")
+        assert resp.status_code == 401
+
+
+class TestLocalModeMe:
+    def setup_method(self) -> None:
+        self.app = _make_app()
+        self.client = TestClient(self.app)
+
+    def teardown_method(self) -> None:
+        set_auth_service(None)
+
+    def test_login_endpoint_returns_400_in_local_mode(self, tmp_path) -> None:
+        set_auth_service(_build_local_service(tmp_path))
+        resp = self.client.get("/api/auth/login", params={"provider": "google"})
+        assert resp.status_code == 400
 
     def test_context_check_with_live_session_ok(self, tmp_path) -> None:
         set_auth_service(_build_service(tmp_path))

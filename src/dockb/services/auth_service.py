@@ -3,10 +3,17 @@
 ``AuthService`` is the thin orchestration behind the auth routes: issue a consent
 URL (remembering state + PKCE verifier), complete the loopback callback (validate
 state, exchange the code, upsert the account, encrypt the refresh token, start the
-server-side session), and hand out the signed session cookie. See ``README_auth.md`` §6.
+server-side session), and hand out the signed session cookie.
+
+With no provider configured (``providers={}``) the service runs in **local mode**:
+there is no login step, the identity is the OS username (``local_username()``), and
+``ensure_local_user`` gives it a ``users`` row lazily. See ``README_auth.md``.
 """
 
 from __future__ import annotations
+
+import getpass
+import os
 
 from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
@@ -41,6 +48,19 @@ class AuthService:
         self._sessions = session_manager
         self._signer = signer
 
+    @property
+    def requires_login(self) -> bool:
+        """Whether OAuth login is required (True) or local mode is active (False)."""
+        return bool(self._providers)
+
+    def local_username(self) -> str:
+        """The OS username that is the local-mode identity ($USER, else getpass)."""
+        return os.environ.get("USER") or getpass.getuser()
+
+    def ensure_local_user(self, username: str) -> str:
+        """Return *username*, creating a minimal ``users`` row when it is absent."""
+        return self._accounts.get_or_create_local_user(username)
+
     def begin_login(self, provider: str) -> str:
         """Return the *provider*'s consent URL, remembering state + verifier."""
         oauth_provider = self._providers.get(provider)
@@ -50,7 +70,7 @@ class AuthService:
         return oauth_provider.authorization_url(state, verifier)
 
     def complete_login(self, state: str, code: str) -> str:
-        """Complete the callback: verify state, exchange, upsert, start session. Returns user id."""
+        """Complete the callback: verify state, exchange, upsert, start session. Returns the username."""
         pending = self._pending.consume(state)
         if pending is None:
             raise InvalidLoginStateError("unknown or expired login state")

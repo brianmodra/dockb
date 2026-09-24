@@ -6,7 +6,8 @@ This document explains how DockB users sign in and where their accounts live.
 They authenticate with Google or GitHub; the backend (not the editor) exchanges
 the code, mints its own session cookie, and stores accounts, tokens, and
 per-user app state in a small SQLite database. Provider tokens never reach the
-editor.
+editor. When no OAuth provider is configured the backend runs in **local mode**
+and the identity is simply the OS username (see §6).
 
 The routes, session gate, and app-state endpoints are implemented. On first run
 the editor shows a Sign-in button, then restores the last document or asks the
@@ -99,7 +100,24 @@ Google and GitHub, configured by environment variables:
 Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from the
 consent URL and the token exchange profile.
 
-## 6. Flow in full (reference)
+## 6. Local (non-OAuth) mode (decided)
+
+When neither `OAUTH_GOOGLE_CLIENT_ID` nor `OAUTH_GITHUB_CLIENT_ID` is fully configured, the
+backend runs in **local mode**: OAuth is assumed off, no login step exists, and the identity is
+the OS username (`$USER`, falling back to `getpass.getuser()`). A provider client id without its
+secret also counts as local mode, since a provider is only configured when its id *and* secret
+are both present.
+
+- The session cookie is not required; `get_current_user` falls back to the local username and
+  `ensure_local_user` creates the minimal `users` row lazily (display name = username, empty
+  email/avatar).
+- `/api/auth/me` answers with that local profile, so the editor's first-run gate is skipped
+  automatically.
+- Auth wiring still requires the plain wiring (see §7): `DOCKB_SECRET_KEY` + `DOCKB_CHAPTERS_DIR`.
+- Per-user app state is keyed by the local username, so two OS users on the same machine get
+  separate state.
+
+## 7. Flow in full (reference)
 
 1. User clicks "Sign in" in the editor. The editor asks the backend for a login URL
    (`GET /api/auth/login?provider=google`), which returns the provider consent URL with `state` and
@@ -112,12 +130,12 @@ consent URL and the token exchange profile.
    `PUT /api/app/state` are then per-user as the UI record requires; `GET /api/auth/me` returns the
    signed-in user's profile and doubles as a session check from the editor.
 
-## 7. Open questions
+## 8. Open questions
 
 1. Account merging — the same email under two providers. Currently each provider account is its own
    `users` row; decide whether to link by verified email.
 
-## 8. Resolved questions
+## 9. Resolved questions
 
 Settled while the design was implemented:
 

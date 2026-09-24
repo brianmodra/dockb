@@ -92,13 +92,20 @@ def get_current_user(
     request: Request,
     svc: Any = Depends(get_auth_service),
 ) -> str:
-    """Resolve the authenticated user id from the session cookie (401 when absent)."""
+    """Resolve the authenticated username from the session cookie.
+
+    In OAuth mode a valid cookie is required (401 without it). In local mode — no
+    provider configured — the identity is the OS username and no cookie is needed;
+    the local ``users`` row is created lazily.
+    """
     if svc is None:
         raise HTTPException(status_code=401, detail="not_authenticated")
     token = request.cookies.get(_SESSION_COOKIE, "")
     user_id: str | None = svc.authenticate_cookie(token)
-    if user_id is None:
+    if user_id is None and svc.requires_login:
         raise HTTPException(status_code=401, detail="not_authenticated")
+    if user_id is None:
+        user_id = svc.ensure_local_user(svc.local_username())
     return user_id
 
 
@@ -124,6 +131,7 @@ def auth_me(
     return {
         "user": {
             "id": profile["id"],
+            "username": profile["username"],
             "email": profile["email"],
             "display_name": profile["display_name"],
             "avatar_url": profile["avatar_url"],

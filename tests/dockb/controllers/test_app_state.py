@@ -33,6 +33,14 @@ def _build_service(tmp_path) -> AuthService:
     return AuthService({"fake": fake}, pending, store, sessions, signer)
 
 
+def _build_local_service(tmp_path) -> AuthService:
+    store = AccountStore(base_dir=tmp_path, secret="secret")
+    pending = PendingLoginStore()
+    sessions = SessionManager()
+    signer = SessionSigner("secret", ttl_hours=2)
+    return AuthService({}, pending, store, sessions, signer)
+
+
 class TestAppState:
     def setup_method(self) -> None:
         self.app = _make_app()
@@ -98,6 +106,29 @@ class TestAppState:
         state = login.json()["authorization_url"].split("state=")[1].split("&")[0]
         callback = self.client.get("/callback", params={"code": "the-code", "state": state})
         assert callback.status_code == 200
+        got = self.client.get("/api/app/state")
+        assert got.json()["last_document_id"] is None
+
+    def test_local_mode_state_uses_os_username(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("USER", "dave")
+        set_auth_service(_build_local_service(tmp_path))
+        put = self.client.put("/api/app/state", json={"last_document_id": "doc-9"})
+        assert put.status_code == 200
+        got = self.client.get("/api/app/state")
+        assert got.status_code == 200
+        assert got.json()["last_document_id"] == "doc-9"
+
+    def test_local_mode_state_no_cookie_required(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("USER", "dave")
+        set_auth_service(_build_local_service(tmp_path))
+        assert self.client.get("/api/app/state").status_code == 200
+
+    def test_local_mode_state_is_per_os_user(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("USER", "dave")
+        set_auth_service(_build_local_service(tmp_path))
+        self.client.put("/api/app/state", json={"last_document_id": "dave-doc"})
+        monkeypatch.setenv("USER", "kate")
+        set_auth_service(_build_local_service(tmp_path))
         got = self.client.get("/api/app/state")
         assert got.json()["last_document_id"] is None
 
