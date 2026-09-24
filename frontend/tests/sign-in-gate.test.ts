@@ -4,8 +4,8 @@ import type { ApiClient } from "../src/renderer/api/client";
 import type { DockbBridge } from "../src/renderer/api/bridge";
 import { ApiError } from "../src/renderer/api/http";
 
-function user(): { id: string; email: string; display_name: string; avatar_url: string } {
-  return { id: "u-1", email: "a@b.c", display_name: "A", avatar_url: "" };
+function user(): { id: string; username: string; email: string; display_name: string; avatar_url: string } {
+  return { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" };
 }
 
 function fakeApi(overrides: Record<string, unknown> = {}): ApiClient {

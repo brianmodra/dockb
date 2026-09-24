@@ -40,7 +40,8 @@ Run these from `frontend/`:
 The shell lives in `src/renderer/layout/` and matches
 `../README_markdown_editor_ui.md`. Modules:
 
-- `layout.ts` — window chrome, panel seams, mode, dirty badge, message sink.
+- `layout.ts` — window chrome, panel seams, mode, dirty badge, menubar username
+  label, message sink.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
   of the same canonical buffer; dirty = buffer vs last canonical.
 - `menubar.ts` — File (Save, Quit), Mode, Settings.
@@ -60,9 +61,10 @@ the message panel (`onMessage`).
 ### Startup and quit
 
 `mountShell` checks the session, then either the sign-in gate or
-`runStartup` (restore last document, or pick one). Mode, panel widths, and last
-document persist via `GET/PUT /api/app/state`. File → Quit asks to save when
-dirty, then sends the `quit` IPC channel.
+`runStartup` (restore last document, or pick one), and shows the signed-in
+username in the menubar. Mode, panel widths, and last document persist via
+`GET/PUT /api/app/state`. File → Quit asks to save when dirty, then sends the
+`quit` IPC channel.
 
 ## Layout
 

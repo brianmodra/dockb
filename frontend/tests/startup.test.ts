@@ -8,8 +8,8 @@ function state(overrides: Partial<AppState> = {}): AppState {
   return { last_document_id: null, panel_widths: null, edit_mode: null, ...overrides };
 }
 
-function user(): { id: string; email: string; display_name: string; avatar_url: string } {
-  return { id: "u-1", email: "a@b.c", display_name: "A", avatar_url: "" };
+function user(): { id: string; username: string; email: string; display_name: string; avatar_url: string } {
+  return { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" };
 }
 
 afterEach(() => {

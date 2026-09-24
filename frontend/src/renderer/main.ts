@@ -78,8 +78,10 @@ async function boot(
   controller: AppStateController,
 ): Promise<void> {
   let signedIn = true;
+  let user: import("./api/types").UserProfile | null = null;
   try {
-    signedIn = (await checkSession(api)) !== null;
+    user = await checkSession(api);
+    signedIn = user !== null;
   } catch {
     signedIn = false;
   }
@@ -94,6 +96,10 @@ async function boot(
     if (!ok) {
       return;
     }
+    user = await checkSession(api);
+  }
+  if (user) {
+    layout.setUser(user.username);
   }
 
   const savedState = await controller.load();

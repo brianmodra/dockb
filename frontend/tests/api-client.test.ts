@@ -194,11 +194,12 @@ describe("ApiClient errors and auth", () => {
 
   it("gets the current user profile", async () => {
     mockFetch(200, {
-      user: { id: "u-1", email: "a@b.c", display_name: "A", avatar_url: "" },
+      user: { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" },
     });
     const client = new ApiClient();
     const me = await client.getMe();
     expect(me.id).toBe("u-1");
+    expect(me.username).toBe("abby");
     expect(fetchCalls()[0].url).toBe("/api/auth/me");
   });
 

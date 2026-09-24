@@ -104,4 +104,23 @@ describe("AppLayout", () => {
     layout.setDirty(false);
     expect(badge.hidden).toBe(true);
   });
+
+  it("renders the signed-in username in the menubar", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.setUser("brian");
+    const label = layout.element.querySelector<HTMLElement>('[data-testid="user-label"]')!;
+    expect(label).not.toBeNull();
+    expect(label.textContent).toBe("brian");
+  });
+
+  it("replaces the username label on setUser again", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.setUser("brian");
+    layout.setUser("kate");
+    const label = layout.element.querySelector<HTMLElement>('[data-testid="user-label"]')!;
+    expect(label.textContent).toBe("kate");
+    expect(layout.element.querySelectorAll('[data-testid="user-label"]')).toHaveLength(1);
+  });
 });

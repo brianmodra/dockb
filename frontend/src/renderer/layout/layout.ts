@@ -22,6 +22,7 @@ export class AppLayout {
   private readonly leftPanel: HTMLElement;
   private editPanel!: HTMLElement;
   private readonly dirtyIndicator: HTMLElement;
+  private readonly userLabel: HTMLElement;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
   }
@@ -62,6 +63,13 @@ export class AppLayout {
     dirty.hidden = true;
     menubar.element.append(dirty);
     this.dirtyIndicator = dirty;
+
+    const user = document.createElement("div");
+    user.dataset.testid = "user-label";
+    user.className = "user-label";
+    user.hidden = true;
+    menubar.element.append(user);
+    this.userLabel = user;
 
     const editPanel = this.panel("panel-edit");
     this.editPanel = editPanel;
@@ -144,6 +152,11 @@ export class AppLayout {
 
   setDirty(dirty: boolean): void {
     this.dirtyIndicator.hidden = !dirty;
+  }
+
+  setUser(username: string): void {
+    this.userLabel.textContent = username;
+    this.userLabel.hidden = false;
   }
 
   private panel(name: string): HTMLElement {

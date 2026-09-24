@@ -23,10 +23,11 @@ afterEach(() => {
 describe("checkSession", () => {
   it("returns the user when /api/auth/me succeeds", async () => {
     mockFetch(200, {
-      user: { id: "u-1", email: "a@b.c", display_name: "A", avatar_url: "" },
+      user: { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" },
     });
     const user = await checkSession(new ApiClient());
     expect(user?.id).toBe("u-1");
+    expect(user?.username).toBe("abby");
   });
 
   it("returns null on 401 (no session)", async () => {

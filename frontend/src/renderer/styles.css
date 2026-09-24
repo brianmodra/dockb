@@ -32,6 +32,13 @@ body {
   user-select: none;
 }
 
+[data-testid="user-label"] {
+  margin-left: auto;
+  padding: 2px 8px;
+  color: #555;
+  font-size: 12px;
+}
+
 .menu {
   position: relative;
 }
