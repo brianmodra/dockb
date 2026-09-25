@@ -39,6 +39,8 @@ The back end is where the manuscript's structure and meaning live. It is a FastA
 
 The back end also keeps a version history of each chapter. Every time a chapter changes, it writes a markdown snapshot committed to a local git repository, and the author can later list those snapshots or restore any one of them. The documentation under `src/dockb/` describes each layer of this service — the models, how data is stored and retrieved, the analysis jobs, and the API endpoints that tie it all together — and it is currently being reshaped around the redesign that makes markdown the single source of truth.
 
+Every HTTP request also logs one INFO line (`src/dockb/timing.py`) with the total time and a per-stage breakdown, so a slow open shows exactly where the time went, e.g. `request GET /api/chapters/c1/document 200 220ms | repo.chapter.load 3ms, repo.chapter.find_document_id 1ms, repo.document.load 18ms, stage.apply_chapter_file 190ms, stage.git_commit 6ms, stage.read_chapter 2ms`. The stage names come from `measure()` calls in the service code; outside an HTTP request they are no-ops, so the backend behaves identically in unit tests and from the CLI.
+
 ## Further reading
 
 - [`README_markdown_redesign.md`](README_markdown_redesign.md) — the markdown-based redesign decision and plan.
