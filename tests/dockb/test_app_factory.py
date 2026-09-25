@@ -4,7 +4,7 @@
 ``wire`` connects repositories, services, and route handlers at startup.
 """
 
-# pylint: disable=unused-argument
+# pylint: disable=unused-argument,too-few-public-methods
 
 from __future__ import annotations
 
@@ -485,3 +485,104 @@ class TestResolveDocumentBaseDir:
 
         assert base == existing
         assert marker.read_text(encoding="utf-8") == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Request timing middleware
+# ---------------------------------------------------------------------------
+
+
+class TestTimingMiddleware:
+    """TimingMiddleware logs a per-request total plus a stage breakdown."""
+
+    def test_timing_middleware_registered_outermost(self) -> None:
+        from dockb.app_factory import create_app
+        from dockb.timing import TimingMiddleware
+
+        app = create_app()
+        middleware_classes = [m.cls for m in app.user_middleware]
+        assert middleware_classes[0] is TimingMiddleware
+
+    def test_request_logs_total_and_stage_breakdown(self, caplog) -> None:
+        # The chapter-document route is a sync ``def``, so FastAPI runs it in a
+        # threadpool: this exercises stage accumulation across that hop.
+        import logging
+        import re
+        import time
+
+        from fastapi.testclient import TestClient
+
+        from dockb.app_factory import create_app
+        from dockb.controllers.chapters import set_ch_service
+        from dockb.timing import measure
+
+        class FakeChapterService:
+            def open_document(self, chapter_id: str) -> str | None:
+                with measure("fake.slow_stage"):
+                    time.sleep(0.005)
+                return "canonical text"
+
+        set_ch_service(FakeChapterService())
+        try:
+            caplog.set_level(logging.INFO, logger="dockb.timing")
+            client = TestClient(create_app())
+            response = client.get("/api/chapters/c1/document")
+            assert response.status_code == 200
+            lines = [r.message for r in caplog.records if r.name == "dockb.timing"]
+            assert any(
+                re.match(
+                    r"^request GET /api/chapters/c1/document 200 \d+ms \| fake.slow_stage \d+ms$",
+                    line,
+                )
+                for line in lines
+            )
+        finally:
+            set_ch_service(None)
+
+    def test_request_without_stages_logs_total_only(self, caplog) -> None:
+        import logging
+        import re
+
+        from fastapi.testclient import TestClient
+
+        from dockb.app_factory import create_app
+        from dockb.controllers.chapters import set_ch_service
+
+        class QuietService:
+            def open_document(self, chapter_id: str) -> str | None:
+                return "text"
+
+        set_ch_service(QuietService())
+        try:
+            caplog.set_level(logging.INFO, logger="dockb.timing")
+            client = TestClient(create_app())
+            response = client.get("/api/chapters/c1/document")
+            assert response.status_code == 200
+            lines = [r.message for r in caplog.records if r.name == "dockb.timing"]
+            assert any(re.match(r"^request GET /api/chapters/c1/document 200 \d+ms$", line) for line in lines)
+        finally:
+            set_ch_service(None)
+
+    def test_raised_exception_logs_status_500(self, caplog) -> None:
+        import logging
+        import re
+
+        from fastapi.testclient import TestClient
+
+        from dockb.app_factory import create_app
+        from dockb.controllers.chapters import set_ch_service
+
+        class FailingService:
+            def open_document(self, chapter_id: str) -> str | None:
+                raise RuntimeError("boom")
+
+        set_ch_service(FailingService())
+        try:
+            caplog.set_level(logging.INFO, logger="dockb.timing")
+            client = TestClient(create_app(), raise_server_exceptions=False)
+            response = client.get("/api/chapters/c1/document")
+            assert response.status_code == 500
+            lines = [r.message for r in caplog.records if r.name == "dockb.timing"]
+            assert any(re.match(r"^request GET /api/chapters/c1/document 500 \d+ms$", line) for line in lines)
+        finally:
+            set_ch_service(None)

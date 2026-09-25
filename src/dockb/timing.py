@@ -9,10 +9,17 @@ alias so tests can drive a fake clock.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
+
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
+
+logger = logging.getLogger(__name__)
 
 _timings_var: ContextVar[Timings | None] = ContextVar("dockb_timings", default=None)
 
@@ -67,3 +74,37 @@ def measure(name: str) -> AbstractContextManager[None]:
     if timings is None:
         return nullcontext()
     return timings.measure(name)
+
+
+class TimingMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
+    """Log one INFO line per HTTP request: total time plus stage breakdown.
+
+    Installs a fresh :class:`Timings` for the request so ``measure()`` calls in
+    services accumulate a per-stage breakdown, and wraps ``call_next`` in a
+    timer for the total. Falls back to status 500 when the request raises.
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        with trace() as timings:
+            start = _perf_counter()
+            try:
+                response = await call_next(request)
+            except Exception:
+                self._log(request, 500, start, timings)
+                raise
+            self._log(request, response.status_code, start, timings)
+            return response
+
+    @staticmethod
+    def _log(request: Request, status: int, start: float, timings: Timings) -> None:
+        total_ms = (_perf_counter() - start) * 1000
+        breakdown = timings.summary()
+        suffix = f" | {breakdown}" if breakdown else ""
+        logger.info(
+            "request %s %s %s %.0fms%s",
+            request.method,
+            request.url.path,
+            status,
+            total_ms,
+            suffix,
+        )

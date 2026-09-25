@@ -16,6 +16,7 @@ from dockb.controllers.history import router as history_router
 from dockb.controllers.notifications import router as notifications_router
 from dockb.controllers.paragraphs import router as paragraphs_router
 from dockb.controllers.sentences import router as sentences_router
+from dockb.timing import TimingMiddleware
 
 # The Electron shell loads the built renderer from file://, whose Origin is the
 # literal "null"; served development flows arrive from the Vite dev server.
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    application.add_middleware(TimingMiddleware)
     application.include_router(documents_router)
     application.include_router(auth_router)
     application.include_router(app_state_router)
