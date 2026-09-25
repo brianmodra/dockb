@@ -2,6 +2,7 @@
 
 # pylint: disable=invalid-name
 
+import logging
 import os
 from pathlib import Path
 
@@ -11,6 +12,12 @@ from dotenv import load_dotenv
 from dockb.app_factory import create_app
 from dockb.composition import resolve_document_base_dir, unwire, wire
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
+
+# uvicorn's default logging config attaches handlers only to its own loggers
+# (uvicorn, uvicorn.error, uvicorn.access), leaving the root logger without a
+# handler; application logs such as dockb.timing's INFO request timings would
+# otherwise be silently dropped. Give the root logger an INFO stderr handler.
+logging.basicConfig(level=logging.INFO)
 
 app = create_app()
 
