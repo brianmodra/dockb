@@ -31,6 +31,7 @@ from dockb.models.sentence import Sentence
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
+from dockb.timing import measure
 
 if TYPE_CHECKING:
     from spacy.language import Language
@@ -305,28 +306,35 @@ class ChapterService:
         """
         if self._document_store is None or self._nlp is None or self._document_repo is None:
             return None
-        ch = self._chapter_repo.load(chapter_id)
+        with measure("repo.chapter.load"):
+            ch = self._chapter_repo.load(chapter_id)
         if ch is None:
             return None
-        document_id = self._chapter_repo.find_document_id(chapter_id)
+        with measure("repo.chapter.find_document_id"):
+            document_id = self._chapter_repo.find_document_id(chapter_id)
         if document_id is None:
             return None
-        document = self._document_repo.load(document_id)
+        with measure("repo.document.load"):
+            document = self._document_repo.load(document_id)
         if document is None:
             return None
         with self._save_scope(chapter_id):
             if not self._document_store.chapter_exists(document_id, chapter_id):
-                self._materialize_chapter(self._document_store, document_id, ch)
+                with measure("stage.materialize"):
+                    self._materialize_chapter(self._document_store, document_id, ch)
             else:
-                apply_chapter_file(
-                    document,
-                    self._document_store.chapter_file(document_id, chapter_id),
-                    self._nlp,
-                    self._chapter_repo,
-                    self._uow_factory,
-                )
-                self._document_store.git_commit(document_id, f"open: chapter {chapter_id[:8]}")
-        return self._document_store.read_chapter(document_id, chapter_id)
+                with measure("stage.apply_chapter_file"):
+                    apply_chapter_file(
+                        document,
+                        self._document_store.chapter_file(document_id, chapter_id),
+                        self._nlp,
+                        self._chapter_repo,
+                        self._uow_factory,
+                    )
+                with measure("stage.git_commit"):
+                    self._document_store.git_commit(document_id, f"open: chapter {chapter_id[:8]}")
+        with measure("stage.read_chapter"):
+            return self._document_store.read_chapter(document_id, chapter_id)
 
     def _materialize_chapter(self, store: DocumentStore, document_id: str, ch: Chapter) -> None:
         """Write the chapter's owned markdown file from the graph and git-commit it."""

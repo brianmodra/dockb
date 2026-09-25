@@ -6,6 +6,7 @@ with lightweight stubs so the tests exercise only the service logic.
 
 from __future__ import annotations
 
+# pylint: disable=too-many-lines
 import subprocess
 from pathlib import Path
 
@@ -291,7 +292,7 @@ class TestDocumentService:
 # ---------------------------------------------------------------------------
 
 
-class TestChapterService:  # pylint: disable=too-many-public-methods
+class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-locals
     def setup_method(self) -> None:
         self.repo = StubChapterRepo()
         self.uow = StubUnitOfWork()
@@ -839,6 +840,84 @@ class TestChapterService:  # pylint: disable=too-many-public-methods
         log = subprocess.run(["git", "log", "--format=%H"], cwd=str(tmp_path), capture_output=True, text=True, check=False)
         assert log.returncode == 0
         assert log.stdout.strip()
+
+    def test_open_document_records_stage_timings(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.models.token import Token
+        from dockb.timing import trace
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Old text.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        ch.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_chapter("d1", "c1", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        with trace() as timings:
+            content = svc.open_document("c1")
+
+        assert content is not None
+        names = [part.split(" ")[0] for part in timings.summary().split(", ")]
+        assert names == [
+            "repo.chapter.load",
+            "repo.chapter.find_document_id",
+            "repo.document.load",
+            "stage.apply_chapter_file",
+            "stage.git_commit",
+            "stage.read_chapter",
+        ]
+
+    def test_open_document_records_materialize_stage(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.timing import trace
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        with trace() as timings:
+            content = svc.open_document("c1")
+
+        assert content is not None
+        names = [part.split(" ")[0] for part in timings.summary().split(", ")]
+        assert names == [
+            "repo.chapter.load",
+            "repo.chapter.find_document_id",
+            "repo.document.load",
+            "stage.materialize",
+            "stage.read_chapter",
+        ]
 
 
 # ---------------------------------------------------------------------------
