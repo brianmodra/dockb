@@ -881,6 +881,10 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             "repo.chapter.find_document_id",
             "repo.document.load",
             "stage.apply_chapter_file",
+            "stage.parse_file",
+            "stage.spacy",
+            "stage.persist",
+            "stage.render",
             "stage.git_commit",
             "stage.read_chapter",
         ]

@@ -395,6 +395,74 @@ class TestExistingChapter:
         assert summary.changed == 1
 
 
+class TestApplyChapterFileTiming:
+    """apply_chapter_file records its sub-stages in the active trace."""
+
+    @staticmethod
+    def _names(timings) -> list[str]:
+        return [part.split(" ")[0] for part in timings.summary().split(", ")]
+
+    def test_changed_apply_records_parse_spacy_persist_render(self, nlp, tmp_path) -> None:
+        from dockb.timing import trace
+
+        file = tmp_path / "c1.md"
+        file.write_text('<span data-par-id="p1">New text.</span>')
+        loaded = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Old text.")))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        with trace() as timings:
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert self._names(timings) == [
+            "stage.parse_file",
+            "stage.spacy",
+            "stage.persist",
+            "stage.render",
+        ]
+
+    def test_unchanged_apply_records_only_parse(self, nlp, tmp_path) -> None:
+        from dockb.timing import trace
+
+        file = tmp_path / "Empty.md"
+        file.write_text("")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow_factory.get_unit_of_work.return_value = MagicMock()
+
+        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        persisted = Chapter(id=first.chapter_id, title="Empty", state=DataState.SYNC)
+        document.append_child(persisted)
+        chapter_repo.load.return_value = persisted
+
+        with trace() as timings:
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert self._names(timings) == ["stage.parse_file"]
+
+    def test_created_apply_records_parse_spacy_persist_render(self, nlp, tmp_path) -> None:
+        from dockb.timing import trace
+
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("Para one sentence.\n\nPara two sentence.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        with trace() as timings:
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert self._names(timings) == [
+            "stage.parse_file",
+            "stage.spacy",
+            "stage.persist",
+            "stage.render",
+        ]
+
+
 class TestNewParagraphPlacement:
     def _write_spanned(self, tmp_path, header, body):
         file = tmp_path / "c1.md"

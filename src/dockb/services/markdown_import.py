@@ -30,6 +30,7 @@ from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
 from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer
+from dockb.timing import measure
 
 logger = logging.getLogger(__name__)
 
@@ -69,22 +70,23 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     on inside it (see ``detect_changes``); the write-back is always canonical.
     """
     path = Path(file_path)
-    content = path.read_text(encoding="utf-8")
+    with measure("stage.parse_file"):
+        content = path.read_text(encoding="utf-8")
 
-    cached: dict[str, Chapter | None] = {}
+        cached: dict[str, Chapter | None] = {}
 
-    def load_once(chapter_id: str) -> Chapter | None:
-        if chapter_id not in cached:
-            cached[chapter_id] = chapter_repo.load(chapter_id)
-        return cached[chapter_id]
+        def load_once(chapter_id: str) -> Chapter | None:
+            if chapter_id not in cached:
+                cached[chapter_id] = chapter_repo.load(chapter_id)
+            return cached[chapter_id]
 
-    diff = detect_changes(
-        content,
-        get_chapter=load_once,
-        create_chapter=_skeleton,
-        title_fallback=path.stem,
-        single_newline_paragraphs=single_newline_paragraphs,
-    )
+        diff = detect_changes(
+            content,
+            get_chapter=load_once,
+            create_chapter=_skeleton,
+            title_fallback=path.stem,
+            single_newline_paragraphs=single_newline_paragraphs,
+        )
     chapter_id = diff.chapter_id
 
     if diff.created and diff.front_id is not None:
@@ -95,7 +97,8 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     if not diff:
         if diff.created:
             chapter = _build_chapter(chapter_id, diff, None)
-            _persist(uow_factory, document.id, chapter, [], [], nlp)
+            with measure("stage.persist"):
+                _persist(uow_factory, document.id, chapter, [], [], nlp)
             _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
         return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
 
@@ -104,11 +107,14 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     for paragraph_id in diff.deleted:
         chapter.delete_child(paragraph_id)
 
-    changed_paragraphs = [_apply_changed(chapter, changed, nlp) for changed in diff.changed]
-    added_paragraphs = _place_new_paragraphs(chapter, diff.new, nlp)
+    with measure("stage.spacy"):
+        changed_paragraphs = [_apply_changed(chapter, changed, nlp) for changed in diff.changed]
+        added_paragraphs = _place_new_paragraphs(chapter, diff.new, nlp)
 
-    _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp)
-    _write_back_chapter_file(path, chapter, nlp)
+    with measure("stage.persist"):
+        _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp)
+    with measure("stage.render"):
+        _write_back_chapter_file(path, chapter, nlp)
 
     return ChapterImportSummary(
         chapter_id=chapter.id,
