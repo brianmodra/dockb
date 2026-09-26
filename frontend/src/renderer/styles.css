@@ -293,6 +293,31 @@ body {
   background: #e8f1fb;
 }
 
+.language-settings-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.language-settings-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.language-settings-item:hover {
+  background: #f2f2f0;
+}
+
+.language-settings-item--current {
+  background: #e8f1fb;
+}
+
 [data-testid="panel-edit"] {
   flex: 1;
   background: #fff;
