@@ -2,20 +2,16 @@
 
 ## Executive Summary
 
-This document is the design record for making markdown DockB's source of truth. Each chapter is a
-markdown file whose text is canonical; the backend rehydrates the knowledge graph from it, and the
-file format lays each paragraph out as one identity span holding its sentences one per line, so
-paragraph identity survives serialization and line-based git merges stay at sentence granularity.
-It records the decisions — drop the editor front end, make the save-and-rehydrate path synchronous,
-carry paragraph identity in the format, give the backend ownership of the markdown files and the
-git repo, and check syntax in two interactive layers — remark-lint structure lint in the editor and
-backend prose/NLP validation, neither part of the save path — and the alternatives that lost to them.
+This document records why markdown is DockB's source of truth and what fell out of that decision.
+Each chapter is a markdown file whose text is canonical: the backend rehydrates the knowledge
+graph from it, paragraph identity travels in `data-par-id` spans holding the sentences one per
+line, and the backend alone owns the files, the title/act-keyed tree, and its git repo. It records
+the decisions — drop the editor front end, synchronous save-and-rehydrate, span-based paragraph
+identity, interactive-only syntax checking — and the alternatives that lost to them.
 
-Read this to learn why the format is what it is, how saving rehydrates through the backend, how
-validity surfaces interactively as diagnostics anchored to the sentence text, and what is still open
-before the design can be trusted. The concrete format and its one implementation live
-in `src/dockb/infrastructure/markdown/` and its README; this document is the rationale behind them
-and the roadmap for what comes after.
+Read this for the rationale and the roadmap. The live behavior lives in the code under `src/dockb/`
+(especially `infrastructure/document_store/` and `infrastructure/markdown/`) and their READMEs;
+this document is the record of why the format and ownership model are what they are.
 
 ## 1. The problem we were trying to solve
 

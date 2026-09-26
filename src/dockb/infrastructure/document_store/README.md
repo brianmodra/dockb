@@ -2,15 +2,11 @@
 
 ## Executive Summary
 
-The document store owns the server-side markdown file tree that backs the document
-lifecycle described in `README_markdown_redesign.md`. The backend, not the editor,
-writes these files: one directory per document title, holding a `document_metadata.yaml`
-(title/author) and one `<chapter title>.md` per chapter under its `Act <name>`
-directory (an empty act lives under `Act None`). The store resolves those paths from
-titles only and rejects any title that could escape the base directory, so never a
-title-derived path outside the tree.
-
-Read this to learn what the on-disk layout is, and where a document's files live.
+DockB's markdown-is-source-of-truth design lives on disk in the document store: a tree of
+chapter files that the backend — never the editor — writes, keyed by titles the graph owns, so
+paths are always under the store's control. Read this to learn the on-disk layout, how title
+paths are kept escape-proof, and how the store's git commits work. Hydration of a file back into
+the knowledge graph is the caller's job, not the store's.
 
 ## Layout
 
@@ -64,7 +60,7 @@ shared with the directory import in `services/markdown_import.py`.
 The base directory is a git repository (the server owns it, as described in
 `README_markdown_redesign.md`). `git_commit(document_title, message)` stages only
 the document's directory — `git add -- <document_title>` — and commits it;
-whether anything is staged is decided by `git status --porcelain -- <document_id>`
+whether anything is staged is decided by `git status --porcelain -- <document_title>`
 alone, so unrelated untracked files left in the tree (e.g. runtime state) are
 never committed and never trip the commit. A document with nothing new to
 commit is a no-op — the call does not fail on git's "nothing to commit". This

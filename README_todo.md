@@ -2,17 +2,9 @@
 
 ## Executive Summary
 
-This is a running list of DockB work that is known but not done yet. Each
-entry says what is missing and points at the design doc for it. Delete an
-entry when it is finished.
-
-## Purpose
-
-This file is a running log of things we discover while developing DockB that have not been done
-yet, but need to be done later. A hardware or design constraint may push them off, or they are
-milestones behind the current work; either way they get noted here so nothing is forgotten. Each
-entry names what is missing and points at the docs that describe the intended design. When an
-entry is completed, delete it.
+`README_todo.md` is the running list of DockB work that is known but not done yet, so nothing
+discovered while developing is forgotten. Each entry names what is missing and points at the
+design document for it; delete an entry when it is finished.
 
 ## Entries
 
