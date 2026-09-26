@@ -8,7 +8,8 @@ renders one chapter from the graph back out as markdown — into the server-owne
 an exact path with `--out`. Both connect to Neo4j with the same `NEO4J_URL`, `NEO4J_USER`,
 `NEO4J_PASSWORD` environment variables (or `.env`) the API server uses. Chapter files are found
 only inside `Act <name>` directories whose names number the acts (digits, Roman, or Unicode
-numerals); each file's trailing number — with at most one letter — sets its sequence in the graph.
+numerals); each file's sequence number — trailing at the end or embedded between spaces, with at
+most one letter — sets its order in the graph.
 
 ## Import a document directory
 
@@ -23,8 +24,9 @@ Chapters live only inside top-level `Act <name>` subdirectories: the act's name 
 `Act None` directory holding the act-less chapters first. Root-level files and directories not
 named `Act <name>` hold no chapters and are skipped. A chapter file's act derives from its
 containing directory (used verbatim), which wins over any front-matter `act`. Within an act each
-file is imported in the order of the trailing number of its name, with at most one letter (5, 5a,
-5b, 6). A file that is not numbered, two acts numbering the same, or two files in one act
+file is imported in the order of the sequence number in its name — trailing at the end or embedded
+between spaces — with at most one letter (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48). A file
+that is not numbered, two acts numbering the same, or two files in one act
 numbering the same abort the import. See
 `../infrastructure/changes/README.md` for the diffing behavior.
 

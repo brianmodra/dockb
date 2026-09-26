@@ -152,7 +152,9 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     matter. Root-level files and non-act directories hold no chapters and are
     skipped. Acts are processed by the number their name carries (digits or
     Roman numerals, ``Act None`` first), and files within an act by their
-    trailing sequence number with optional letter (5, 5a, 5b, 6), each new
+    sequence number with optional letter, trailing at the end of or embedded
+    between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" →
+    48), each new
     chapter following the previous file into the graph. The whole directory is
     imported into a single Document, resolved by its metadata (see
     ``_read_document_metadata``/``_resolve_document``), and one summary is
@@ -181,7 +183,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     return summaries
 
 
-_CHAPTER_SEQUENCE_RE = re.compile(r"(\d+)([A-Za-z])?$")
+_CHAPTER_SEQUENCE_RE = re.compile(r"(?<=\s)(\d+)([A-Za-z]?)(?=\s)|(\d+)([A-Za-z]?)$")
 _ROMAN_RE = re.compile(r"M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})")
 _ROMAN_DIGITS = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
 _UNICODE_ROMAN = str.maketrans(
@@ -262,14 +264,20 @@ def _parse_act_directory(subdir: Path) -> tuple[int, str]:
 def _chapter_sort_key(file_path: Path) -> tuple[int, str]:
     """Return the ``(number, letter)`` ordering key for a chapter file.
 
-    The stem must end in digits with at most one trailing letter — ``Opening
-    5`` → ``(5, '')``, ``Setup 5b`` → ``(5, 'b')``. A stem that does not is
-    not a numbered chapter and raises ValueError.
+    The sequence number is the rightmost digits in the stem carrying at most
+    one trailing letter, sitting either at the end of the name (``Opening 5``
+    → ``(5, '')``, ``Setup 5b`` → ``(5, 'b')``) or embedded and flanked by
+    spaces (``Bad Guys Close In 48 Jael`` → ``(48, '')``). A stem with no
+    such number is not a numbered chapter and raises ValueError.
     """
-    match = _CHAPTER_SEQUENCE_RE.search(file_path.stem)
-    if match is None:
+    matches = list(_CHAPTER_SEQUENCE_RE.finditer(file_path.stem))
+    if not matches:
         raise ValueError(f"Chapter file '{file_path}' is not numbered")
-    return int(match.group(1)), (match.group(2) or "").lower()
+    match = matches[-1]
+    number, letter = match.group(1, 2)
+    if number is None:
+        number, letter = match.group(3, 4)
+    return int(number), (letter or "").lower()
 
 
 def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
@@ -278,7 +286,9 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
     Chapters exist only inside top-level ``Act <name>`` directories, whose
     name must number the act as digits or a strict Roman numeral (``Act
     None`` is the empty act). Directory import order is act value, then each
-    file's trailing sequence number with its optional letter (5, 5a, 5b, 6).
+    file's sequence number with its optional letter, trailing at the end of or
+    embedded between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48
+    Jael" → 48).
     Anything else — a root-level or non-act file, an unparsable act name, two
     files in one act numbering the same, or two acts numbering the same —
     raises ValueError.

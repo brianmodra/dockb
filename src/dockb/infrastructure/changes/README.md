@@ -54,7 +54,8 @@ chapter file and the hydrated `Document` it belongs to. `import_document_directo
 reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-file caller once per
 chapter file — `*.md` files inside a top-level `Act <name>` directory, processed in act-number
 order (digits, Roman numerals, or the Unicode single-character numerals, with `Act None` first)
-then by the file's trailing sequence number with at most one letter (5, 5a, 5b, 6) — returning one
+then by the file's sequence number with at most one letter — trailing at the end or embedded
+between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48) — returning one
 summary per file. Root-level and non-act files are not chapters. A malformed act name, an
 unnumbered chapter file, or two acts or two files numbering the same abort the walk. A chapter file
 whose front-matter `id` belongs to a different document aborts the whole directory import. When the

@@ -76,6 +76,49 @@ class TestDiscoverChapterFiles:
             "Setup 10.md",
         ]
 
+    def test_embedded_number_flanked_by_spaces_orders_chapters(self, tmp_path):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        for name in [
+            "Bad Guys Close In 49 Jael.md",
+            "Bad Guys Close In 10 Jael.md",
+            "Bad Guys Close In 48 Jael.md",
+        ]:
+            (act / name).write_text("x")
+        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            "Bad Guys Close In 10 Jael.md",
+            "Bad Guys Close In 48 Jael.md",
+            "Bad Guys Close In 49 Jael.md",
+        ]
+
+    def test_embedded_number_with_letter_suffix(self, tmp_path):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        for name in ["Bad Guys Close In 49 Jael.md", "Bad Guys Close In 48 Jael.md", "Bad Guys Close In 48b Jael.md"]:
+            (act / name).write_text("x")
+        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            "Bad Guys Close In 48 Jael.md",
+            "Bad Guys Close In 48b Jael.md",
+            "Bad Guys Close In 49 Jael.md",
+        ]
+
+    def test_rightmost_number_wins_when_multiple_qualify(self, tmp_path):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        (act / "Bad 3 Guys Close In 48 Jael.md").write_text("x")
+        (act / "Bad Guys Close In 47 Jael.md").write_text("x")
+        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            "Bad Guys Close In 47 Jael.md",
+            "Bad 3 Guys Close In 48 Jael.md",
+        ]
+
+    def test_number_at_start_without_leading_space_raises(self, tmp_path):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        (act / "48 Jael.md").write_text("x")
+        with pytest.raises(ValueError, match="not numbered"):
+            list(markdown_import._discover_chapter_files(tmp_path))
+
     def test_files_in_nested_directories_under_an_act_are_chapters(self, tmp_path):
         nested = tmp_path / "Act I" / "deeper"
         nested.mkdir(parents=True)

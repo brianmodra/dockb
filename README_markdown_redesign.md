@@ -13,8 +13,9 @@ Read this for the rationale and the roadmap. The live behavior lives in the code
 (especially `infrastructure/document_store/` and `infrastructure/markdown/`) and their READMEs;
 this document is the record of why the format and ownership model are what they are. Chapter
 imports honour that model: a chapter is a markdown file inside an `Act <name>` directory, the acts
-numbered by their names (digits, Roman, or Unicode numerals) and files by the trailing number of
-their names, so a chapter directory tree becomes the document's chapter order.
+numbered by their names (digits, Roman, or Unicode numerals) and files by the sequence number in
+their names, trailing at the end or embedded between spaces, so a chapter directory tree becomes
+the document's chapter order.
 
 ## 1. The problem we were trying to solve
 
@@ -230,8 +231,8 @@ derives each file's act from its directory's name (`Act None` → the empty act)
 front-matter `act`. An act directory's name is its number — digits, Roman numerals, or the
 single-character Unicode numerals — and that number orders the acts. Root-level files and
 directories not named `Act <name>` are not chapter locations. Within an act, chapter files are
-ordered by the trailing number of their name with at most one letter, so `Setup 5b.md` follows
-`Setup 5.md` and precedes `Setup 6.md`; an unnumbered chapter file, or two acts or files numbering
+ordered by the sequence number in their name with at most one letter — trailing at the end or
+embedded between spaces — so `Setup 5b.md` follows `Setup 5.md` and precedes `Setup 6.md`; an unnumbered chapter file, or two acts or files numbering
 the same, abort the import.
 
 ### git branch approach rejected
