@@ -46,7 +46,7 @@ OPTIONAL MATCH (p:Paragraph)-[rp:PART_OF]->(c)
 OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
-  d.id AS document_id,
+  d.id AS document_id, d.title AS document_title, d.author AS document_author,
   c.id AS chapter_id, rc.index AS chapter_index,
   p.id AS paragraph_id, rp.index AS paragraph_index,
   s.id AS sentence_id, rs.index AS sentence_index,
@@ -123,7 +123,12 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             len(t_ids),
         )
 
-        document = Document(id=first["document_id"], state=DataState.SYNC)
+        document = Document(
+            id=first["document_id"],
+            title=str(first.get("document_title") or ""),
+            author=str(first.get("document_author") or ""),
+            state=DataState.SYNC,
+        )
 
         seen_chapters: set[str] = set()
         seen_paragraphs: set[str] = set()
