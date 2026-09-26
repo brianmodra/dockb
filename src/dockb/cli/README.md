@@ -27,7 +27,10 @@ wins over any front-matter `act`. Other subdirectories are skipped. See
 ## Reconstruct a chapter
 
 `python -m dockb.cli.reconstruct_chapter <chapter_id> [--out PATH]` renders the chapter with
-`chapter_id` from the knowledge graph as markdown. Without `--out` the canonical chapter file
-(front matter plus one identity span per paragraph) is printed to stdout; with `--out` it is written
-to `PATH`. A chapter id the graph does not know prints the error message to stderr and exits
-non-zero. The serialization itself is the shared format owned by `../infrastructure/markdown/`.
+`chapter_id` from the knowledge graph as markdown. Without `--out` the canonical chapter file is
+written into the server-owned tree — `<base>/<document title>/<Act X>/<chapter title>.md` under
+`DOCKB_CHAPTERS_DIR` (defaulting to `cwd/dockb_chapters_dir`) — and git-committed; the written path
+is printed. With `--out` it is written to the exact `PATH` instead, without touching the store tree.
+A chapter id the graph does not know — or a chapter with no owning document (so it cannot be placed) —
+prints the error message to stderr and exits non-zero. The serialization itself is the shared format
+owned by `../infrastructure/markdown/`.

@@ -9,6 +9,7 @@ import pytest
 from dockb.cli import reconstruct_chapter as cli
 from dockb.exceptions import ChapterMismatchError
 from dockb.repositories.chapter_repository import ChapterRepository
+from dockb.repositories.document_repository import DocumentRepository
 
 
 class TestReconstructChapter:
@@ -31,18 +32,26 @@ class TestReconstructChapter:
         monkeypatch.setattr(cli.spacy, "load", lambda *a, **k: self.nlp)
         self.session_factory_maker = session_factory_maker
 
-    def test_prints_rendered_chapter_to_stdout(self, _neo4j_env, capsys, monkeypatch):
+    def test_without_out_writes_into_store_layout(self, _neo4j_env, capsys, monkeypatch, tmp_path):
         self._patch_dependencies(monkeypatch)
         captured = []
-        monkeypatch.setattr(cli, "reconstruct_chapter_markdown", lambda cid, repo, nlp: captured.append((cid, repo, nlp)) or "# ch\n")
+
+        def fake_store_reconstruct(cid, repo, doc_repo, store, nlp):
+            captured.append((cid, repo, doc_repo, store, nlp))
+            return store.chapter_file("Faith", "Act I", "Intro")
+
+        monkeypatch.setattr(cli, "reconstruct_chapter_to_store", fake_store_reconstruct)
+        monkeypatch.setattr(cli, "resolve_document_base_dir", lambda *a, **k: tmp_path)
 
         exit_code = cli.main(["c1"])
 
         assert exit_code == 0
-        assert capsys.readouterr().out == "# ch\n"
-        chapter_id, chapter_repo, nlp = captured[0]
+        assert capsys.readouterr().out == str(tmp_path / "Faith" / "Act I" / "Intro.md") + "\n"
+        chapter_id, chapter_repo, document_repo, store, nlp = captured[0]
         assert chapter_id == "c1"
         assert isinstance(chapter_repo, ChapterRepository)
+        assert isinstance(document_repo, DocumentRepository)
+        assert isinstance(store, cli.DocumentStore)
         assert nlp is self.nlp
         self.session_factory_maker.return_value.session.assert_called_once_with()
         self.session_factory_maker.return_value.close.assert_called_once_with()
@@ -69,13 +78,14 @@ class TestReconstructChapter:
 
         assert excinfo.value.code == 2
 
-    def test_unknown_chapter_prints_error_and_exits_1(self, _neo4j_env, capsys, monkeypatch):
+    def test_unknown_chapter_prints_error_and_exits_1(self, _neo4j_env, capsys, monkeypatch, tmp_path):
         self._patch_dependencies(monkeypatch)
+        monkeypatch.setattr(cli, "resolve_document_base_dir", lambda *a, **k: tmp_path)
 
-        def raise_missing(cid, repo, nlp):
+        def raise_missing(*args):
             raise ChapterMismatchError("Chapter 'nope' was not found in the knowledge graph")
 
-        monkeypatch.setattr(cli, "reconstruct_chapter_markdown", raise_missing)
+        monkeypatch.setattr(cli, "reconstruct_chapter_to_store", raise_missing)
 
         exit_code = cli.main(["nope"])
 
