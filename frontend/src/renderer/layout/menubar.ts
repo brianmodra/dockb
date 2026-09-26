@@ -6,6 +6,7 @@ export interface MenubarOptions {
   onSave?: () => void;
   onOpen?: () => void;
   onQuit?: () => void;
+  onOpenLanguageSettings?: () => void;
 }
 
 interface MenuSpec {
@@ -40,7 +41,7 @@ const MENUS: MenuSpec[] = [
   {
     key: "Settings",
     label: "⚙",
-    items: [{ key: "general", label: "General" }],
+    items: [{ key: "language", label: "Language…" }],
   },
 ];
 
@@ -120,6 +121,8 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
         options.onOpen?.();
       } else if (menu.key === "File" && item.key === "quit") {
         options.onQuit?.();
+      } else if (menu.key === "Settings" && item.key === "language") {
+        options.onOpenLanguageSettings?.();
       }
     });
     dropdown.append(button);

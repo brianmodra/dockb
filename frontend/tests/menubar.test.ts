@@ -127,12 +127,14 @@ describe("menubar", () => {
     expect(dropdown(bar, "File").classList.contains("menu-dropdown--open")).toBe(true);
   });
 
-  it("renders Settings with a General item that does nothing", () => {
-    const bar = buildMenubar({});
+  it("renders Settings with a Language item that reports to onOpenLanguageSettings", () => {
+    const onOpenLanguageSettings = vi.fn();
+    const bar = buildMenubar({ onOpenLanguageSettings });
     document.body.append(bar.element);
     openMenu(bar, "Settings");
     const item = dropdown(bar, "Settings").querySelector<HTMLElement>(".menu-item");
-    expect(item?.textContent).toBe("General");
-    expect(() => item?.dispatchEvent(new MouseEvent("click", { bubbles: true }))).not.toThrow();
+    expect(item?.textContent).toBe("Language…");
+    item?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onOpenLanguageSettings).toHaveBeenCalledTimes(1);
   });
 });
