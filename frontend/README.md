@@ -70,17 +70,21 @@ its 10px floor.
   and the blank-line paragraph delimiter shows as a single line gap. Paragraphs
   carry their preceding blank-line count in `blanksBefore`, so
   `bufferToDoc`/`docToString` round-trip the buffer byte-for-byte until an
-  edit.
+  edit. The editable carries a `lang` attribute (default `en-US`), rewritten by
+  the Settings → Language… dialog, which selects the browser spellcheck dictionary.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
-- `menubar.ts` — File (Open, Save, Quit), Mode, Settings; dropdowns dismiss on
+- `menubar.ts` — File (Open, Save, Quit), Mode, Settings (Language… dialog); dropdowns dismiss on
   outside click or Esc.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move. Clicking a
   chapter selects it **and** loads its text into the editor (via `onEdit` → the
   `.../document` GET).
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up and confirm
   dialogs.
+- `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
+  scrollable spellcheck-language list with Cancel/Apply; the chosen code is
+  applied via `EditPanel.setLanguage`.
 - `state/` — app-state persistence, start-up restore, quit-with-save.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
