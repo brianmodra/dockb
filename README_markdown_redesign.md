@@ -53,8 +53,9 @@ who writes the file.
 ### The backend owns the markdown files and the git repo
 
 There is **no separate loop process**. The FastAPI backend owns the markdown chapter files — in a
-directory it controls (per-document, `chapter-{id}.md` under an environment-configured base, as the
-`DocumentStore` in `src/dockb/infrastructure/document_store/` maps it) — and
+directory it controls (titled per-document directories of `Act <name>/<chapter title>.md`
+files under an environment-configured base, as the `DocumentStore` in
+`src/dockb/infrastructure/document_store/` maps it) — and
 the git repo. The only writer of record is the API implementation itself: when the editor saves, it
 sends the chapter text to an endpoint, the backend writes the file, rehydrates the graph from it,
 and returns the canonical text. The editor is a thin client that never touches a filesystem path,
@@ -153,7 +154,8 @@ but they remain available to clients that edit via fine-grained CRUD.
 
 The git-based **history/versioning** logic — `SnapshotWriter`, `SnapshotReader`, and the git
 command work — **stays in the backend**, because the backend owns the markdown files. Each save
-writes the canonical `chapter-{id}.md` (the same file `SnapshotWriter` produces) and commits it;
+writes the canonical title-keyed chapter file and commits it (the id-keyed
+`SnapshotWriter` files remain as the separate version history);
 with the backend as the only writer of both the file and the repo there is exactly one owner and no
 two-writer conflict to manage.
 
@@ -175,14 +177,15 @@ Consequence for the history API:
 
 The owned directory tree is the editor's entire world, delivered through the API:
 
-- **Start:** `POST /api/documents` with `{id, title, author}`. The title must be **unique** — an
-  exact-title match against the knowledge graph is rejected (409) rather than silently reused. The
+- **Start:** `POST /api/documents` with `{id, title, author}`. The title must be **unique** — a
+  case-insensitive match against the knowledge graph is rejected (409) rather than silently reused. The
   server creates the document's directory and `document_metadata.yaml` (title/author) next to it.
 - **Open:** `GET /api/documents/{id}` materializes the tree when missing — the document directory,
-  `document_metadata.yaml`, and one `chapter-{id}.md` per chapter serialized from the graph — then
+  `document_metadata.yaml`, and one `<chapter title>.md` per chapter, under its `Act <name>`
+  directory (`Act None` when the chapter has no act), serialized from the graph — then
   returns the document. `GET /api/chapters/{id}` does the same for a single chapter file.
 - **New chapter:** `POST /api/chapters` with `{id, title, document_id, after_chapter_id}`. The new
-  chapter is placed in sequence and the server writes an **empty** `chapter-{id}.md` (front matter
+  chapter is placed in sequence and the server writes an **empty** `<chapter title>.md` (front matter
   with `id`/`title`, no body).
 - **Move chapter:** `POST /api/chapters/{id}/reorder` with `{after_chapter_id}`. The chapter is
   relocated to follow *after_chapter_id* (`null` = first) and the server renumbers so `index`
@@ -222,6 +225,10 @@ when moved first (`after_chapter_id = null`) it adopts the act of the chapter it
 (the document's old first chapter). The adoption overwrites the moved chapter's act, even to empty —
 the server, not the editor, owns the attribute — so a chapter moved into a run of chapters
 belonging to a different act joins that run. The editor only sends the order change.
+
+In the owned tree an act is also a directory: chapters live under `Act <name>`, and directory import
+derives each file's act from its directory's name (`Act None` → the empty act), overriding any
+front-matter `act`.
 
 ### git branch approach rejected
 
@@ -437,8 +444,8 @@ Consequences:
 This is the order we expect to build, matching the dependencies above; it is subject to adjustment
 during planning.
 
-1. **Document-store foundation:** the owned directory tree (per-document directory, metadata,
-   chapter files, path-from-ids safety) and the foundational CRUD behaviors the lifecycle builds on
+1. **Document-store foundation:** the owned directory tree (per-document titled directory, act
+   directories, metadata, chapter files, path-from-titles safety) and the foundational CRUD behaviors the lifecycle builds on
    (unique document title, chapter ordering). The fine-grained `.../rehydrate` endpoints and the
    `?format=markdown` GET option are retained for CRUD clients, not part of this work.
 2. **Synchronous document lifecycle on the backend.** The backend owns the markdown files + git
