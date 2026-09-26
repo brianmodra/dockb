@@ -7,7 +7,7 @@ chapter files and persists their changes into the knowledge graph, and `reconstr
 renders one chapter from the graph back out as markdown — into the server-owned store tree, or to
 an exact path with `--out`. Both connect to Neo4j with the same `NEO4J_URL`, `NEO4J_USER`,
 `NEO4J_PASSWORD` environment variables (or `.env`) the API server uses. Chapter files are found
-only inside `Act <name>` directories whose names number the acts (digits, Roman, or Unicode
+only inside `Act <name>` directories whose names carry act numbers (digits, Roman, or Unicode
 numerals); each file's sequence number — trailing at the end or embedded between spaces, with at
 most one letter — sets its order in the graph.
 

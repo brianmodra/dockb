@@ -9,8 +9,9 @@ holds. A second piece, `apply_chapter_file`, puts that report into effect as gra
 checking the file's chapter really belongs to the document being edited.
 
 `import_document_directory` then drives the whole process from the shell: it walks a document's
-directory for chapter files — markdown files inside `Act <name>` directories whose numbered names
-(and numbered acts) fix the import order — resolves the directory to one `Document` from its
+directory for chapter files — markdown files inside `Act <name>` directories whose numbered acts and
+sequence numbers (trailing at the end of or embedded between spaces in the name, with at most one
+letter) fix the import order — resolves the directory to one `Document` from its
 metadata (`document_metadata.yaml`), writes that metadata back when it creates the `Document`,
 imports each chapter file, and rewrites any file whose graph content changed into the canonical
 span format — front matter plus one identity span per paragraph — so the next import matches it.

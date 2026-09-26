@@ -5,17 +5,16 @@
 This document records why markdown is DockB's source of truth and what fell out of that decision.
 Each chapter is a markdown file whose text is canonical: the backend rehydrates the knowledge
 graph from it, paragraph identity travels in `data-par-id` spans holding the sentences one per
-line, and the backend alone owns the files, the title/act-keyed tree, and its git repo. It records
-the decisions — drop the editor front end, synchronous save-and-rehydrate, span-based paragraph
-identity, interactive-only syntax checking — and the alternatives that lost to them.
+line, and the backend alone owns the files, the title/act-keyed tree, and its git repo. Chapter
+order comes from the tree: numbered `Act <name>` directories, then each file's sequence number,
+trailing in its name or embedded between spaces, so a chapter directory tree becomes the
+document's chapter order. It records the decisions — drop the editor front end, synchronous
+save-and-rehydrate, span-based paragraph identity, interactive-only syntax checking — and the
+alternatives that lost to them.
 
 Read this for the rationale and the roadmap. The live behavior lives in the code under `src/dockb/`
 (especially `infrastructure/document_store/` and `infrastructure/markdown/`) and their READMEs;
-this document is the record of why the format and ownership model are what they are. Chapter
-imports honour that model: a chapter is a markdown file inside an `Act <name>` directory, the acts
-numbered by their names (digits, Roman, or Unicode numerals) and files by the sequence number in
-their names, trailing at the end or embedded between spaces, so a chapter directory tree becomes
-the document's chapter order.
+this document is the record of why the format and ownership model are what they are.
 
 ## 1. The problem we were trying to solve
 
