@@ -1,2 +1,2 @@
 CREATE CONSTRAINT document_title_key_unique IF NOT EXISTS FOR (d:Document) REQUIRE d.title_key IS UNIQUE;
-CREATE CONSTRAINT chapter_title_key_per_document IF NOT EXISTS FOR (c:Chapter) REQUIRE (c.document_id, c.title_key) IS NODE KEY;
+CREATE CONSTRAINT chapter_title_key_per_document IF NOT EXISTS FOR (c:Chapter) REQUIRE (c.document_id, c.title_key) IS UNIQUE;
