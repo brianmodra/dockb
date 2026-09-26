@@ -1,10 +1,21 @@
-import { EditorState, Plugin, PluginKey } from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, type Command } from "prosemirror-state";
 import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import { Schema, type Node } from "prosemirror-model";
-import { baseKeymap } from "prosemirror-commands";
+import { baseKeymap, splitBlock } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { history, redo, undo } from "prosemirror-history";
 import MarkdownIt from "markdown-it";
+
+const insertHardBreak: Command = (state, dispatch) => {
+  const br = state.schema.nodes.hardBreak;
+  if (!br) {
+    return false;
+  }
+  if (dispatch) {
+    dispatch(state.tr.replaceSelectionWith(br.create()));
+  }
+  return true;
+};
 
 const schema = new Schema({
   nodes: {
@@ -174,11 +185,8 @@ export function docToString(doc: Node): string {
   let isFirst = true;
   doc.forEach((paragraph) => {
     const blanks = paragraph.attrs.blanksBefore ?? 0;
-    let newlines = "\n".repeat(blanks);
-    if (!isFirst && paragraph.childCount > 0) {
-      newlines += "\n";
-    }
-    parts.push(newlines + serializeParagraph(paragraph));
+    const separator = !isFirst && paragraph.childCount > 0 ? (blanks > 0 ? blanks + 1 : 2) : blanks;
+    parts.push("\n".repeat(separator) + serializeParagraph(paragraph));
     isFirst = false;
   });
   return parts.join("");
@@ -190,10 +198,7 @@ export function docToCanonical(doc: Node): string {
   let isFirst = true;
   doc.forEach((paragraph) => {
     const blanks = paragraph.attrs.blanksBefore ?? 0;
-    let newlines = "\n".repeat(blanks);
-    if (!isFirst && paragraph.childCount > 0) {
-      newlines += "\n";
-    }
+    const separator = !isFirst && paragraph.childCount > 0 ? (blanks > 0 ? blanks + 1 : 2) : blanks;
     let id: string | null = paragraph.attrs.id ?? null;
     if (id !== null) {
       if (seen.has(id)) {
@@ -207,7 +212,7 @@ export function docToCanonical(doc: Node): string {
       id !== null
         ? `<span data-par-id="${escapeHtml(id)}">\n${escapeHtml(lines)}\n</span>`
         : lines;
-    parts.push(newlines + body);
+    parts.push("\n".repeat(separator) + body);
     isFirst = false;
   });
   return parts.join("");
@@ -289,7 +294,7 @@ export class WysiwygView {
       const state = EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids),
-        plugins: [history(), keymap(baseKeymap), keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
+        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
       });
       this.innerView = new EditorView(this.element, {
         state,
@@ -307,7 +312,7 @@ export class WysiwygView {
       EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids),
-        plugins: [history(), keymap(baseKeymap), keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
+        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
       }),
     );
   }

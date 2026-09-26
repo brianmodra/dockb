@@ -1,4 +1,22 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { TextSelection } from "prosemirror-state";
+
+beforeAll(() => {
+  // jsdom omits getClientRects; ProseMirror needs it to scroll to the selection.
+  for (const proto of [
+    Node.prototype,
+    Element.prototype,
+    HTMLElement.prototype,
+    CharacterData.prototype,
+    Text.prototype,
+    Range.prototype,
+  ]) {
+    (proto as { getClientRects?: () => DOMRectList }).getClientRects ??= () =>
+      [] as unknown as DOMRectList;
+  }
+  (Range.prototype as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect ??= () =>
+    ({ x: 0, y: 0, top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0 }) as DOMRect;
+});
 import {
   WysiwygView,
   bufferToDoc,
@@ -226,6 +244,37 @@ describe("WysiwygView", () => {
     expect(view.element.textContent).not.toContain("<span");
     expect(view.element.textContent).not.toContain("title:");
     expect(view.element.querySelector("p")?.textContent).toBe("Chapter text.");
+  });
+
+  it("plain Enter splits the paragraph into two", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("one\ntwo");
+    const pm = view.element.querySelector(".ProseMirror") as HTMLElement;
+    pm.focus();
+    view.view.dispatch(view.view.state.tr.setSelection(TextSelection.create(view.view.state.doc, 3)));
+
+    pm.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+    expect(view.content()).toBe("on\n\ne\ntwo");
+    expect(view.element.querySelectorAll("p")).toHaveLength(2);
+  });
+
+  it("Shift-Enter inserts a hard line break inside the paragraph", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("one\ntwo");
+    const pm = view.element.querySelector(".ProseMirror") as HTMLElement;
+    pm.focus();
+    view.view.dispatch(view.view.state.tr.setSelection(TextSelection.create(view.view.state.doc, 3)));
+
+    pm.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true, cancelable: true }),
+    );
+
+    expect(view.content()).toBe("on\\\ne\ntwo");
+    expect(view.element.querySelector("p")).not.toBeNull();
+    expect(pm.querySelector("br")).not.toBeNull();
   });
 
   it("destroy detaches the editor", () => {
