@@ -100,6 +100,15 @@ describe("AppLayout", () => {
     expect(parseInt(message.style.height, 10)).toBeGreaterThanOrEqual(24);
   });
 
+  it("opens the language settings dialog from the Settings menu", () => {
+    const onOpenLanguageSettings = vi.fn();
+    const layout = new AppLayout({ onOpenLanguageSettings });
+    document.body.append(layout.element);
+    layout.element.querySelector<HTMLElement>('[data-testid="menu-Settings"]')?.click();
+    layout.element.querySelector('[data-testid="menu-item-language"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onOpenLanguageSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("reports mode through the menubar and updates the edit panel", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);

@@ -112,6 +112,14 @@ export class EditPanel {
     return this.lastCanonicalText;
   }
 
+  getLanguage(): string {
+    return this.wysiwyg.getLanguage();
+  }
+
+  setLanguage(lang: string): void {
+    this.wysiwyg.setLanguage(lang);
+  }
+
   private notifyDirty(): void {
     const dirty = this.isDirty();
     if (dirty === this.lastDirty) {

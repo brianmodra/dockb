@@ -7,6 +7,7 @@ export interface AppLayoutOptions {
   onSave?: () => void;
   onOpen?: () => void;
   onQuit?: () => void;
+  onOpenLanguageSettings?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
 }
 
@@ -55,6 +56,7 @@ export class AppLayout {
       onSave: options.onSave,
       onOpen: options.onOpen,
       onQuit: options.onQuit,
+      onOpenLanguageSettings: options.onOpenLanguageSettings,
     });
 
     this.leftPanel = this.panel("panel-left");

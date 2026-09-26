@@ -35,6 +35,18 @@ describe("EditPanel", () => {
     expect(panel.isDirty()).toBe(false);
   });
 
+  it("delegates setLanguage and getLanguage to the WYSIWYG editable", async () => {
+    const api = fakeApi();
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(panel.getLanguage()).toBe("en-US");
+    panel.setLanguage("fr");
+    expect(panel.getLanguage()).toBe("fr");
+    expect(panel.element.querySelector(".ProseMirror")?.getAttribute("lang")).toBe("fr");
+  });
+
   it("reports a new chapter load even after edits", async () => {
     const getChapterDocument = vi
       .fn(async () => doc("second"))

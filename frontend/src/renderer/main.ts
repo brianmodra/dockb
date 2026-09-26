@@ -5,6 +5,7 @@ import { AppLayout } from "./layout/layout";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm } from "./layout/documentPicker";
+import { openLanguageSettings } from "./layout/languageSettings";
 import { openSignInGate } from "./layout/signInGate";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
@@ -32,6 +33,13 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onMode: (mode) => {
       editPanel?.setMode(mode);
       void stateController?.saveEditMode(mode);
+    },
+    onOpenLanguageSettings: () => {
+      void openLanguageSettings({ current: editPanel?.getLanguage() ?? "en-US" }).then((lang) => {
+        if (lang !== null) {
+          editPanel?.setLanguage(lang);
+        }
+      });
     },
     onQuit: () => {
       void quitApp({
