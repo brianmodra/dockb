@@ -272,9 +272,11 @@ export class WysiwygView {
   private readonly options: WysiwygViewOptions;
   private innerView: EditorView | null = null;
   private lastFrontMatter: string | null = null;
+  private language: string;
 
   constructor(options: WysiwygViewOptions = {}) {
     this.options = options;
+    this.language = document.documentElement.lang || "en-US";
     this.element = document.createElement("div");
     this.element.dataset.testid = "wysiwyg-view";
   }
@@ -284,6 +286,15 @@ export class WysiwygView {
       throw new Error("WysiwygView is not mounted");
     }
     return this.innerView;
+  }
+
+  getLanguage(): string {
+    return this.language;
+  }
+
+  setLanguage(lang: string): void {
+    this.language = lang;
+    this.innerView?.dom.setAttribute("lang", lang);
   }
 
   setContent(buffer: string): void {
@@ -306,6 +317,7 @@ export class WysiwygView {
           }
         },
       });
+      this.innerView.dom.setAttribute("lang", this.language);
       return;
     }
     this.innerView.updateState(

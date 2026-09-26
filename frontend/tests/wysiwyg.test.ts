@@ -277,6 +277,35 @@ describe("WysiwygView", () => {
     expect(pm.querySelector("br")).not.toBeNull();
   });
 
+  it("defaults the editable language to en-US", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("hello");
+
+    expect(view.element.querySelector(".ProseMirror")?.getAttribute("lang")).toBe("en-US");
+    expect(view.getLanguage()).toBe("en-US");
+  });
+
+  it("setLanguage writes the lang attribute onto the editable", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("hello");
+    view.setLanguage("en-GB");
+
+    expect(view.element.querySelector(".ProseMirror")?.getAttribute("lang")).toBe("en-GB");
+    expect(view.getLanguage()).toBe("en-GB");
+  });
+
+  it("keeps the chosen language across setContent", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("one");
+    view.setLanguage("de");
+    view.setContent("two");
+
+    expect(view.element.querySelector(".ProseMirror")?.getAttribute("lang")).toBe("de");
+  });
+
   it("destroy detaches the editor", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
