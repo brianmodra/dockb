@@ -1,4 +1,4 @@
-"""Server-owned, id-keyed markdown file tree for the document lifecycle.
+"""Server-owned, title/act-keyed markdown file tree for the document lifecycle.
 
 The backend owns the markdown chapter files and their per-document metadata,
 arranged on disk under a single base directory (``DOCKB_CHAPTERS_DIR``):
@@ -6,13 +6,18 @@ arranged on disk under a single base directory (``DOCKB_CHAPTERS_DIR``):
 .. code-block:: text
 
     <base>/
-        <document_id>/
+        <document_title>/
             document_metadata.yaml
-            chapter-<chapter_id>.md
+            Act I/
+                <chapter_title>.md
+            Act None/
+                <chapter_title>.md
 
-Paths are derived from ids only, and every id is validated so a hostile
-document/chapter id cannot escape the base directory (``..``, separators,
-absolute paths, control characters are all rejected).
+Chapters without an act live under ``Act None``; an act is a directory named
+``Act <name>`` (the verbatim chapter ``act`` when it is already prefixed).
+Paths are derived from titles only, and every title is validated so a hostile
+title cannot escape the base directory (``..``, separators, absolute paths,
+control characters are all rejected).
 """
 
 from __future__ import annotations
@@ -27,7 +32,8 @@ import yaml
 from dockb.exceptions import SnapshotError
 
 _METADATA_FILE = "document_metadata.yaml"
-_CHAPTER_PREFIX = "chapter-"
+_ACT_NONE = "Act None"
+_ACT_PREFIX = "Act "
 _ENV_BASE_DIR = "DOCKB_CHAPTERS_DIR"
 
 
@@ -53,53 +59,58 @@ class DocumentStore:
             raise ValueError(f"{_ENV_BASE_DIR} must be set to the markdown tree base directory")
         return cls(Path(base))
 
-    def document_dir(self, document_id: str) -> Path:
-        """Return the directory owned by *document_id* (not created)."""
-        self._validate(document_id, "document id")
-        return self._base_dir / document_id
+    def document_dir(self, document_title: str) -> Path:
+        """Return the directory owned by *document_title* (not created)."""
+        self._validate_title(document_title)
+        return self._base_dir / document_title
 
-    def metadata_file(self, document_id: str) -> Path:
-        """Return the metadata file path for *document_id*."""
-        return self.document_dir(document_id) / _METADATA_FILE
+    def act_dir(self, document_title: str, act: str) -> Path:
+        """Return the per-act chapter directory for a chapter of *document_title*."""
+        act_name = self._act_dir_name(act)
+        self._validate_title(act_name)
+        return self.document_dir(document_title) / act_name
 
-    def chapter_file(self, document_id: str, chapter_id: str) -> Path:
-        """Return the markdown file path for a chapter of *document_id*."""
-        self._validate(document_id, "document id")
-        self._validate(chapter_id, "chapter id")
-        return self._base_dir / document_id / f"{_CHAPTER_PREFIX}{chapter_id}.md"
+    def metadata_file(self, document_title: str) -> Path:
+        """Return the metadata file path for *document_title*."""
+        return self.document_dir(document_title) / _METADATA_FILE
 
-    def document_exists(self, document_id: str) -> bool:
+    def chapter_file(self, document_title: str, act: str, chapter_title: str) -> Path:
+        """Return the markdown file path for a chapter of *document_title*."""
+        self._validate_title(chapter_title)
+        return self.act_dir(document_title, act) / f"{chapter_title}.md"
+
+    def document_exists(self, document_title: str) -> bool:
         """Return whether the document's directory exists on disk."""
-        return self.document_dir(document_id).is_dir()
+        return self.document_dir(document_title).is_dir()
 
-    def chapter_exists(self, document_id: str, chapter_id: str) -> bool:
+    def chapter_exists(self, document_title: str, act: str, chapter_title: str) -> bool:
         """Return whether the chapter's markdown file exists on disk."""
-        return self.chapter_file(document_id, chapter_id).is_file()
+        return self.chapter_file(document_title, act, chapter_title).is_file()
 
-    def read_chapter(self, document_id: str, chapter_id: str) -> str | None:
+    def read_chapter(self, document_title: str, act: str, chapter_title: str) -> str | None:
         """Return a chapter file's raw content, or None when absent."""
-        path = self.chapter_file(document_id, chapter_id)
+        path = self.chapter_file(document_title, act, chapter_title)
         if not path.is_file():
             return None
         return path.read_text(encoding="utf-8")
 
-    def write_chapter(self, document_id: str, chapter_id: str, content: str) -> None:
-        """Write *content* to a chapter file, creating the owning directory."""
-        path = self.chapter_file(document_id, chapter_id)
+    def write_chapter(self, document_title: str, act: str, chapter_title: str, content: str) -> None:
+        """Write *content* to a chapter file, creating the owning directories."""
+        path = self.chapter_file(document_title, act, chapter_title)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    def read_metadata(self, document_id: str) -> DocumentMetadata | None:
+    def read_metadata(self, document_title: str) -> DocumentMetadata | None:
         """Return a document's metadata, or None when absent."""
-        path = self.metadata_file(document_id)
+        path = self.metadata_file(document_title)
         if not path.is_file():
             return None
         attrs = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return DocumentMetadata(title=str(attrs.get("title") or ""), author=str(attrs.get("author") or ""))
 
-    def write_metadata(self, document_id: str, metadata: DocumentMetadata) -> None:
+    def write_metadata(self, document_title: str, metadata: DocumentMetadata) -> None:
         """Write *metadata*, preserving any other keys already in the file."""
-        path = self.metadata_file(document_id)
+        path = self.metadata_file(document_title)
         attrs: dict[str, object] = {}
         if path.is_file():
             parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -113,29 +124,29 @@ class DocumentStore:
             encoding="utf-8",
         )
 
-    def list_chapter_files(self, document_id: str) -> list[Path]:
-        """Return the chapter markdown files under *document_id*, sorted by name."""
-        directory = self.document_dir(document_id)
+    def list_chapter_files(self, document_title: str) -> list[Path]:
+        """Return the chapter markdown files under *document_title*, sorted by path."""
+        directory = self.document_dir(document_title)
         if not directory.is_dir():
             return []
-        return sorted(path for path in directory.glob(f"{_CHAPTER_PREFIX}*.md") if path.is_file())
+        return sorted(path for path in directory.rglob("*.md") if path.is_file())
 
-    def git_commit(self, document_id: str, message: str) -> None:
+    def git_commit(self, document_title: str, message: str) -> None:
         """Commit the document's directory to the git repo rooted at the base dir.
 
         The base directory must be a git repository (as SnapshotWriter expects);
-        only files under *document_id* are staged. When the document has nothing
+        only files under *document_title* are staged. When the document has nothing
         new to commit — even if unrelated untracked files (e.g. runtime state)
         exist elsewhere in the tree — the call is a no-op.
         """
-        self.document_dir(document_id)
+        self.document_dir(document_title)
         try:
-            self._git("add", "--", document_id)
+            self._git("add", "--", document_title)
         except SnapshotError as exc:
             if "not a git repository" in str(exc):
                 raise SnapshotError(f"{self._base_dir} is not a git repository; the document store owns the repo") from exc
             raise
-        changed = self._git("status", "--porcelain", "--", document_id)
+        changed = self._git("status", "--porcelain", "--", document_title)
         if not changed.strip():
             return
         self._git("commit", "-m", message)
@@ -153,10 +164,26 @@ class DocumentStore:
         except subprocess.CalledProcessError as exc:
             raise SnapshotError(f"git command failed: {exc.stderr.strip()}") from exc
 
+    @classmethod
+    def _act_dir_name(cls, act: str) -> str:
+        """Return the on-disk act directory name for a chapter's *act*.
+
+        An empty act maps to the reserved ``Act None`` directory; an act that
+        is not already ``Act ``-prefixed gets the prefix applied.
+        """
+        act = act.strip()
+        if not act:
+            return _ACT_NONE
+        if act.startswith(_ACT_PREFIX):
+            return act
+        return f"{_ACT_PREFIX}{act}"
+
     @staticmethod
-    def _validate(value: str, kind: str) -> None:
-        """Reject an id that could escape the base directory."""
+    def _validate_title(value: str) -> None:
+        """Reject a title that could escape the base directory."""
         if not value:
-            raise ValueError(f"empty {kind} is not a valid id")
-        if value in {".", ".."} or "/" in value or "\\" in value or "\x00" in value or "\n" in value:
-            raise ValueError(f"{value!r} is not a valid id")
+            raise ValueError("empty title is not a valid title")
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError(f"{value!r} is not a valid title")
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError(f"{value!r} is not a valid title")

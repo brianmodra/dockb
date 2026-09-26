@@ -87,21 +87,23 @@ def _add_chapters(ch_svc, document_id: str) -> None:
     ch_svc.create("c2", "Second", document_id, after_chapter_id="c1")
 
 
-def _assert_git_is_current(git_repo, store, document_id: str, chapter_id: str) -> None:
+def _assert_git_is_current(git_repo, store, document_title: str, act: str, chapter_title: str) -> None:
     """Assert the file on disk matches git HEAD and the tree is clean."""
-    committed = _git(git_repo, "show", f"HEAD:{document_id}/chapter-{chapter_id}.md")
-    assert committed == store.read_chapter(document_id, chapter_id)
+    act_dir = f"Act {act}" if act else "Act None"
+    path = f"{document_title}/{act_dir}/{chapter_title}.md"
+    committed = _git(git_repo, "show", f"HEAD:{path}")
+    assert committed == store.read_chapter(document_title, act, chapter_title)
     assert _git(git_repo, "status", "--porcelain").strip() == ""
-    assert _git(git_repo, "log", "--oneline", "--", f"{document_id}/chapter-{chapter_id}.md").strip()
+    assert _git(git_repo, "log", "--oneline", "--", path).strip()
 
 
 def _assert_empty_chapter_materialized(store, git_repo):
     """Assert an empty chapter has a front-matter-only file committed to git."""
-    for chapter_id in ("c1", "c2", "c3"):
-        assert store.chapter_exists("d-lifecycle", chapter_id)
-        content = store.read_chapter("d-lifecycle", chapter_id)
+    for chapter_title in ("First", "Second", "Third"):
+        assert store.chapter_exists("Lifecycle", "", chapter_title)
+        content = store.read_chapter("Lifecycle", "", chapter_title)
         assert content is not None and content.startswith("---")
-        _assert_git_is_current(git_repo, store, "d-lifecycle", chapter_id)
+        _assert_git_is_current(git_repo, store, "Lifecycle", "", chapter_title)
 
 
 def test_document_lifecycle_chain(services, neo4j_session, git_repo):
@@ -111,7 +113,7 @@ def test_document_lifecycle_chain(services, neo4j_session, git_repo):
     try:
         doc = doc_svc.create(document_id, title="Lifecycle", author="Test")
         assert doc.id == document_id
-        assert store.read_metadata(document_id) == DocumentMetadata(title="Lifecycle", author="Test")
+        assert store.read_metadata("Lifecycle") == DocumentMetadata(title="Lifecycle", author="Test")
 
         opened = doc_svc.open(document_id)
         assert opened is not None and opened.id == document_id
@@ -127,13 +129,13 @@ def test_document_lifecycle_chain(services, neo4j_session, git_repo):
         assert result is not None
         assert result.summary.added == 2
         assert result.summary.changed == 0
-        canonical = store.read_chapter(document_id, "c2")
+        canonical = store.read_chapter("Lifecycle", "", "Second")
         assert canonical is not None
         assert "data-par-id" in canonical
         assert "id: c2" in canonical and "title: Second" in canonical
 
         hand_edit = canonical + "\n\nHand-written extra paragraph."
-        store.chapter_file(document_id, "c2").write_text(hand_edit, encoding="utf-8")
+        store.chapter_file("Lifecycle", "", "Second").write_text(hand_edit, encoding="utf-8")
         reopened = ch_svc.open_document("c2")
         assert reopened is not None
         assert "Hand-written extra paragraph." in reopened
@@ -142,6 +144,6 @@ def test_document_lifecycle_chain(services, neo4j_session, git_repo):
         assert loaded is not None
         assert len(loaded.paragraphs) == 3
         assert "Hand-written extra paragraph." in loaded.get_text()
-        _assert_git_is_current(git_repo, store, document_id, "c2")
+        _assert_git_is_current(git_repo, store, "Lifecycle", "", "Second")
     finally:
         neo4j_session.run(_CLEANUP_CYPHER, {"id": document_id})

@@ -206,7 +206,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         store = DocumentStore(base_dir=tmp_path)
         svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store)
         svc.create("d1", title="Faith", author="Paul")
-        assert store.read_metadata("d1") == DocumentMetadata(title="Faith", author="Paul")
+        assert store.read_metadata("Faith") == DocumentMetadata(title="Faith", author="Paul")
 
     def test_create_without_store_skips_metadata(self) -> None:
         doc = self.svc.create("d1", title="Faith", author="Paul")
@@ -237,9 +237,9 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         opened = svc.open("d1")
 
         assert opened is doc
-        assert store.read_metadata("d1") == DocumentMetadata(title="Faith", author="Paul")
-        assert store.chapter_exists("d1", "c1")
-        content = store.read_chapter("d1", "c1")
+        assert store.read_metadata("Faith") == DocumentMetadata(title="Faith", author="Paul")
+        assert store.chapter_exists("Faith", "", "Intro")
+        content = store.read_chapter("Faith", "", "Intro")
         assert content is not None
         assert "Hello world." in content
         result = subprocess.run(
@@ -256,15 +256,15 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d1"] = doc
         store = DocumentStore(base_dir=tmp_path)
-        store.write_metadata("d1", DocumentMetadata(title="Faith", author="Paul"))
-        existing = store.chapter_file("d1", "c1")
+        store.write_metadata("Faith", DocumentMetadata(title="Faith", author="Paul"))
+        existing = store.chapter_file("Faith", "", "Intro")
         existing.parent.mkdir(parents=True, exist_ok=True)
         existing.write_text("hand edit\n")
         svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store, nlp=nlp)
 
         svc.open("d1")
 
-        assert store.read_chapter("d1", "c1") == "hand edit\n"
+        assert store.read_chapter("Faith", "", "Intro") == "hand edit\n"
 
     def test_open_without_store_returns_document(self, nlp) -> None:
         doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
@@ -385,16 +385,22 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         ch = self.svc.create("c2", title="Intro", document_id="d2")
         assert ch.id == "c2"
 
-    def test_create_materializes_empty_chapter_file(self, tmp_path) -> None:
+    def test_create_materializes_empty_chapter_file(self, tmp_path, doc_repo) -> None:
         subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
         store = DocumentStore(base_dir=tmp_path)
-        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store)
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+        )
 
         svc.create("c1", title="Intro", document_id="d1")
 
-        content = store.read_chapter("d1", "c1")
+        content = store.read_chapter("Faith", "", "Intro")
         assert content is not None
         assert content.startswith("---")
         assert "id: c1" in content
@@ -561,20 +567,27 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.repo.set_document("c1", "d1")
         assert self.svc.open("c1") is ch
 
-    def test_open_materializes_missing_chapter_file(self, tmp_path, nlp) -> None:
+    def test_open_materializes_missing_chapter_file(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
         store = DocumentStore(base_dir=tmp_path)
-        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store, nlp=nlp)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
 
         opened = svc.open("c1")
 
         assert opened is ch
-        content = store.read_chapter("d1", "c1")
+        content = store.read_chapter("Faith", "", "Intro")
         assert content is not None
         assert content.startswith("---")
         assert "Intro" in content
@@ -588,18 +601,25 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert result.returncode == 0
         assert result.stdout.strip()
 
-    def test_open_does_not_overwrite_existing_chapter_file(self, tmp_path, nlp) -> None:
+    def test_open_does_not_overwrite_existing_chapter_file(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         store = DocumentStore(base_dir=tmp_path)
-        store.write_chapter("d1", "c1", "hand edit\n")
-        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_store=store, nlp=nlp)
+        store.write_chapter("Faith", "", "Intro", "hand edit\n")
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
 
         opened = svc.open("c1")
 
         assert opened is ch
-        assert store.read_chapter("d1", "c1") == "hand edit\n"
+        assert store.read_chapter("Faith", "", "Intro") == "hand edit\n"
 
     def test_open_without_document_skips_materialization(self, tmp_path, nlp) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
@@ -610,7 +630,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         opened = svc.open("c1")
 
         assert opened is ch
-        assert store.read_chapter("d1", "c1") is None
+        assert store.read_chapter("Faith", "", "Intro") is None
 
     def test_save_lock_shared_per_chapter(self) -> None:
         assert self.svc._save_lock("c1") is self.svc._save_lock("c1")
@@ -673,7 +693,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert result.summary.added == 2
         assert "Hello there." in result.content
         assert "data-par-id" in result.content
-        content = store.read_chapter("d1", "c1")
+        content = store.read_chapter("Faith", "", "Intro")
         assert content is not None
         assert "id: c1" in content
         assert "title: Intro" in content
@@ -702,7 +722,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
         svc.save_document("c1", "Body text.")
 
-        content = read_file(store.chapter_file("d1", "c1"))
+        content = read_file(store.chapter_file("Faith", "Act I", "Intro"))
         assert "act: Act I" in content
 
     def test_save_document_does_not_force_empty_act(self, tmp_path, nlp, doc_repo) -> None:
@@ -726,7 +746,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
         svc.save_document("c1", "Body text.")
 
-        content = read_file(store.chapter_file("d1", "c1"))
+        content = read_file(store.chapter_file("Faith", "", "Intro"))
         assert "act" not in content
 
     def test_save_document_overwrites_conflicting_identity(self, tmp_path, nlp, doc_repo) -> None:
@@ -754,7 +774,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         )
 
         assert result is not None
-        content = store.read_chapter("d1", "c1")
+        content = store.read_chapter("Faith", "", "Intro")
         assert content is not None
         assert "id: c1" in content
         assert "title: Intro" in content
@@ -874,7 +894,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
         store = DocumentStore(base_dir=tmp_path)
-        store.write_chapter("d1", "c1", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
+        store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
         svc = ChapterService(
             uow_factory=self.factory,
             chapter_repo=self.repo,
@@ -912,7 +932,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
         store = DocumentStore(base_dir=tmp_path)
-        store.write_chapter("d1", "c1", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
+        store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
         svc = ChapterService(
             uow_factory=self.factory,
             chapter_repo=self.repo,
