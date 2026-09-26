@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,6 +57,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     chapter_repo: ChapterRepository,
     uow_factory: UnitOfWorkFactory,
     single_newline_paragraphs: bool = False,
+    act: str | None = None,
 ) -> ChapterImportSummary:
     """Persist the changes a markdown chapter file makes to *document*.
 
@@ -66,6 +68,8 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     commit. The chapter title is only ever set when the chapter is new. When
     anything changed, the new text — front matter and span-bearing body — is
     written back to *file_path*, so the file stays the graph's source of truth.
+    An *act* override (from the containing directory) wins over both the
+    front matter and the graph value, so the tree's placement is authoritative.
     With ``single_newline_paragraphs`` a line is a paragraph and sentences run
     on inside it (see ``detect_changes``); the write-back is always canonical.
     """
@@ -97,12 +101,16 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     if not diff:
         if diff.created:
             chapter = _build_chapter(chapter_id, diff, None)
+            if act is not None:
+                chapter.act = act
             with measure("stage.persist"):
                 _persist(uow_factory, document.id, chapter, [], [], nlp)
             _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
         return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
 
     chapter = _build_chapter(chapter_id, diff, load_once(chapter_id))
+    if act is not None:
+        chapter.act = act
 
     for paragraph_id in diff.deleted:
         chapter.delete_child(paragraph_id)
@@ -137,11 +145,16 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
-    Files are found recursively (``*.md`` anywhere beneath *document_dir*), in
-    sorted order. The whole directory is imported into a single Document,
-    resolved by its metadata (see ``_read_document_metadata``/``_resolve_document``),
-    and one summary is returned per chapter file. ``single_newline_paragraphs``
-    is forwarded to every ``apply_chapter_file`` call.
+    Root-level ``*.md`` files and files anywhere beneath an ``Act <name>``
+    subdirectory are imported (see ``_discover_chapter_files``); each import
+    passes the act its containing directory names, so placement is
+    authoritative over the file's front matter. Subdirectories that are not
+    ``Act ``-prefixed are skipped. Files are processed root-first, then by act
+    directory (sorted), files sorted within each. The whole directory is
+    imported into a single Document, resolved by its metadata (see
+    ``_read_document_metadata``/``_resolve_document``), and one summary is
+    returned per chapter file. ``single_newline_paragraphs`` is forwarded to
+    every ``apply_chapter_file`` call.
     """
     dir_path = Path(document_dir)
     if not dir_path.is_dir():
@@ -149,7 +162,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     metadata = _read_document_metadata(dir_path, user_name)
     document = _resolve_document(dir_path, metadata, document_repo, uow_factory)
     summaries = []
-    for chapter_file in sorted(dir_path.rglob("*.md")):
+    for act, chapter_file in _discover_chapter_files(dir_path):
         summary = apply_chapter_file(
             document,
             chapter_file,
@@ -157,9 +170,26 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
             chapter_repo,
             uow_factory,
             single_newline_paragraphs=single_newline_paragraphs,
+            act=act,
         )
         summaries.append(summary)
     return summaries
+
+
+def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
+    """Yield ``(act, file)`` for every importable chapter file under *document_dir*.
+
+    Root-level files map to an empty act. Files under an ``Act <name>``
+    subdirectory map to that verbatim name — ``Act None`` maps back to an
+    empty act — and deeper nesting keeps the act of the enclosing *top-level*
+    act directory. Subdirectories not named ``Act ...`` are skipped entirely.
+    """
+    for chapter_file in sorted(document_dir.glob("*.md")):
+        yield "", chapter_file
+    for subdir in sorted(path for path in document_dir.iterdir() if path.is_dir() and path.name.startswith("Act ")):
+        act = "" if subdir.name == "Act None" else subdir.name
+        for chapter_file in sorted(subdir.rglob("*.md")):
+            yield act, chapter_file
 
 
 def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language) -> None:

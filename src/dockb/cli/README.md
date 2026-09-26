@@ -19,7 +19,10 @@ changes. Each chapter file is matched through its front-matter `id`; changed or 
 rewritten into the canonical span format (one identity span per paragraph). With
 `--single-newline-paragraphs` each body line is read as a paragraph — for files whose paragraphs end
 in a single newline and whose sentences run on inside a line — while the write-back stays canonical.
-See `../infrastructure/changes/README.md` for the diffing behavior.
+Chapter files living directly in the document directory, or anywhere beneath an `Act <name>`
+subdirectory, are imported; a file's act is the name of its (`Act I`, `Act None`, …) directory, which
+wins over any front-matter `act`. Other subdirectories are skipped. See
+`../infrastructure/changes/README.md` for the diffing behavior.
 
 ## Reconstruct a chapter
 

@@ -115,6 +115,33 @@ class TestNewChapter:
         assert summary.chapter_id == chapter.id
         uow.commit.assert_called_once()
 
+    def test_act_override_sets_act_on_created_chapter(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("Body.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act I")
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.act == "Act I"
+        assert "act: Act I" in file.read_text()
+
+    def test_act_override_beats_front_matter_act(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text('---\ntitle: Front Title\nact: "Act I"\n---\n\nBody.')
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act II")
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.act == "Act II"
+
     def test_new_file_with_front_matter_id_is_rejected(self, nlp, tmp_path, header):
         file = tmp_path / "orphan.md"
         file.write_text(f"{header}\n\nBody.")
@@ -271,6 +298,22 @@ class TestExistingChapter:
             apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
 
         uow_factory.get_unit_of_work.assert_not_called()
+
+    def test_act_override_updates_existing_chapter(self, nlp, tmp_path, header):
+        file = tmp_path / "c1.md"
+        file.write_text(f'{header}\n\n<span data-par-id="p1">New text.</span>')
+        loaded = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        loaded.act = "Act I"
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Old text.")))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act II")
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.act == "Act II"
+        assert "act: Act II" in file.read_text()
 
     def test_unmodified_file_persists_nothing(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
@@ -660,7 +703,7 @@ class TestResolveDocument:
 
 
 class TestImportDocumentDirectory:
-    def test_imports_every_markdown_file_in_sorted_order(self, nlp, tmp_path, monkeypatch):
+    def test_imports_root_files_then_act_dirs_in_sorted_order(self, nlp, tmp_path, monkeypatch):
         act_i = tmp_path / "Act I"
         act_ii = tmp_path / "Act II" / "deeper"
         (tmp_path / "Chapter 1.md").write_text("a")
@@ -682,8 +725,8 @@ class TestImportDocumentDirectory:
         ]
         calls: list[tuple] = []
 
-        def fake_apply(*args, **_kwargs):
-            calls.append(args)
+        def fake_apply(*args, **kwargs):
+            calls.append((args, kwargs))
             return summaries[len(calls) - 1]
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
@@ -691,11 +734,47 @@ class TestImportDocumentDirectory:
         result = import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory)
 
         assert result == summaries
-        assert [Path(args[1]).name for args in calls] == ["Chapter 2.md", "Chapter 3.md", "Chapter 1.md"]
-        assert all(args[0] is document for args in calls)
-        assert all(args[2] is nlp for args in calls)
-        assert all(args[3] is chapter_repo for args in calls)
-        assert all(args[4] is uow_factory for args in calls)
+        assert [Path(args[1]).name for args, _ in calls] == ["Chapter 1.md", "Chapter 2.md", "Chapter 3.md"]
+        assert [kwargs["act"] for _, kwargs in calls] == ["", "Act I", "Act II"]
+        assert all(args[0] is document for args, _ in calls)
+        assert all(args[2] is nlp for args, _ in calls)
+        assert all(args[3] is chapter_repo for args, _ in calls)
+        assert all(args[4] is uow_factory for args, _ in calls)
+
+    def test_act_none_directory_maps_to_empty_act(self, nlp, tmp_path, monkeypatch):
+        act_none = tmp_path / "Act None"
+        act_none.mkdir()
+        (act_none / "Chapter 1.md").write_text("a")
+        document = Document(id="d1", state=DataState.SYNC)
+        document_repo = MagicMock(spec=DocumentRepository)
+        document_repo.list_all.return_value = [{"id": "d1", "title": tmp_path.name, "author": "User"}]
+        document_repo.load.return_value = document
+        acts: list[str] = []
+
+        def fake_apply(*_args, **kwargs):
+            acts.append(kwargs["act"])
+            return ChapterImportSummary(chapter_id="c1", created=True)
+
+        monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
+
+        import_document_directory(tmp_path, "User", nlp, document_repo, MagicMock(), MagicMock())
+
+        assert acts == [""]
+
+    def test_non_act_top_level_subdirectories_are_skipped(self, nlp, tmp_path, monkeypatch):
+        (tmp_path / "drafts").mkdir()
+        (tmp_path / "drafts" / "Draft.md").write_text("a")
+        document = Document(id="d1", state=DataState.SYNC)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
+        monkeypatch.setattr(
+            markdown_import,
+            "apply_chapter_file",
+            lambda *a, **_k: (_ for _ in ()).throw(AssertionError("no chapter file expected")),
+        )
+
+        result = import_document_directory(tmp_path, "User", nlp, None, None, None)
+
+        assert not result
 
     def test_resolves_document_via_metadata_helpers(self, nlp, tmp_path, monkeypatch):
         (tmp_path / "Chapter 1.md").write_text("a")
