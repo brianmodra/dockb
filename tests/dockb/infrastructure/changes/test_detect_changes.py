@@ -83,6 +83,18 @@ def test_unchanged_paragraph_is_omitted():
     assert not diff.deleted
 
 
+def test_sentence_plain_text_round_trip_is_unchanged():
+    old = _chapter([("par-1", ["First.", "Second."])])
+    body = _span("par-1", "First.", "Second.")
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert not diff
+    assert not diff.changed
+    assert not diff.new
+    assert not diff.deleted
+
+
 def test_span_free_block_is_new_without_split():
     old = _chapter([("par-1", ["Known."])])
     body = "Plain paragraph. Second sentence."

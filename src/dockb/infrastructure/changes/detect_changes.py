@@ -144,8 +144,16 @@ def _classify_blocks(
 
 
 def _old_texts(paragraph: Paragraph) -> str:
-    """Paragraph text for one hydrated paragraph (its ``get_text``)."""
-    return paragraph.get_text()
+    """Paragraph text for one hydrated paragraph, in the canonical sentence-per-line form.
+
+    The canonical file holds one sentence per line; join the old sentences the
+    same way (matching ``writer._serialize_paragraph``), so a re-imported file
+    does not read as a change just because sentences stop at newlines.
+    """
+    if paragraph.dirty or not paragraph.sentences:
+        return paragraph.text
+    lines = [sentence.get_text().rstrip() for sentence in paragraph.sentences if sentence.get_text().strip()]
+    return "\n".join(lines)
 
 
 def _paragraph_blocks(body: str, single_newline: bool) -> list[str]:
