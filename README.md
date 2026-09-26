@@ -86,3 +86,8 @@ Checks: `make` from the repo root for the backend, and
 `npm test && npm run lint && npm run build` in `frontend/`.
 
 Run everything from the repo root. See [`AGENTS.md`](AGENTS.md) for the full developer workflow.
+
+## Licence
+
+I used the OSI MIT licence
+See `LICENCE`
