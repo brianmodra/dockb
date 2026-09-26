@@ -105,7 +105,7 @@ export class EditPanel {
     }
     return this.mode === "raw"
       ? this.view.state.doc.toString() !== this.lastCanonicalText
-      : this.wysiwyg.content() !== chapterBody(this.lastCanonicalText);
+      : this.wysiwyg.plainContent() !== chapterBody(this.lastCanonicalText);
   }
 
   lastCanonical(): string | null {

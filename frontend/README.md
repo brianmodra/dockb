@@ -54,10 +54,15 @@ its 10px floor.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
   of the same canonical buffer; dirty = buffer vs last canonical. The raw view
   shows the canonical file as stored (YAML front matter and `<span>` markup
-  intact); the WYSIWYG view derives its display and its save payload from
-  `chapterBody` (front matter and span tags removed, entities unescaped), so it
-  never shows markup HTML. Switching modes while clean restores the canonical
-  text; a dirty buffer is carried over as typed.
+  intact); the WYSIWYG view derives its display from `chapterBody` (front
+  matter and span tags removed, entities unescaped), so it never shows markup
+  HTML. Save emits canonical form: the front matter is kept verbatim and each
+  paragraph is re-wrapped in its `<span data-par-id>` (ids are carried in the
+  paragraph attrs; a duplicated id falls back to a span-free paragraph).
+  `plainContent()` returns the loose body, which is what the dirty check
+  compares against the loaded canonical — changed text is dirty, a different
+  id assignment alone is not. Switching modes while clean restores the
+  canonical text; a dirty buffer is carried over as typed.
 
   The WYSIWYG renders each paragraph span as one block: sentence lines are
   joined with a single space (`wysiwyg-sb` mark) so they wrap together, a

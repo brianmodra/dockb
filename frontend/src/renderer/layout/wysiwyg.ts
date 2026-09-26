@@ -10,7 +10,7 @@ const schema = new Schema({
     doc: { content: "paragraph+" },
     paragraph: {
       content: "inline*",
-      attrs: { blanksBefore: { default: 0 } },
+      attrs: { blanksBefore: { default: 0 }, id: { default: null } },
       toDOM: () => ["p", 0],
     },
     text: { group: "inline" },
@@ -38,6 +38,29 @@ const ENTITIES: Record<string, string> = {
 
 export function unescapeHtml(text: string): string {
   return text.replace(/&(amp|lt|gt|quot|#x27|#39);/g, (match) => ENTITIES[match] ?? match);
+}
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+function extractSpanIds(buffer: string): Array<string | null> {
+  const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
+  const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
+  const body = hadFrontMatter ? withoutFrontMatter.replace(/^\n/, "") : withoutFrontMatter;
+  return body.split("\n\n").map((block) => {
+    const open = block.match(/<span\b([^>]*)>/);
+    if (!open) {
+      return null;
+    }
+    const attr = open[1].match(/\bdata-par-id="([^"]*)"/);
+    return attr ? unescapeHtml(attr[1]) : null;
+  });
 }
 
 export function chapterBody(buffer: string): string {
@@ -107,13 +130,21 @@ function paragraphContent(block: BodyBlock): Node[] {
 }
 
 export function bufferToDoc(body: string) {
+  return bufferToDocWithIds(body, []);
+}
+
+export function bufferToDocWithIds(body: string, ids: Array<string | null>) {
   const blocks = parseBodyBlocks(body);
   const paragraphs =
     blocks.length > 0
-      ? blocks.map((block) =>
-          schema.node("paragraph", { blanksBefore: block.blanksBefore }, paragraphContent(block)),
+      ? blocks.map((block, index) =>
+          schema.node(
+            "paragraph",
+            { blanksBefore: block.blanksBefore, id: ids[index] ?? null },
+            paragraphContent(block),
+          ),
         )
-      : [schema.node("paragraph", { blanksBefore: 0 })];
+      : [schema.node("paragraph", { blanksBefore: 0, id: null })];
   return schema.node("doc", {}, paragraphs);
 }
 
@@ -147,6 +178,35 @@ export function docToString(doc: Node): string {
       newlines += "\n";
     }
     parts.push(newlines + serializeParagraph(paragraph));
+    isFirst = false;
+  });
+  return parts.join("");
+}
+
+export function docToCanonical(doc: Node): string {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  let isFirst = true;
+  doc.forEach((paragraph) => {
+    const blanks = paragraph.attrs.blanksBefore ?? 0;
+    let newlines = "\n".repeat(blanks);
+    if (!isFirst && paragraph.childCount > 0) {
+      newlines += "\n";
+    }
+    let id: string | null = paragraph.attrs.id ?? null;
+    if (id !== null) {
+      if (seen.has(id)) {
+        id = null;
+      } else {
+        seen.add(id);
+      }
+    }
+    const lines = serializeParagraph(paragraph);
+    const body =
+      id !== null
+        ? `<span data-par-id="${escapeHtml(id)}">\n${escapeHtml(lines)}\n</span>`
+        : lines;
+    parts.push(newlines + body);
     isFirst = false;
   });
   return parts.join("");
@@ -205,6 +265,7 @@ export class WysiwygView {
   readonly element: HTMLElement;
   private readonly options: WysiwygViewOptions;
   private innerView: EditorView | null = null;
+  private lastFrontMatter: string | null = null;
 
   constructor(options: WysiwygViewOptions = {}) {
     this.options = options;
@@ -220,11 +281,13 @@ export class WysiwygView {
   }
 
   setContent(buffer: string): void {
+    const ids = extractSpanIds(buffer);
     const display = chapterBody(buffer);
+    this.lastFrontMatter = buffer.match(FRONT_MATTER_RE)?.[0] ?? null;
     if (!this.innerView) {
       const state = EditorState.create({
         schema,
-        doc: bufferToDoc(display),
+        doc: bufferToDocWithIds(display, ids),
         plugins: [keymap(baseKeymap), headingDecorations(new MarkdownIt())],
       });
       this.innerView = new EditorView(this.element, {
@@ -242,13 +305,19 @@ export class WysiwygView {
     this.innerView.updateState(
       EditorState.create({
         schema,
-        doc: bufferToDoc(display),
+        doc: bufferToDocWithIds(display, ids),
         plugins: [keymap(baseKeymap), headingDecorations(new MarkdownIt())],
       }),
     );
   }
 
   content(): string {
+    const body = this.innerView ? docToCanonical(this.innerView.state.doc) : "";
+    const frontMatter = this.lastFrontMatter ? this.lastFrontMatter.replace(/\r?\n$/, "") : null;
+    return frontMatter === null ? body : frontMatter + "\n\n" + body;
+  }
+
+  plainContent(): string {
     return this.innerView ? docToString(this.innerView.state.doc) : "";
   }
 

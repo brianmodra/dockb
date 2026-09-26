@@ -28,8 +28,9 @@ chapter. It is a thin API client — save and open go through
 The backend's analysis of the text (sentence and word annotations) is embedded in the markdown
 as spans, and the chapter's identity lives in the YAML front matter. The raw view shows the
 canonical file exactly as stored. The WYSIWYG view shows only the body text: front matter and
-span markup are hidden, and edits there save as loose body text that the backend re-imports into
-canonical form.
+span markup are hidden, and edits save back canonical spans that keep each paragraph's
+`data-par-id`, so the backend's change detection sees edited paragraphs as changed and
+untouched ones as identical.
 
 Inside a span the sentence-delimiting newlines are read as a single space, so the sentences of
 a paragraph flow and wrap together. A line ending in a backslash is an escape: the backslash is

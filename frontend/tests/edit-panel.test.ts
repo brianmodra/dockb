@@ -168,11 +168,11 @@ describe("EditPanel", () => {
 
     await panel.load("c1");
 
-    expect(panel.content()).toBe("Chapter text.");
+    expect(panel.content()).toBe(canonicalFile);
     expect(panel.isDirty()).toBe(false);
   });
 
-  it("sends the visible body to the backend when saving an unchanged canonical file", async () => {
+  it("sends the canonical text with span ids to the backend when saving an unchanged canonical file", async () => {
     const canonicalFile = [
       "---",
       "id: c1",
@@ -191,7 +191,7 @@ describe("EditPanel", () => {
     await panel.load("c1");
     await panel.save();
 
-    expect(saveChapterDocument).toHaveBeenCalledWith("c1", "Chapter text.");
+    expect(saveChapterDocument).toHaveBeenCalledWith("c1", canonicalFile);
   });
 });
 

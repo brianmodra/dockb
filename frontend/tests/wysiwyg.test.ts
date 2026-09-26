@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   WysiwygView,
   bufferToDoc,
+  bufferToDocWithIds,
   chapterBody,
+  docToCanonical,
   docToString,
   findHeadingLines,
 } from "../src/renderer/layout/wysiwyg";
@@ -220,8 +222,7 @@ describe("WysiwygView", () => {
     ].join("\n");
     view.setContent(file);
 
-    expect(view.content()).toBe("Chapter text.");
-    expect(view.element.querySelector("span")).toBeNull();
+    expect(view.content()).toBe(file);
     expect(view.element.textContent).not.toContain("<span");
     expect(view.element.textContent).not.toContain("title:");
     expect(view.element.querySelector("p")?.textContent).toBe("Chapter text.");
@@ -234,5 +235,67 @@ describe("WysiwygView", () => {
     view.destroy();
 
     expect(view.element.querySelector("p")).toBeNull();
+  });
+});
+
+describe("WysiwygView canonical round trip", () => {
+  it("round-trips a canonical file byte-for-byte including front matter and span ids", () => {
+    const file = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1">',
+      "One.",
+      "Two.",
+      "</span>",
+      "",
+      '<span data-par-id="p-2">',
+      "Three.",
+      "</span>",
+    ].join("\n");
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent(file);
+
+    expect(view.element.textContent).not.toContain("data-par-id");
+    expect(view.element.textContent).not.toContain("title:");
+    expect(view.content()).toBe(file);
+  });
+
+  it("keeps a paragraph's id when its text is edited", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent('<span data-par-id="p-1">\nChapter text.\n</span>');
+
+    const tr = view.view.state.tr;
+    tr.insertText("X", 4);
+    view.view.dispatch(tr);
+
+    expect(view.content()).toBe('<span data-par-id="p-1">\nChaXpter text.\n</span>');
+  });
+
+  it("re-emits a hard-break line as backslash and hides it from view", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent('<span data-par-id="p-1">\nLine one.\\\nLine two.\n</span>');
+
+    expect(view.element.textContent).not.toContain("\\");
+    expect(view.element.querySelector("br")).not.toBeNull();
+    expect(view.content()).toBe('<span data-par-id="p-1">\nLine one.\\\nLine two.\n</span>');
+  });
+
+  it("exposes the visible body separately for dirty comparison", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent('<span data-par-id="p-1">\nOne.\nTwo.\n</span>\n\n<span data-par-id="p-2">\nThree.\n</span>');
+
+    expect(view.plainContent()).toBe("One.\nTwo.\n\nThree.");
+  });
+
+  it("lets a duplicated paragraph id fall back to a new (span-free) paragraph", () => {
+    const doc = bufferToDocWithIds("X.\n\nY.", ["dup", "dup"]);
+    expect(docToCanonical(doc)).toBe('<span data-par-id="dup">\nX.\n</span>\n\nY.');
   });
 });
