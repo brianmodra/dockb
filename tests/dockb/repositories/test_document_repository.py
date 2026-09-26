@@ -70,6 +70,14 @@ class TestSaveNewDocument:
         assert params["title"] == "Faith"
         assert params["author"] == "Paul"
 
+    def test_sets_title_key(self, document_repo, neo4j_session, document):
+        document.state = DataState.NEW
+        document.title = "Faith"
+        document_repo.save(document)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "d.title_key = toLower($title)" in cypher
+
     def test_passes_chapter_ids(self, document_repo, neo4j_session, document):
         document.state = DataState.NEW
         chap = Chapter(text="First chapter.")

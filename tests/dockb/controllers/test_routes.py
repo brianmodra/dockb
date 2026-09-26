@@ -67,6 +67,9 @@ class MockDocumentService:
         doc = self._docs.get(document_id)
         if doc is None:
             return None
+        for other_id, other in self._docs.items():
+            if other_id != document_id and other.title.lower() == title.lower():
+                raise DuplicateTitleError(title)
         doc.title = title
         doc.author = author
         return doc
@@ -78,6 +81,7 @@ class MockDocumentService:
 class MockChapterService:
     def __init__(self) -> None:
         self._chapters: dict[str, Chapter] = {}
+        self._owners: dict[str, str] = {}
         self._documents: dict[str, str] = {}
 
     def list_by_document(self, document_id: str) -> list[dict[str, str]]:
@@ -90,14 +94,22 @@ class MockChapterService:
         return self._chapters.get(chapter_id)
 
     def create(self, chapter_id: str, title: str, document_id: str, after_chapter_id: str | None = None) -> Chapter:
+        for ch_id, ch in self._chapters.items():
+            if self._owners.get(ch_id) == document_id and ch.title.lower() == title.lower():
+                raise DuplicateTitleError(title)
         ch = _make_chapter(chapter_id, title)
         self._chapters[chapter_id] = ch
+        self._owners[chapter_id] = document_id
         return ch
 
     def update(self, chapter_id: str, title: str) -> Chapter | None:
         ch = self._chapters.get(chapter_id)
         if ch is None:
             return None
+        owner = self._owners.get(chapter_id)
+        for ch_id, other in self._chapters.items():
+            if ch_id != chapter_id and other.title.lower() == title.lower() and self._owners.get(ch_id) == owner:
+                raise DuplicateTitleError(title)
         ch.title = title
         return ch
 
@@ -290,6 +302,15 @@ class TestDocumentRoutes:
         data = resp.json()
         assert data["status"]["code"] == "ok"
 
+    def test_update_document_duplicate_title_conflict(self) -> None:
+        self.svc.create("d1", "Alpha", "A")
+        self.svc.create("d2", "Beta", "B")
+        resp = self.client.put(
+            "/api/documents/d2",
+            json={"attrs": {"title": "ALPHA", "author": "B"}},
+        )
+        assert resp.status_code == 409
+
     def test_update_document_not_found(self) -> None:
         resp = self.client.put(
             "/api/documents/nonexistent",
@@ -371,6 +392,17 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
         assert resp.status_code == 200
         assert resp.json()["status"]["code"] == "ok"
 
+    def test_create_chapter_duplicate_title_conflict(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        resp = self.client.post(
+            "/api/chapters",
+            json={
+                "attrs": {"id": "c2", "title": "INTRO"},
+                "relations": {"document_id": "d1"},
+            },
+        )
+        assert resp.status_code == 409
+
     def test_create_chapter_passes_after_chapter_id(self) -> None:
         with patch.object(self.ch_svc, "create", wraps=self.ch_svc.create) as create_mock:
             resp = self.client.post(
@@ -406,6 +438,15 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             json={"attrs": {"title": "New"}},
         )
         assert resp.status_code == 200
+
+    def test_update_chapter_duplicate_title_conflict(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        self.ch_svc.create("c2", "Body", "d1")
+        resp = self.client.put(
+            "/api/chapters/c2",
+            json={"attrs": {"title": "INTRO"}},
+        )
+        assert resp.status_code == 409
 
     def test_update_chapter_not_found(self) -> None:
         resp = self.client.put(

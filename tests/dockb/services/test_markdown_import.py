@@ -573,6 +573,17 @@ class TestResolveDocument:
         repo.load.assert_called_once_with("d1")
         uow_factory.get_unit_of_work.assert_not_called()
 
+    def test_matches_title_case_insensitively(self):
+        repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
+        loaded = Document(id="d1", state=DataState.SYNC)
+        repo.load.return_value = loaded
+        uow_factory = MagicMock()
+
+        result = _resolve_document(Path("linchpin"), DocumentMetadata("LINCHPIN", "User"), repo, uow_factory)
+
+        assert result is loaded
+        uow_factory.get_unit_of_work.assert_not_called()
+
     def test_multiple_matches_uses_first(self):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}, {"id": "d2", "title": "Linchpin", "author": "A"}])
         loaded = Document(id="d1", state=DataState.SYNC)

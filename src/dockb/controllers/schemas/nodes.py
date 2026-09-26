@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Attrs models (forward-extensible)
@@ -41,8 +41,16 @@ class ChapterAttrs(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     id: str | None = None
-    title: str
+    title: str = Field(min_length=1)
     act: str = ""
+
+    @field_validator("title")
+    @classmethod
+    def title_not_blank(cls, value: str) -> str:
+        """Reject empty and whitespace-only titles."""
+        if not value.strip():
+            raise ValueError("title must not be blank")
+        return value
 
 
 class ChapterSummary(BaseModel):

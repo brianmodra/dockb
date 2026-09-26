@@ -27,7 +27,7 @@ SET r.index = p.index
 _NEW_CYPHER = f"""
 MATCH (d:Document {{id: $document_id}})
 MERGE (c:Chapter {{id: $chapter_id}})
-SET c.title = $title, c.act = $act
+SET c.title = $title, c.act = $act, c.title_key = toLower($title), c.document_id = $document_id
 MERGE (c)-[rc:PART_OF]->(d)
 SET rc.index = $index
 WITH d, c
@@ -41,7 +41,7 @@ FOREACH (e IN later_rels | SET e.index = e.index + 1)
 _CHANGED_CYPHER = f"""
 MATCH (d:Document {{id: $document_id}})
 MERGE (c:Chapter {{id: $chapter_id}})
-SET c.title = $title, c.act = $act
+SET c.title = $title, c.act = $act, c.title_key = toLower($title), c.document_id = $document_id
 MERGE (c)-[:PART_OF]->(d)
 {_PARAGRAPH_UNWIND_CYPHER}
 WITH c, COLLECT(p.id) AS keep_ids

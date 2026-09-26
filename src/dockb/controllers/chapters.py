@@ -18,7 +18,7 @@ from dockb.controllers.schemas.chapters import (
     UpdateChapterRequest,
 )
 from dockb.controllers.serializers import serialize_chapter
-from dockb.exceptions import ChapterAfterNotFoundError
+from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/chapters", tags=["chapters"])
@@ -60,6 +60,8 @@ def create_chapter(
         )
     except ChapterAfterNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc
+    except DuplicateTitleError as exc:
+        raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
     return mutation_response(session_context).model_dump()
 
 
@@ -129,7 +131,10 @@ def update_chapter(
     svc: Any = Depends(get_ch_service),
     session_context: SessionContext | None = Depends(get_session_context),
 ) -> dict[str, Any]:
-    ch = svc.update(chapter_id=chapter_id, title=body.attrs.title)
+    try:
+        ch = svc.update(chapter_id=chapter_id, title=body.attrs.title)
+    except DuplicateTitleError as exc:
+        raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
     if ch is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return mutation_response(session_context).model_dump()

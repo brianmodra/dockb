@@ -114,11 +114,11 @@ class DocumentService:
     ) -> Document:
         """Create a new empty document and commit it.
 
-        An exact-title match against the knowledge graph is rejected, and the
-        server-owned metadata file for the document is materialized when a
-        document store is configured.
+        A case-insensitive title match against the knowledge graph is
+        rejected, and the server-owned metadata file for the document is
+        materialized when a document store is configured.
         """
-        if any(row["title"] == title for row in self._document_repo.list_all()):
+        if any(str(row.get("title") or "").lower() == title.lower() for row in self._document_repo.list_all()):
             raise DuplicateTitleError(title)
 
         doc = Document(id=document_id, title=title, author=author, state=DataState.NEW)
@@ -139,6 +139,9 @@ class DocumentService:
         doc = self._document_repo.load(document_id)
         if doc is None:
             return None
+        for row in self._document_repo.list_all():
+            if row["id"] != document_id and str(row.get("title") or "").lower() == title.lower():
+                raise DuplicateTitleError(title)
         doc.title = title
         doc.author = author
         doc.state = DataState.CHANGED
@@ -356,6 +359,9 @@ class ChapterService:
         is configured.
         """
         index = self._resolve_index(document_id, after_chapter_id)
+        for row in self._chapter_repo.list_by_document(document_id):
+            if str(row.get("title") or "").lower() == title.lower():
+                raise DuplicateTitleError(title)
         ch = Chapter(id=chapter_id, title=title, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id, index=str(index))
@@ -431,10 +437,15 @@ class ChapterService:
         ch = self._chapter_repo.load(chapter_id)
         if ch is None:
             return None
+        document_id = self._chapter_repo.find_document_id(chapter_id)
+        if document_id is not None:
+            for row in self._chapter_repo.list_by_document(document_id):
+                if row["id"] != chapter_id and str(row.get("title") or "").lower() == title.lower():
+                    raise DuplicateTitleError(title)
         ch.title = title
         ch.state = DataState.CHANGED
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id="")
+        uow.register(ch, document_id=document_id or "")
         uow.commit()
         return ch
 

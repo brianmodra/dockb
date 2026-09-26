@@ -72,8 +72,11 @@ class StubChapterRepo(StubRepo):
         return self._document_of.get(chapter_id)
 
     def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
-        _ = document_id
-        rows = [{"id": m.id, "title": m.title, "act": m.act, "index": self._index_of.get(m.id, 0)} for m in self._store.values()]
+        rows = [
+            {"id": m.id, "title": m.title, "act": m.act, "index": self._index_of.get(m.id, 0)}
+            for m in self._store.values()
+            if m.id not in self._document_of or self._document_of[m.id] == document_id
+        ]
         rows.sort(key=lambda row: int(row["index"]))
         return rows
 
@@ -141,7 +144,7 @@ def read_file(path: str | Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-class TestDocumentService:
+class TestDocumentService:  # pylint: disable=too-many-public-methods
     def setup_method(self) -> None:
         self.repo = StubDocumentRepo()
         self.uow = StubUnitOfWork()
@@ -185,6 +188,12 @@ class TestDocumentService:
         self.repo._store["d0"] = existing
         with pytest.raises(DuplicateTitleError):
             self.svc.create("d1", title="Faith", author="Paul")
+
+    def test_create_rejects_case_insensitive_title_duplicate(self) -> None:
+        existing = Document(id="d0", title="Linchpin", author="Paul", state=DataState.SYNC)
+        self.repo._store["d0"] = existing
+        with pytest.raises(DuplicateTitleError):
+            self.svc.create("d1", title="linchPIN", author="Paul")
 
     def test_create_accepts_distinct_title(self) -> None:
         existing = Document(id="d0", title="Faith", author="Paul", state=DataState.SYNC)
@@ -276,6 +285,18 @@ class TestDocumentService:
         assert doc.state == DataState.CHANGED
         assert self.uow.committed
 
+    def test_update_rejects_title_taken_by_another_document(self) -> None:
+        self.repo._store["d1"] = Document(id="d1", title="Alpha", author="A", state=DataState.SYNC)
+        self.repo._store["d2"] = Document(id="d2", title="Beta", author="B", state=DataState.SYNC)
+        with pytest.raises(DuplicateTitleError):
+            self.svc.update("d2", title="ALPHA", author="B")
+
+    def test_update_allows_title_case_change_of_own(self) -> None:
+        self.repo._store["d1"] = Document(id="d1", title="Alpha", author="A", state=DataState.SYNC)
+        result = self.svc.update("d1", title="alpha", author="A")
+        assert result is not None
+        assert result.title == "alpha"
+
     def test_delete_returns_false_when_missing(self) -> None:
         assert self.svc.delete("nonexistent") is False
 
@@ -352,6 +373,18 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         with pytest.raises(ChapterAfterNotFoundError):
             self.svc.create("c2", title="Ch2", document_id="d1", after_chapter_id="ghost")
 
+    def test_create_rejects_case_insensitive_duplicate_title_in_document(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        with pytest.raises(DuplicateTitleError):
+            self.svc.create("c2", title="INTRO", document_id="d1")
+
+    def test_create_allows_same_title_in_other_document(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        ch = self.svc.create("c2", title="Intro", document_id="d2")
+        assert ch.id == "c2"
+
     def test_create_materializes_empty_chapter_file(self, tmp_path) -> None:
         subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
@@ -375,6 +408,23 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert result is ch
         assert ch.title == "New"
         assert ch.state == DataState.CHANGED
+
+    def test_update_rejects_duplicate_title_in_document(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        self.repo._store["c2"] = Chapter(id="c2", title="Body", state=DataState.SYNC)
+        self.repo.set_document("c2", "d1")
+        with pytest.raises(DuplicateTitleError):
+            self.svc.update("c2", title="intro")
+
+    def test_update_allows_same_title_in_other_document(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        self.repo._store["c2"] = Chapter(id="c2", title="Intro", state=DataState.SYNC)
+        self.repo.set_document("c2", "d2")
+        result = self.svc.update("c2", title="Intro")
+        assert result is not None
+        assert result.title == "Intro"
 
     def test_update_returns_none_when_missing(self) -> None:
         assert self.svc.update("nonexistent", "T") is None

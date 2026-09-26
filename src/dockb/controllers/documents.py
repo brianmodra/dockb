@@ -79,11 +79,14 @@ def update_document(
     svc: Any = Depends(get_doc_service),
     session_context: SessionContext | None = Depends(get_session_context),
 ) -> dict[str, Any]:
-    doc = svc.update(
-        document_id=document_id,
-        title=body.attrs.title,
-        author=body.attrs.author,
-    )
+    try:
+        doc = svc.update(
+            document_id=document_id,
+            title=body.attrs.title,
+            author=body.attrs.author,
+        )
+    except DuplicateTitleError as exc:
+        raise HTTPException(status_code=409, detail=f"document_title_conflict: {exc}") from exc
     if doc is None:
         raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}")
     return mutation_response(session_context).model_dump()

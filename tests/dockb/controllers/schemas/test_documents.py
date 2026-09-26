@@ -80,3 +80,13 @@ def test_create_document_requires_attrs():
 def test_update_document_requires_attrs():
     with pytest.raises(ValidationError):
         UpdateDocumentRequest()
+
+
+def test_document_attrs_rejects_blank_title():
+    with pytest.raises(ValidationError):
+        DocumentAttrs(title="", author="Paul")
+
+
+def test_document_attrs_rejects_whitespace_title():
+    with pytest.raises(ValidationError):
+        DocumentAttrs(title="   ", author="Paul")

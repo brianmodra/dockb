@@ -72,6 +72,9 @@ class StubChapterRepo(StubRepo):
     def list_by_document(self, document_id: str) -> list[dict[str, str]]:
         return super().list_by_parent(document_id)
 
+    def find_document_id(self, _chapter_id: str) -> str | None:
+        return None
+
     def load(self, model_id: str) -> Chapter | None:
         return super().load(model_id)  # type: ignore[return-value]
 

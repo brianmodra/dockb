@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 _NEW_CYPHER = """
 MERGE (d:Document {id: $document_id})
-SET d.title = $title, d.author = $author
+SET d.title = $title, d.author = $author, d.title_key = toLower($title)
 WITH d
 UNWIND $chapters AS ch
 MERGE (chapter:Chapter {id: ch.id})

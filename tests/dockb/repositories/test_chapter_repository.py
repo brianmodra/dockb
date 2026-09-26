@@ -71,6 +71,16 @@ class TestSaveNewChapter:
         _, params = extract_call(neo4j_session)
         assert params["act"] == "Act I"
 
+    def test_sets_document_id_and_title_key(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+        chapter.title = "Intro"
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "c.title_key = toLower($title)" in cypher
+        assert "c.document_id = $document_id" in cypher
+
     def test_passes_paragraph_ids(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
         para = Paragraph(text="First paragraph.")
@@ -151,6 +161,16 @@ class TestSaveChangedChapter:
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" in cypher
         assert "DETACH DELETE orphan" in cypher
+
+    def test_changed_sets_document_id_and_title_key(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.CHANGED
+        chapter.title = "Intro"
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "c.title_key = toLower($title)" in cypher
+        assert "c.document_id = $document_id" in cypher
 
     def test_passes_only_current_paragraphs_after_removal(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.CHANGED

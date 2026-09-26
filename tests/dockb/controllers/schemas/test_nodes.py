@@ -105,6 +105,21 @@ def test_chapter_node_full_tree():
     assert d["content"][0]["content"][0]["content"][0]["text"] == "Hello world."
 
 
+def test_chapter_attrs_requires_title():
+    with pytest.raises(ValidationError):
+        ChapterAttrs(id="ch-1")
+
+
+def test_chapter_attrs_rejects_blank_title():
+    with pytest.raises(ValidationError):
+        ChapterAttrs(id="ch-1", title="")
+
+
+def test_chapter_attrs_rejects_whitespace_title():
+    with pytest.raises(ValidationError):
+        ChapterAttrs(id="ch-1", title="   ")
+
+
 # ---------------------------------------------------------------------------
 # Extra attrs (extensibility)
 # ---------------------------------------------------------------------------

@@ -216,11 +216,12 @@ def _resolve_document(
 ) -> Document:
     """Return the graph Document for a document directory, creating it if missing.
 
-    An existing Document is matched by exact title and reused; a directory whose
-    title no Document answers for is turned into a fresh NEW Document and
-    persisted immediately, so later chapter imports can link to it.
+    An existing Document is matched by title (case-insensitively) and reused;
+    a directory whose title no Document answers for is turned into a fresh
+    NEW Document and persisted immediately, so later chapter imports can link
+    to it.
     """
-    matches = [row for row in document_repo.list_all() if row["title"] == metadata.title]
+    matches = [row for row in document_repo.list_all() if str(row.get("title") or "").lower() == metadata.title.lower()]
     if matches:
         if len(matches) > 1:
             logger.warning("Multiple documents titled %r; reusing %r", metadata.title, matches[0]["id"])
