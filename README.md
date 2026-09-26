@@ -61,4 +61,28 @@ Every HTTP request also logs one INFO line (`src/dockb/timing.py`) with the tota
 source .venv/bin/activate && pip install -e '.[dev]'
 ```
 
-Run everything from the repo root. See [`AGENTS.md`](AGENTS.md) for backend checks (`make`), the dev server, and the frontend commands.
+## Run the dev servers
+
+Backend (from the repo root):
+
+```bash
+source .venv/bin/activate && pip install -e '.[dev]'   # once per checkout
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src
+```
+
+The API needs `NEO4J_URL`, `NEO4J_USER`, and `NEO4J_PASSWORD`
+(or a `.env` in the repo root). `--reload-dir src` watches only the Python
+code, so the chapters under `run/` and other generated files never trigger
+reloads.
+
+Frontend (from `frontend/`):
+
+```bash
+npm install
+npm run dev    # Vite on :3000, proxying /api to :8000
+```
+
+Checks: `make` from the repo root for the backend, and
+`npm test && npm run lint && npm run build` in `frontend/`.
+
+Run everything from the repo root. See [`AGENTS.md`](AGENTS.md) for the full developer workflow.
