@@ -180,6 +180,8 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
             act=act,
         )
         summaries.append(summary)
+    if summaries:
+        chapter_repo.reorder(document.id, [s.chapter_id for s in summaries])
     return summaries
 
 

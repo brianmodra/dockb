@@ -763,6 +763,40 @@ class TestImportDocumentDirectory:
         assert all(args[3] is chapter_repo for args, _ in calls)
         assert all(args[4] is uow_factory for args, _ in calls)
 
+    def test_normalizes_chapter_indices_to_discovery_sequence_order(self, nlp, tmp_path, monkeypatch):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        for name in ["Opening 1.md", "Setup 10.md", "Setup 2.md"]:
+            (act / name).write_text("a")
+
+        document = Document(id="d1", state=DataState.SYNC)
+        document_repo = MagicMock(spec=DocumentRepository)
+        document_repo.list_all.return_value = [{"id": "d1", "title": tmp_path.name, "author": "User"}]
+        document_repo.load.return_value = document
+        chapter_repo = MagicMock(spec=ChapterRepository)
+        uow_factory = MagicMock()
+        summaries = [
+            ChapterImportSummary(chapter_id="c1", created=True),
+            ChapterImportSummary(chapter_id="c2", created=True),
+            ChapterImportSummary(chapter_id="c10", created=True),
+        ]
+        calls: list[tuple] = []
+
+        def fake_apply(*args, **kwargs):
+            calls.append((args, kwargs))
+            return summaries[len(calls) - 1]
+
+        monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
+
+        import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory)
+
+        assert [Path(args[1]).name for args, _ in calls] == [
+            "Opening 1.md",
+            "Setup 2.md",
+            "Setup 10.md",
+        ]
+        chapter_repo.reorder.assert_called_once_with("d1", ["c1", "c2", "c10"])
+
     def test_act_none_directory_maps_to_empty_act(self, nlp, tmp_path, monkeypatch):
         act_none = tmp_path / "Act None"
         act_none.mkdir()
