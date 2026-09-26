@@ -16,10 +16,14 @@ changes. Each chapter file is matched through its front-matter `id`; changed or 
 rewritten into the canonical span format (one identity span per paragraph). With
 `--single-newline-paragraphs` each body line is read as a paragraph — for files whose paragraphs end
 in a single newline and whose sentences run on inside a line — while the write-back stays canonical.
-Chapter files living directly in the document directory, or anywhere beneath an `Act <name>`
-subdirectory, are imported; a file's act derives from its `Act <name>` directory (used verbatim,
-the `Act None` directory meaning no act), which wins over any front-matter `act`. Other
-subdirectories are skipped. See
+Chapters live only inside top-level `Act <name>` subdirectories: the act's name is its number
+(digits, Roman numerals, or the Unicode single-character numerals), which orders the acts, with the
+`Act None` directory holding the act-less chapters first. Root-level files and directories not
+named `Act <name>` hold no chapters and are skipped. A chapter file's act derives from its
+containing directory (used verbatim), which wins over any front-matter `act`. Within an act each
+file is imported in the order of the trailing number of its name, with at most one letter (5, 5a,
+5b, 6). A file that is not numbered, two acts numbering the same, or two files in one act
+numbering the same abort the import. See
 `../infrastructure/changes/README.md` for the diffing behavior.
 
 ## Reconstruct a chapter

@@ -224,7 +224,12 @@ belonging to a different act joins that run. The editor only sends the order cha
 
 In the owned tree an act is also a directory: chapters live under `Act <name>`, and directory import
 derives each file's act from its directory's name (`Act None` → the empty act), overriding any
-front-matter `act`.
+front-matter `act`. An act directory's name is its number — digits, Roman numerals, or the
+single-character Unicode numerals — and that number orders the acts. Root-level files and
+directories not named `Act <name>` are not chapter locations. Within an act, chapter files are
+ordered by the trailing number of their name with at most one letter, so `Setup 5b.md` follows
+`Setup 5.md` and precedes `Setup 6.md`; an unnumbered chapter file, or two acts or files numbering
+the same, abort the import.
 
 ### git branch approach rejected
 

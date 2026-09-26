@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -145,16 +146,20 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
-    Root-level ``*.md`` files and files anywhere beneath an ``Act <name>``
-    subdirectory are imported (see ``_discover_chapter_files``); each import
-    passes the act its containing directory names, so placement is
-    authoritative over the file's front matter. Subdirectories that are not
-    ``Act ``-prefixed are skipped. Files are processed root-first, then by act
-    directory (sorted), files sorted within each. The whole directory is
+    Chapters live only inside top-level ``Act <name>`` subdirectories (see
+    ``_discover_chapter_files``): each file is imported with the act its
+    directory names, so placement is authoritative over the file's front
+    matter. Root-level files and non-act directories hold no chapters and are
+    skipped. Acts are processed by the number their name carries (digits or
+    Roman numerals, ``Act None`` first), and files within an act by their
+    trailing sequence number with optional letter (5, 5a, 5b, 6), each new
+    chapter following the previous file into the graph. The whole directory is
     imported into a single Document, resolved by its metadata (see
     ``_read_document_metadata``/``_resolve_document``), and one summary is
-    returned per chapter file. ``single_newline_paragraphs`` is forwarded to
-    every ``apply_chapter_file`` call.
+    returned per chapter file. An unparsable act name, an unnumbered chapter
+    file, or two acts or two files numbering the same abort the import.
+    ``single_newline_paragraphs`` is forwarded to every ``apply_chapter_file``
+    call.
     """
     dir_path = Path(document_dir)
     if not dir_path.is_dir():
@@ -176,19 +181,127 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     return summaries
 
 
-def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
-    """Yield ``(act, file)`` for every importable chapter file under *document_dir*.
+_CHAPTER_SEQUENCE_RE = re.compile(r"(\d+)([A-Za-z])?$")
+_ROMAN_RE = re.compile(r"M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})")
+_ROMAN_DIGITS = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+_UNICODE_ROMAN = str.maketrans(
+    {
+        "\u2160": "I",
+        "\u2161": "II",
+        "\u2162": "III",
+        "\u2163": "IV",
+        "\u2164": "V",
+        "\u2165": "VI",
+        "\u2166": "VII",
+        "\u2167": "VIII",
+        "\u2168": "IX",
+        "\u2169": "X",
+        "\u216a": "XI",
+        "\u216b": "XII",
+        "\u216c": "L",
+        "\u216d": "C",
+        "\u216e": "D",
+        "\u216f": "M",
+        "\u2170": "i",
+        "\u2171": "ii",
+        "\u2172": "iii",
+        "\u2173": "iv",
+        "\u2174": "v",
+        "\u2175": "vi",
+        "\u2176": "vii",
+        "\u2177": "viii",
+        "\u2178": "ix",
+        "\u2179": "x",
+        "\u217a": "xi",
+        "\u217b": "xii",
+        "\u217c": "l",
+        "\u217d": "c",
+        "\u217e": "d",
+        "\u217f": "m",
+    }
+)
 
-    Root-level files map to an empty act. Files under an ``Act <name>``
-    subdirectory map to that verbatim name — ``Act None`` maps back to an
-    empty act — and deeper nesting keeps the act of the enclosing *top-level*
-    act directory. Subdirectories not named ``Act ...`` are skipped entirely.
+
+def _roman_to_int(value: str) -> int | None:
+    """Return *value* as an int when it is a strict canonical Roman numeral, else None.
+
+    The single-character Unicode Roman numerals (U+2160–U+216F and
+    U+2170–U+217F) translate to their ASCII letters first, so ``Ⅳ`` and ``IV``
+    are the same act number.
     """
-    for chapter_file in sorted(document_dir.glob("*.md")):
-        yield "", chapter_file
-    for subdir in sorted(path for path in document_dir.iterdir() if path.is_dir() and path.name.startswith("Act ")):
-        act = "" if subdir.name == "Act None" else subdir.name
-        for chapter_file in sorted(subdir.rglob("*.md")):
+    text = value.translate(_UNICODE_ROMAN).upper()
+    if not _ROMAN_RE.fullmatch(text):
+        return None
+    total = 0
+    previous = 0
+    for char in reversed(text):
+        digit = _ROMAN_DIGITS[char]
+        total += -digit if digit < previous else digit
+        previous = digit
+    return total
+
+
+def _parse_act_directory(subdir: Path) -> tuple[int, str]:
+    """Return ``(number, act)`` for an ``Act <name>`` directory.
+
+    The name after the ``Act `` prefix must be digits or a strict Roman
+    numeral, whose value orders the act. The reserved ``Act None`` is the
+    empty act: number 0, sorting before every numbered act. Any other name —
+    a letter suffix, free text, an empty label — raises ValueError, because a
+    chapter must sit in a numbered act.
+    """
+    label = subdir.name[len("Act ") :]
+    if label == "None":
+        return 0, ""
+    number = int(label) if label.isascii() and label.isdigit() else _roman_to_int(label)
+    if number is None:
+        raise ValueError(f"Act directory '{subdir.name}' is not numbered with digits or Roman numerals")
+    return number, subdir.name
+
+
+def _chapter_sort_key(file_path: Path) -> tuple[int, str]:
+    """Return the ``(number, letter)`` ordering key for a chapter file.
+
+    The stem must end in digits with at most one trailing letter — ``Opening
+    5`` → ``(5, '')``, ``Setup 5b`` → ``(5, 'b')``. A stem that does not is
+    not a numbered chapter and raises ValueError.
+    """
+    match = _CHAPTER_SEQUENCE_RE.search(file_path.stem)
+    if match is None:
+        raise ValueError(f"Chapter file '{file_path}' is not numbered")
+    return int(match.group(1)), (match.group(2) or "").lower()
+
+
+def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
+    """Yield ``(act, file)`` for every chapter file under *document_dir*.
+
+    Chapters exist only inside top-level ``Act <name>`` directories, whose
+    name must number the act as digits or a strict Roman numeral (``Act
+    None`` is the empty act). Directory import order is act value, then each
+    file's trailing sequence number with its optional letter (5, 5a, 5b, 6).
+    Anything else — a root-level or non-act file, an unparsable act name, two
+    files in one act numbering the same, or two acts numbering the same —
+    raises ValueError.
+    """
+    acts: list[tuple[tuple[int, str], Path]] = [
+        (_parse_act_directory(subdir), subdir) for subdir in document_dir.iterdir() if subdir.is_dir() and subdir.name.startswith("Act ")
+    ]
+    acts.sort(key=lambda pair: pair[0])
+    previous: tuple[int, str] | None = None
+    for (number, act), subdir in acts:
+        if previous is not None:
+            if previous[0] == number:
+                raise ValueError(f"Acts '{previous[1]}' and '{subdir.name}' both number as {number}")
+        previous = (number, subdir.name)
+        chapters = sorted(
+            ((_chapter_sort_key(file_path), file_path) for file_path in subdir.rglob("*.md")),
+            key=lambda pair: pair[0],
+        )
+        last_key: tuple[int, str] | None = None
+        for key, chapter_file in chapters:
+            if key == last_key:
+                raise ValueError(f"Duplicate chapter number '{chapter_file.stem}' in '{subdir.name}'")
+            last_key = key
             yield act, chapter_file
 
 

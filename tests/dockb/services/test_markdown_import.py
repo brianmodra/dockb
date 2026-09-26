@@ -703,14 +703,24 @@ class TestResolveDocument:
 
 
 class TestImportDocumentDirectory:
-    def test_imports_root_files_then_act_dirs_in_sorted_order(self, nlp, tmp_path, monkeypatch):
+    def test_imports_act_dirs_only_in_number_sequence_order(self, nlp, tmp_path, monkeypatch):
+        (tmp_path / "Chapter 0.md").write_text("root file - not a chapter")
+        (tmp_path / "drafts").mkdir()
+        (tmp_path / "drafts" / "Draft.md").write_text("non-act dir - not a chapter")
         act_i = tmp_path / "Act I"
+        act_i.mkdir()
         act_ii = tmp_path / "Act II" / "deeper"
-        (tmp_path / "Chapter 1.md").write_text("a")
-        act_i.mkdir(parents=True)
-        (act_i / "Chapter 2.md").write_text("b")
         act_ii.mkdir(parents=True)
-        (act_ii / "Chapter 3.md").write_text("c")
+        for name in [
+            "Opening 1.md",
+            "Setup 10.md",
+            "Setup 2.md",
+            "Setup 5.md",
+            "Setup 5b.md",
+            "Setup 6.md",
+        ]:
+            (act_i / name).write_text("a")
+        (act_ii / "Opening 3.md").write_text("c")
 
         document = Document(id="d1", state=DataState.SYNC)
         document_repo = MagicMock(spec=DocumentRepository)
@@ -718,11 +728,7 @@ class TestImportDocumentDirectory:
         document_repo.load.return_value = document
         chapter_repo = MagicMock(spec=ChapterRepository)
         uow_factory = MagicMock()
-        summaries = [
-            ChapterImportSummary(chapter_id="c1", created=True),
-            ChapterImportSummary(chapter_id="c2", created=True),
-            ChapterImportSummary(chapter_id="c3", created=True),
-        ]
+        summaries = [ChapterImportSummary(chapter_id=f"c{i}", created=True) for i in range(7)]
         calls: list[tuple] = []
 
         def fake_apply(*args, **kwargs):
@@ -734,8 +740,24 @@ class TestImportDocumentDirectory:
         result = import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory)
 
         assert result == summaries
-        assert [Path(args[1]).name for args, _ in calls] == ["Chapter 1.md", "Chapter 2.md", "Chapter 3.md"]
-        assert [kwargs["act"] for _, kwargs in calls] == ["", "Act I", "Act II"]
+        assert [Path(args[1]).name for args, _ in calls] == [
+            "Opening 1.md",
+            "Setup 2.md",
+            "Setup 5.md",
+            "Setup 5b.md",
+            "Setup 6.md",
+            "Setup 10.md",
+            "Opening 3.md",
+        ]
+        assert [kwargs["act"] for _, kwargs in calls] == [
+            "Act I",
+            "Act I",
+            "Act I",
+            "Act I",
+            "Act I",
+            "Act I",
+            "Act II",
+        ]
         assert all(args[0] is document for args, _ in calls)
         assert all(args[2] is nlp for args, _ in calls)
         assert all(args[3] is chapter_repo for args, _ in calls)
@@ -777,7 +799,9 @@ class TestImportDocumentDirectory:
         assert not result
 
     def test_resolves_document_via_metadata_helpers(self, nlp, tmp_path, monkeypatch):
-        (tmp_path / "Chapter 1.md").write_text("a")
+        act = tmp_path / "Act I"
+        act.mkdir()
+        (act / "Opening 1.md").write_text("a")
         document = Document(id="d1", state=DataState.SYNC)
         resolved: list[tuple] = []
         chapter_repo = MagicMock(spec=ChapterRepository)
@@ -850,7 +874,9 @@ class TestWriteBackFrontMatter:
             _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c1", created=True, title="T"))
 
     def test_walker_leaves_chapter_files_to_apply_chapter_file(self, nlp, tmp_path, monkeypatch):
-        new_file = tmp_path / "new.md"
+        act = tmp_path / "Act I"
+        act.mkdir()
+        new_file = act / "Opening 1.md"
         new_file.write_text("fresh")
         document = Document(id="d1", state=DataState.SYNC)
         monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)

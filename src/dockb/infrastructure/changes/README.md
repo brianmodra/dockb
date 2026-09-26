@@ -51,7 +51,11 @@ The function this package contracts with is a **per-chapter-file** caller: it ta
 chapter file and the hydrated `Document` it belongs to. `import_document_directory()` in
 `dockb.services.markdown_import` is the directory-aware walker: it walks a document directory,
 reads `document_metadata.yaml`, resolves the `Document`, and invokes the per-file caller once per
-`*.md` file found recursively (in sorted order), returning one summary per file. A chapter file
+chapter file — `*.md` files inside a top-level `Act <name>` directory, processed in act-number
+order (digits, Roman numerals, or the Unicode single-character numerals, with `Act None` first)
+then by the file's trailing sequence number with at most one letter (5, 5a, 5b, 6) — returning one
+summary per file. Root-level and non-act files are not chapters. A malformed act name, an
+unnumbered chapter file, or two acts or two files numbering the same abort the walk. A chapter file
 whose front-matter `id` belongs to a different document aborts the whole directory import. When the
 file's diff is non-empty the caller rewrites the file in place from the rebuilt chapter: the front
 matter carries the chapter `id` and `title`, any other attributes being preserved in place, and the
