@@ -3,6 +3,7 @@ import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import { Schema, type Node } from "prosemirror-model";
 import { baseKeymap } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
+import { history, redo, undo } from "prosemirror-history";
 import MarkdownIt from "markdown-it";
 
 const schema = new Schema({
@@ -288,7 +289,7 @@ export class WysiwygView {
       const state = EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids),
-        plugins: [keymap(baseKeymap), headingDecorations(new MarkdownIt())],
+        plugins: [history(), keymap(baseKeymap), keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
       });
       this.innerView = new EditorView(this.element, {
         state,
@@ -306,7 +307,7 @@ export class WysiwygView {
       EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids),
-        plugins: [keymap(baseKeymap), headingDecorations(new MarkdownIt())],
+        plugins: [history(), keymap(baseKeymap), keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
       }),
     );
   }
