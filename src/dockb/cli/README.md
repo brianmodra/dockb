@@ -6,7 +6,9 @@ DockB's shell tools are two small Python modules: `import_document` walks a dire
 chapter files and persists their changes into the knowledge graph, and `reconstruct_chapter`
 renders one chapter from the graph back out as markdown — into the server-owned store tree, or to
 an exact path with `--out`. Both connect to Neo4j with the same `NEO4J_URL`, `NEO4J_USER`,
-`NEO4J_PASSWORD` environment variables (or `.env`) the API server uses.
+`NEO4J_PASSWORD` environment variables (or `.env`) the API server uses. Chapter files are found
+only inside `Act <name>` directories whose names number the acts (digits, Roman, or Unicode
+numerals); each file's trailing number — with at most one letter — sets its sequence in the graph.
 
 ## Import a document directory
 

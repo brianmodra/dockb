@@ -11,7 +11,10 @@ identity, interactive-only syntax checking — and the alternatives that lost to
 
 Read this for the rationale and the roadmap. The live behavior lives in the code under `src/dockb/`
 (especially `infrastructure/document_store/` and `infrastructure/markdown/`) and their READMEs;
-this document is the record of why the format and ownership model are what they are.
+this document is the record of why the format and ownership model are what they are. Chapter
+imports honour that model: a chapter is a markdown file inside an `Act <name>` directory, the acts
+numbered by their names (digits, Roman, or Unicode numerals) and files by the trailing number of
+their names, so a chapter directory tree becomes the document's chapter order.
 
 ## 1. The problem we were trying to solve
 
