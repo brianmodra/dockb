@@ -178,15 +178,16 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     carry no act), so placement is authoritative over the file's front matter.
     Root-level files and other non-act directories hold no chapters and are
     skipped. Acts are processed by the number their name carries (digits or
-    Roman numerals, ``Act None`` first), then ``Characters`` last, and files
-    within a directory by their sequence number with optional letter, trailing
+    Roman numerals, ``Act None`` first), then ``Characters`` last. Act files
+    run by their sequence number with optional letter, trailing
     at the end of or embedded between spaces in the name (5, 5a, 5b, 6; "Bad
-    Guys Close In 48 Jael" → 48), each new
+    Guys Close In 48 Jael" → 48) — an act file's name must carry that
+    number; ``Characters`` files need no number and run by file name, each new
     chapter following the previous file into the graph. The whole directory is
     imported into a single Document, resolved by its metadata (see
     ``_read_document_metadata``/``_resolve_document``), and one summary is
-    returned per chapter file. An unparsable act name, an unnumbered chapter
-    file, or two acts or two files numbering the same abort the import.
+    returned per chapter file. An unparsable act name, an unnumbered act
+    file, or two acts or two act files numbering the same abort the import.
     ``single_newline_paragraphs`` is forwarded to every ``apply_chapter_file``
     call; ``write_back`` is forwarded to both the document resolution (its
     metadata write-back) and every chapter apply.
@@ -321,13 +322,15 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["
     Chapters exist inside top-level ``Act <name>`` directories, whose
     name must number the act as digits or a strict Roman numeral (``Act
     None`` is the empty act), and inside the reserved ``Characters``
-    directory, whose files are category ``Character`` with no act. Directory
-    import order is act value, then ``Characters`` last, then each file's
-    sequence number with its optional letter, trailing at the end of or
-    embedded between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48
-    Jael" → 48).
+    directory, whose files are category ``Character`` with no act. Act
+    chapters import in act value order, then each file's sequence number
+    with its optional letter, trailing at the end of or embedded between
+    spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48
+    Jael" → 48) — an act chapter's file name must carry that number.
+    ``Characters`` files need no number: they import after the acts in
+    file-name order, whatever their name says.
     Anything else — a root-level or non-act file, a non-``Characters``
-    directory, an unparsable act name, two files in one directory numbering
+    directory, an unparsable act name, two act files in one act numbering
     the same, or two acts numbering the same — raises ValueError.
     """
     acts: list[tuple[tuple[int, str], Path]] = [
@@ -353,15 +356,11 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["
 
     characters_dir = document_dir / _CHARACTERS_DIR
     if characters_dir.is_dir():
-        chapters = sorted(
-            ((_chapter_sort_key(file_path), file_path) for file_path in characters_dir.rglob("*.md")),
-            key=lambda pair: pair[0],
+        character_files = sorted(
+            (file_path for file_path in characters_dir.rglob("*.md")),
+            key=lambda file_path: (file_path.name, str(file_path)),
         )
-        last_key = None
-        for key, chapter_file in chapters:
-            if key == last_key:
-                raise ValueError(f"Duplicate chapter number '{chapter_file.stem}' in '{_CHARACTERS_DIR}'")
-            last_key = key
+        for chapter_file in character_files:
             yield "", "Character", chapter_file
 
 

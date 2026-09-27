@@ -189,31 +189,36 @@ class TestDiscoverChapterFiles:
             ("", "Character", "Dramatis 1.md"),
         ]
 
-    def test_characters_dir_files_order_by_sequence_number(self, tmp_path):
+    def test_characters_dir_files_order_by_name_ignoring_numbers(self, tmp_path):
         characters = tmp_path / "Characters"
         characters.mkdir()
-        for name in ["Zed 5.md", "Ariel 1.md", "Mara 3.md"]:
+        for name in ["Zed 1.md", "Ariel 9.md", "Mara 3.md"]:
             (characters / name).write_text("x")
         assert [(act, _, path.name) for act, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
-            ("", "Character", "Ariel 1.md"),
+            ("", "Character", "Ariel 9.md"),
             ("", "Character", "Mara 3.md"),
-            ("", "Character", "Zed 5.md"),
+            ("", "Character", "Zed 1.md"),
         ]
 
-    def test_characters_dir_unnumbered_chapter_raises(self, tmp_path):
+    def test_characters_dir_unnumbered_chapter_is_fine(self, tmp_path):
         characters = tmp_path / "Characters"
         characters.mkdir()
-        (characters / "Notes.md").write_text("x")
-        with pytest.raises(ValueError, match="not numbered"):
-            list(markdown_import._discover_chapter_files(tmp_path))
+        (characters / "Dramatis.md").write_text("x")
+        (characters / "Jael.md").write_text("x")
+        assert [(act, _, path.name) for act, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            ("", "Character", "Dramatis.md"),
+            ("", "Character", "Jael.md"),
+        ]
 
-    def test_characters_dir_duplicate_sequence_raises(self, tmp_path):
+    def test_characters_dir_duplicate_numbers_are_fine(self, tmp_path):
         characters = tmp_path / "Characters"
         characters.mkdir()
         (characters / "Zed 5.md").write_text("x")
         (characters / "Mara 5.md").write_text("x")
-        with pytest.raises(ValueError, match="Duplicate chapter"):
-            list(markdown_import._discover_chapter_files(tmp_path))
+        assert [path.name for _, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            "Mara 5.md",
+            "Zed 5.md",
+        ]
 
     def test_other_non_act_dirs_are_still_skipped(self, tmp_path):
         characters = tmp_path / "Characters"

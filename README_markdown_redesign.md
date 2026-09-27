@@ -225,10 +225,13 @@ overriding any front-matter `act`. An act directory's name is its number — dig
 or the single-character Unicode numerals — and that number orders the acts. The reserved
 `Characters/` directory, beside the act directories, holds `Character` chapters: they are imported
 after the acts, with no act, and the directory's category wins over any front-matter `category`.
-Root-level files and other directories are not chapter locations. Within a directory, chapter files
-are ordered by the sequence number in their name with at most one letter — trailing at the end or
-embedded between spaces — so `Setup 5b.md` follows `Setup 5.md` and precedes `Setup 6.md`; an
-unnumbered chapter file, or two acts or files numbering the same, abort the import.
+Root-level files and other directories are not chapter locations. Act files are ordered by the
+sequence number in their name with at most one letter — trailing at the end or
+embedded between spaces — so `Setup 5b.md` follows `Setup 5.md` and precedes `Setup 6.md`, and an
+act file's name must carry that number. `Characters/` files need no number: they import by file
+name, and numbers in (or duplicated across) their names are ignored. An unnumbered act file, or two
+acts or act files numbering
+the same, abort the import.
 
 **Publishing.** Publishing a manuscript is a later feature. A `Character` chapter is never
 published. See `src/dockb/services/README.md`.

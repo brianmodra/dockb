@@ -45,10 +45,11 @@ chapter file — `*.md` files inside a top-level `Act <name>` directory, process
 order (digits, Roman numerals, or the Unicode single-character numerals, with `Act None` first)
 then by the file's sequence number with at most one letter — trailing at the end or embedded
 between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48) — returning one
-summary per file. Files inside the reserved `Characters` directory follow the same
-sequence-number ordering after all acts, carried with no act and category `Character`. Root-level
+summary per file. Files inside the reserved `Characters` directory follow after all
+acts, carried with no act and category `Character`: they need no sequence number, import in
+file-name order, and numbers in (or duplicated across) their names are ignored. Root-level
 and other non-act files are not chapters. A malformed act name, an
-unnumbered chapter file, or two acts or two files numbering the same abort the walk. A chapter file
+unnumbered act file, or two acts or two act files numbering the same abort the walk. A chapter file
 whose front-matter `id` belongs to a different document aborts the whole directory import. When
 write-back is on and the file's diff is non-empty the caller rewrites the file in place from the
 rebuilt chapter: the front

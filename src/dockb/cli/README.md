@@ -23,8 +23,10 @@ act derives from its containing directory (used verbatim), which wins over any f
 a `Characters` file's category likewise wins over the front matter. The canonical write-back adds
 the chapter's `category` to the front matter. Within an act each
 file is imported in the order of the sequence number in its name — trailing at the end or embedded
-between spaces — with at most one letter (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48). A file
-that is not numbered, two acts numbering the same, or two files in one directory
+between spaces — with at most one letter (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48), and an
+act file's name must carry that number. `Characters` files need no number: they import by file
+name, and numbers in their names (or duplicated across them) are ignored. A file
+that is not numbered in an act, two acts numbering the same, or two act files in one act
 numbering the same abort the import. See
 `../infrastructure/changes/README.md` for the diffing behavior.
 
