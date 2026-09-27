@@ -88,14 +88,17 @@ class DocumentService:
 
         When a store is configured and the document's directory does not exist
         yet, the tree (metadata + one chapter file per graph chapter) is
-        serialized from the graph and committed to git, then the document is
-        returned.
+        serialized from the graph and committed to git; otherwise the metadata
+        file is refreshed from the graph. The document is then returned.
         """
         doc = self._document_repo.load(document_id)
         if doc is None:
             return None
-        if self._document_store is not None and not self._document_store.document_exists(doc.title):
-            self._materialize(self._document_store, doc)
+        if self._document_store is not None:
+            if not self._document_store.document_exists(doc.title):
+                self._materialize(self._document_store, doc)
+            else:
+                self._document_store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
         return doc
 
     def _materialize(self, store: DocumentStore, doc: Document) -> None:
@@ -135,19 +138,30 @@ class DocumentService:
         title: str,
         author: str,
     ) -> Document | None:
-        """Update document attrs.  Returns None if not found."""
+        """Update document attrs, renaming the owned tree and refreshing the graph.
+
+        Returns None if not found. The graph is updated first; a title change
+        then git mv's the owned directory (metadata rewritten with the new
+        title), and the metadata file is always brought in line with the graph.
+        """
         doc = self._document_repo.load(document_id)
         if doc is None:
             return None
         for row in self._document_repo.list_all():
             if row["id"] != document_id and str(row.get("title") or "").lower() == title.lower():
                 raise DuplicateTitleError(title)
+        old_title = doc.title
         doc.title = title
         doc.author = author
         doc.state = DataState.CHANGED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
         uow.commit()
+        if self._document_store is not None:
+            if title != old_title:
+                self._document_store.rename_document(old_title, title)
+            self._document_store.write_metadata(title, DocumentMetadata(title=title, author=author))
+            self._document_store.git_commit(title, f"update: document {document_id[:8]}")
         return doc
 
     def delete(self, document_id: str) -> bool:
@@ -446,7 +460,12 @@ class ChapterService:
         chapter_id: str,
         title: str,
     ) -> Chapter | None:
-        """Update chapter attrs.  Returns None if not found."""
+        """Update the chapter title, renaming its owned file and refreshing the graph.
+
+        Returns None if not found. The graph is updated first; a title change
+        then git mv's the markdown file and rewrites the front matter title to
+        match.
+        """
         ch = self._chapter_repo.load(chapter_id)
         if ch is None:
             return None
@@ -455,11 +474,16 @@ class ChapterService:
             for row in self._chapter_repo.list_by_document(document_id):
                 if row["id"] != chapter_id and str(row.get("title") or "").lower() == title.lower():
                     raise DuplicateTitleError(title)
+        old_title = ch.title
         ch.title = title
         ch.state = DataState.CHANGED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id or "")
         uow.commit()
+        if self._document_store is not None and self._document_repo is not None and document_id is not None and title != old_title:
+            document = self._document_repo.load(document_id)
+            if document is not None:
+                self._document_store.rename_chapter(document.title, ch.act, old_title, title)
         return ch
 
     def delete(self, chapter_id: str) -> bool:

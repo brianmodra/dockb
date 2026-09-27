@@ -78,3 +78,9 @@ when the removal empties them, so `document_exists` stays accurate once the
 last chapter of a document is removed. The services call these before marking
 the graph node `DELETED`, so a store failure leaves the graph intact for a
 retry and the DELETE endpoint leaves no markdown files behind.
+
+`rename_document(old, new)` and `rename_chapter(..., old, new)` are the mirror
+image: they `git mv` the owned directory or markdown file, rewrite the
+metadata / front matter title inside, and commit — so a title rename never
+leaves a stale title-keyed tree behind. Colliding destinations raise, and a
+missing source is a no-op (the next open materializes under the new title).

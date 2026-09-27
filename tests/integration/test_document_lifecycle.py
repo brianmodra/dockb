@@ -198,3 +198,39 @@ def test_delete_cascades_graph_and_removes_store_files(services, neo4j_session, 
         assert store.document_exists("DeleteMe")
     finally:
         neo4j_session.run(_CLEANUP_CYPHER, {"id": document_id})
+
+
+def test_rename_document_and_chapter_update_store_and_graph(services, neo4j_session, git_repo):
+    """Renaming a document or chapter moves the owned store files and keeps git clean."""
+    doc_svc, ch_svc, store = services
+    document_id = "d-rename"
+    try:
+        doc_svc.create(document_id, title="RenameMe", author="Test")
+        ch_svc.create("c1", "First", document_id, after_chapter_id=None)
+        assert store.document_exists("RenameMe")
+
+        doc = doc_svc.update(document_id, title="Renamed", author="Author2")
+        assert doc is not None and doc.title == "Renamed"
+        assert not store.document_exists("RenameMe")
+        assert store.document_exists("Renamed")
+        assert store.read_metadata("Renamed") == DocumentMetadata(title="Renamed", author="Author2")
+        assert store.chapter_exists("Renamed", "", "First")
+        assert _git(git_repo, "status", "--porcelain").strip() == ""
+
+        ch = ch_svc.update("c1", title="Second")
+        assert ch is not None and ch.title == "Second"
+        assert not store.chapter_exists("Renamed", "", "First")
+        assert store.chapter_exists("Renamed", "", "Second")
+        assert "title: Second" in (store.read_chapter("Renamed", "", "Second") or "")
+        assert _git(git_repo, "status", "--porcelain").strip() == ""
+
+        assert neo4j_session.run("MATCH (d:Document {id: $id}) RETURN d.title AS t", {"id": document_id}).single()["t"] == "Renamed"
+        assert neo4j_session.run("MATCH (c:Chapter {id: 'c1'}) RETURN c.title AS t").single()["t"] == "Second"
+
+        # Delete still removes the renamed tree end to end.
+        assert doc_svc.delete(document_id) is True
+        assert not store.document_exists("Renamed")
+        assert not _graph_has(neo4j_session, document_id)
+        assert _git(git_repo, "status", "--porcelain").strip() == ""
+    finally:
+        neo4j_session.run(_CLEANUP_CYPHER, {"id": document_id})

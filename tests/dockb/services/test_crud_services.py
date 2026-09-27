@@ -297,6 +297,71 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         assert result is not None
         assert result.title == "alpha"
 
+    def test_update_renames_store_tree_when_title_changes(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        def git_status() -> str:
+            return subprocess.run(
+                ["git", "status", "--porcelain"], cwd=str(tmp_path), capture_output=True, text=True, check=False
+            ).stdout.strip()
+
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_metadata("T", DocumentMetadata(title="T", author="A"))
+        store.write_chapter("T", "Act I", "Opening 1", "# body\n")
+        store.git_commit("T", "materialize: doc")
+        doc = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store)
+
+        result = svc.update("d1", title="New", author="B")
+
+        assert result is doc
+        assert not store.document_exists("T")
+        assert store.document_exists("New")
+        assert store.read_metadata("New") == DocumentMetadata(title="New", author="B")
+        assert store.chapter_exists("New", "Act I", "Opening 1")
+        assert git_status() == ""
+
+    def test_update_author_only_writes_metadata(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        def git_status() -> str:
+            return subprocess.run(
+                ["git", "status", "--porcelain"], cwd=str(tmp_path), capture_output=True, text=True, check=False
+            ).stdout.strip()
+
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_metadata("T", DocumentMetadata(title="T", author="A"))
+        store.git_commit("T", "materialize: doc")
+        doc = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store)
+
+        result = svc.update("d1", title="T", author="B")
+
+        assert result is doc
+        assert store.document_exists("T")
+        assert store.read_metadata("T") == DocumentMetadata(title="T", author="B")
+        assert git_status() == ""
+
+    def test_open_refreshes_metadata_from_graph(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_metadata("T", DocumentMetadata(title="T", author="stale"))
+        store.git_commit("T", "materialize: doc")
+        doc = Document(id="d1", title="T", author="fresh", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store)
+
+        assert svc.open("d1") is doc
+        assert store.read_metadata("T") == DocumentMetadata(title="T", author="fresh")
+
     def test_delete_returns_false_when_missing(self) -> None:
         assert self.svc.delete("nonexistent") is False
 
@@ -435,6 +500,37 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert result is ch
         assert ch.title == "New"
         assert ch.state == DataState.CHANGED
+
+    def test_update_renames_store_file_when_title_changes(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        def git_status() -> str:
+            return subprocess.run(
+                ["git", "status", "--porcelain"], cwd=str(tmp_path), capture_output=True, text=True, check=False
+            ).stdout.strip()
+
+        ch = Chapter(id="c1", title="Old", act="Act I", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo = StubDocumentRepo()
+        doc_repo._store["d1"] = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_chapter("T", "Act I", "Old", "---\ntitle: Old\n---\n\n# body\n")
+        store.git_commit("T", "materialize: doc")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store)
+
+        result = svc.update("c1", title="New")
+
+        assert result is ch
+        assert ch.title == "New"
+        assert ch.state == DataState.CHANGED
+        assert not store.chapter_exists("T", "Act I", "Old")
+        content = store.read_chapter("T", "Act I", "New")
+        assert content is not None
+        assert "title: New" in content
+        assert git_status() == ""
 
     def test_update_rejects_duplicate_title_in_document(self) -> None:
         self.repo._store["c1"] = Chapter(id="c1", title="Intro", state=DataState.SYNC)

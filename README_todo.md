@@ -20,7 +20,3 @@ design document for it; delete an entry when it is finished.
   but is rejected by `DocumentStore._validate_title`, so saving/opening it fails with a 500. The
   filesystem-safety rules should be enforced in the schema layer (→ 400) instead of only at file
   access. Design: `infrastructure/document_store/README.md`.
-- **Title rename does not move owned files** — renaming a document's or chapter's title leaves the
-  store tree keyed by the old title: the next open materializes a new title-keyed file while the
-  old one stays (and a revert of the rename hydrates the stale file). A rename needs a `git mv` of
-  the owning directory/file. Design: `README_markdown_redesign.md`, `infrastructure/document_store/README.md`.
