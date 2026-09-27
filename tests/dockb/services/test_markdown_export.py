@@ -63,13 +63,13 @@ def _git_store(tmp_path) -> DocumentStore:
 def test_reconstruct_chapter_markdown_renders_loaded_chapter(nlp):
     chapter = _make_chapter("c1", _make_paragraph("p1", "Hi there."))
     rendered = reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
-    assert rendered == "---\nid: c1\ntitle: Chapter 1\n---\n\n" '<span data-par-id="p1">\nHi there.\n</span>\n'
+    assert rendered == "---\nid: c1\ntitle: Chapter 1\ncategory: Chapter\n---\n\n" '<span data-par-id="p1">\nHi there.\n</span>\n'
 
 
-def test_reconstruct_chapter_markdown_includes_title_only_for_unknown_attrs(nlp):
+def test_reconstruct_chapter_markdown_includes_title_and_category(nlp):
     chapter = _make_chapter("c2", title="Renamed")
     rendered = reconstruct_chapter_markdown("c2", _repo(chapter), nlp)
-    assert rendered.startswith("---\nid: c2\ntitle: Renamed\n---\n")
+    assert rendered.startswith("---\nid: c2\ntitle: Renamed\ncategory: Chapter\n---\n")
 
 
 def test_reconstruct_chapter_markdown_raises_for_unknown_chapter(nlp):
@@ -119,6 +119,21 @@ def test_reconstruct_to_store_puts_empty_act_under_act_none(nlp, tmp_path):
 
     assert path == store.chapter_file("Faith", "", "Intro")
     assert path.is_file()
+
+
+def test_reconstruct_to_store_puts_character_chapter_under_characters_dir(nlp, tmp_path):
+    chapter = _make_chapter("c1", _make_paragraph("p1", "Hi there."), title="Dramatis")
+    chapter.category = "Character"
+    chapter_repo = _repo(chapter)
+    chapter_repo.find_document_id.return_value = "d1"
+    document = Document(id="d1", title="Faith", state=DataState.SYNC)
+    store = _git_store(tmp_path)
+
+    path = reconstruct_chapter_to_store("c1", chapter_repo, _doc_repo(document), store, nlp)
+
+    assert path == store.chapter_file("Faith", "", "Dramatis", category="Character")
+    assert path.parent.name == "Characters"
+    assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
 
 
 def test_reconstruct_to_store_raises_for_orphan_chapter(nlp, tmp_path):

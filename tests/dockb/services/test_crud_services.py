@@ -501,6 +501,26 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert "title: Intro" in content
         assert "data-par-id" not in content
 
+    def test_create_materializes_character_chapter_under_characters_dir(self, tmp_path, doc_repo) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+        )
+
+        svc.create("c1", title="Dramatis", document_id="d1", category="Character")
+
+        assert store.chapter_file("Faith", "", "Dramatis", category="Character").is_file()
+        content = store.read_chapter("Faith", "", "Dramatis", category="Character")
+        assert content is not None
+        assert "category: Character" in content
+
     def test_update_modifies_title(self) -> None:
         ch = Chapter(id="c1", title="Old", state=DataState.SYNC)
         self.repo._store["c1"] = ch
@@ -757,6 +777,29 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         )
         assert result.returncode == 0
         assert result.stdout.strip()
+
+    def test_open_materializes_character_chapter_under_characters_dir(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Dramatis", category="Character", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store=store,
+            nlp=nlp,
+        )
+
+        opened = svc.open("c1")
+
+        assert opened is ch
+        content = store.read_chapter("Faith", "", "Dramatis", category="Character")
+        assert content is not None
 
     def test_open_does_not_overwrite_existing_chapter_file(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)

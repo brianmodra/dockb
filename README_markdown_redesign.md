@@ -53,7 +53,7 @@ who writes the file.
 
 There is **no separate loop process**. The FastAPI backend owns the markdown chapter files — in a
 directory it controls (titled per-document directories of `Act <name>/<chapter title>.md`
-files under an environment-configured base, as the `DocumentStore` in
+files, plus a `Characters/` directory for `Character` chapters, under an environment-configured base, as the `DocumentStore` in
 `src/dockb/infrastructure/document_store/` maps it) — and
 the git repo. The only writer of record is the API implementation itself: when the editor saves, it
 sends the chapter text to an endpoint, the backend writes the file, rehydrates the graph from it,
@@ -181,7 +181,7 @@ The owned directory tree is the editor's entire world, delivered through the API
   server creates the document's directory and `document_metadata.yaml` (title/author) next to it.
 - **Open:** `GET /api/documents/{id}` materializes the tree when missing — the document directory,
   `document_metadata.yaml`, and one `<chapter title>.md` per chapter, under its `Act <name>`
-  directory (`Act None` when the chapter has no act), serialized from the graph — then
+  directory (`Act None` when the chapter has no act; `Characters/` for a `Character` chapter), serialized from the graph — then
   returns the document. `GET /api/chapters/{id}` does the same for a single chapter file.
 - **New chapter:** `POST /api/chapters` with `{id, title, document_id, after_chapter_id}`. The new
   chapter is placed in sequence and the server writes an **empty** `<chapter title>.md` (front matter
@@ -191,7 +191,7 @@ The owned directory tree is the editor's entire world, delivered through the API
   remains 0..n-1.
 - **Save:** `PUT /api/chapters/{id}/document` as described above. The request body is the editor's
   loose text. The server writes it to the owned file, forcing the chapter's `id`/`title` (and its
-  `act` when set) into the front matter — the server, not the editor, owns identity — runs
+  `act` when set, and its `category`) into the front matter — the server, not the editor, owns identity — runs
   `apply_chapter_file()`, git-snaps,
   and returns the canonical span-form text plus a change summary (`created`/`changed`/`added`/`deleted`).
 - **Open/reconcile:** `GET /api/chapters/{id}/document` materializes the owned file when missing

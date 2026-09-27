@@ -37,7 +37,8 @@ numbering the same abort the import. See
 
 `python -m dockb.cli.reconstruct_chapter <chapter_id> [--out PATH]` renders the chapter with
 `chapter_id` from the knowledge graph as markdown. Without `--out` the canonical chapter file is
-written into the server-owned tree — `<base>/<document title>/<Act X>/<chapter title>.md` under
+written into the server-owned tree — `<base>/<document title>/<Act X>/<chapter title>.md`, or
+`<base>/<document title>/Characters/<chapter title>.md` for a `Character` chapter — under
 `DOCKB_CHAPTERS_DIR` (defaulting to `cwd/dockb_chapters_dir`) — and git-committed; the written path
 is printed. With `--out` it is written to the exact `PATH` instead, without touching the store tree.
 A chapter id the graph does not know — or a chapter with no owning document (so it cannot be placed) —

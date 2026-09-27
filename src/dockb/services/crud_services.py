@@ -106,7 +106,7 @@ class DocumentService:
         store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
         for chapter in doc.chapters:
             content = markdown_writer.render_chapter_markdown(chapter, self._nlp)
-            store.write_chapter(doc.title, chapter.act, chapter.title, content)
+            store.write_chapter(doc.title, chapter.act, chapter.title, content, chapter.category)
         store.git_commit(doc.title, f"materialize: {doc.id[:8]}")
 
     def create(
@@ -278,14 +278,15 @@ class ChapterService:
         document = self._document_repo.load(document_id)
         if document is None:
             return ch
-        if not self._document_store.chapter_exists(document.title, ch.act, ch.title):
+        if not self._document_store.chapter_exists(document.title, ch.act, ch.title, ch.category):
             self._materialize_chapter(self._document_store, document, ch)
         return ch
 
     def save_document(self, chapter_id: str, content: str) -> ChapterSaveResult | None:
         """Save a chapter: write *content* to its owned file, rehydrate the graph, git-snap.
 
-        The chapter's ``id``/``title`` (and its ``act`` when set) are forced
+        The chapter's ``id``/``title`` (and its ``act``/``category`` when set)
+        are forced
         into the file's front matter — the server, not the editor, owns
         identity. The returned ``content`` is the canonical span-form text and
         ``summary`` records what changed. Returns ``None`` for a missing
@@ -307,21 +308,23 @@ class ChapterService:
             updates = {"id": chapter_id, "title": ch.title}
             if ch.act:
                 updates["act"] = ch.act
+            updates["category"] = ch.category
             self._document_store.write_chapter(
                 document.title,
                 ch.act,
                 ch.title,
                 front_matter.merge(content, updates),
+                ch.category,
             )
             summary = apply_chapter_file(
                 document,
-                self._document_store.chapter_file(document.title, ch.act, ch.title),
+                self._document_store.chapter_file(document.title, ch.act, ch.title, ch.category),
                 self._nlp,
                 self._chapter_repo,
                 self._uow_factory,
             )
             self._document_store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
-        canonical = self._document_store.read_chapter(document.title, ch.act, ch.title)
+        canonical = self._document_store.read_chapter(document.title, ch.act, ch.title, ch.category)
         return ChapterSaveResult(content=canonical or "", summary=summary)
 
     def open_document(self, chapter_id: str) -> str | None:
@@ -347,14 +350,14 @@ class ChapterService:
         if document is None:
             return None
         with self._save_scope(chapter_id):
-            if not self._document_store.chapter_exists(document.title, ch.act, ch.title):
+            if not self._document_store.chapter_exists(document.title, ch.act, ch.title, ch.category):
                 with measure("stage.materialize"):
                     self._materialize_chapter(self._document_store, document, ch)
             else:
                 with measure("stage.apply_chapter_file"):
                     apply_chapter_file(
                         document,
-                        self._document_store.chapter_file(document.title, ch.act, ch.title),
+                        self._document_store.chapter_file(document.title, ch.act, ch.title, ch.category),
                         self._nlp,
                         self._chapter_repo,
                         self._uow_factory,
@@ -362,12 +365,12 @@ class ChapterService:
                 with measure("stage.git_commit"):
                     self._document_store.git_commit(document.title, f"open: chapter {chapter_id[:8]}")
         with measure("stage.read_chapter"):
-            return self._document_store.read_chapter(document.title, ch.act, ch.title)
+            return self._document_store.read_chapter(document.title, ch.act, ch.title, ch.category)
 
     def _materialize_chapter(self, store: DocumentStore, document: Document, ch: Chapter) -> None:
         """Write the chapter's owned markdown file from the graph and git-commit it."""
         content = markdown_writer.render_chapter_markdown(ch, self._nlp)
-        store.write_chapter(document.title, ch.act, ch.title, content)
+        store.write_chapter(document.title, ch.act, ch.title, content, ch.category)
         store.git_commit(document.title, f"materialize: chapter {ch.id[:8]}")
 
     def create(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -410,7 +413,7 @@ class ChapterService:
     def _materialize_new_chapter(self, store: DocumentStore, document: Document, ch: Chapter) -> None:
         """Write the new chapter's empty owned markdown file and git-commit it."""
         content = markdown_writer.render_chapter_markdown(ch, self._nlp)
-        store.write_chapter(document.title, ch.act, ch.title, content)
+        store.write_chapter(document.title, ch.act, ch.title, content, ch.category)
         store.git_commit(document.title, f"create: chapter {ch.id[:8]}")
 
     def move(self, chapter_id: str, after_chapter_id: str | None) -> Chapter | None:
@@ -484,7 +487,7 @@ class ChapterService:
         if self._document_store is not None and self._document_repo is not None and document_id is not None and title != old_title:
             document = self._document_repo.load(document_id)
             if document is not None:
-                self._document_store.rename_chapter(document.title, ch.act, old_title, title)
+                self._document_store.rename_chapter(document.title, ch.act, old_title, title, ch.category)
         return ch
 
     def delete(self, chapter_id: str) -> bool:
@@ -501,7 +504,7 @@ class ChapterService:
         if self._document_store is not None and self._document_repo is not None and document_id is not None:
             document = self._document_repo.load(document_id)
             if document is not None:
-                self._document_store.remove_chapter(document.title, ch.act, ch.title)
+                self._document_store.remove_chapter(document.title, ch.act, ch.title, ch.category)
         ch.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id or "")

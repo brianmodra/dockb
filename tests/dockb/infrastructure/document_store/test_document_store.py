@@ -56,6 +56,16 @@ def test_chapter_file_without_act_goes_under_act_none(store, tmp_path):
     assert store.chapter_file(_SAFE_TITLE, "", _SAFE_CHAPTER) == expected
 
 
+def test_chapter_file_character_category_goes_under_characters_dir(store, tmp_path):
+    expected = tmp_path / _SAFE_TITLE / "Characters" / f"{_SAFE_CHAPTER}.md"
+    assert store.chapter_file(_SAFE_TITLE, "", _SAFE_CHAPTER, category="Character") == expected
+
+
+def test_chapter_file_character_category_ignores_act(store, tmp_path):
+    expected = tmp_path / _SAFE_TITLE / "Characters" / f"{_SAFE_CHAPTER}.md"
+    assert store.chapter_file(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, category="Character") == expected
+
+
 @pytest.mark.parametrize(
     "bad_title",
     [
@@ -133,6 +143,15 @@ def test_write_chapter_creates_act_dir(store, tmp_path):
     assert file_path.read_text() == "# Body\n"
 
 
+def test_write_chapter_character_creates_characters_dir(store, tmp_path):
+    store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# Body\n", category="Character")
+    file_path = tmp_path / _SAFE_TITLE / "Characters" / f"{_SAFE_CHAPTER}.md"
+    assert file_path.is_file()
+    assert file_path.read_text() == "# Body\n"
+    assert store.chapter_exists(_SAFE_TITLE, "", _SAFE_CHAPTER, category="Character")
+    assert store.read_chapter(_SAFE_TITLE, "", _SAFE_CHAPTER, category="Character") == "# Body\n"
+
+
 def test_read_chapter_missing_returns_none(store):
     assert store.read_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER) is None
 
@@ -161,6 +180,16 @@ def test_list_chapter_files_recurses_act_dirs_sorted(store):
     assert [str(f.relative_to(store.document_dir(_SAFE_TITLE))) for f in files] == [
         "Act I/a.md",
         "Act II/b.md",
+    ]
+
+
+def test_list_chapter_files_includes_characters_dir_sorted(store):
+    store.write_chapter(_SAFE_TITLE, "", "Zeta 2", "b", category="Character")
+    store.write_chapter(_SAFE_TITLE, "Act I", "Alpha 1", "a")
+    files = store.list_chapter_files(_SAFE_TITLE)
+    assert [str(f.relative_to(store.document_dir(_SAFE_TITLE))) for f in files] == [
+        "Act I/Alpha 1.md",
+        "Characters/Zeta 2.md",
     ]
 
 
@@ -301,6 +330,32 @@ def test_remove_last_chapter_prunes_document_dir(git_store):
 
 def test_remove_chapter_missing_file_is_noop(git_store):
     git_store.remove_chapter(_SAFE_TITLE, "Act I", "Nope")
+
+
+def test_remove_character_chapter_prunes_characters_dir(git_store, tmp_path):
+    git_store.write_metadata(_SAFE_TITLE, DocumentMetadata(title=_SAFE_TITLE, author="Test"))
+    git_store.write_chapter(_SAFE_TITLE, "", "Dramatis 9", "# nine\n", category="Character")
+    git_store.write_chapter(_SAFE_TITLE, "", _SAFE_CHAPTER, "# body\n", category="Character")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.remove_chapter(_SAFE_TITLE, "", "Dramatis 9", category="Character")
+
+    assert not git_store.chapter_exists(_SAFE_TITLE, "", "Dramatis 9", category="Character")
+    assert git_store.chapter_exists(_SAFE_TITLE, "", _SAFE_CHAPTER, category="Character")
+    assert git_store.document_exists(_SAFE_TITLE)
+    assert _porcelain(tmp_path) == ""
+
+
+def test_rename_chapter_character_git_mvs_within_characters_dir(git_store, tmp_path):
+    git_store.write_chapter(_SAFE_TITLE, "", _SAFE_CHAPTER, "---\ntitle: Opening 1\n---\n\n# body\n", category="Character")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.rename_chapter(_SAFE_TITLE, "", _SAFE_CHAPTER, "Opening 2", category="Character")
+
+    assert not git_store.chapter_exists(_SAFE_TITLE, "", _SAFE_CHAPTER, category="Character")
+    content = git_store.read_chapter(_SAFE_TITLE, "", "Opening 2", category="Character")
+    assert content is not None and "title: Opening 2" in content
+    assert _porcelain(tmp_path) == ""
 
 
 def test_rename_document_git_mvs_dir_and_rewrites_metadata(git_store, tmp_path):

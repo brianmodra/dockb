@@ -45,8 +45,10 @@ def reconstruct_chapter_to_store(
     """Reconstruct *chapter_id* from the graph into the store's owned layout.
 
     The chapter is written to ``<base>/<document title>/<Act X>/<chapter
-    title>.md`` — the same title/act-keyed tree the lifecycle services own —
-    and git-committed through *store*, returning the written path. Raises
+    title>.md`` — or ``<base>/<document title>/<Characters>/<chapter
+    title>.md`` for a ``Character`` chapter — the same title/act- (and
+    category-) keyed tree the lifecycle services own, and git-committed
+    through *store*, returning the written path. Raises
     ``ChapterMismatchError`` when the graph has no such chapter or the chapter
     has no owning document to place it under.
     """
@@ -57,7 +59,7 @@ def reconstruct_chapter_to_store(
     document = document_repo.load(document_id) if document_id is not None else None
     if document is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' has no owning document")
-    path = store.chapter_file(document.title, chapter.act, chapter.title)
+    path = store.chapter_file(document.title, chapter.act, chapter.title, chapter.category)
     path.parent.mkdir(parents=True, exist_ok=True)
     writer.write_chapter_markdown(chapter, path, nlp)
     store.git_commit(document.title, f"reconstruct: {chapter_id[:8]}")

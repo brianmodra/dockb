@@ -12,9 +12,13 @@ arranged on disk under a single base directory (``DOCKB_CHAPTERS_DIR``):
                 <chapter_title>.md
             Act None/
                 <chapter_title>.md
+            Characters/
+                <chapter_title>.md
 
 Chapters without an act live under ``Act None``; an act is a directory named
 ``Act <name>`` (the verbatim chapter ``act`` when it is already prefixed).
+``Character`` chapters always live under the reserved ``Characters``
+directory whatever their act.
 Paths are derived from titles only, and every title is validated so a hostile
 title cannot escape the base directory (``..``, separators, absolute paths,
 control characters are all rejected).
@@ -36,6 +40,7 @@ from dockb.infrastructure.markdown import front_matter
 _METADATA_FILE = "document_metadata.yaml"
 _ACT_NONE = "Act None"
 _ACT_PREFIX = "Act "
+_CHARACTERS_DIR = "Characters"
 _ENV_BASE_DIR = "DOCKB_CHAPTERS_DIR"
 
 
@@ -76,29 +81,61 @@ class DocumentStore:
         """Return the metadata file path for *document_title*."""
         return self.document_dir(document_title) / _METADATA_FILE
 
-    def chapter_file(self, document_title: str, act: str, chapter_title: str) -> Path:
-        """Return the markdown file path for a chapter of *document_title*."""
+    def chapter_file(
+        self,
+        document_title: str,
+        act: str,
+        chapter_title: str,
+        category: str = "Chapter",
+    ) -> Path:
+        """Return the markdown file path for a chapter of *document_title*.
+
+        A ``Character`` chapter lives under the reserved ``Characters``
+        directory, whatever its act; any other category resolves through the
+        act directory (empty act → ``Act None``).
+        """
         self._validate_title(chapter_title)
-        return self.act_dir(document_title, act) / f"{chapter_title}.md"
+        directory_name = self._chapter_dir_name(act, category)
+        self._validate_title(directory_name)
+        return self.document_dir(document_title) / directory_name / f"{chapter_title}.md"
 
     def document_exists(self, document_title: str) -> bool:
         """Return whether the document's directory exists on disk."""
         return self.document_dir(document_title).is_dir()
 
-    def chapter_exists(self, document_title: str, act: str, chapter_title: str) -> bool:
+    def chapter_exists(
+        self,
+        document_title: str,
+        act: str,
+        chapter_title: str,
+        category: str = "Chapter",
+    ) -> bool:
         """Return whether the chapter's markdown file exists on disk."""
-        return self.chapter_file(document_title, act, chapter_title).is_file()
+        return self.chapter_file(document_title, act, chapter_title, category).is_file()
 
-    def read_chapter(self, document_title: str, act: str, chapter_title: str) -> str | None:
+    def read_chapter(
+        self,
+        document_title: str,
+        act: str,
+        chapter_title: str,
+        category: str = "Chapter",
+    ) -> str | None:
         """Return a chapter file's raw content, or None when absent."""
-        path = self.chapter_file(document_title, act, chapter_title)
+        path = self.chapter_file(document_title, act, chapter_title, category)
         if not path.is_file():
             return None
         return path.read_text(encoding="utf-8")
 
-    def write_chapter(self, document_title: str, act: str, chapter_title: str, content: str) -> None:
+    def write_chapter(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        document_title: str,
+        act: str,
+        chapter_title: str,
+        content: str,
+        category: str = "Chapter",
+    ) -> None:
         """Write *content* to a chapter file, creating the owning directories."""
-        path = self.chapter_file(document_title, act, chapter_title)
+        path = self.chapter_file(document_title, act, chapter_title, category)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
@@ -172,15 +209,21 @@ class DocumentStore:
         if self._git("status", "--porcelain", "--", document_title).strip():
             self._git("commit", "-m", f"remove: {document_title}")
 
-    def remove_chapter(self, document_title: str, act: str, chapter_title: str) -> None:
+    def remove_chapter(
+        self,
+        document_title: str,
+        act: str,
+        chapter_title: str,
+        category: str = "Chapter",
+    ) -> None:
         """Remove a chapter's markdown file and prune emptied directories.
 
         The file is staged for removal via ``git rm`` and deleted from disk, and
-        the removal is committed. An act or document directory left empty by the
-        removal is deleted too, so ``document_exists`` stays accurate. A chapter
-        with no file on disk is a no-op.
+        the removal is committed. An act, ``Characters``, or document directory
+        left empty by the removal is deleted too, so ``document_exists`` stays
+        accurate. A chapter with no file on disk is a no-op.
         """
-        path = self.chapter_file(document_title, act, chapter_title)
+        path = self.chapter_file(document_title, act, chapter_title, category)
         if not path.is_file():
             return
         try:
@@ -219,17 +262,24 @@ class DocumentStore:
             self.write_metadata(new_title, DocumentMetadata(title=new_title, author=metadata.author))
         self.git_commit(new_title, f"rename: {old_title} -> {new_title}")
 
-    def rename_chapter(self, document_title: str, act: str, old_title: str, new_title: str) -> None:
+    def rename_chapter(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        document_title: str,
+        act: str,
+        old_title: str,
+        new_title: str,
+        category: str = "Chapter",
+    ) -> None:
         """git mv a chapter's markdown file to *new_title* and commit.
 
         The front matter title inside the moved file is rewritten to match. A
         file that does not exist on disk is a no-op; renaming onto an existing
         file raises.
         """
-        old_path = self.chapter_file(document_title, act, old_title)
+        old_path = self.chapter_file(document_title, act, old_title, category)
         if not old_path.is_file() or old_title == new_title:
             return
-        new_path = self.chapter_file(document_title, act, new_title)
+        new_path = self.chapter_file(document_title, act, new_title, category)
         if new_path.exists():
             raise SnapshotError(f"cannot rename chapter {old_title!r}: {new_title!r} already exists")
         self._git(
@@ -238,9 +288,9 @@ class DocumentStore:
             str(old_path.relative_to(self._base_dir)),
             str(new_path.relative_to(self._base_dir)),
         )
-        content = self.read_chapter(document_title, act, new_title)
+        content = self.read_chapter(document_title, act, new_title, category)
         if content is not None:
-            self.write_chapter(document_title, act, new_title, front_matter.merge(content, {"title": new_title}))
+            self.write_chapter(document_title, act, new_title, front_matter.merge(content, {"title": new_title}), category)
         self.git_commit(document_title, f"rename: chapter {old_title} -> {new_title}")
 
     def _git(self, *args: str) -> str:
@@ -269,6 +319,19 @@ class DocumentStore:
         if act.startswith(_ACT_PREFIX):
             return act
         return f"{_ACT_PREFIX}{act}"
+
+    @classmethod
+    def _chapter_dir_name(cls, act: str, category: str) -> str:
+        """Return the on-disk chapter directory for an *act*/*category* pair.
+
+        A ``Character`` chapter always lives under the reserved ``Characters``
+        directory (never an act directory); any other category — the only
+        values ever written, and never a free-form path — resolves through
+        ``_act_dir_name``.
+        """
+        if category == "Character":
+            return _CHARACTERS_DIR
+        return cls._act_dir_name(act)
 
     @staticmethod
     def _validate_title(value: str) -> None:

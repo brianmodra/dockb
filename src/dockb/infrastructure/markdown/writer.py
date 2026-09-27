@@ -36,7 +36,8 @@ def render_chapter_markdown(
     """Render *chapter* as a complete markdown file: front matter block plus body.
 
     *attrs* becomes the front matter; it defaults to the chapter's own ``id``
-    and ``title`` (plus ``act`` when set). The body is appended after a blank
+    and ``title`` (plus ``act`` when set and ``category`` always). The body is
+    appended after a blank
     line (or omitted entirely when the chapter has no text), mirroring the
     history snapshot format.
     """
@@ -46,6 +47,7 @@ def render_chapter_markdown(
         front_attrs = {"id": chapter.id, "title": chapter.title}
         if chapter.act:
             front_attrs["act"] = chapter.act
+        front_attrs["category"] = chapter.category
     body = serialize_body(chapter, nlp)
     parts = [front_matter.render(front_attrs)]
     if body:

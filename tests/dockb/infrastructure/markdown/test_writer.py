@@ -98,19 +98,28 @@ class TestSerializeBody:
 class TestRenderChapterMarkdown:
     def test_renders_front_matter_and_body(self, nlp):
         chapter = _chapter(_make_paragraph("Hi.", p_id="p1"))
-        assert writer.render_chapter_markdown(chapter, nlp) == ("---\nid: c1\ntitle: T\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n')
+        assert writer.render_chapter_markdown(chapter, nlp) == (
+            "---\nid: c1\ntitle: T\ncategory: Chapter\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n'
+        )
 
     def test_renders_front_matter_only_for_empty_chapter(self, nlp):
-        assert writer.render_chapter_markdown(_chapter(), nlp) == "---\nid: c1\ntitle: T\n---\n"
+        assert writer.render_chapter_markdown(_chapter(), nlp) == "---\nid: c1\ntitle: T\ncategory: Chapter\n---\n"
 
     def test_renders_act_in_front_matter_when_set(self, nlp):
         chapter = _chapter(_make_paragraph("Hi.", p_id="p1"), act="Act I")
         assert writer.render_chapter_markdown(chapter, nlp) == (
-            "---\nid: c1\ntitle: T\nact: Act I\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n'
+            "---\nid: c1\ntitle: T\nact: Act I\ncategory: Chapter\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n'
         )
 
-    def test_default_attrs_omit_empty_act(self, nlp):
-        assert writer.render_chapter_markdown(_chapter(), nlp) == "---\nid: c1\ntitle: T\n---\n"
+    def test_renders_character_category_in_front_matter_when_set(self, nlp):
+        chapter = _chapter(_make_paragraph("Hi.", p_id="p1"), c_id="c1", title="T")
+        chapter.category = "Character"
+        assert writer.render_chapter_markdown(chapter, nlp) == (
+            "---\nid: c1\ntitle: T\ncategory: Character\n---\n\n" '<span data-par-id="p1">\nHi.\n</span>\n'
+        )
+
+    def test_default_attrs_omit_empty_act_but_keep_category(self, nlp):
+        assert writer.render_chapter_markdown(_chapter(), nlp) == "---\nid: c1\ntitle: T\ncategory: Chapter\n---\n"
 
     def test_attrs_drive_front_matter_verbatim(self, nlp):
         chapter = _chapter(_make_paragraph("Hi.", p_id="p1"))

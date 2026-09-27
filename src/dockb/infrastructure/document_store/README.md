@@ -29,12 +29,15 @@ The tree:
             <chapter_title>.md
         Act None/
             <chapter_title>.md
+        Characters/
+            <chapter_title>.md
 ```
 
 - `document_title`, `act`, and `chapter_title` come from the graph and are used
   verbatim as path segments. An empty act maps to the reserved `Act None`
   directory; an act already prefixed `Act ` is used as-is, otherwise the prefix is
-  applied (`II` → `Act II`).
+  applied (`II` → `Act II`). A `Character` chapter always lives under the reserved
+  `Characters` directory, whatever its act — never under `Act None`.
 - Path resolution never inspects the graph; the store only maps titles to paths
   and reads/writes files. Hydration of a chapter file into the graph is the
   caller's job (`services/markdown_import.py::apply_chapter_file`).
@@ -74,7 +77,7 @@ is how newly materialized trees enter history with a single commit.
 `remove_document(document_title)` and `remove_chapter(...)` undo ownership:
 each removes its files from disk and from git (`git rm`, committed), in both
 cases tolerating files that were never tracked and directories that are
-already gone. `remove_chapter` also deletes the act and document directories
+already gone. `remove_chapter` also deletes the act, `Characters`, and document directories
 when the removal empties them, so `document_exists` stays accurate once the
 last chapter of a document is removed. The services call these before marking
 the graph node `DELETED`, so a store failure leaves the graph intact for a
