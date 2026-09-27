@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchError, DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
@@ -186,6 +186,31 @@ class DocumentService:
 # ---------------------------------------------------------------------------
 # Chapter Service
 # ---------------------------------------------------------------------------
+
+
+def _row_category(row: dict[str, str | int]) -> str:
+    """Return a list-row's category, defaulting old rows to ``Chapter``."""
+    return str(row.get("category") or "Chapter")
+
+
+def _crosses_category(members: list[dict[str, str | int]], mover: Chapter, after_chapter_id: str | None) -> bool:
+    """Return whether *mover* would land outside its own category.
+
+    Landing after a same-category chapter stays inside the block. Landing
+    after a different category is allowed only at the front of the mover's
+    own block — the following sibling (ignoring the mover) is the same
+    category. Moving first crosses when the chapter it would precede is a
+    different category.
+    """
+    mover_category = mover.category or "Chapter"
+    without_mover = [row for row in members if str(row["id"]) != mover.id]
+    if after_chapter_id is None:
+        return bool(without_mover) and _row_category(without_mover[0]) != mover_category
+    after_index = next((index for index, row in enumerate(without_mover) if str(row["id"]) == after_chapter_id), None)
+    if after_index is None or _row_category(without_mover[after_index]) == mover_category:
+        return False
+    following = without_mover[after_index + 1] if after_index + 1 < len(without_mover) else None
+    return following is None or _row_category(following) != mover_category
 
 
 class ChapterService:
@@ -427,7 +452,10 @@ class ChapterService:
         the act of the chapter it is placed after, or — when moved first — the
         act of the chapter it is placed before (the document's old first
         chapter). The adoption is skipped when the move leaves the order
-        unchanged.
+        unchanged, and when the neighbour is a different category (a move to
+        the front of the mover's own block). A move that would land outside
+        the mover's category — including moving first ahead of the other
+        category — raises ``ChapterCategoryMismatchError`` and changes nothing.
         """
         ch = self._chapter_repo.load(chapter_id)
         if ch is None or chapter_id == after_chapter_id:
@@ -438,6 +466,8 @@ class ChapterService:
         members = self._chapter_repo.list_by_document(document_id)
         if after_chapter_id is not None and after_chapter_id not in {row["id"] for row in members}:
             raise ChapterAfterNotFoundError(after_chapter_id)
+        if _crosses_category(members, ch, after_chapter_id):
+            raise ChapterCategoryMismatchError(chapter_id)
         ordered_ids = [str(row["id"]) for row in members]
         old_order = list(ordered_ids)
         ordered_ids.remove(chapter_id)
@@ -446,16 +476,15 @@ class ChapterService:
         else:
             ordered_ids.insert(ordered_ids.index(after_chapter_id) + 1, chapter_id)
         if ordered_ids != old_order:
-            if after_chapter_id is None:
-                adopted_act = str(members[0].get("act") or "")
-            else:
-                adopted_act = str(next(row.get("act") or "" for row in members if row["id"] == after_chapter_id))
-            if ch.act != adopted_act:
-                ch.act = adopted_act
-                ch.state = DataState.CHANGED
-                uow = self._uow_factory.get_unit_of_work()
-                uow.register(ch, document_id=document_id)
-                uow.commit()
+            neighbor = members[0] if after_chapter_id is None else next(row for row in members if row["id"] == after_chapter_id)
+            if _row_category(neighbor) == (ch.category or "Chapter"):
+                adopted_act = str(neighbor.get("act") or "")
+                if ch.act != adopted_act:
+                    ch.act = adopted_act
+                    ch.state = DataState.CHANGED
+                    uow = self._uow_factory.get_unit_of_work()
+                    uow.register(ch, document_id=document_id)
+                    uow.commit()
         self._chapter_repo.reorder(document_id, ordered_ids)
         return ch
 

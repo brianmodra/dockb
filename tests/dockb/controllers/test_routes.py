@@ -13,7 +13,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchError, DuplicateTitleError
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -509,6 +509,14 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             json={"after_chapter_id": "ghost"},
         )
         assert resp.status_code == 404
+
+    def test_reorder_rejects_cross_category(self) -> None:
+        with patch.object(self.ch_svc, "move", side_effect=ChapterCategoryMismatchError("c1")):
+            resp = self.client.post(
+                "/api/chapters/c1/reorder",
+                json={"after_chapter_id": None},
+            )
+        assert resp.status_code == 409
 
     def test_get_chapter_document(self) -> None:
         self.ch_svc.create("c1", "Intro", "d1")

@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChapterListRow } from "../src/renderer/api/types";
 import { MoveMode, computeAfterForY } from "../src/renderer/layout/moveMode";
 
-function chapters(...rows: Array<[id: string, title: string, act: string]>): ChapterListRow[] {
-  return rows.map(([id, title, act], index) => ({ id, title, act, index }));
+function chapters(
+  ...rows: Array<[id: string, title: string, act: string, category?: "Chapter" | "Character"]>
+): ChapterListRow[] {
+  return rows.map(([id, title, act, category], index) => ({ id, title, act, index, category }));
 }
 
 const METRICS = [
@@ -55,6 +57,35 @@ describe("computeAfterForY", () => {
     expect(
       computeAfterForY(chapters(["a", "A", "I"], ["b", "B", "I"], ["c", "C", "II"]), 75, METRICS),
     ).toEqual({ afterChapterId: "c" });
+  });
+
+  it("offers no slot when the pointer is outside the mover's category", () => {
+    const rows = chapters(
+      ["a", "A", "I", "Chapter"],
+      ["d", "Dramatis", "", "Character"],
+      ["e", "Extra", "", "Character"],
+    );
+    const metrics = [
+      { top: 0, bottom: 20 },
+      { top: 40, bottom: 60 },
+      { top: 60, bottom: 80 },
+    ];
+    expect(computeAfterForY(rows, 50, metrics, "a")).toBeNull();
+  });
+
+  it("slots a character inside the character block, including its front", () => {
+    const rows = chapters(
+      ["a", "A", "I", "Chapter"],
+      ["d", "Dramatis", "", "Character"],
+      ["e", "Extra", "", "Character"],
+    );
+    const metrics = [
+      { top: 0, bottom: 20 },
+      { top: 40, bottom: 60 },
+      { top: 60, bottom: 80 },
+    ];
+    expect(computeAfterForY(rows, 70, metrics, "d")).toEqual({ afterChapterId: "e" });
+    expect(computeAfterForY(rows, 42, metrics, "e")).toEqual({ afterChapterId: "a" });
   });
 });
 

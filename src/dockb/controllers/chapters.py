@@ -18,7 +18,7 @@ from dockb.controllers.schemas.chapters import (
     UpdateChapterRequest,
 )
 from dockb.controllers.serializers import serialize_chapter
-from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchError, DuplicateTitleError
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/chapters", tags=["chapters"])
@@ -120,6 +120,8 @@ def reorder_chapter(
         ch = svc.move(chapter_id=chapter_id, after_chapter_id=body.after_chapter_id)
     except ChapterAfterNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc
+    except ChapterCategoryMismatchError as exc:
+        raise HTTPException(status_code=409, detail=f"chapter_category_mismatch: {exc}") from exc
     if ch is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return mutation_response(session_context).model_dump()

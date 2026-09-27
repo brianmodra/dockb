@@ -246,11 +246,16 @@ E.g.
 
 The body of a POST to `/api/chapters/{id}/reorder` names the chapter the moved chapter goes
 **after**; `after_chapter_id: null` moves it first. An `after_chapter_id` that is not a chapter
-of the same document is rejected (404). Moving a chapter after itself is a no-op.
+of the same document is rejected (404). Moving a chapter after itself is a no-op. A move that
+would land outside the mover's category — including moving first ahead of the other category —
+is rejected (409). Moving to the front of the mover's own block (after the other category's
+last chapter, when the next sibling is the same category) is allowed and does not adopt that
+chapter's act.
 
-The moved chapter **adopts its predecessor's act** — the act of the chapter it is placed after,
-or, when moved first, the act of the chapter it is placed before (the document's old first
-chapter). The adoption overwrites the moved chapter's act server-side, even to empty.
+The moved chapter **adopts its predecessor's act** when that predecessor is the same category —
+the act of the chapter it is placed after, or, when moved first, the act of the chapter it is
+placed before (the document's old first chapter). The adoption overwrites the moved chapter's
+act server-side, even to empty.
 
 ``` json
 {

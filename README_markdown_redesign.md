@@ -218,12 +218,16 @@ sequence.
 
 **Acts.** Acts are not a separate model entity: they are the `act` front-matter attribute persisted
 on each chapter (and stored in the graph like the chapter's other attrs). The chapter listing
-(`GET /api/chapters?document=...`) carries `act` so the editor can group chapters under act headers.
-When a chapter is moved, it **adopts its predecessor's act** (the chapter it is placed after);
-when moved first (`after_chapter_id = null`) it adopts the act of the chapter it is placed before
-(the document's old first chapter). The adoption overwrites the moved chapter's act, even to empty —
-the server, not the editor, owns the attribute — so a chapter moved into a run of chapters
-belonging to a different act joins that run. The editor only sends the order change.
+(`GET /api/chapters?document=...`) carries `act` and `category` so the editor can group manuscript
+chapters under act headers and `Character` chapters under a **Characters** section after the acts.
+When a chapter is moved, it **adopts its predecessor's act** when that predecessor is the same
+category (the chapter it is placed after); when moved first (`after_chapter_id = null`) it adopts
+the act of the chapter it is placed before (the document's old first chapter). The adoption
+overwrites the moved chapter's act, even to empty — the server, not the editor, owns the attribute —
+so a chapter moved into a run of same-category chapters belonging to a different act joins that run.
+A move that would land outside the mover's category, including moving first ahead of the other
+category, is rejected. The editor only sends the order change, and only offers drop slots inside
+the mover's category.
 
 In the owned tree an act is also a directory: chapters live under `Act <name>`, and directory import
 derives each file's act from its directory's name (`Act None` → the empty act), overriding any

@@ -70,7 +70,11 @@ export class MoveMode {
       return;
     }
     const metrics = this.rowMetrics();
-    const { afterChapterId } = computeAfterForY(this.chapters, y, metrics);
+    const slot = computeAfterForY(this.chapters, y, metrics, this.chapterId);
+    if (slot === null) {
+      return;
+    }
+    const { afterChapterId } = slot;
     if (afterChapterId === null && this.chapters[0]?.id === this.chapterId) {
       return; // already first
     }
@@ -104,7 +108,13 @@ export class MoveMode {
       return;
     }
     const metrics = this.rowMetrics();
-    const { afterChapterId } = computeAfterForY(this.chapters, this.currentY, metrics);
+    const slot = computeAfterForY(this.chapters, this.currentY, metrics, this.chapterId);
+    if (slot === null) {
+      this.bar.hidden = true;
+      return;
+    }
+    this.bar.hidden = false;
+    const { afterChapterId } = slot;
     let top = 0;
     if (afterChapterId !== null) {
       const index = this.chapters.findIndex((c) => c.id === afterChapterId);
@@ -151,17 +161,44 @@ export class MoveMode {
   }
 }
 
+function rowCategory(chapter: ChapterListRow): "Chapter" | "Character" {
+  return chapter.category === "Character" ? "Character" : "Chapter";
+}
+
 export function computeAfterForY(
   chapters: ChapterListRow[],
   y: number,
   rowMetrics: RowMetrics[],
-): { afterChapterId: string | null } {
-  // Each chapter owns the zone around its row's vertical midpoint; the slot
-  // below that chapter is the drop target. Above the first midpoint the target
-  // is the list top (null = first).
-  const midpoints = rowMetrics.map((m) => (m.bottom - m.top) / 2 + m.top);
+  moverId?: string,
+): { afterChapterId: string | null } | null {
+  // Each same-category chapter owns the zone around its row's vertical
+  // midpoint; the slot below that chapter is the drop target. Above the first
+  // same-category midpoint the target is the front of that block. A pointer
+  // outside the block has no slot.
+  const mover = moverId === undefined ? undefined : chapters.find((chapter) => chapter.id === moverId);
+  const moverCategory = mover === undefined ? undefined : rowCategory(mover);
+  const eligible = chapters
+    .map((_, index) => index)
+    .filter((index) => moverCategory === undefined || rowCategory(chapters[index]) === moverCategory);
+  if (eligible.length === 0) {
+    return null;
+  }
+  if (
+    moverCategory !== undefined &&
+    chapters.some(
+      (chapter, index) =>
+        rowCategory(chapter) !== moverCategory &&
+        y >= rowMetrics[index].top &&
+        y <= rowMetrics[index].bottom,
+    )
+  ) {
+    return null;
+  }
+  const metrics = eligible.map((index) => rowMetrics[index]);
+  const midpoints = metrics.map((row) => (row.bottom - row.top) / 2 + row.top);
   if (midpoints.length === 0 || y < midpoints[0]) {
-    return { afterChapterId: null };
+    const firstIndex = eligible[0];
+    return { afterChapterId: firstIndex <= 0 ? null : chapters[firstIndex - 1].id };
   }
   let nearest = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;
@@ -172,5 +209,5 @@ export function computeAfterForY(
       nearestDistance = distance;
     }
   }
-  return { afterChapterId: chapters[nearest].id };
+  return { afterChapterId: chapters[eligible[nearest]].id };
 }

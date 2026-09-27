@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
+from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchError, DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
 from dockb.models.base import DataState, DockbModel
 from dockb.models.chapter import Chapter
@@ -73,7 +73,13 @@ class StubChapterRepo(StubRepo):
 
     def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
         rows = [
-            {"id": m.id, "title": m.title, "act": m.act, "index": self._index_of.get(m.id, 0)}
+            {
+                "id": m.id,
+                "title": m.title,
+                "act": m.act,
+                "category": m.category,
+                "index": self._index_of.get(m.id, 0),
+            }
             for m in self._store.values()
             if m.id not in self._document_of or self._document_of[m.id] == document_id
         ]
@@ -414,7 +420,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.repo._store["c1"] = ch
         self.repo.set_index("c1", 2)
         result = self.svc.list_by_document("doc1")
-        assert result == [{"id": "c1", "title": "Ch1", "act": "", "index": 2}]
+        assert result == [{"id": "c1", "title": "Ch1", "act": "", "category": "Chapter", "index": 2}]
 
     def test_get_returns_none_when_missing(self) -> None:
         assert self.svc.get("nonexistent") is None
@@ -734,6 +740,62 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert not self.uow.registered
         assert not self.uow.committed
         assert self.repo._reorders == [("d1", ["c1", "c2"])]
+
+    def test_move_rejects_landing_in_other_category(self) -> None:
+        chapter = Chapter(id="c1", title="Ch1", act="Act I", category="Chapter", state=DataState.SYNC)
+        character = Chapter(id="char", title="Dramatis", category="Character", state=DataState.SYNC)
+        for ch, index in ((chapter, 0), (character, 1)):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, index)
+
+        with pytest.raises(ChapterCategoryMismatchError):
+            self.svc.move("char", after_chapter_id="c1")
+
+        assert not self.repo._reorders
+        assert character.act == ""
+        assert character.category == "Character"
+
+    def test_move_first_rejects_other_category(self) -> None:
+        chapter = Chapter(id="c1", title="Ch1", act="Act I", category="Chapter", state=DataState.SYNC)
+        character = Chapter(id="char", title="Dramatis", category="Character", state=DataState.SYNC)
+        for ch, index in ((chapter, 0), (character, 1)):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, index)
+
+        with pytest.raises(ChapterCategoryMismatchError):
+            self.svc.move("char", after_chapter_id=None)
+
+        assert not self.repo._reorders
+
+    def test_move_within_category_still_reorders(self) -> None:
+        first = Chapter(id="a", title="A", category="Character", state=DataState.SYNC)
+        second = Chapter(id="b", title="B", category="Character", state=DataState.SYNC)
+        for ch, index in ((first, 0), (second, 1)):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, index)
+
+        self.svc.move("b", after_chapter_id=None)
+
+        assert self.repo._reorders == [("d1", ["b", "a"])]
+
+    def test_move_to_front_of_own_block_keeps_act(self) -> None:
+        chapter = Chapter(id="c1", title="Ch1", act="Act I", category="Chapter", state=DataState.SYNC)
+        first = Chapter(id="a", title="A", category="Character", state=DataState.SYNC)
+        second = Chapter(id="b", title="B", category="Character", state=DataState.SYNC)
+        for ch, index in ((chapter, 0), (first, 1), (second, 2)):
+            self.repo._store[ch.id] = ch
+            self.repo.set_document(ch.id, "d1")
+            self.repo.set_index(ch.id, index)
+
+        self.svc.move("b", after_chapter_id="c1")
+
+        assert self.repo._reorders == [("d1", ["c1", "b", "a"])]
+        assert second.act == ""
+        assert second.category == "Character"
+        assert not self.uow.committed
 
     def test_open_returns_none_when_missing(self) -> None:
         assert self.svc.open("nonexistent") is None

@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChapterListRow } from "../src/renderer/api/types";
 import { ChapterList, actHeaderLabel, groupByAct } from "../src/renderer/layout/chapterList";
 
-function chapters(...rows: Array<[id: string, title: string, act: string]>): ChapterListRow[] {
-  return rows.map(([id, title, act], index) => ({ id, title, act, index }));
+function chapters(
+  ...rows: Array<[id: string, title: string, act: string, category?: "Chapter" | "Character"]>
+): ChapterListRow[] {
+  return rows.map(([id, title, act, category], index) => ({ id, title, act, index, category }));
 }
 
 afterEach(() => {
@@ -29,9 +31,30 @@ describe("groupByAct", () => {
     expect(actHeaderLabel("")).toBe("No act");
     expect(actHeaderLabel("Act I")).toBe("Act I");
   });
+
+  it("collects character chapters into a Characters section after the acts", () => {
+    const runs = groupByAct(
+      chapters(["a", "A", "I", "Chapter"], ["d", "Dramatis", "", "Character"], ["b", "B", "II", "Chapter"]),
+    );
+    expect(runs.map((run) => run.act)).toEqual(["I", "II", ""]);
+    expect(runs[2].category).toBe("Character");
+    expect(runs[2].chapters.map((chapter) => chapter.id)).toEqual(["d"]);
+    expect(actHeaderLabel("", "Character")).toBe("Characters");
+  });
 });
 
 describe("ChapterList", () => {
+  it("renders a Characters header after the act headers", () => {
+    const list = new ChapterList();
+    list.setChapters(
+      chapters(["a", "A", "I", "Chapter"], ["d", "Dramatis", "", "Character"], ["b", "B", "II", "Chapter"]),
+    );
+    document.body.append(list.element);
+
+    const headers = Array.from(list.element.querySelectorAll("[data-testid='act-header']"));
+    expect(headers.map((header) => header.textContent)).toEqual(["I", "II", "Characters"]);
+  });
+
   it("renders act headers and chapter rows", () => {
     const list = new ChapterList();
     list.setChapters(chapters(["a", "A", "I"], ["b", "B", "I"], ["c", "C", "II"]));

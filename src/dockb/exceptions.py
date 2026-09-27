@@ -28,3 +28,7 @@ class DuplicateTitleError(Exception):
 
 class ChapterAfterNotFoundError(Exception):
     """Raised when after_chapter_id names a chapter that does not belong to the document."""
+
+
+class ChapterCategoryMismatchError(Exception):
+    """Raised when a move would land a chapter outside its own category."""

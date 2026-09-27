@@ -1,5 +1,5 @@
 import type { ChapterListRow } from "../api/types";
-import { ChapterList } from "./chapterList";
+import { ChapterList, orderedForDisplay } from "./chapterList";
 import { openContextMenu } from "./contextMenu";
 import { confirmModal, promptModal } from "./modals";
 import { MoveMode } from "./moveMode";
@@ -135,7 +135,7 @@ export class LeftPanel {
     this.moveMode?.cancel();
     this.moveMode = new MoveMode({
       chapterId,
-      chapters: this.chapters,
+      chapters: orderedForDisplay(this.chapters),
       listElement: this.chapterList.element,
       onCommit: (afterChapterId) => {
         void this.commitMove(chapterId, afterChapterId);

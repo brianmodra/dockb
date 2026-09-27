@@ -113,6 +113,16 @@ describe("ApiClient chapters and lifecycle", () => {
     expect(call.init.body).toContain('"after_chapter_id":"ch-0"');
   });
 
+  it("creates a character chapter with its category", async () => {
+    mockFetch(200, { status: { code: "ok", message: "success" } });
+    const client = new ApiClient();
+    await client.createChapter(
+      { id: "ch-9", title: "Dramatis", category: "Character" },
+      { document_id: "d-1" },
+    );
+    expect(fetchCalls()[0].init.body).toContain('"category":"Character"');
+  });
+
   it("gets a chapter as a ProseMirror tree", async () => {
     mockFetch(200, chapterNode);
     const client = new ApiClient();

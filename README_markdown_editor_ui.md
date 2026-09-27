@@ -106,11 +106,13 @@ stays identical across platforms; the native menu is removed at startup
 
 ## 4. Left panel: document and chapter selector (decided)
 
-- Lists documents; each shows its chapters grouped under **act headers** (collapsible). Group
-  membership comes from each chapter's `act` front-matter attribute: a chapter moved into a run of
-  chapters belonging to a different act adopts that act. Beyond the current document, other
-  documents appear here too — character descriptions, place descriptions, world building,
-  supporting research — to be defined later.
+- Lists documents; each shows its chapters grouped under **act headers** (collapsible), with
+  `Character` chapters in a **Characters** section after the acts. Group membership comes from
+  each chapter's `act` and `category`: a chapter moved into a run of same-category chapters
+  belonging to a different act adopts that act. A move cannot cross categories — the drop bar
+  appears only inside the mover's category, and the server rejects a cross-category landing.
+  Beyond the current document, other documents appear here too — place descriptions, world
+  building, supporting research — to be defined later.
 - Width is user-resizable via the vertical seam.
 - Right-clicking a chapter opens the context menu: **Edit, Rename, Move, Delete**. (A metadata YAML
   entry is a later addition once per-chapter `*.yaml` meta files exist.)
@@ -121,8 +123,9 @@ stays identical across platforms; the native menu is removed at startup
   Moving to the bottom/top of the list scrolls it; the further above top (or below bottom) the mouse
   goes, the faster it scrolls, and the bar reappears under the newly revealed chapters. Clicking
   commits the move at that position (reorder via `after_chapter_id`); the chapter it lands next to
-  determines the act it adopts (decided server-side). **Esc** or a **click outside the list**
-  cancels move mode.
+  determines the act it adopts (decided server-side) when that chapter is the same category.
+  The bar is hidden, and a click does not commit, when the pointer is over the other category.
+  **Esc** or a **click outside the list** cancels move mode.
 
 ## 5. Edit panel (decided)
 

@@ -3,6 +3,7 @@ import type { ChapterListRow } from "../api/types";
 export interface ActRun {
   act: string;
   chapters: ChapterListRow[];
+  category?: "Chapter" | "Character";
 }
 
 export interface ChapterListOptions {
@@ -56,7 +57,10 @@ export class ChapterList {
     header.type = "button";
     header.className = "act-header";
     header.dataset.testid = "act-header";
-    header.textContent = actHeaderLabel(run.act);
+    header.textContent = actHeaderLabel(run.act, run.category);
+    if (run.category) {
+      section.dataset.category = run.category;
+    }
 
     const body = document.createElement("div");
     body.className = "act-body";
@@ -100,19 +104,35 @@ export class ChapterList {
   }
 }
 
+function rowCategory(chapter: ChapterListRow): "Chapter" | "Character" {
+  return chapter.category === "Character" ? "Character" : "Chapter";
+}
+
 export function groupByAct(chapters: ChapterListRow[]): ActRun[] {
+  const manuscript = chapters.filter((chapter) => rowCategory(chapter) === "Chapter");
+  const characters = chapters.filter((chapter) => rowCategory(chapter) === "Character");
   const runs: ActRun[] = [];
-  for (const chapter of chapters) {
+  for (const chapter of manuscript) {
     const last = runs.at(-1);
     if (last && last.act === chapter.act) {
       last.chapters.push(chapter);
     } else {
-      runs.push({ act: chapter.act, chapters: [chapter] });
+      runs.push({ act: chapter.act, chapters: [chapter], category: "Chapter" });
     }
+  }
+  if (characters.length > 0) {
+    runs.push({ act: "", chapters: characters, category: "Character" });
   }
   return runs;
 }
 
-export function actHeaderLabel(act: string): string {
+export function orderedForDisplay(chapters: ChapterListRow[]): ChapterListRow[] {
+  return groupByAct(chapters).flatMap((run) => run.chapters);
+}
+
+export function actHeaderLabel(act: string, category?: string): string {
+  if (category === "Character") {
+    return "Characters";
+  }
   return act.trim().length > 0 ? act : "No act";
 }
