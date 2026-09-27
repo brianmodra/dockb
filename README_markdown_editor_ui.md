@@ -205,6 +205,17 @@ features (undecided).
   Delete**; only that second **Delete** calls `DELETE /api/documents/{id}`. If the deleted
   document was the one open in the editor, the editor and the chapter list clear
   (`PUT /api/app/state` forgets it as the last document).
+- **Edit document** (File → Edit → Document) — the document list with **Cancel / Edit** (Edit
+  disabled until a row is chosen). **Edit** opens a two-field modal pre-filled with the chosen
+  document's title and author; the edited values stay in the modal until **Save** (disabled
+  while the title is blank). **Save** updates via `PUT /api/documents/{id}` — which renames
+  the document's store directory when the title changed — then reloads the chapter list;
+  **Cancel** discards the edits. The modal edits title and author only; any other metadata
+  fields are preserved untouched, not shown, and not sent.
+- **Edit chapter** (File → Edit → Chapter) — a single title field pre-filled with the
+  selected chapter's title and **Cancel / Save**. **Save** updates the title via
+  `PUT /api/chapters/{id}` (renaming the chapter's store file) and reloads the chapter list;
+  no modal appears when no chapter is selected.
 - **Sign in** — first-run when login is required: **Sign in** / **Cancel**. Sign in opens the
   provider in the system browser; after consent, Sign in again to pick up the session. In
   **local mode** (no OAuth provider configured) this gate is skipped entirely — the editor

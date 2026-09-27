@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { confirmModal, openModal, promptModal } from "../src/renderer/layout/modals";
+import { confirmModal, editDocumentModal, openModal, promptModal } from "../src/renderer/layout/modals";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -73,5 +73,37 @@ describe("modals", () => {
     const result = await promise;
     expect(result.value).toBe(null);
     expect(result.input).toBe("Old");
+  });
+
+  it("editDocumentModal pre-fills title and author and saves the new values", async () => {
+    const promise = editDocumentModal({ title: "Faith", author: "Paul" });
+    const titleInput = modal()!.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
+    const authorInput = modal()!.querySelector<HTMLInputElement>("[data-testid='modal-input-author']")!;
+    expect(titleInput.value).toBe("Faith");
+    expect(authorInput.value).toBe("Paul");
+    titleInput.value = "Hope";
+    authorInput.value = "Brian";
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(await promise).toEqual({ title: "Hope", author: "Brian" });
+    expect(modal()).toBeNull();
+  });
+
+  it("editDocumentModal keeps Save disabled while the title is blank", async () => {
+    void editDocumentModal({ title: "Faith", author: "Paul" });
+    const titleInput = modal()!.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
+    const save = modal()!.querySelectorAll<HTMLButtonElement>("[data-testid='modal-button']")[1];
+    expect(save.disabled).toBe(false);
+    titleInput.value = "";
+    titleInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(save.disabled).toBe(true);
+  });
+
+  it("editDocumentModal resolves null on cancel", async () => {
+    const promise = editDocumentModal({ title: "Faith", author: "Paul" });
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
   });
 });

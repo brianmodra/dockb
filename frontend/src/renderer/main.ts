@@ -4,8 +4,8 @@ import { checkSession } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
-import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker } from "./layout/documentPicker";
-import { confirmModal } from "./layout/modals";
+import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
+import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
 import { openLanguageSettings } from "./layout/languageSettings";
 import { openSignInGate } from "./layout/signInGate";
 import { AppStateController } from "./state/appState";
@@ -26,10 +26,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let stateController: AppStateController | null = null;
   let openDocument: () => void = () => {};
   let runDeleteDocument: () => void = () => {};
+  let runEditDocument: () => void = () => {};
+  let runEditChapter: () => void = () => {};
 
   const layout = new AppLayout({
     onOpen: () => openDocument(),
     onDeleteDocument: () => runDeleteDocument(),
+    onEditDocument: () => runEditDocument(),
+    onEditChapter: () => runEditChapter(),
     onSave: () => {
       void editPanel?.save();
     },
@@ -112,6 +116,50 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         }
         void panel.load(documentId);
         void controller.saveLastDocument(documentId);
+      });
+    };
+
+    runEditDocument = () => {
+      void openDocumentAttrsPicker(options.api!).then((attrs) => {
+        if (attrs === null) {
+          return;
+        }
+        void editDocumentModal({ title: attrs.title, author: attrs.author }).then((values) => {
+          if (values === null) {
+            return;
+          }
+          void options.api!.updateDocument(attrs.id, { title: values.title, author: values.author }).then(
+            () => {
+              layout.pushMessage(`Updated "${values.title}".`);
+              void panel.reload();
+            },
+            (error) => reportError("Edit document", error, (text) => layout.pushMessage(text)),
+          );
+        });
+      });
+    };
+
+    runEditChapter = () => {
+      const chapter = panel.selectedChapter();
+      if (chapter === null) {
+        return;
+      }
+      void promptModal({
+        title: "Edit chapter",
+        label: "Title",
+        initial: chapter.title,
+        confirmLabel: "Save",
+      }).then((result) => {
+        if (result.value !== "confirm") {
+          return;
+        }
+        void options.api!.updateChapter(chapter.id, { title: result.input }).then(
+          () => {
+            layout.pushMessage(`Renamed chapter to "${result.input}".`);
+            void panel.reload();
+          },
+          (error) => reportError("Edit chapter", error, (text) => layout.pushMessage(text)),
+        );
       });
     };
 

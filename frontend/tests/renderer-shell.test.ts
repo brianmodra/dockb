@@ -186,4 +186,79 @@ describe("renderer shell", () => {
     expect(deleteDocument).not.toHaveBeenCalled();
     expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(1);
   });
+
+  it("File → Edit → Chapter saves the current chapter's title and reloads", async () => {
+    const updateChapter = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const listChapters = vi
+      .fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }])
+      .mockResolvedValueOnce([{ id: "c1", title: "Opening 1", act: "", index: 0 }])
+      .mockResolvedValueOnce([{ id: "c1", title: "Second", act: "", index: 0 }]);
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters,
+      updateChapter,
+      getChapterDocument: vi.fn(async () => ({ content: "", summary: null })),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    (document.querySelector<HTMLElement>("[data-testid='chapter-row']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit-chapter']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const input = document.querySelector<HTMLInputElement>("[data-testid='modal-input']")!;
+    expect(input.value).toBe("Opening 1");
+    input.value = "Second";
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(["Cancel", "Save"]);
+    (buttons[1] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(updateChapter).toHaveBeenCalledWith("c1", { title: "Second" });
+    expect(document.querySelector("[data-testid='chapter-row']")?.textContent).toBe("Second");
+  });
+
+  it("File → Edit → Document edits title and author through the modal", async () => {
+    const updateDocument = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      listDocuments: vi.fn(async () => [
+        { attrs: { id: "d1", title: "Faith", author: "Paul" }, chapter_summaries: [] },
+        { attrs: { id: "d2", title: "Sight", author: "Brian" }, chapter_summaries: [] },
+      ]),
+      updateDocument,
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit-document']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const items = document.querySelectorAll("[data-testid='document-picker-item']");
+    expect(items).toHaveLength(2);
+    (items[1] as HTMLElement).click();
+    const edit = document.querySelector<HTMLButtonElement>("[data-testid='document-picker-edit']")!;
+    expect(edit.disabled).toBe(false);
+    edit.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const titleInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
+    const authorInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-author']")!;
+    expect(titleInput.value).toBe("Sight");
+    expect(authorInput.value).toBe("Brian");
+    titleInput.value = "Hope";
+    authorInput.value = "Anna";
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
+    (buttons[1] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(updateDocument).toHaveBeenCalledWith("d2", { title: "Hope", author: "Anna" });
+  });
 });

@@ -264,4 +264,22 @@ describe("LeftPanel", () => {
     expect(panel.currentDocumentId()).toBeNull();
     expect(listRows()).toHaveLength(0);
   });
+
+  it("reports the selected chapter and reloads the list from the backend", async () => {
+    const listChapters = vi
+      .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"]))
+      .mockResolvedValueOnce(chapters(["a", "A", "I"]))
+      .mockResolvedValueOnce(chapters(["a", "Second", "I"]));
+    const api = fakeApi({ listChapters });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(panel.selectedChapter()).toEqual({ id: "a", title: "A", act: "I", index: 0 });
+
+    await panel.reload();
+    expect(api.listChapters).toHaveBeenLastCalledWith("d1");
+    expect(panel.selectedChapter()?.title).toBe("Second");
+  });
 });

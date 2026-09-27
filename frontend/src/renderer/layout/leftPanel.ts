@@ -63,6 +63,19 @@ export class LeftPanel {
     return this.documentId;
   }
 
+  selectedChapter(): ChapterListRow | null {
+    const chapterId = this.chapterList.selectedId();
+    return chapterId === null ? null : this.chapterList.chapter(chapterId) ?? null;
+  }
+
+  async reload(): Promise<void> {
+    if (this.documentId !== null) {
+      const selectedId = this.chapterList.selectedId();
+      await this.load(this.documentId);
+      this.chapterList.select(selectedId);
+    }
+  }
+
   clear(): void {
     this.documentId = null;
     this.chapters = [];
