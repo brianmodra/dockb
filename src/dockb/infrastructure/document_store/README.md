@@ -7,10 +7,11 @@ chapter files that the backend — never the editor — writes, keyed by titles 
 paths are always under the store's control. Read this to learn the on-disk layout, how title
 paths are kept escape-proof, and how the store's git commits work.
 
-Ownership ends as well as begins here: deleting a document or chapter removes its files via
-`git rm` (committed) before the graph node is marked `DELETED`, so a store failure leaves the
-graph recoverable and a successful DELETE leaves no markdown files behind. Hydrating a file
-back into the knowledge graph is the caller's job, not the store's.
+Ownership ends as well as begins here: deleting or renaming a document or
+chapter moves or removes its owned files (committed) before the graph is
+changed, so a store failure leaves the graph recoverable and a successful
+operation leaves no stale markdown behind. Hydrating a file back into the
+knowledge graph is the caller's job, not the store's.
 
 ## Layout
 
@@ -80,7 +81,5 @@ the graph node `DELETED`, so a store failure leaves the graph intact for a
 retry and the DELETE endpoint leaves no markdown files behind.
 
 `rename_document(old, new)` and `rename_chapter(..., old, new)` are the mirror
-image: they `git mv` the owned directory or markdown file, rewrite the
-metadata / front matter title inside, and commit — so a title rename never
-leaves a stale title-keyed tree behind. Colliding destinations raise, and a
-missing source is a no-op (the next open materializes under the new title).
+image: a title rename moves the owned directory or markdown file, so a rename
+never leaves a stale title-keyed tree behind.

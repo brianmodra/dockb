@@ -9,9 +9,10 @@ raw markdown of the same document), a bottom message console, and a right panel
 that starts closed. Startup signs the user in if needed, then restores the last
 document or asks them to pick one.
 
-Read this for the layout, menus, modals, and how chapters are renamed, moved,
-and deleted. The backend and the canonical markdown format are in
-`README_markdown_redesign.md`; login and app state are in `README_auth.md`.
+Read this for the layout, menus, modals, and how documents are deleted or
+edited and chapters renamed, moved, and deleted. The backend and the canonical
+markdown format are in `README_markdown_redesign.md`; login and app state are
+in `README_auth.md`.
 
 ## 1. Context and constraints
 

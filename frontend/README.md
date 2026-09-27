@@ -88,9 +88,6 @@ DOM as HTML.
   applied via `EditPanel.setLanguage`.
 - `state/` — app-state persistence, start-up restore, quit-with-save.
 
-Panels are built with `createElement`/`textContent` — no user data enters the
-DOM as HTML.
-
 ### Error reporting
 
 All user-facing failures go to the terminal log (`log.ts` `reportError`) **and**
@@ -103,9 +100,11 @@ login is required (an OAuth provider is configured); in local mode it reads the
 OS username from `/api/auth/me` and shows it in the menubar. Then it runs
 `runStartup` (restore last document, or pick one); File → Open opens the same
 select-document picker (`documentPicker.ts`
-`openDocumentPickerConfirm`) and loads the chosen document. Mode, panel
-widths, and last document persist via `GET/PUT /api/app/state`. File → Quit
-asks to save when dirty, then sends the `quit` IPC channel.
+`openDocumentPickerConfirm`) and loads the chosen document. File → Delete and
+File → Edit manage whole documents (delete with confirm; title/author) and the
+selected chapter's title; Mode, panel widths, and last document persist via
+`GET/PUT /api/app/state`. File → Quit asks to save when dirty, then sends the
+`quit` IPC channel.
 
 ## Layout
 
