@@ -2,27 +2,21 @@
 
 ## Executive Summary
 
-This document specifies how markdown chapter files are brought back into the knowledge graph. One
-piece, `detect_changes`, turns a saved file into a paragraph-level report — what to add, change, and
-delete, and where each new paragraph goes — without ever re-parsing the chapter the graph already
-holds. A second piece, `apply_chapter_file`, puts that report into effect as graph writes after
-checking the file's chapter really belongs to the document being edited.
+This document specifies how markdown chapter files are brought back into the knowledge graph.
+`detect_changes` turns a saved file into a paragraph-level report — what to add, change, and delete,
+and where new paragraphs go — without re-parsing the chapter the graph already holds.
+`apply_chapter_file` (in `dockb.services.markdown_import`) checks the file's chapter really belongs
+to the document being edited, then puts that report into effect as graph writes.
 
-`import_document_directory` then drives the whole process from the shell: it walks a document's
-directory for chapter files — markdown files inside `Act <name>` directories whose numbered acts and
-sequence numbers (trailing at the end of or embedded between spaces in the name, with at most one
-letter) fix the import order — resolves the directory to one `Document` from its
-metadata (`document_metadata.yaml`), imports each chapter file, and — while write-back
-is on — writes that metadata back when it creates the `Document`,
-rewrites any file whose graph content changed into the canonical
-span format — front matter plus one identity span per paragraph — so the next import matches it.
-Write-back is on by default only when the source directory lies inside the store tree
-(`DOCKB_CHAPTERS_DIR`); the CLI switches `--write-back`/`--no-write-back` force either
-way. With write-back off, source files stay byte-for-byte untouched and no
-`document_metadata.yaml` is written; the graph still receives the import, but a later
-run has no front-matter id to match and assigns a fresh chapter id per file.
-Read this document to learn how chapter files map back into the graph, which files count as new
-versus edited, what the caller guarantees, and how a document directory becomes graph data.
+`import_document_directory` drives the same process from the shell: it walks a document's directory
+for chapter files, resolves the directory to one `Document` by its metadata, imports each chapter,
+and rewrites changed files into the canonical span format — front matter plus one identity span per
+paragraph — so the next import matches them. Write-back (file rewrites, front-matter identity, and
+the document's `document_metadata.yaml`) is on by default only when the source lies inside the
+store tree (`DOCKB_CHAPTERS_DIR`); `--write-back`/`--no-write-back` force it either way, and with it
+off the source files stay untouched while repeated imports assign a fresh id per file. Read this
+document to learn how chapter files map back into the graph, which files count as new versus
+edited, what the caller guarantees, and how a document directory becomes graph data.
 
 ## Calling context
 
