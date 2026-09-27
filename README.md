@@ -61,6 +61,18 @@ Every HTTP request also logs one INFO line (`src/dockb/timing.py`) with the tota
 source .venv/bin/activate && pip install -e '.[dev]'
 ```
 
+## Import an existing set of Markdown files
+
+```
+python -m dockb.cli.import_document "/home/brian-modra/Documents/Linchpin" --single-newline-paragraphs --no-write-back
+```
+
+The Document title in this example will be "Linchpin".
+
+Note that the directory structure under Linchpin must be a set of subdirectories called "Act I", "Act II", "Act III" etc.
+In each "Act..." dubdirectory, a set of markdown files, each with a consecutive number after the chapter title name. E.g. "Opening 1".
+And also supported in a subdirectory called "Characters", which will hold the markdown files (one per character) to describe the characters.
+
 ## Run the dev servers
 
 Backend (from the repo root):
@@ -80,6 +92,11 @@ Frontend (from `frontend/`):
 ```bash
 npm install
 npm run dev    # Vite on :3000, proxying /api to :8000
+```
+
+Or as an Electron app:
+```bash
+npm run build && npm start
 ```
 
 Checks: `make` from the repo root for the backend, and
