@@ -93,7 +93,7 @@ text:      { inline: true,          attrs: {} }
 
 `category` is either `"Chapter"` (the manuscript) or `"Character"` (supporting
 material that is never published — see the publishing note in
-`services/README.md`). It defaults to `"Chapter"` for chapters created through
+[`services/README.md`](../services/README.md#publishing)). It defaults to `"Chapter"` for chapters created through
 the API or loaded from pre-`category` data.
 
 Note: attrs in this codebase at the point of typing up this spec file are simple. Obviously

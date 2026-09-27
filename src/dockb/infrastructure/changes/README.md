@@ -64,7 +64,7 @@ unnumbered chapter file, or two acts or two files numbering the same abort the w
 whose front-matter `id` belongs to a different document aborts the whole directory import. When
 write-back is on and the file's diff is non-empty the caller rewrites the file in place from the
 rebuilt chapter: the front
-matter carries the chapter `id` and `title`, the `category` when set, any other attributes being
+matter carries the chapter `id`, `title`, and `category`, any other attributes being
 preserved in place, and the
 body is written in the canonical span format — one `<span data-par-id=…>` per paragraph holding its
 sentences one per line, paragraphs separated by blank lines — so the file stays the graph's source of

@@ -78,9 +78,10 @@ Rendering rules:
 - Sentence text is HTML-escaped; a backslash-newline hard break and soft
   newlines inside a sentence survive because the writer does not re-split text.
 - The front matter is `attrs` verbatim when given, else `{id, title}` from the
-  chapter. The front-matter block and body are joined by a blank line; an empty
+  chapter, plus `act` when set and `category` always (`Chapter` or `Character`).
+  The front-matter block and body are joined by a blank line; an empty
   chapter renders as the block alone.
 
 `SnapshotWriter` (history) feeds `{id, title, **chapter.model_extra}` as `attrs`; the import
-write-back feeds the file's existing attributes with `id`/`title` set to the chapter's. The reader
-and the change detector never write.
+write-back feeds the file's existing attributes with `id`/`title`/`category` set to the chapter's
+(and `act` when set). The reader and the change detector never write.

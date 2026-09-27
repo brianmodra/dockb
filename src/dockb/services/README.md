@@ -18,6 +18,14 @@ that file to a path. Both raise `ChapterMismatchError` when the graph has no suc
 serialization itself is owned by `../infrastructure/markdown/`, so exported files match the import
 and history formats.
 
+### Publishing
+
+Publishing a manuscript is a later feature. There is no whole-book exporter. When it is added, a
+chapter whose `category` is `Character` is supporting material and is never published: it has no
+act, it lives under the document's `Characters/` directory rather than an act, and it stays out of
+the manuscript. A `Chapter` is the manuscript chapter and is the only category that publishing
+includes. The default category is `Chapter`.
+
 ## Context
 
 JobQueue and DocCache objects are specific to a user's OAuth logged in session.

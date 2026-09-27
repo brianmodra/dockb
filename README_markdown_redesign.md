@@ -229,14 +229,20 @@ A move that would land outside the mover's category, including moving first ahea
 category, is rejected. The editor only sends the order change, and only offers drop slots inside
 the mover's category.
 
-In the owned tree an act is also a directory: chapters live under `Act <name>`, and directory import
-derives each file's act from its directory's name (`Act None` → the empty act), overriding any
-front-matter `act`. An act directory's name is its number — digits, Roman numerals, or the
-single-character Unicode numerals — and that number orders the acts. Root-level files and
-directories not named `Act <name>` are not chapter locations. Within an act, chapter files are
-ordered by the sequence number in their name with at most one letter — trailing at the end or
-embedded between spaces — so `Setup 5b.md` follows `Setup 5.md` and precedes `Setup 6.md`; an unnumbered chapter file, or two acts or files numbering
-the same, abort the import.
+In the owned tree an act is also a directory: manuscript chapters live under `Act <name>`, and
+directory import derives each file's act from its directory's name (`Act None` → the empty act),
+overriding any front-matter `act`. An act directory's name is its number — digits, Roman numerals,
+or the single-character Unicode numerals — and that number orders the acts. The reserved
+`Characters/` directory, beside the act directories, holds `Character` chapters: they are imported
+after the acts, with no act, and the directory's category wins over any front-matter `category`.
+Root-level files and other directories are not chapter locations. Within a directory, chapter files
+are ordered by the sequence number in their name with at most one letter — trailing at the end or
+embedded between spaces — so `Setup 5b.md` follows `Setup 5.md` and precedes `Setup 6.md`; an
+unnumbered chapter file, or two acts or files numbering the same, abort the import.
+
+**Publishing.** Publishing a manuscript is a later feature. A `Character` chapter is supporting
+material and is never published — it is not part of the manuscript, and a future publish step must
+exclude it. Only `category: Chapter` is manuscript text. See `src/dockb/services/README.md`.
 
 ### git branch approach rejected
 

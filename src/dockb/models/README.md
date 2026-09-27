@@ -4,7 +4,8 @@ The system of models is a hierarchy of classes as follows:
 ## Document
 Document has a list of Chapter objects.
 ## Chapter
-Chapter has a list of Paragraph objects.
+Chapter has a list of Paragraph objects. Its `category` is `Chapter` (manuscript, the default) or
+`Character` (supporting material, never published).
 ## Paragraph
 Paragraph has a list of Sentence objects.
 ## Sentence

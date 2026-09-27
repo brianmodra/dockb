@@ -77,10 +77,12 @@ Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
 - `menubar.ts` — File (Open, Save, Delete ▸ Document, Edit ▸ Document/Chapter, Quit), Mode,
   Settings (Language… dialog); dropdowns and nested submenus dismiss on outside click or Esc.
-- `leftPanel.ts` — chapter list, context menu, rename/delete/move. Clicking a
-  chapter selects it **and** loads its text into the editor (via `onEdit` → the
-  `.../document` GET). Exposes the selected chapter and a reload that keeps the
-  selection.
+- `leftPanel.ts` — chapter list, context menu, rename/delete/move. Manuscript
+  chapters group under act headers; `Character` chapters sit in a Characters
+  section after the acts. Move only offers drop slots inside the mover's
+  category. Clicking a chapter selects it **and** loads its text into the editor
+  (via `onEdit` → the `.../document` GET). Exposes the selected chapter and a
+  reload that keeps the selection.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
