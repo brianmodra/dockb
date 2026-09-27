@@ -31,6 +31,7 @@ from pathlib import Path
 import yaml
 
 from dockb.exceptions import SnapshotError
+from dockb.infrastructure.markdown import front_matter
 
 _METADATA_FILE = "document_metadata.yaml"
 _ACT_NONE = "Act None"
@@ -198,6 +199,49 @@ class DocumentStore:
             path.parent.parent.rmdir()
         except OSError:
             return
+
+    def rename_document(self, old_title: str, new_title: str) -> None:
+        """git mv a document's owned directory to *new_title* and commit.
+
+        The metadata file inside is rewritten with the new title — author and
+        any other keys are preserved. A directory that does not exist on disk
+        is a no-op; renaming onto an existing directory raises.
+        """
+        old_dir = self.document_dir(old_title)
+        if not old_dir.is_dir() or old_title == new_title:
+            return
+        new_dir = self.document_dir(new_title)
+        if new_dir.exists():
+            raise SnapshotError(f"cannot rename {old_title!r}: {new_title!r} already exists")
+        self._git("mv", "--", old_title, new_title)
+        metadata = self.read_metadata(new_title)
+        if metadata is not None:
+            self.write_metadata(new_title, DocumentMetadata(title=new_title, author=metadata.author))
+        self.git_commit(new_title, f"rename: {old_title} -> {new_title}")
+
+    def rename_chapter(self, document_title: str, act: str, old_title: str, new_title: str) -> None:
+        """git mv a chapter's markdown file to *new_title* and commit.
+
+        The front matter title inside the moved file is rewritten to match. A
+        file that does not exist on disk is a no-op; renaming onto an existing
+        file raises.
+        """
+        old_path = self.chapter_file(document_title, act, old_title)
+        if not old_path.is_file() or old_title == new_title:
+            return
+        new_path = self.chapter_file(document_title, act, new_title)
+        if new_path.exists():
+            raise SnapshotError(f"cannot rename chapter {old_title!r}: {new_title!r} already exists")
+        self._git(
+            "mv",
+            "--",
+            str(old_path.relative_to(self._base_dir)),
+            str(new_path.relative_to(self._base_dir)),
+        )
+        content = self.read_chapter(document_title, act, new_title)
+        if content is not None:
+            self.write_chapter(document_title, act, new_title, front_matter.merge(content, {"title": new_title}))
+        self.git_commit(document_title, f"rename: chapter {old_title} -> {new_title}")
 
     def _git(self, *args: str) -> str:
         try:

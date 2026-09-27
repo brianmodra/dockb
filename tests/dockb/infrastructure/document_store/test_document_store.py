@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from dockb.exceptions import SnapshotError
 from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
 
 _SAFE_TITLE = "Linchpin"
@@ -300,3 +301,66 @@ def test_remove_last_chapter_prunes_document_dir(git_store):
 
 def test_remove_chapter_missing_file_is_noop(git_store):
     git_store.remove_chapter(_SAFE_TITLE, "Act I", "Nope")
+
+
+def test_rename_document_git_mvs_dir_and_rewrites_metadata(git_store, tmp_path):
+    git_store.write_metadata(_SAFE_TITLE, DocumentMetadata(title=_SAFE_TITLE, author="Test"))
+    git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.rename_document(_SAFE_TITLE, "Tome")
+
+    assert not git_store.document_exists(_SAFE_TITLE)
+    assert git_store.document_exists("Tome")
+    assert git_store.read_metadata("Tome") == DocumentMetadata(title="Tome", author="Test")
+    assert git_store.chapter_exists("Tome", "Act I", _SAFE_CHAPTER)
+    assert _porcelain(tmp_path) == ""
+    log = subprocess.run(
+        ["git", "log", "--oneline"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert any(f"rename: {_SAFE_TITLE} -> Tome" in line for line in log.stdout.splitlines())
+
+
+def test_rename_document_missing_dir_is_noop(git_store):
+    git_store.rename_document(_SAFE_TITLE, "Tome")
+    assert not git_store.document_exists("Tome")
+
+
+def test_rename_document_to_existing_title_raises(git_store):
+    git_store.write_metadata(_SAFE_TITLE, DocumentMetadata(title=_SAFE_TITLE, author="A"))
+    git_store.write_metadata("Tome", DocumentMetadata(title="Tome", author="B"))
+    git_store.git_commit(_SAFE_TITLE, "one")
+    git_store.git_commit("Tome", "two")
+    with pytest.raises(SnapshotError):
+        git_store.rename_document(_SAFE_TITLE, "Tome")
+
+
+def test_rename_chapter_git_mvs_file_and_rewrites_front_matter(git_store, tmp_path):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "---\ntitle: Opening 1\n---\n\n# body\n")
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Setup 9", "# nine\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.rename_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "Opening 2")
+
+    assert not git_store.chapter_exists(_SAFE_TITLE, "Act I", _SAFE_CHAPTER)
+    content = git_store.read_chapter(_SAFE_TITLE, "Act I", "Opening 2")
+    assert content is not None and "title: Opening 2" in content
+    assert git_store.chapter_exists(_SAFE_TITLE, "Act I", "Setup 9")
+    assert _porcelain(tmp_path) == ""
+    log = subprocess.run(
+        ["git", "log", "--oneline"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert any(f"rename: chapter {_SAFE_CHAPTER} -> Opening 2" in line for line in log.stdout.splitlines())
+
+
+def test_rename_chapter_missing_file_is_noop(git_store):
+    git_store.rename_chapter(_SAFE_TITLE, "Act I", "Nope", "Nowhere")
+    assert not git_store.chapter_exists(_SAFE_TITLE, "Act I", "Nowhere")
