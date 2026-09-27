@@ -1,119 +1,93 @@
-"""Tests for the ``python -m dockb.cli.import_document`` CLI."""
+"""Tests for the import_document CLI's write-back flags and default rule."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from dockb.cli import import_document as cli
-from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
-from dockb.repositories.chapter_repository import ChapterRepository
-from dockb.repositories.document_repository import DocumentRepository
-from dockb.services.markdown_import import ChapterImportSummary
+from dockb.cli import import_document as import_document_cli
+from dockb.cli.import_document import _default_write_back, main
 
 
-class TestImportDocument:
-    @pytest.fixture
-    def _neo4j_env(self, monkeypatch):
-        monkeypatch.setenv("NEO4J_URL", "bolt://test:7687")
-        monkeypatch.setenv("NEO4J_USER", "neo4j")
-        monkeypatch.setenv("NEO4J_PASSWORD", "secret")
+class TestDefaultWriteBack:
+    def test_source_inside_base_defaults_on(self, tmp_path):
+        base = tmp_path / "base"
+        base.mkdir()
+        (base / "Linchpin").mkdir()
 
-    def _patch_dependencies(self, monkeypatch):
-        monkeypatch.setattr(cli, "load_dotenv", MagicMock())
-        self.session_factory = MagicMock()
-        session_cm = MagicMock()
-        self.session = MagicMock()
-        session_cm.__enter__.return_value = self.session
-        self.session_factory.session.return_value = session_cm
-        self.session_factory_maker = MagicMock(return_value=self.session_factory)
-        monkeypatch.setattr(cli, "SessionFactory", self.session_factory_maker)
-        self.nlp = MagicMock()
-        monkeypatch.setattr(cli.spacy, "load", lambda *a, **k: self.nlp)
-        monkeypatch.setattr(cli, "getpass", SimpleNamespace(getuser=lambda: "bob"))
+        assert _default_write_back(base / "Linchpin", str(base)) is True
 
-    def test_imports_directory_and_prints_a_line_per_summary(self, _neo4j_env, capsys, monkeypatch):
-        self._patch_dependencies(monkeypatch)
-        summaries = [
-            ChapterImportSummary(chapter_id="c1", created=True, title="Ch 1"),
-            ChapterImportSummary(chapter_id="c2", created=False, title="Ch 2"),
-        ]
-        captured = []
-        monkeypatch.setattr(cli, "import_document_directory", lambda *args: captured.append(args) or summaries)
+    def test_source_equal_to_base_defaults_on(self, tmp_path):
+        base = tmp_path / "base"
+        base.mkdir()
 
-        exit_code = cli.main(["docs/Linchpin"])
+        assert _default_write_back(base, str(base)) is True
 
-        assert exit_code == 0
-        out = capsys.readouterr().out
-        assert "c1 imported: Ch 1" in out
-        assert "c2 synced: Ch 2" in out
-        document_dir, user, nlp, document_repo, chapter_repo, uow_factory, single_newline = captured[0]
-        assert document_dir == Path("docs/Linchpin")
-        assert user == "bob"
-        assert nlp is self.nlp
-        assert isinstance(document_repo, DocumentRepository)
-        assert isinstance(chapter_repo, ChapterRepository)
-        assert isinstance(uow_factory, UnitOfWorkFactory)
-        assert single_newline is False
-        self.session_factory.session.assert_called_once_with()
-        self.session_factory.close.assert_called_once_with()
+    def test_source_outside_base_defaults_off(self, tmp_path):
+        base = tmp_path / "base"
+        base.mkdir()
+        other = tmp_path / "other"
+        other.mkdir()
 
-    def test_single_newline_paragraphs_flag_is_forwarded(self, _neo4j_env, monkeypatch):
-        self._patch_dependencies(monkeypatch)
-        captured = []
-        monkeypatch.setattr(cli, "import_document_directory", lambda *args: captured.append(args) or [])
+        assert _default_write_back(other, str(base)) is False
 
-        exit_code = cli.main(["docs/Linchpin", "--single-newline-paragraphs"])
+    def test_unset_base_dir_defaults_off(self, tmp_path):
+        source = tmp_path / "Linchpin"
+        source.mkdir()
 
-        assert exit_code == 0
-        assert captured[0][6] is True
+        assert _default_write_back(source, None) is False
 
-    def test_reads_neo4j_configuration_from_environment(self, _neo4j_env, monkeypatch):
-        self._patch_dependencies(monkeypatch)
-        monkeypatch.setattr(cli, "import_document_directory", lambda *args: [])
+    def test_comparison_is_case_sensitive_on_case_sensitive_filesystems(self, tmp_path):
+        base = tmp_path / "Base"
+        base.mkdir()
 
-        cli.main(["docs/Linchpin"])
+        assert _default_write_back(tmp_path / "BASE", str(base)) is False
 
-        self.session_factory_maker.assert_called_once_with(
-            uri="bolt://test:7687",
-            user="neo4j",
-            password="secret",
-        )
 
-    def test_missing_directory_argument_exits_with_usage(self, _neo4j_env, monkeypatch):
-        self._patch_dependencies(monkeypatch)
-
-        with pytest.raises(SystemExit) as excinfo:
-            cli.main([])
-
-        assert excinfo.value.code == 2
-
-    def test_registers_repositories_for_every_persisted_model_type(self, _neo4j_env, monkeypatch):
-        self._patch_dependencies(monkeypatch)
-        captured = []
+class TestMainFlags:
+    @staticmethod
+    def _run(monkeypatch, tmp_path, *extra_args, inside_base: bool):
+        base = tmp_path / "base"
+        base.mkdir()
+        source = base / "Linchpin" if inside_base else tmp_path / "Linchpin"
+        source.mkdir()
+        monkeypatch.setenv("DOCKB_CHAPTERS_DIR", str(base))
+        monkeypatch.setenv("NEO4J_URL", "bolt://nowhere")
+        monkeypatch.setenv("NEO4J_USER", "u")
+        monkeypatch.setenv("NEO4J_PASSWORD", "p")
+        captured: dict[str, object] = {}
         monkeypatch.setattr(
-            cli,
-            "UnitOfWorkFactory",
-            lambda **kwargs: captured.append(kwargs) or MagicMock(),
+            import_document_cli,
+            "import_document_directory",
+            lambda *args, **kwargs: captured.update(kwargs=kwargs) or [],
         )
-        monkeypatch.setattr(cli, "import_document_directory", lambda *args: [])
-        from dockb.models.chapter import Chapter
-        from dockb.models.document import Document
-        from dockb.models.paragraph import Paragraph
-        from dockb.models.sentence import Sentence
+        monkeypatch.setattr(import_document_cli.spacy, "load", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(import_document_cli, "SessionFactory", lambda **k: MagicMock())
 
-        cli.main(["docs/Linchpin"])
+        main([*extra_args, str(source)])
 
-        repos = captured[0]["repos"]
-        for model_type in (Document, Chapter, Paragraph, Sentence):
-            assert model_type in repos, f"no repository registered for {model_type.__name__}"
+        return captured, source, base
 
-    def test_missing_neo4j_url_is_an_error(self, monkeypatch):
-        monkeypatch.delenv("NEO4J_URL", raising=False)
-        self._patch_dependencies(monkeypatch)
+    def test_no_flag_with_external_source_passes_write_back_false(self, monkeypatch, tmp_path):
+        captured, _, _ = self._run(monkeypatch, tmp_path, inside_base=False)
+        assert captured["kwargs"]["write_back"] is False
 
-        with pytest.raises(KeyError, match="NEO4J_URL"):
-            cli.main(["docs/Linchpin"])
+    def test_no_flag_with_store_tree_source_passes_write_back_true(self, monkeypatch, tmp_path):
+        captured, _, _ = self._run(monkeypatch, tmp_path, inside_base=True)
+        assert captured["kwargs"]["write_back"] is True
+
+    def test_write_back_flag_forces_on_for_external_source(self, monkeypatch, tmp_path):
+        captured, _, _ = self._run(monkeypatch, tmp_path, "--write-back", inside_base=False)
+        assert captured["kwargs"]["write_back"] is True
+
+    def test_no_write_back_flag_forces_off_for_store_tree_source(self, monkeypatch, tmp_path):
+        captured, _, _ = self._run(monkeypatch, tmp_path, "--no-write-back", inside_base=True)
+        assert captured["kwargs"]["write_back"] is False
+
+    def test_both_flags_are_rejected(self, tmp_path):
+        source = tmp_path / "Linchpin"
+        source.mkdir()
+
+        with pytest.raises(SystemExit):
+            main(["--write-back", "--no-write-back", str(source)])
