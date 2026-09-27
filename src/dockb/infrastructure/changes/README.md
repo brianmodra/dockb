@@ -57,12 +57,15 @@ chapter file — `*.md` files inside a top-level `Act <name>` directory, process
 order (digits, Roman numerals, or the Unicode single-character numerals, with `Act None` first)
 then by the file's sequence number with at most one letter — trailing at the end or embedded
 between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48) — returning one
-summary per file. Root-level and non-act files are not chapters. A malformed act name, an
+summary per file. Files inside the reserved `Characters` directory follow the same
+sequence-number ordering after all acts, carried with no act and category `Character`. Root-level
+and other non-act files are not chapters. A malformed act name, an
 unnumbered chapter file, or two acts or two files numbering the same abort the walk. A chapter file
 whose front-matter `id` belongs to a different document aborts the whole directory import. When
 write-back is on and the file's diff is non-empty the caller rewrites the file in place from the
 rebuilt chapter: the front
-matter carries the chapter `id` and `title`, any other attributes being preserved in place, and the
+matter carries the chapter `id` and `title`, the `category` when set, any other attributes being
+preserved in place, and the
 body is written in the canonical span format — one `<span data-par-id=…>` per paragraph holding its
 sentences one per line, paragraphs separated by blank lines — so the file stays the graph's source of
 truth. A file whose

@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from spacy.language import Language
@@ -46,6 +47,7 @@ class ChapterImportSummary:
     chapter_id: str
     created: bool
     title: str = ""
+    category: str = ""
     changed: int = 0
     added: int = 0
     deleted: int = 0
@@ -59,6 +61,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     uow_factory: UnitOfWorkFactory,
     single_newline_paragraphs: bool = False,
     act: str | None = None,
+    category: Literal["Chapter", "Character"] | None = None,
     write_back: bool = True,
 ) -> ChapterImportSummary:
     """Persist the changes a markdown chapter file makes to *document*.
@@ -72,7 +75,10 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     written back to *file_path*, so the file stays the graph's source of truth.
     An *act* override (from the containing directory) wins over both the
     front matter and the graph value, so the tree's placement is authoritative.
-    With ``single_newline_paragraphs`` a line is a paragraph and sentences run
+    A *category* override (from the ``Characters`` directory) likewise wins
+    over the front matter; without it a new chapter keeps its front-matter
+    ``category`` (defaulting to ``Chapter``) and an existing chapter keeps the
+    graph's value. With ``single_newline_paragraphs`` a line is a paragraph and sentences run
     on inside it (see ``detect_changes``); the write-back is always canonical.
     With ``write_back`` disabled the source file is left byte-for-byte
     unchanged (no front matter, no canonical rewrite); the graph is still
@@ -109,15 +115,27 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
             chapter = _build_chapter(chapter_id, diff, None)
             if act is not None:
                 chapter.act = act
+            if category is not None:
+                chapter.category = category
             with measure("stage.persist"):
                 _persist(uow_factory, document.id, chapter, [], [], nlp)
             if write_back:
-                _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
+                _write_back_front_matter(
+                    path,
+                    ChapterImportSummary(
+                        chapter_id=chapter_id,
+                        created=True,
+                        title=diff.title,
+                        category=category or "",
+                    ),
+                )
         return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
 
     chapter = _build_chapter(chapter_id, diff, load_once(chapter_id))
     if act is not None:
         chapter.act = act
+    if category is not None:
+        chapter.category = category
 
     for paragraph_id in diff.deleted:
         chapter.delete_child(paragraph_id)
@@ -142,7 +160,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     )
 
 
-def import_document_directory(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def import_document_directory(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     document_dir: str | Path,
     user_name: str,
     nlp: Language,
@@ -154,15 +172,16 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
-    Chapters live only inside top-level ``Act <name>`` subdirectories (see
-    ``_discover_chapter_files``): each file is imported with the act its
-    directory names, so placement is authoritative over the file's front
-    matter. Root-level files and non-act directories hold no chapters and are
+    Chapters live inside top-level ``Act <name>`` subdirectories or the
+    reserved ``Characters`` directory (see ``_discover_chapter_files``): each
+    file is imported with the act its directory names (``Characters`` files
+    carry no act), so placement is authoritative over the file's front matter.
+    Root-level files and other non-act directories hold no chapters and are
     skipped. Acts are processed by the number their name carries (digits or
-    Roman numerals, ``Act None`` first), and files within an act by their
-    sequence number with optional letter, trailing at the end of or embedded
-    between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" →
-    48), each new
+    Roman numerals, ``Act None`` first), then ``Characters`` last, and files
+    within a directory by their sequence number with optional letter, trailing
+    at the end of or embedded between spaces in the name (5, 5a, 5b, 6; "Bad
+    Guys Close In 48 Jael" → 48), each new
     chapter following the previous file into the graph. The whole directory is
     imported into a single Document, resolved by its metadata (see
     ``_read_document_metadata``/``_resolve_document``), and one summary is
@@ -178,7 +197,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     metadata = _read_document_metadata(dir_path, user_name)
     document = _resolve_document(dir_path, metadata, document_repo, uow_factory, write_back=write_back)
     summaries = []
-    for act, chapter_file in _discover_chapter_files(dir_path):
+    for act, category, chapter_file in _discover_chapter_files(dir_path):
         summary = apply_chapter_file(
             document,
             chapter_file,
@@ -187,6 +206,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
             uow_factory,
             single_newline_paragraphs=single_newline_paragraphs,
             act=act,
+            category=category,
             write_back=write_back,
         )
         summaries.append(summary)
@@ -292,18 +312,23 @@ def _chapter_sort_key(file_path: Path) -> tuple[int, str]:
     return int(number), (letter or "").lower()
 
 
-def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
-    """Yield ``(act, file)`` for every chapter file under *document_dir*.
+_CHARACTERS_DIR = "Characters"
 
-    Chapters exist only inside top-level ``Act <name>`` directories, whose
+
+def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["Chapter", "Character"], Path]]:
+    """Yield ``(act, category, file)`` for every chapter file under *document_dir*.
+
+    Chapters exist inside top-level ``Act <name>`` directories, whose
     name must number the act as digits or a strict Roman numeral (``Act
-    None`` is the empty act). Directory import order is act value, then each
-    file's sequence number with its optional letter, trailing at the end of or
+    None`` is the empty act), and inside the reserved ``Characters``
+    directory, whose files are category ``Character`` with no act. Directory
+    import order is act value, then ``Characters`` last, then each file's
+    sequence number with its optional letter, trailing at the end of or
     embedded between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48
     Jael" → 48).
-    Anything else — a root-level or non-act file, an unparsable act name, two
-    files in one act numbering the same, or two acts numbering the same —
-    raises ValueError.
+    Anything else — a root-level or non-act file, a non-``Characters``
+    directory, an unparsable act name, two files in one directory numbering
+    the same, or two acts numbering the same — raises ValueError.
     """
     acts: list[tuple[tuple[int, str], Path]] = [
         (_parse_act_directory(subdir), subdir) for subdir in document_dir.iterdir() if subdir.is_dir() and subdir.name.startswith("Act ")
@@ -324,15 +349,28 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Path]]:
             if key == last_key:
                 raise ValueError(f"Duplicate chapter number '{chapter_file.stem}' in '{subdir.name}'")
             last_key = key
-            yield act, chapter_file
+            yield act, "Chapter", chapter_file
+
+    characters_dir = document_dir / _CHARACTERS_DIR
+    if characters_dir.is_dir():
+        chapters = sorted(
+            ((_chapter_sort_key(file_path), file_path) for file_path in characters_dir.rglob("*.md")),
+            key=lambda pair: pair[0],
+        )
+        last_key = None
+        for key, chapter_file in chapters:
+            if key == last_key:
+                raise ValueError(f"Duplicate chapter number '{chapter_file.stem}' in '{_CHARACTERS_DIR}'")
+            last_key = key
+            yield "", "Character", chapter_file
 
 
 def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language) -> None:
     """Rewrite *chapter_file* so its text mirrors *chapter*.
 
     The front matter keeps any existing attributes, adding the chapter's
-    ``id``/``title`` (and its ``act`` when set); the body is the chapter
-    serialized as one identity span per paragraph.
+    ``id``/``title`` (and its ``act``/``category`` when set); the body is the
+    chapter serialized as one identity span per paragraph.
     """
     existing = chapter_file.read_text(encoding="utf-8")
     attrs = front_matter.parse(existing)[0]
@@ -340,18 +378,23 @@ def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language
     attrs["title"] = chapter.title
     if chapter.act:
         attrs["act"] = chapter.act
+    attrs["category"] = chapter.category
     chapter_file.write_text(writer.render_chapter_markdown(chapter, nlp, attrs=attrs), encoding="utf-8")
 
 
 def _write_back_front_matter(chapter_file: Path, summary: ChapterImportSummary) -> None:
-    """Persist the new chapter's id/title in the file's front matter.
+    """Persist the new chapter's id/title (and directory category) in the file's front matter.
 
     A chapter that was just created (``summary.created``) has no file identity
     yet; its id is written into (or added to) the file's YAML front matter so
     later imports match it. Files that already carried a known id are untouched.
+    A non-empty ``summary.category`` (the ``Characters`` directory override) is
+    recorded too, so the file says what category it belongs to.
     """
     content = chapter_file.read_text(encoding="utf-8")
     updates = {"id": summary.chapter_id, "title": summary.title}
+    if summary.category:
+        updates["category"] = summary.category
     chapter_file.write_text(front_matter.merge(content, updates), encoding="utf-8")
 
 
@@ -454,7 +497,13 @@ def _persist(  # pylint: disable=too-many-arguments,too-many-positional-argument
 def _build_chapter(chapter_id: str, diff: ChapterDiff, loaded: Chapter | None) -> Chapter:
     """Return the NEW chapter skeleton, or the already-loaded old chapter marked CHANGED."""
     if diff.created:
-        return Chapter(id=chapter_id, title=diff.title, act=diff.act, state=DataState.NEW)
+        return Chapter(
+            id=chapter_id,
+            title=diff.title,
+            act=diff.act,
+            category="Character" if diff.category == "Character" else "Chapter",
+            state=DataState.NEW,
+        )
     if loaded is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
     loaded.state = DataState.CHANGED

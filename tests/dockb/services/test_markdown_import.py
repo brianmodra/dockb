@@ -181,6 +181,60 @@ class TestNewChapter:
         chapter, _ = _saved_chapter(uow)
         assert chapter.act == "Act I"
 
+    def test_new_chapter_defaults_category_to_chapter(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("Body.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.category == "Chapter"
+        assert "category: Chapter" in file.read_text()
+
+    def test_new_chapter_carries_category_from_front_matter(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("---\ntitle: Dramatis\ncategory: Character\n---\n\nBody.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.category == "Character"
+
+    def test_category_override_sets_category_on_created_chapter(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("Body.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.category == "Character"
+        assert "category: Character" in file.read_text()
+
+    def test_category_override_beats_front_matter_category(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("---\ncategory: Chapter\n---\n\nBody.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.category == "Character"
+
     def test_new_chapter_file_is_normalized_with_ids(self, nlp, tmp_path):
         file = tmp_path / "Chapter 2.md"
         file.write_text("Para one sentence.\n\nPara two sentence.")
@@ -192,7 +246,8 @@ class TestNewChapter:
         summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
 
         rewritten = file.read_text()
-        assert rewritten.startswith(f"---\nid: {summary.chapter_id}\ntitle: Chapter 2\n---\n")
+        assert rewritten.startswith(f"---\nid: {summary.chapter_id}\ntitle: Chapter 2\n")
+        assert "category: Chapter" in rewritten
         assert "Para one sentence." in rewritten
         assert "Para two sentence." in rewritten
         assert rewritten.count('<span data-par-id="') == 2
@@ -317,6 +372,35 @@ class TestExistingChapter:
         assert chapter.act == "Act II"
         assert "act: Act II" in file.read_text()
 
+    def test_category_override_updates_existing_chapter(self, nlp, tmp_path, header):
+        file = tmp_path / "c1.md"
+        file.write_text(f"{header}\n\nBody.")
+        loaded = _make_chapter("c1")
+        document = _make_document("d1", _make_chapter("c1"))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.category == "Character"
+
+    def test_existing_chapter_keeps_graph_category_despite_front_matter(self, nlp, tmp_path):
+        file = tmp_path / "c1.md"
+        file.write_text("---\nid: c1\ncategory: Character\n---\n\nBody.")
+        loaded = _make_chapter("c1")
+        loaded.category = "Chapter"
+        document = _make_document("d1", _make_chapter("c1"))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.category == "Chapter"
+
     def test_unmodified_file_persists_nothing(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
         file.write_text(f'{header}\n\n<span data-par-id="p1">Only.</span>')
@@ -360,7 +444,9 @@ class TestExistingChapter:
         summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
 
         assert summary.changed == 1
-        assert file.read_text() == '---\nauthor: Brian\ntitle: Old Title\nid: c1\n---\n\n<span data-par-id="p1">\nNew text.\n</span>\n'
+        assert file.read_text() == (
+            "---\nauthor: Brian\ntitle: Old Title\nid: c1\ncategory: Chapter\n---\n\n" '<span data-par-id="p1">\nNew text.\n</span>\n'
+        )
 
     def test_changed_paragraph_replaces_sentences(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
@@ -865,7 +951,33 @@ class TestImportDocumentDirectory:
         import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock(), write_back=False)
 
         assert seen["resolve_kwargs"] == {"write_back": False}
-        assert seen["apply_kwargs"] == {"act": "Act I", "single_newline_paragraphs": False, "write_back": False}
+        assert seen["apply_kwargs"] == {
+            "act": "Act I",
+            "category": "Chapter",
+            "single_newline_paragraphs": False,
+            "write_back": False,
+        }
+
+    def test_characters_directory_imported_after_acts_as_character(self, nlp, tmp_path, monkeypatch):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        characters = tmp_path / "Characters"
+        characters.mkdir()
+        (act / "Opening 1.md").write_text("a")
+        (characters / "Dramatis 1.md").write_text("a")
+        document = Document(id="d1", state=DataState.SYNC)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *args, **kwargs: document)
+        pairs: list[tuple[str, str | None]] = []
+
+        def fake_apply(*_args, **kwargs):
+            pairs.append((kwargs["act"], kwargs.get("category")))
+            return ChapterImportSummary(chapter_id=f"c{len(pairs)}", created=True)
+
+        monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
+
+        import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock())
+
+        assert pairs == [("Act I", "Chapter"), ("", "Character")]
 
     def test_resolves_document_via_metadata_helpers(self, nlp, tmp_path, monkeypatch):
         act = tmp_path / "Act I"
@@ -994,6 +1106,17 @@ class TestWriteBackFrontMatter:
         _write_back_front_matter(chapter_file, ChapterImportSummary(chapter_id="c1", created=True, title="T"))
 
         assert chapter_file.read_text() == "---\nfoo: bar\nid: c1\ntitle: T\n---\nbody\n"
+
+    def test_merges_category_into_front_matter_when_set(self, tmp_path):
+        chapter_file = tmp_path / "new.md"
+        chapter_file.write_text("body\n")
+
+        _write_back_front_matter(
+            chapter_file,
+            ChapterImportSummary(chapter_id="c1", created=True, title="T", category="Character"),
+        )
+
+        assert chapter_file.read_text() == "---\nid: c1\ntitle: T\ncategory: Character\n---\nbody\n"
 
     def test_keeps_existing_id_when_other_attrs_present(self, tmp_path):
         chapter_file = tmp_path / "new.md"

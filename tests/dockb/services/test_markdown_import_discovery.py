@@ -6,6 +6,8 @@ import pytest
 
 from dockb.services import markdown_import
 
+# pylint: disable=too-many-public-methods
+
 
 class TestDiscoverChapterFiles:
     def test_orders_acts_by_number_with_roman_and_arabic_mixed(self, tmp_path):
@@ -13,7 +15,7 @@ class TestDiscoverChapterFiles:
             act = tmp_path / name
             act.mkdir()
             (act / "Opening 1.md").write_text("x")
-        assert [act for act, _ in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [act for act, _, _ in markdown_import._discover_chapter_files(tmp_path)] == [
             "Act I",
             "Act 2",
             "Act IX",
@@ -25,14 +27,14 @@ class TestDiscoverChapterFiles:
             act = tmp_path / name
             act.mkdir()
             (act / "Opening 1.md").write_text("x")
-        assert [act for act, _ in markdown_import._discover_chapter_files(tmp_path)] == ["Act III", "Act IV"]
+        assert [act for act, _, _ in markdown_import._discover_chapter_files(tmp_path)] == ["Act III", "Act IV"]
 
     def test_uppercase_unicode_roman_numerals_order_acts(self, tmp_path):
         for name in ["Act \u216b", "Act \u2163", "Act \u2164"]:  # XII 12, IV 4, V 5
             act = tmp_path / name
             act.mkdir()
             (act / "Opening 1.md").write_text("x")
-        assert [act for act, _ in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [act for act, _, _ in markdown_import._discover_chapter_files(tmp_path)] == [
             "Act \u2163",
             "Act \u2164",
             "Act \u216b",
@@ -43,7 +45,7 @@ class TestDiscoverChapterFiles:
             act = tmp_path / name
             act.mkdir()
             (act / "Opening 1.md").write_text("x")
-        assert [act for act, _ in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [act for act, _, _ in markdown_import._discover_chapter_files(tmp_path)] == [
             "Act \u217d",
             "Act \u217e",
             "Act \u217f",
@@ -60,14 +62,14 @@ class TestDiscoverChapterFiles:
         (tmp_path / "Act I").mkdir()
         (tmp_path / "Act None" / "Opening 1.md").write_text("x")
         (tmp_path / "Act I" / "Opening 1.md").write_text("x")
-        assert [act for act, _ in markdown_import._discover_chapter_files(tmp_path)] == ["", "Act I"]
+        assert [act for act, _, _ in markdown_import._discover_chapter_files(tmp_path)] == ["", "Act I"]
 
     def test_orders_chapters_by_trailing_number_then_letter(self, tmp_path):
         act = tmp_path / "Act I"
         act.mkdir()
         for name in ["Setup 5b.md", "Setup 10.md", "Opening 1.md", "Setup 5.md", "Setup 5a.md", "Setup 2.md"]:
             (act / name).write_text("x")
-        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [path.name for _, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
             "Opening 1.md",
             "Setup 2.md",
             "Setup 5.md",
@@ -85,7 +87,7 @@ class TestDiscoverChapterFiles:
             "Bad Guys Close In 48 Jael.md",
         ]:
             (act / name).write_text("x")
-        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [path.name for _, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
             "Bad Guys Close In 10 Jael.md",
             "Bad Guys Close In 48 Jael.md",
             "Bad Guys Close In 49 Jael.md",
@@ -96,7 +98,7 @@ class TestDiscoverChapterFiles:
         act.mkdir()
         for name in ["Bad Guys Close In 49 Jael.md", "Bad Guys Close In 48 Jael.md", "Bad Guys Close In 48b Jael.md"]:
             (act / name).write_text("x")
-        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [path.name for _, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
             "Bad Guys Close In 48 Jael.md",
             "Bad Guys Close In 48b Jael.md",
             "Bad Guys Close In 49 Jael.md",
@@ -107,7 +109,7 @@ class TestDiscoverChapterFiles:
         act.mkdir()
         (act / "Bad 3 Guys Close In 48 Jael.md").write_text("x")
         (act / "Bad Guys Close In 47 Jael.md").write_text("x")
-        assert [path.name for _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [path.name for _, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
             "Bad Guys Close In 47 Jael.md",
             "Bad 3 Guys Close In 48 Jael.md",
         ]
@@ -123,7 +125,7 @@ class TestDiscoverChapterFiles:
         nested = tmp_path / "Act I" / "deeper"
         nested.mkdir(parents=True)
         (nested / "Setup 3.md").write_text("x")
-        assert [(act, path.name) for act, path in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [(act, path.name) for act, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
             ("Act I", "Setup 3.md"),
         ]
 
@@ -146,7 +148,7 @@ class TestDiscoverChapterFiles:
         (tmp_path / "Act II").mkdir()
         (tmp_path / "Act I" / "Opening 2.md").write_text("x")
         (tmp_path / "Act II" / "Opening 2.md").write_text("x")
-        assert [(act, path.name) for act, path in markdown_import._discover_chapter_files(tmp_path)] == [
+        assert [(act, path.name) for act, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
             ("Act I", "Opening 2.md"),
             ("Act II", "Opening 2.md"),
         ]
@@ -174,3 +176,51 @@ class TestDiscoverChapterFiles:
         (act / "Setup 5.md").write_text("x")
         with pytest.raises(ValueError, match="Duplicate chapter"):
             list(markdown_import._discover_chapter_files(tmp_path))
+
+    def test_characters_dir_yields_character_chapters_after_acts(self, tmp_path):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        characters = tmp_path / "Characters"
+        characters.mkdir()
+        (act / "Opening 1.md").write_text("x")
+        (characters / "Dramatis 1.md").write_text("x")
+        assert [(act, category, path.name) for act, category, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            ("Act I", "Chapter", "Opening 1.md"),
+            ("", "Character", "Dramatis 1.md"),
+        ]
+
+    def test_characters_dir_files_order_by_sequence_number(self, tmp_path):
+        characters = tmp_path / "Characters"
+        characters.mkdir()
+        for name in ["Zed 5.md", "Ariel 1.md", "Mara 3.md"]:
+            (characters / name).write_text("x")
+        assert [(act, _, path.name) for act, _, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            ("", "Character", "Ariel 1.md"),
+            ("", "Character", "Mara 3.md"),
+            ("", "Character", "Zed 5.md"),
+        ]
+
+    def test_characters_dir_unnumbered_chapter_raises(self, tmp_path):
+        characters = tmp_path / "Characters"
+        characters.mkdir()
+        (characters / "Notes.md").write_text("x")
+        with pytest.raises(ValueError, match="not numbered"):
+            list(markdown_import._discover_chapter_files(tmp_path))
+
+    def test_characters_dir_duplicate_sequence_raises(self, tmp_path):
+        characters = tmp_path / "Characters"
+        characters.mkdir()
+        (characters / "Zed 5.md").write_text("x")
+        (characters / "Mara 5.md").write_text("x")
+        with pytest.raises(ValueError, match="Duplicate chapter"):
+            list(markdown_import._discover_chapter_files(tmp_path))
+
+    def test_other_non_act_dirs_are_still_skipped(self, tmp_path):
+        characters = tmp_path / "Characters"
+        characters.mkdir()
+        (tmp_path / "drafts").mkdir()
+        (characters / "Zed 1.md").write_text("x")
+        (tmp_path / "drafts" / "Draft 1.md").write_text("x")
+        assert [(act, category, path.name) for act, category, path in markdown_import._discover_chapter_files(tmp_path)] == [
+            ("", "Character", "Zed 1.md"),
+        ]

@@ -8,8 +8,8 @@ renders one chapter from the graph back out as markdown — into the server-owne
 an exact path with `--out`. Both connect to Neo4j with the same `NEO4J_URL`, `NEO4J_USER`,
 `NEO4J_PASSWORD` environment variables (or `.env`) the API server uses. Chapter files are found
 only inside `Act <name>` directories whose names carry act numbers (digits, Roman, or Unicode
-numerals); each file's sequence number — trailing at the end or embedded between spaces, with at
-most one letter — sets its order in the graph.
+numerals) or in the reserved `Characters` directory; each file's sequence number — trailing at the
+end or embedded between spaces, with at most one letter — sets its order in the graph.
 
 ## Import a document directory
 
@@ -19,14 +19,17 @@ changes. Each chapter file is matched through its front-matter `id`; changed or 
 rewritten into the canonical span format (one identity span per paragraph). With
 `--single-newline-paragraphs` each body line is read as a paragraph — for files whose paragraphs end
 in a single newline and whose sentences run on inside a line — while the write-back stays canonical.
-Chapters live only inside top-level `Act <name>` subdirectories: the act's name is its number
+Chapters live only inside top-level `Act <name>` subdirectories — the act's name is its number
 (digits, Roman numerals, or the Unicode single-character numerals), which orders the acts, with the
-`Act None` directory holding the act-less chapters first. Root-level files and directories not
-named `Act <name>` hold no chapters and are skipped. A chapter file's act derives from its
-containing directory (used verbatim), which wins over any front-matter `act`. Within an act each
+`Act None` directory holding the act-less chapters first — or in the reserved `Characters`
+directory, imported last with no act and category `Character`. Root-level files and directories not
+named `Act <name>` (and not named `Characters`) hold no chapters and are skipped. A chapter file's
+act derives from its containing directory (used verbatim), which wins over any front-matter `act`;
+a `Characters` file's category likewise wins over the front matter. The canonical write-back adds
+the chapter's `category` to the front matter. Within an act each
 file is imported in the order of the sequence number in its name — trailing at the end or embedded
 between spaces — with at most one letter (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48). A file
-that is not numbered, two acts numbering the same, or two files in one act
+that is not numbered, two acts numbering the same, or two files in one directory
 numbering the same abort the import. See
 `../infrastructure/changes/README.md` for the diffing behavior.
 

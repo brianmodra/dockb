@@ -48,6 +48,7 @@ class ChapterDiff:
     chapter_id: str = ""
     title: str = ""
     act: str = ""
+    category: str = ""
     front_id: str | None = None
     created: bool = False
 
@@ -76,7 +77,7 @@ def detect_changes(  # pylint: disable=too-many-locals
     instead of a blank-line-separated one, so files whose paragraphs end in a
     single newline and whose sentences run on inside a line import correctly.
     """
-    front_id, front_title, front_act, body = _extract_front_matter(new_markdown)
+    front_id, front_title, front_act, front_category, body = _extract_front_matter(new_markdown)
     title = front_title or title_fallback
 
     old_chapter = get_chapter(front_id) if front_id is not None else None
@@ -95,6 +96,7 @@ def detect_changes(  # pylint: disable=too-many-locals
         chapter_id=old_chapter.id,
         title=title,
         act=front_act or "",
+        category=front_category or "",
         front_id=front_id,
         created=created,
     )
@@ -221,8 +223,8 @@ def _span_attr(tag: str, name: str) -> str | None:
     return html.unescape(match.group(1))
 
 
-def _extract_front_matter(content: str) -> tuple[str | None, str | None, str | None, str]:
-    """Read an optional YAML front matter block; return its ``id``, ``title``, ``act``, and the body.
+def _extract_front_matter(content: str) -> tuple[str | None, str | None, str | None, str | None, str]:
+    """Read an optional YAML front matter block; return its ``id``, ``title``, ``act``, ``category``, and the body.
 
     Front matter is optional: a file without it is a new chapter (no ``id``).
     A file that opens with ``---`` but is missing the closing ``---`` is malformed.
@@ -231,9 +233,11 @@ def _extract_front_matter(content: str) -> tuple[str | None, str | None, str | N
     front_id = attrs.get("id")
     front_title = attrs.get("title")
     front_act = attrs.get("act")
+    front_category = attrs.get("category")
     return (
         str(front_id) if front_id is not None else None,
         str(front_title) if front_title is not None else None,
         str(front_act) if front_act is not None else None,
+        str(front_category) if front_category is not None else None,
         body,
     )
