@@ -50,6 +50,7 @@ def _repo(chapter: Chapter | None) -> MagicMock:
 def _doc_repo(document: Document | None) -> MagicMock:
     repo = MagicMock(spec=DocumentRepository)
     repo.load.return_value = document
+    repo.load_shell.return_value = document
     return repo
 
 
@@ -134,6 +135,20 @@ def test_reconstruct_to_store_puts_character_chapter_under_characters_dir(nlp, t
     assert path == store.chapter_file("Faith", "", "Dramatis", category="Character")
     assert path.parent.name == "Characters"
     assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
+
+
+def test_reconstruct_to_store_uses_shell_load(nlp, tmp_path):
+    chapter = _make_chapter("c1", _make_paragraph("p1", "Hi there."), title="Intro")
+    chapter_repo = _repo(chapter)
+    chapter_repo.find_document_id.return_value = "d1"
+    document = Document(id="d1", title="Faith", state=DataState.SYNC)
+    doc_repo = _doc_repo(document)
+    doc_repo.load.side_effect = AssertionError("full load forbidden")
+    store = _git_store(tmp_path)
+
+    path = reconstruct_chapter_to_store("c1", chapter_repo, doc_repo, store, nlp)
+
+    assert path.is_file()
 
 
 def test_reconstruct_to_store_raises_for_orphan_chapter(nlp, tmp_path):

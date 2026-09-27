@@ -300,7 +300,7 @@ class ChapterService:
         document_id = self._chapter_repo.find_document_id(chapter_id)
         if document_id is None:
             return ch
-        document = self._document_repo.load(document_id)
+        document = self._document_repo.load_shell(document_id)
         if document is None:
             return ch
         if not self._document_store.chapter_exists(document.title, ch.act, ch.title, ch.category):
@@ -326,7 +326,7 @@ class ChapterService:
         document_id = self._chapter_repo.find_document_id(chapter_id)
         if document_id is None:
             return None
-        document = self._document_repo.load(document_id)
+        document = self._document_repo.load_shell(document_id)
         if document is None:
             return None
         with self._save_scope(chapter_id):
@@ -371,7 +371,7 @@ class ChapterService:
         if document_id is None:
             return None
         with measure("repo.document.load"):
-            document = self._document_repo.load(document_id)
+            document = self._document_repo.load_shell(document_id)
         if document is None:
             return None
         with self._save_scope(chapter_id):
@@ -421,7 +421,7 @@ class ChapterService:
         uow.register(ch, document_id=document_id, index=str(index))
         uow.commit()
         if self._document_store is not None and self._document_repo is not None:
-            document = self._document_repo.load(document_id)
+            document = self._document_repo.load_shell(document_id)
             if document is not None:
                 self._materialize_new_chapter(self._document_store, document, ch)
         return ch
@@ -514,7 +514,7 @@ class ChapterService:
         uow.register(ch, document_id=document_id or "")
         uow.commit()
         if self._document_store is not None and self._document_repo is not None and document_id is not None and title != old_title:
-            document = self._document_repo.load(document_id)
+            document = self._document_repo.load_shell(document_id)
             if document is not None:
                 self._document_store.rename_chapter(document.title, ch.act, old_title, title, ch.category)
         return ch
@@ -531,7 +531,7 @@ class ChapterService:
             return False
         document_id = self._chapter_repo.find_document_id(chapter_id)
         if self._document_store is not None and self._document_repo is not None and document_id is not None:
-            document = self._document_repo.load(document_id)
+            document = self._document_repo.load_shell(document_id)
             if document is not None:
                 self._document_store.remove_chapter(document.title, ch.act, ch.title, ch.category)
         ch.state = DataState.DELETED

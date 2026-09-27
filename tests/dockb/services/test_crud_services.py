@@ -51,8 +51,23 @@ class StubRepo:
 
 
 class StubDocumentRepo(StubRepo):
+    def __init__(self) -> None:
+        super().__init__()
+        self.forbid_full_load = False
+
     def load(self, model_id: str) -> Document | None:
+        if self.forbid_full_load:
+            raise AssertionError("full document load is forbidden on chapter paths")
         return super().load(model_id)  # type: ignore[return-value]
+
+    def load_shell(self, model_id: str) -> Document | None:
+        model = self._store.get(model_id)
+        if model is None:
+            return None
+        shell = Document(id=model.id, title=model.title, author=model.author, state=DataState.SYNC)
+        for chapter in model.chapters:
+            shell.chapters.append(Chapter(id=chapter.id, state=DataState.SYNC))
+        return shell
 
 
 class StubChapterRepo(StubRepo):
@@ -626,6 +641,95 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.repo._store["c1"] = ch
         self.svc.delete("c1")
         assert ch.state == DataState.DELETED
+
+    def _git_store(self, tmp_path) -> DocumentStore:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+        return DocumentStore(base_dir=tmp_path)
+
+    def test_open_uses_shell_load(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc_repo.forbid_full_load = True
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_chapter("Faith", "", "Intro", "hand edit\n")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store, nlp=nlp)
+
+        assert svc.open("c1") is ch
+
+    def test_open_document_uses_shell_load(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        doc_repo.forbid_full_load = True
+        store = self._git_store(tmp_path)
+        store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n\n<span data-par-id="p1">\nEdited.\n</span>\n')
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store, nlp=nlp)
+
+        content = svc.open_document("c1")
+
+        assert content is not None
+        assert "Edited." in content
+
+    def test_save_document_uses_shell_load(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        doc_repo.forbid_full_load = True
+        store = self._git_store(tmp_path)
+        store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n\n<span data-par-id="p1">\nEdited.\n</span>\n')
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store, nlp=nlp)
+
+        result = svc.save_document("c1", '<span data-par-id="p1">\nSaved.\n</span>')
+
+        assert result is not None
+        assert "Saved." in result.content
+
+    def test_create_uses_shell_load(self, tmp_path, nlp, doc_repo) -> None:
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc_repo.forbid_full_load = True
+        store = self._git_store(tmp_path)
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store, nlp=nlp)
+
+        svc.create("c1", title="Intro", document_id="d1")
+
+        assert store.read_chapter("Faith", "", "Intro") is not None
+
+    def test_update_uses_shell_load(self, tmp_path, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Old", act="Act I", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        doc_repo.forbid_full_load = True
+        store = self._git_store(tmp_path)
+        store.write_chapter("T", "Act I", "Old", "---\ntitle: Old\n---\n\n# body\n")
+        store.git_commit("T", "materialize: doc")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store)
+
+        result = svc.update("c1", title="New")
+
+        assert result is ch
+        assert ch.title == "New"
+
+    def test_delete_uses_shell_load(self, tmp_path, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        doc_repo.forbid_full_load = True
+        store = DocumentStore(base_dir=tmp_path)
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store)
+
+        assert svc.delete("c1") is True
 
     def test_move_returns_none_when_missing(self) -> None:
         assert self.svc.move("nonexistent", after_chapter_id=None) is None

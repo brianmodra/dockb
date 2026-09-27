@@ -695,19 +695,19 @@ class TestResolveDocument:
     def test_reuses_existing_document_by_title(self):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
         loaded = Document(id="d1", state=DataState.SYNC)
-        repo.load.return_value = loaded
+        repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
         result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
 
         assert result is loaded
-        repo.load.assert_called_once_with("d1")
+        repo.load_shell.assert_called_once_with("d1")
         uow_factory.get_unit_of_work.assert_not_called()
 
     def test_matches_title_case_insensitively(self):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
         loaded = Document(id="d1", state=DataState.SYNC)
-        repo.load.return_value = loaded
+        repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
         result = _resolve_document(Path("linchpin"), DocumentMetadata("LINCHPIN", "User"), repo, uow_factory)
@@ -718,13 +718,13 @@ class TestResolveDocument:
     def test_multiple_matches_uses_first(self):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}, {"id": "d2", "title": "Linchpin", "author": "A"}])
         loaded = Document(id="d1", state=DataState.SYNC)
-        repo.load.return_value = loaded
+        repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
         result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
 
         assert result is loaded
-        repo.load.assert_called_once_with("d1")
+        repo.load_shell.assert_called_once_with("d1")
 
     def test_created_document_writes_metadata_file(self, tmp_path):
         repo = self._repo_with([])
@@ -763,7 +763,7 @@ class TestResolveDocument:
         metadata_file.write_text("title: Linchpin\nauthor: A\n")
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
         loaded = Document(id="d1", state=DataState.SYNC)
-        repo.load.return_value = loaded
+        repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
         _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
@@ -788,7 +788,7 @@ class TestResolveDocument:
 
     def test_creates_when_load_misses(self, tmp_path):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])
-        repo.load.return_value = None
+        repo.load_shell.return_value = None
         uow = MagicMock()
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
@@ -824,7 +824,7 @@ class TestImportDocumentDirectory:
         document = Document(id="d1", state=DataState.SYNC)
         document_repo = MagicMock(spec=DocumentRepository)
         document_repo.list_all.return_value = [{"id": "d1", "title": tmp_path.name, "author": "User"}]
-        document_repo.load.return_value = document
+        document_repo.load_shell.return_value = document
         chapter_repo = MagicMock(spec=ChapterRepository)
         uow_factory = MagicMock()
         summaries = [ChapterImportSummary(chapter_id=f"c{i}", created=True) for i in range(7)]
@@ -871,7 +871,7 @@ class TestImportDocumentDirectory:
         document = Document(id="d1", state=DataState.SYNC)
         document_repo = MagicMock(spec=DocumentRepository)
         document_repo.list_all.return_value = [{"id": "d1", "title": tmp_path.name, "author": "User"}]
-        document_repo.load.return_value = document
+        document_repo.load_shell.return_value = document
         chapter_repo = MagicMock(spec=ChapterRepository)
         uow_factory = MagicMock()
         summaries = [
@@ -903,7 +903,7 @@ class TestImportDocumentDirectory:
         document = Document(id="d1", state=DataState.SYNC)
         document_repo = MagicMock(spec=DocumentRepository)
         document_repo.list_all.return_value = [{"id": "d1", "title": tmp_path.name, "author": "User"}]
-        document_repo.load.return_value = document
+        document_repo.load_shell.return_value = document
         acts: list[str] = []
 
         def fake_apply(*_args, **kwargs):

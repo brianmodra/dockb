@@ -11,6 +11,12 @@ Import and export sit beside that flow and are named here so you know they are s
 Publishing a manuscript is a later feature. There is no whole-book exporter. When it is added, a
 `Character` chapter is never published. Only `category` `Chapter` is manuscript text.
 
+### Shell loads
+
+Chapter-level paths (open, save, create, rename, delete, and the store export) load the owning
+document through `DocumentRepository.load_shell` — attrs and chapter ids only — because they read
+the title, never the hierarchy. The full load is reserved for document-level paths.
+
 ## Context
 
 JobQueue and DocCache objects are specific to a user's OAuth logged in session.

@@ -10,6 +10,11 @@ When it reads the Chapter object, it will therefore know about a list of Paragra
 So it will get the Paragraphs. From the Paragraphs, it will know about a list of Sentences,
 and each Sentence will have a list of Tokens.
 
+Chapter-level paths that only need the document's title or chapter ids use
+`DocumentRepository.load_shell` (attrs + chapter id stubs, no paragraph
+hierarchy). The full `load` is for paths that render whole documents, such as
+materializing a document's store tree.
+
 # Writing to the database
 
 This will mostly be a Sentence (and all its Tokens) at a time. Each model object has a unique ID,

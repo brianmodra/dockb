@@ -424,8 +424,10 @@ def _resolve_document(
 ) -> Document:
     """Return the graph Document for a document directory, creating it if missing.
 
-    An existing Document is matched by title (case-insensitively) and reused;
-    a directory whose title no Document answers for is turned into a fresh
+    An existing Document is matched by title (case-insensitively) and reused
+    as a shell (attrs and chapter ids — the import needs no paragraph
+    hierarchy); a directory whose title no Document answers for is turned
+    into a fresh
     NEW Document and persisted immediately, so later chapter imports can link
     to it. The resolved ``title``/``author`` are written back to the
     directory's ``document_metadata.yaml`` (preserving other keys) unless
@@ -435,7 +437,7 @@ def _resolve_document(
     if matches:
         if len(matches) > 1:
             logger.warning("Multiple documents titled %r; reusing %r", metadata.title, matches[0]["id"])
-        document = document_repo.load(matches[0]["id"])
+        document = document_repo.load_shell(matches[0]["id"])
         if document is not None:
             return document
         logger.warning("Document %r listed but could not be loaded", matches[0]["id"])
