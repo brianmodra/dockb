@@ -4,7 +4,7 @@
 
 This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It is for someone changing those editing services, not the files on disk.
 
-Import and export sit beside that flow and are named here so you know they are separate. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
+Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
 
 ### Publishing
 

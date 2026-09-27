@@ -1,5 +1,11 @@
 # Repository classes
 
+## Executive Summary
+
+This note is the rulebook for the classes that read and write Neo4j: what gets read (usually one chapter, down to its tokens), what gets written (a sentence and its tokens at a time), and how deletion, ordering, and data states behave.
+
+Read it before adding a repository method. The one performance rule that matters most: chapter-level paths read a document shell — title and chapter ids — never the whole book.
+
 The repository is Neo4j, and it will store the models
 (see @src/dockb/models/README/md).
 
