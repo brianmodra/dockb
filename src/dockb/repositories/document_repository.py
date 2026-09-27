@@ -69,6 +69,15 @@ RETURN d.id AS id, d.title AS title, d.author AS author
 ORDER BY d.id
 """
 
+_LOAD_SHELL_CYPHER = """
+MATCH (d:Document {id: $document_id})
+OPTIONAL MATCH (c:Chapter)-[r:PART_OF]->(d)
+WITH d, c, r ORDER BY r.index
+RETURN
+  d.id AS document_id, d.title AS document_title, d.author AS document_author,
+  c.id AS chapter_id
+"""
+
 
 class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-public-methods
     """Persists Document models to Neo4j."""
@@ -97,6 +106,35 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
         """Return a list of ``{id, title, author}`` dicts for every Document in the graph."""
         records = list(self._session.run(_LIST_ALL_CYPHER))
         return [{"id": r["id"], "title": r["title"], "author": r["author"]} for r in records]
+
+    def load_shell(self, id: str) -> Document | None:  # pylint: disable=redefined-builtin
+        """Load a Document's attrs and chapter ids from Neo4j — no paragraphs/sentences/tokens.
+
+        The returned ``Document`` carries id-only ``Chapter`` stubs in
+        relationship index order. Callers that only need the document's
+        title (or the chapter id set) should prefer this over ``load``,
+        which materializes the entire hierarchy. Returns None when no
+        document with *id* exists.
+        """
+        records = list(self._session.run(_LOAD_SHELL_CYPHER, {"document_id": id}))
+        if not records or records[0].get("document_id") is None:
+            logger.debug("Document not found")
+            return None
+
+        first = records[0]
+        document = Document(
+            id=first["document_id"],
+            title=str(first.get("document_title") or ""),
+            author=str(first.get("document_author") or ""),
+            state=DataState.SYNC,
+        )
+        seen: set[str] = set()
+        for rec in records:
+            ch_id = rec.get("chapter_id")
+            if ch_id is not None and ch_id not in seen:
+                seen.add(ch_id)
+                document.chapters.append(Chapter(id=ch_id, state=DataState.SYNC))
+        return document
 
     def load(self, id: str) -> Document | None:  # pylint: disable=redefined-builtin,too-many-locals
         """Load a Document and its full hierarchy from Neo4j.

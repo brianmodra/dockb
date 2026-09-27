@@ -212,3 +212,64 @@ class TestListAllDocuments:
         assert "MATCH (d:Document)" in cypher
         assert "d.title AS title" in cypher
         assert "d.author AS author" in cypher
+
+
+# ---------------------------------------------------------------------------
+# load_shell
+# ---------------------------------------------------------------------------
+
+
+class TestLoadShellDocuments:
+    """Behaviour of DocumentRepository.load_shell() — attrs and chapter ids only."""
+
+    def test_runs_shell_cypher_without_hierarchy(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        document_repo.load_shell("d-1")
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id})" in cypher
+        assert "c.id AS chapter_id" in cypher
+        assert "ORDER BY" in cypher
+        assert "Token" not in cypher
+        assert "Sentence" not in cypher
+        assert "Paragraph" not in cypher
+        assert params == {"document_id": "d-1"}
+
+    def test_returns_none_when_document_missing(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert document_repo.load_shell("ghost") is None
+
+    def test_returns_none_when_document_id_absent(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"document_id": None, "document_title": None}]
+        assert document_repo.load_shell("ghost") is None
+
+    def test_builds_document_attrs(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": None},
+        ]
+        doc = document_repo.load_shell("d-1")
+        assert doc is not None
+        assert doc.id == "d-1"
+        assert doc.title == "Faith"
+        assert doc.author == "Paul"
+        assert doc.state == DataState.SYNC
+        assert doc.chapters == []
+
+    def test_builds_chapter_id_stubs(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": "c-1"},
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": "c-2"},
+        ]
+        doc = document_repo.load_shell("d-1")
+        assert doc is not None
+        assert [ch.id for ch in doc.chapters] == ["c-1", "c-2"]
+        assert all(ch.state == DataState.SYNC for ch in doc.chapters)
+        assert all(not ch.paragraphs for ch in doc.chapters)
+
+    def test_chapter_stubs_are_not_duplicated(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": "c-1"},
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": None},
+        ]
+        doc = document_repo.load_shell("d-1")
+        assert doc is not None
+        assert [ch.id for ch in doc.chapters] == ["c-1"]
