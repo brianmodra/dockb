@@ -4,7 +4,7 @@
 
 This note explains why DockB treats a markdown file as the real text of a chapter, and why the server — not the editor — owns those files and their history. It is the record of the decisions that shaped the product, including the ones that were rejected.
 
-Read it when you need the reason, not the current function names. The live behavior is in the code and the shorter notes next to it.
+Read it when you need the reason, not the current function names. The live behavior is in the code and the shorter notes next to it; among those decisions, act chapters are numbered by their file names while character chapters are not.
 
 ## 1. The problem we were trying to solve
 

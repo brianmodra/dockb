@@ -4,7 +4,7 @@
 
 This note explains how a saved chapter file is compared with the knowledge graph and written back. It is for someone changing import or change detection.
 
-A folder of chapter files becomes one document. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were.
+A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need no numbers. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were.
 
 ## Calling context
 

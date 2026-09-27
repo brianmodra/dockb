@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-These are DockB's two shell commands for chapter files. One walks a folder of markdown and updates the knowledge graph. The other writes one chapter back out as markdown, either into the server's folder or to a path you name.
+These are DockB's two shell commands for chapter files. One walks a folder of markdown and updates the knowledge graph; act chapters line up by the number in their file name, while character chapters need no number. The other writes one chapter back out as markdown, either into the server's folder or to a path you name.
 
 Use them when you need to load an existing manuscript, or rebuild a chapter file, without opening the editor. They use the same database settings as the API server.
 
