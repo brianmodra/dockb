@@ -120,4 +120,70 @@ describe("renderer shell", () => {
     expect(api.listChapters).toHaveBeenCalledWith("d2");
     expect(api.putAppState).toHaveBeenCalledWith({ last_document_id: "d2" });
   });
+
+  it("File → Delete → Document deletes after confirmation and clears an open document", async () => {
+    const deleteDocument = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      listDocuments: vi.fn(async () => [
+        { attrs: { id: "d1", title: "Faith", author: "A" }, chapter_summaries: [] },
+      ]),
+      deleteDocument,
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(1);
+
+    (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-delete']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-delete-document']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const items = document.querySelectorAll("[data-testid='document-picker-item']");
+    expect(items).toHaveLength(1);
+    (items[0] as HTMLElement).click();
+    const del = document.querySelector<HTMLButtonElement>("[data-testid='document-picker-delete']")!;
+    expect(del.disabled).toBe(false);
+    del.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(["Cancel", "Delete"]);
+    (buttons[1] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(deleteDocument).toHaveBeenCalledWith("d1");
+    expect(api.putAppState).toHaveBeenLastCalledWith({ last_document_id: null });
+    expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(0);
+  });
+
+  it("File → Delete → Document does not delete when the confirm is cancelled", async () => {
+    const deleteDocument = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      listDocuments: vi.fn(async () => [
+        { attrs: { id: "d1", title: "Faith", author: "A" }, chapter_summaries: [] },
+      ]),
+      deleteDocument,
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-delete']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-delete-document']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+    (document.querySelector<HTMLElement>("[data-testid='document-picker-item']")!).click();
+    (document.querySelector<HTMLButtonElement>("[data-testid='document-picker-delete']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
+    (buttons[0] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(deleteDocument).not.toHaveBeenCalled();
+    expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(1);
+  });
 });

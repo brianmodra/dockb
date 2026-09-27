@@ -8,6 +8,9 @@ export interface AppLayoutOptions {
   onOpen?: () => void;
   onQuit?: () => void;
   onOpenLanguageSettings?: () => void;
+  onDeleteDocument?: () => void;
+  onEditDocument?: () => void;
+  onEditChapter?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
 }
 
@@ -57,6 +60,9 @@ export class AppLayout {
       onOpen: options.onOpen,
       onQuit: options.onQuit,
       onOpenLanguageSettings: options.onOpenLanguageSettings,
+      onDeleteDocument: options.onDeleteDocument,
+      onEditDocument: options.onEditDocument,
+      onEditChapter: options.onEditChapter,
     });
 
     this.leftPanel = this.panel("panel-left");

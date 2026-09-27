@@ -23,14 +23,14 @@ describe("menubar", () => {
     expect(bar.element.querySelector('[data-testid="menu-Settings"]')?.textContent).toBe("⚙");
   });
 
-  it("opens File with Open, Save and Quit", () => {
+  it("opens File with Open, Save, Delete, Edit and Quit", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
     const itemLabels = Array.from(dropdown(bar, "File").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(itemLabels).toEqual(["Open", "Save", "Quit"]);
+    expect(itemLabels).toEqual(["Open", "Save", "Delete", "Edit", "Quit"]);
   });
 
   it("safely handles File clicks (Open/Save/Quit wire later)", () => {
@@ -136,5 +136,58 @@ describe("menubar", () => {
     expect(item?.textContent).toBe("Language…");
     item?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onOpenLanguageSettings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("menubar document actions", () => {
+  it("opens Delete and Edit submenus with their document items", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+
+    const deleteSub = bar.element.querySelector<HTMLElement>("[data-testid='menu-submenu-delete']")!;
+    expect(deleteSub.classList.contains("menu-submenu--open")).toBe(false);
+    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-delete']")!.click();
+    expect(deleteSub.classList.contains("menu-submenu--open")).toBe(true);
+    expect(
+      Array.from(deleteSub.querySelectorAll(".menu-submenu-item")).map((n) => n.textContent),
+    ).toEqual(["Document"]);
+
+    const editSub = bar.element.querySelector<HTMLElement>("[data-testid='menu-submenu-edit']")!;
+    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!.click();
+    expect(editSub.classList.contains("menu-submenu--open")).toBe(true);
+    expect(
+      Array.from(editSub.querySelectorAll(".menu-submenu-item")).map((n) => n.textContent),
+    ).toEqual(["Document", "Chapter"]);
+  });
+
+  it("reports File → Delete → Document to onDeleteDocument", () => {
+    const onDeleteDocument = vi.fn();
+    const bar = buildMenubar({ onDeleteDocument });
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-delete']")!.click();
+    bar.element
+      .querySelector<HTMLElement>("[data-testid='menu-item-delete-document']")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onDeleteDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports File → Edit → Document and File → Edit → Chapter", () => {
+    const onEditDocument = vi.fn();
+    const onEditChapter = vi.fn();
+    const bar = buildMenubar({ onEditDocument, onEditChapter });
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!.click();
+    bar.element
+      .querySelector<HTMLElement>("[data-testid='menu-item-edit-document']")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!.click();
+    bar.element
+      .querySelector<HTMLElement>("[data-testid='menu-item-edit-chapter']")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onEditDocument).toHaveBeenCalledTimes(1);
+    expect(onEditChapter).toHaveBeenCalledTimes(1);
   });
 });

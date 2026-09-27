@@ -20,14 +20,19 @@ and deleted. The backend and the canonical markdown format are in
 - **Platform.** Electron + TypeScript on PC (Linux/macOS/Windows) — the decided front-end platform
   (`README_markdown_redesign.md` §8). Mobile is out of scope; a future Flutter client would drive
   the same backend.
-- **Existing API.** All editor operations map onto the document lifecycle endpoints, so the UI
-  design implies no backend work:
+- **Existing API.** All editor operations map onto the document and chapter lifecycle
+  endpoints, so the UI design implies no backend work:
   - edit → `GET /api/chapters/{id}/document`
   - save → `PUT /api/chapters/{id}/document`
   - rename → `PUT /api/chapters/{id}` (title)
   - move → `POST /api/chapters/{id}/reorder` with `{after_chapter_id}` (`null` = first)
   - delete → `DELETE /api/chapters/{id}`
   - open document → `GET /api/documents/{id}`
+  - edit document → `PUT /api/documents/{id}` (title, author)
+  - delete document → `DELETE /api/documents/{id}`
+  The document-level renames and deletes additionally move or remove the document's
+  owned store files (title-keyed directory and chapter markdown files) — backend-only
+  work, invisible to the thin client (`README_markdown_redesign.md`, store README).
 - **Editing state.** WYSIWYG and Raw MD are two views of the same canonical document; toggling Mode
   changes rendering, not the model behind the editor.
 
@@ -83,7 +88,11 @@ message console at 24px minimum height), and the right panel starts at its 10px 
 ## 3. Menus (decided)
 
 - **File ▾** — **Open** (the select-document modal, §8), **Save** (current chapter;
-  `PUT /api/chapters/{id}/document`) and **Quit**.
+  `PUT /api/chapters/{id}/document`), **Delete ▸ Document** (delete a whole document:
+  pick it, confirm, then `DELETE /api/documents/{id}`; if it was the open document the
+  editor and chapter list clear), **Edit ▸ Document / Chapter** (edit a document's
+  title/author or a chapter's title, saving through `PUT /api/documents/{id}` /
+  `PUT /api/chapters/{id}`) and **Quit**.
 - **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". One item, **Language…**: opens
   a dialog listing spellcheck languages (scrollable, current one marked, Cancel/Apply); choosing
@@ -190,6 +199,12 @@ features (undecided).
 - **Open document** (File → Open) — a scrollable list of documents by title, fetched from
   `GET /api/documents`. Clicking a row selects it and enables the **Open** button (disabled
   until a row is chosen); **Open** loads the chosen document, **Cancel** dismisses the modal.
+- **Delete document** (File → Delete → Document) — the same scrollable list with **Cancel /
+  Delete** (Delete disabled until a row is chosen). Picking a document and pressing **Delete**
+  opens a second confirmation, "Are you sure you want to delete <title>?" with **Cancel /
+  Delete**; only that second **Delete** calls `DELETE /api/documents/{id}`. If the deleted
+  document was the one open in the editor, the editor and the chapter list clear
+  (`PUT /api/app/state` forgets it as the last document).
 - **Sign in** — first-run when login is required: **Sign in** / **Cancel**. Sign in opens the
   provider in the system browser; after consent, Sign in again to pick up the session. In
   **local mode** (no OAuth provider configured) this gate is skipped entirely — the editor

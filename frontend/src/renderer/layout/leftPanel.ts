@@ -59,6 +59,17 @@ export class LeftPanel {
     this.chapterList.select(chapterId);
   }
 
+  currentDocumentId(): string | null {
+    return this.documentId;
+  }
+
+  clear(): void {
+    this.documentId = null;
+    this.chapters = [];
+    this.chapterList.setChapters([]);
+    this.chapterList.select(null);
+  }
+
   private handleContext(chapterId: string, event: MouseEvent): void {
     const chapter = this.chapterList.chapter(chapterId);
     if (!chapter) {

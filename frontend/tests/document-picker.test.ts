@@ -1,6 +1,7 @@
 import {
   openDocumentPicker,
   openDocumentPickerConfirm,
+  openDeleteDocumentPicker,
   type DocumentPickerApi,
 } from "../src/renderer/layout/documentPicker";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -132,6 +133,58 @@ describe("openDocumentPickerConfirm", () => {
     expect(empty).not.toBeNull();
     const open = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-open']")!;
     expect(open.disabled).toBe(true);
+    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
+    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
+  });
+});
+
+describe("openDeleteDocumentPicker", () => {
+  it("keeps Delete disabled until a document is selected and resolves with id and title", async () => {
+    const api = fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith"), doc("d2", "Sight")]) });
+    const promise = openDeleteDocumentPicker(api);
+    await flush();
+    const del = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-delete']")!;
+    expect(del.disabled).toBe(true);
+
+    const items = modal()!.querySelectorAll<HTMLElement>("[data-testid='document-picker-item']");
+    items[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(del.disabled).toBe(false);
+
+    del.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toEqual({ documentId: "d2", title: "Sight" });
+    expect(modal()).toBeNull();
+  });
+
+  it("resolves null when the user cancels", async () => {
+    const api = fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith")]) });
+    const promise = openDeleteDocumentPicker(api);
+    await flush();
+    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
+    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
+  });
+
+  it("reports a load failure into the message panel and resolves null", async () => {
+    const onMessage = vi.fn();
+    const api = fakeApi({
+      listDocuments: vi.fn(async () => {
+        throw new Error("backend down");
+      }),
+    });
+    const result = await openDeleteDocumentPicker(api, { onMessage });
+    expect(result).toBeNull();
+    expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("backend down"));
+    expect(modal()).toBeNull();
+  });
+
+  it("shows an empty state with Delete disabled and resolves null on cancel", async () => {
+    const promise = openDeleteDocumentPicker(fakeApi());
+    await flush();
+    const empty = modal()!.querySelector("[data-testid='document-picker-empty']");
+    expect(empty).not.toBeNull();
+    const del = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-delete']")!;
+    expect(del.disabled).toBe(true);
     const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
     cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(await promise).toBeNull();

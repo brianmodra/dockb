@@ -4,7 +4,8 @@ import { checkSession } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
-import { openDocumentPicker, openDocumentPickerConfirm } from "./layout/documentPicker";
+import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker } from "./layout/documentPicker";
+import { confirmModal } from "./layout/modals";
 import { openLanguageSettings } from "./layout/languageSettings";
 import { openSignInGate } from "./layout/signInGate";
 import { AppStateController } from "./state/appState";
@@ -24,9 +25,11 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   const editPanel = options.api ? new EditPanel({ api: options.api }) : null;
   let stateController: AppStateController | null = null;
   let openDocument: () => void = () => {};
+  let runDeleteDocument: () => void = () => {};
 
   const layout = new AppLayout({
     onOpen: () => openDocument(),
+    onDeleteDocument: () => runDeleteDocument(),
     onSave: () => {
       void editPanel?.save();
     },
@@ -73,6 +76,34 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       onMessage: (text) => layout.pushMessage(text),
     });
     layout.leftPanelEl().append(panel.element);
+
+    runDeleteDocument = () => {
+      void openDeleteDocumentPicker(options.api!).then((selection) => {
+        if (selection === null) {
+          return;
+        }
+        void confirmModal({
+          title: "Delete document",
+          message: `Are you sure you want to delete "${selection.title}"?`,
+          confirmLabel: "Delete",
+        }).then((confirmed) => {
+          if (!confirmed) {
+            return;
+          }
+          void options.api!.deleteDocument(selection.documentId).then(
+            () => {
+              layout.pushMessage(`Deleted "${selection.title}".`);
+              if (panel.currentDocumentId() === selection.documentId) {
+                panel.clear();
+                editPanel.clear();
+                void stateController?.saveLastDocument(null);
+              }
+            },
+            (error) => reportError("Delete document", error, (text) => layout.pushMessage(text)),
+          );
+        });
+      });
+    };
 
     openDocument = () => {
       void openDocumentPickerConfirm(options.api!).then((documentId) => {

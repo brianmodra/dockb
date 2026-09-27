@@ -248,4 +248,20 @@ describe("LeftPanel", () => {
     expect(document.querySelector("[data-testid='move-bar']")).toBeNull();
     expect(reorderChapter).not.toHaveBeenCalled();
   });
+
+  it("exposes the loaded document id and clears it with the list", async () => {
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+    expect(panel.currentDocumentId()).toBe("d1");
+    expect(listRows()).toHaveLength(1);
+
+    panel.clear();
+
+    expect(panel.currentDocumentId()).toBeNull();
+    expect(listRows()).toHaveLength(0);
+  });
 });

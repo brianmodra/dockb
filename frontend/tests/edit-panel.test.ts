@@ -47,6 +47,20 @@ describe("EditPanel", () => {
     expect(panel.element.querySelector(".ProseMirror")?.getAttribute("lang")).toBe("fr");
   });
 
+  it("clears the loaded chapter so save becomes a no-op", async () => {
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("# Title\n\nBody")) });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    expect(panel.isDirty()).toBe(false);
+
+    panel.clear();
+
+    expect(panel.content()).toBe("");
+    expect(panel.isDirty()).toBe(false);
+    expect(await panel.save()).toBeNull();
+  });
+
   it("reports a new chapter load even after edits", async () => {
     const getChapterDocument = vi
       .fn(async () => doc("second"))

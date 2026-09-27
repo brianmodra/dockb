@@ -86,6 +86,40 @@ body {
   background: #e8e8e5;
 }
 
+.menu-row {
+  position: relative;
+}
+
+.menu-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -1px;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.menu-submenu--open {
+  display: block;
+}
+
+.menu-submenu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  font: inherit;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.menu-submenu-item:hover {
+  background: #e8e8e5;
+}
+
 /* ---- main row and panels ---- */
 
 .main-row {

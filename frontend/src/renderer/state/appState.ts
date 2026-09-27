@@ -21,7 +21,7 @@ export class AppStateController {
     }
   }
 
-  async saveLastDocument(documentId: string): Promise<void> {
+  async saveLastDocument(documentId: string | null): Promise<void> {
     await this.persist({ last_document_id: documentId });
   }
 

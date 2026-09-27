@@ -99,6 +99,13 @@ export class EditPanel {
     return this.mode === "raw" ? this.view.state.doc.toString() : this.wysiwyg.content();
   }
 
+  clear(): void {
+    this.chapterId = null;
+    this.lastCanonicalText = null;
+    this.replaceDoc("");
+    this.notifyDirty();
+  }
+
   isDirty(): boolean {
     if (this.lastCanonicalText === null) {
       return false;
