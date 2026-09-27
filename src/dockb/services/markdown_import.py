@@ -59,6 +59,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     uow_factory: UnitOfWorkFactory,
     single_newline_paragraphs: bool = False,
     act: str | None = None,
+    write_back: bool = True,
 ) -> ChapterImportSummary:
     """Persist the changes a markdown chapter file makes to *document*.
 
@@ -73,6 +74,10 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     front matter and the graph value, so the tree's placement is authoritative.
     With ``single_newline_paragraphs`` a line is a paragraph and sentences run
     on inside it (see ``detect_changes``); the write-back is always canonical.
+    With ``write_back`` disabled the source file is left byte-for-byte
+    unchanged (no front matter, no canonical rewrite); the graph is still
+    updated, and a later import has no front-matter id to match, so it assigns
+    a fresh id to the file on every run.
     """
     path = Path(file_path)
     with measure("stage.parse_file"):
@@ -106,7 +111,8 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
                 chapter.act = act
             with measure("stage.persist"):
                 _persist(uow_factory, document.id, chapter, [], [], nlp)
-            _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
+            if write_back:
+                _write_back_front_matter(path, ChapterImportSummary(chapter_id=chapter_id, created=True, title=diff.title))
         return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
 
     chapter = _build_chapter(chapter_id, diff, load_once(chapter_id))
@@ -122,8 +128,9 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
 
     with measure("stage.persist"):
         _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp)
-    with measure("stage.render"):
-        _write_back_chapter_file(path, chapter, nlp)
+    if write_back:
+        with measure("stage.render"):
+            _write_back_chapter_file(path, chapter, nlp)
 
     return ChapterImportSummary(
         chapter_id=chapter.id,
@@ -143,6 +150,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     chapter_repo: ChapterRepository,
     uow_factory: UnitOfWorkFactory,
     single_newline_paragraphs: bool = False,
+    write_back: bool = True,
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
@@ -161,13 +169,14 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     returned per chapter file. An unparsable act name, an unnumbered chapter
     file, or two acts or two files numbering the same abort the import.
     ``single_newline_paragraphs`` is forwarded to every ``apply_chapter_file``
-    call.
+    call; ``write_back`` is forwarded to both the document resolution (its
+    metadata write-back) and every chapter apply.
     """
     dir_path = Path(document_dir)
     if not dir_path.is_dir():
         raise ValueError(f"Document directory '{dir_path}' does not exist")
     metadata = _read_document_metadata(dir_path, user_name)
-    document = _resolve_document(dir_path, metadata, document_repo, uow_factory)
+    document = _resolve_document(dir_path, metadata, document_repo, uow_factory, write_back=write_back)
     summaries = []
     for act, chapter_file in _discover_chapter_files(dir_path):
         summary = apply_chapter_file(
@@ -178,6 +187,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
             uow_factory,
             single_newline_paragraphs=single_newline_paragraphs,
             act=act,
+            write_back=write_back,
         )
         summaries.append(summary)
     if summaries:
@@ -368,13 +378,16 @@ def _resolve_document(
     metadata: DocumentMetadata,
     document_repo: DocumentRepository,
     uow_factory: UnitOfWorkFactory,
+    write_back: bool = True,
 ) -> Document:
     """Return the graph Document for a document directory, creating it if missing.
 
     An existing Document is matched by title (case-insensitively) and reused;
     a directory whose title no Document answers for is turned into a fresh
     NEW Document and persisted immediately, so later chapter imports can link
-    to it.
+    to it. The resolved ``title``/``author`` are written back to the
+    directory's ``document_metadata.yaml`` (preserving other keys) unless
+    ``write_back`` is false.
     """
     matches = [row for row in document_repo.list_all() if str(row.get("title") or "").lower() == metadata.title.lower()]
     if matches:
@@ -388,7 +401,8 @@ def _resolve_document(
     uow = uow_factory.get_unit_of_work()
     uow.register(document)
     uow.commit()
-    _write_document_metadata(document_dir, metadata)
+    if write_back:
+        _write_document_metadata(document_dir, metadata)
     logger.debug("Persisted new document %r under %s", document.id, document_dir)
     return document
 

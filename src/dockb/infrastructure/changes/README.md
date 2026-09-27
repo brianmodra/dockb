@@ -12,9 +12,15 @@ checking the file's chapter really belongs to the document being edited.
 directory for chapter files — markdown files inside `Act <name>` directories whose numbered acts and
 sequence numbers (trailing at the end of or embedded between spaces in the name, with at most one
 letter) fix the import order — resolves the directory to one `Document` from its
-metadata (`document_metadata.yaml`), writes that metadata back when it creates the `Document`,
-imports each chapter file, and rewrites any file whose graph content changed into the canonical
+metadata (`document_metadata.yaml`), imports each chapter file, and — while write-back
+is on — writes that metadata back when it creates the `Document`,
+rewrites any file whose graph content changed into the canonical
 span format — front matter plus one identity span per paragraph — so the next import matches it.
+Write-back is on by default only when the source directory lies inside the store tree
+(`DOCKB_CHAPTERS_DIR`); the CLI switches `--write-back`/`--no-write-back` force either
+way. With write-back off, source files stay byte-for-byte untouched and no
+`document_metadata.yaml` is written; the graph still receives the import, but a later
+run has no front-matter id to match and assigns a fresh chapter id per file.
 Read this document to learn how chapter files map back into the graph, which files count as new
 versus edited, what the caller guarantees, and how a document directory becomes graph data.
 
@@ -59,16 +65,19 @@ then by the file's sequence number with at most one letter — trailing at the e
 between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48) — returning one
 summary per file. Root-level and non-act files are not chapters. A malformed act name, an
 unnumbered chapter file, or two acts or two files numbering the same abort the walk. A chapter file
-whose front-matter `id` belongs to a different document aborts the whole directory import. When the
-file's diff is non-empty the caller rewrites the file in place from the rebuilt chapter: the front
+whose front-matter `id` belongs to a different document aborts the whole directory import. When
+write-back is on and the file's diff is non-empty the caller rewrites the file in place from the
+rebuilt chapter: the front
 matter carries the chapter `id` and `title`, any other attributes being preserved in place, and the
 body is written in the canonical span format — one `<span data-par-id=…>` per paragraph holding its
 sentences one per line, paragraphs separated by blank lines — so the file stays the graph's source of
 truth. A file whose
 diff is empty and that is not a brand-new chapter is left untouched; a brand-new empty chapter is
 still given an identity: it is persisted as an empty chapter and its file receives the front-matter
-`id`/`title` only (with no body). From a shell,
-`python -m dockb.cli.import_document <document_dir>` drives the walker.
+`id`/`title` only (with no body). With write-back off none of those file writes happen — the graph
+is updated and every source file is left exactly as it was. From a shell,
+`python -m dockb.cli.import_document <document_dir>` drives the walker
+(flags: `--write-back`, `--no-write-back`).
 
 ## Contract
 
@@ -218,8 +227,11 @@ The chapter is always registered with `document_id=<the hydrated document's id>`
 `MATCH (d:Document {id: $document_id})` that opens the chapter write path, so the whole query runs
 (the re-link on the `PART_OF` edge is an idempotent `MERGE`). A non-empty diff also rewrites the
 source file from the rebuilt chapter (front matter plus span-form body), so file and graph agree
-after every change. An empty diff persists nothing *except* when the chapter is brand-new: a
-brand-new empty chapter is still registered (an empty chapter, fixing its identity in the graph) and
+after every change — unless write-back is off, in which case the file is left untouched and the
+graph alone carries the change. An empty diff persists nothing *except* when the chapter is
+brand-new: a
+brand-new empty chapter is still registered (an empty chapter, fixing its identity in the graph) and,
+with write-back on,
 its file gets the front-matter `id`/`title`, so a later re-import resolves it instead of treating it
 as a foreign id. An unchanged file re-save remains a no-op.
 

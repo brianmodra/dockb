@@ -1,3 +1,5 @@
+# pylint: disable=too-many-lines
+
 """Tests for apply_chapter_file — the per-chapter-file markdown import caller."""
 
 from __future__ import annotations
@@ -648,6 +650,17 @@ class TestResolveDocument:
 
         assert (tmp_path / "document_metadata.yaml").read_text() == "title: Linchpin\nauthor: User\n"
 
+    def test_write_back_false_writes_no_metadata_file(self, tmp_path):
+        repo = self._repo_with([])
+        uow = MagicMock()
+        uow_factory = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, write_back=False)
+
+        assert not (tmp_path / "document_metadata.yaml").exists()
+        uow.commit.assert_called_once()
+
     def test_created_document_preserves_existing_metadata_keys(self, tmp_path):
         (tmp_path / "document_metadata.yaml").write_text("isbn: 123\n")
         repo = self._repo_with([])
@@ -821,7 +834,7 @@ class TestImportDocumentDirectory:
         (tmp_path / "drafts").mkdir()
         (tmp_path / "drafts" / "Draft.md").write_text("a")
         document = Document(id="d1", state=DataState.SYNC)
-        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *args, **kwargs: document)
         monkeypatch.setattr(
             markdown_import,
             "apply_chapter_file",
@@ -831,6 +844,28 @@ class TestImportDocumentDirectory:
         result = import_document_directory(tmp_path, "User", nlp, None, None, None)
 
         assert not result
+
+    def test_forwards_write_back_to_resolve_and_apply(self, nlp, tmp_path, monkeypatch):
+        act = tmp_path / "Act I"
+        act.mkdir()
+        (act / "Opening 1.md").write_text("a")
+        document = Document(id="d1", state=DataState.SYNC)
+        seen: dict[str, object] = {}
+        monkeypatch.setattr(
+            markdown_import,
+            "_resolve_document",
+            lambda d, metadata, document_repo, uow_factory, **kwargs: seen.update(resolve_kwargs=kwargs) or document,
+        )
+        monkeypatch.setattr(
+            markdown_import,
+            "apply_chapter_file",
+            lambda *args, **kwargs: seen.update(apply_kwargs=kwargs) or ChapterImportSummary(chapter_id="c1", created=False),
+        )
+
+        import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock(), write_back=False)
+
+        assert seen["resolve_kwargs"] == {"write_back": False}
+        assert seen["apply_kwargs"] == {"act": "Act I", "single_newline_paragraphs": False, "write_back": False}
 
     def test_resolves_document_via_metadata_helpers(self, nlp, tmp_path, monkeypatch):
         act = tmp_path / "Act I"
@@ -844,7 +879,7 @@ class TestImportDocumentDirectory:
         monkeypatch.setattr(
             markdown_import,
             "_resolve_document",
-            lambda d, metadata, document_repo, uow_factory: resolved.append((d, metadata)) or document,
+            lambda d, metadata, document_repo, uow_factory, **kwargs: resolved.append((d, metadata)) or document,
         )
         monkeypatch.setattr(
             markdown_import,
@@ -858,7 +893,7 @@ class TestImportDocumentDirectory:
 
     def test_no_chapter_files_returns_empty(self, nlp, tmp_path, monkeypatch):
         document = Document(id="d1", state=DataState.SYNC)
-        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *args, **kwargs: document)
         monkeypatch.setattr(
             markdown_import,
             "apply_chapter_file",
@@ -872,6 +907,75 @@ class TestImportDocumentDirectory:
     def test_missing_directory_raises(self, nlp, tmp_path):
         with pytest.raises(ValueError, match="does not exist"):
             import_document_directory(tmp_path / "nope", "User", nlp, None, None, None)
+
+
+class TestWriteBackDisabled:
+    def test_new_file_without_front_matter_stays_unchanged(self, nlp, tmp_path):
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("Para one sentence.\n\nPara two sentence.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+
+        assert summary.created is True
+        assert summary.added == 2
+        assert file.read_text() == "Para one sentence.\n\nPara two sentence."
+        _saved_chapter(uow)
+        uow.commit.assert_called_once()
+
+    def test_changed_chapter_stays_unchanged(self, nlp, tmp_path, header):
+        file = tmp_path / "c1.md"
+        file.write_text(f'{header}\n\n<span data-par-id="p1">New text.</span>')
+        loaded = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Old text.")))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+
+        assert summary.changed == 1
+        assert file.read_text() == f'{header}\n\n<span data-par-id="p1">New text.</span>'
+        uow.commit.assert_called_once()
+
+    def test_empty_new_chapter_stays_unchanged(self, nlp, tmp_path):
+        file = tmp_path / "Empty.md"
+        file.write_text("")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+
+        assert summary.created is True
+        _saved_chapter(uow)
+        assert file.read_text() == ""
+        uow.commit.assert_called_once()
+
+    def test_changed_apply_skips_render_stage(self, nlp, tmp_path, header) -> None:
+        from dockb.timing import trace
+
+        file = tmp_path / "c1.md"
+        file.write_text(f'{header}\n\n<span data-par-id="p1">New text.</span>')
+        loaded = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Old text.")))
+        chapter_repo, uow_factory = _setup(loaded)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        with trace() as timings:
+            summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+
+        assert summary.changed == 1
+        assert [part.split(" ")[0] for part in timings.summary().split(", ")] == [
+            "stage.parse_file",
+            "stage.spacy",
+            "stage.persist",
+        ]
 
 
 class TestWriteBackFrontMatter:
@@ -913,7 +1017,7 @@ class TestWriteBackFrontMatter:
         new_file = act / "Opening 1.md"
         new_file.write_text("fresh")
         document = Document(id="d1", state=DataState.SYNC)
-        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *a: document)
+        monkeypatch.setattr(markdown_import, "_resolve_document", lambda *args, **kwargs: document)
 
         def fake_apply(*_args, **_kwargs):
             return ChapterImportSummary(chapter_id="c-new", created=True, title="New")
