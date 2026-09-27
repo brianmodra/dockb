@@ -232,3 +232,71 @@ def test_git_commit_tolerates_unrelated_untracked_files_when_nothing_staged(git_
 def test_git_commit_rejects_invalid_titles(git_store, bad_title):
     with pytest.raises(ValueError, match="not a valid title"):
         git_store.git_commit(bad_title, "message")
+
+
+def _porcelain(tmp_path) -> str:
+    return subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+
+
+def test_remove_document_git_rms_committed_tree(git_store, tmp_path):
+    git_store.write_metadata(_SAFE_TITLE, DocumentMetadata(title=_SAFE_TITLE, author="Test"))
+    git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+    assert _porcelain(tmp_path) == ""
+
+    git_store.remove_document(_SAFE_TITLE)
+
+    assert not git_store.document_exists(_SAFE_TITLE)
+    assert _porcelain(tmp_path) == ""
+    log = subprocess.run(
+        ["git", "log", "--oneline", "--", _SAFE_TITLE],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert any(line.endswith(f"remove: {_SAFE_TITLE}") for line in log.stdout.splitlines())
+
+
+def test_remove_document_missing_dir_is_noop(git_store):
+    git_store.remove_document(_SAFE_TITLE)
+
+
+def test_remove_chapter_git_rms_file_and_prunes_empty_dirs(git_store, tmp_path):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# body\n")
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Setup 9", "# nine\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.remove_chapter(_SAFE_TITLE, "Act I", "Setup 9")
+
+    assert not git_store.chapter_exists(_SAFE_TITLE, "Act I", "Setup 9")
+    assert git_store.chapter_exists(_SAFE_TITLE, "Act I", _SAFE_CHAPTER)
+    assert git_store.document_exists(_SAFE_TITLE)
+    assert _porcelain(tmp_path) == ""
+    log = subprocess.run(
+        ["git", "log", "--oneline", "--", _SAFE_TITLE],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert any(line.endswith("remove: chapter Setup 9") for line in log.stdout.splitlines())
+
+
+def test_remove_last_chapter_prunes_document_dir(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "Act II", _SAFE_CHAPTER, "# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.remove_chapter(_SAFE_TITLE, "Act II", _SAFE_CHAPTER)
+
+    assert not git_store.document_exists(_SAFE_TITLE)
+
+
+def test_remove_chapter_missing_file_is_noop(git_store):
+    git_store.remove_chapter(_SAFE_TITLE, "Act I", "Nope")

@@ -65,3 +65,12 @@ alone, so unrelated untracked files left in the tree (e.g. runtime state) are
 never committed and never trip the commit. A document with nothing new to
 commit is a no-op — the call does not fail on git's "nothing to commit". This
 is how newly materialized trees enter history with a single commit.
+
+`remove_document(document_title)` and `remove_chapter(...)` undo ownership:
+each removes its files from disk and from git (`git rm`, committed), in both
+cases tolerating files that were never tracked and directories that are
+already gone. `remove_chapter` also deletes the act and document directories
+when the removal empties them, so `document_exists` stays accurate once the
+last chapter of a document is removed. The services call these before marking
+the graph node `DELETED`, so a store failure leaves the graph intact for a
+retry and the DELETE endpoint leaves no markdown files behind.

@@ -52,7 +52,10 @@ DETACH DELETE orphan
 
 _DELETE_CYPHER = """
 MATCH (c:Chapter {id: $chapter_id})
-DETACH DELETE c
+OPTIONAL MATCH (p:Paragraph)-[:PART_OF]->(c)
+OPTIONAL MATCH (s:Sentence)-[:PART_OF]->(p)
+OPTIONAL MATCH (t:Token)-[:PART_OF]->(s)
+DETACH DELETE t, s, p, c
 """
 
 _REORDER_CYPHER = """

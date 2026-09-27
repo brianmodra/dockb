@@ -151,10 +151,17 @@ class DocumentService:
         return doc
 
     def delete(self, document_id: str) -> bool:
-        """Delete a document and all children.  Returns False if not found."""
+        """Delete a document: remove its owned store tree, then the graph subtree.
+
+        The store directory (``git rm`` + commit) goes first so a failure leaves
+        the graph intact for a retry. The graph DELETED write cascades to every
+        chapter, paragraph, sentence, and token. Returns False if not found.
+        """
         doc = self._document_repo.load(document_id)
         if doc is None:
             return False
+        if self._document_store is not None:
+            self._document_store.remove_document(doc.title)
         doc.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
@@ -456,13 +463,23 @@ class ChapterService:
         return ch
 
     def delete(self, chapter_id: str) -> bool:
-        """Delete a chapter and all children.  Returns False if not found."""
+        """Delete a chapter: remove its owned store file, then the graph subtree.
+
+        The markdown file (``git rm`` + commit) goes first so a failure leaves
+        the graph intact for a retry. The graph DELETED write cascades to the
+        chapter's paragraphs, sentences, and tokens. Returns False if not found.
+        """
         ch = self._chapter_repo.load(chapter_id)
         if ch is None:
             return False
+        document_id = self._chapter_repo.find_document_id(chapter_id)
+        if self._document_store is not None and self._document_repo is not None and document_id is not None:
+            document = self._document_repo.load(document_id)
+            if document is not None:
+                self._document_store.remove_chapter(document.title, ch.act, ch.title)
         ch.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id="")
+        uow.register(ch, document_id=document_id or "")
         uow.commit()
         return True
 

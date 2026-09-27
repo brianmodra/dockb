@@ -307,6 +307,27 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         assert doc.state == DataState.DELETED
         assert self.uow.committed
 
+    def test_delete_removes_store_tree_first(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        def git_status() -> str:
+            return subprocess.run(
+                ["git", "status", "--porcelain"], cwd=str(tmp_path), capture_output=True, text=True, check=False
+            ).stdout.strip()
+
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_metadata("T", DocumentMetadata(title="T", author="A"))
+        doc = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store=store)
+        assert svc.delete("d1") is True
+        assert not store.document_exists("T")
+        assert doc.state == DataState.DELETED
+        assert self.uow.committed
+        assert git_status() == ""
+
 
 # ---------------------------------------------------------------------------
 # ChapterService
@@ -442,6 +463,38 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         assert self.svc.delete("c1") is True
+        assert ch.state == DataState.DELETED
+
+    def test_delete_removes_store_file_when_document_resolved(self, tmp_path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        def git_status() -> str:
+            return subprocess.run(
+                ["git", "status", "--porcelain"], cwd=str(tmp_path), capture_output=True, text=True, check=False
+            ).stdout.strip()
+
+        ch = Chapter(id="c1", title="Ch1", act="Act I", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo = StubDocumentRepo()
+        doc_repo._store["d1"] = Document(id="d1", title="T", author="A", state=DataState.SYNC)
+        store = DocumentStore(base_dir=tmp_path)
+        store.write_chapter("T", "Act I", "Ch1", "# body\n")
+        store.git_commit("T", "materialize: doc")
+        svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo, document_store=store)
+        assert svc.delete("c1") is True
+        assert not store.chapter_exists("T", "Act I", "Ch1")
+        assert ch.state == DataState.DELETED
+        assert self.uow.committed
+        assert git_status() == ""
+
+    def test_delete_without_store_still_marks_deleted(self) -> None:
+        self.repo.set_document("c1", "d1")
+        ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.svc.delete("c1")
         assert ch.state == DataState.DELETED
 
     def test_move_returns_none_when_missing(self) -> None:

@@ -23,6 +23,7 @@ control characters are all rejected).
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,6 +151,53 @@ class DocumentStore:
         if not changed.strip():
             return
         self._git("commit", "-m", message)
+
+    def remove_document(self, document_title: str) -> None:
+        """Remove a document's owned directory from disk and git.
+
+        The whole directory is deleted — tracked files via ``git rm`` plus any
+        untracked files on disk — and the removal is committed. A document that
+        does not exist on disk is a no-op.
+        """
+        directory = self.document_dir(document_title)
+        if not directory.is_dir():
+            return
+        try:
+            self._git("rm", "-r", "-f", "--", document_title)
+        except SnapshotError as exc:
+            if "did not match any files" not in str(exc):
+                raise
+        shutil.rmtree(directory, ignore_errors=True)
+        if self._git("status", "--porcelain", "--", document_title).strip():
+            self._git("commit", "-m", f"remove: {document_title}")
+
+    def remove_chapter(self, document_title: str, act: str, chapter_title: str) -> None:
+        """Remove a chapter's markdown file and prune emptied directories.
+
+        The file is staged for removal via ``git rm`` and deleted from disk, and
+        the removal is committed. An act or document directory left empty by the
+        removal is deleted too, so ``document_exists`` stays accurate. A chapter
+        with no file on disk is a no-op.
+        """
+        path = self.chapter_file(document_title, act, chapter_title)
+        if not path.is_file():
+            return
+        try:
+            self._git("rm", "-f", "--", str(path.relative_to(self._base_dir)))
+        except SnapshotError as exc:
+            if "did not match any files" not in str(exc):
+                raise
+        path.unlink(missing_ok=True)
+        if self._git("status", "--porcelain", "--", document_title).strip():
+            self._git("commit", "-m", f"remove: chapter {chapter_title}")
+        try:
+            path.parent.rmdir()
+        except OSError:
+            return
+        try:
+            path.parent.parent.rmdir()
+        except OSError:
+            return
 
     def _git(self, *args: str) -> str:
         try:

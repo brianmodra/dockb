@@ -147,3 +147,54 @@ def test_document_lifecycle_chain(services, neo4j_session, git_repo):
         _assert_git_is_current(git_repo, store, "Lifecycle", "", "Second")
     finally:
         neo4j_session.run(_CLEANUP_CYPHER, {"id": document_id})
+
+
+def _graph_has(neo4j_session, node_id: str) -> bool:
+    return neo4j_session.run("MATCH (n {id: $id}) RETURN count(n) AS c", {"id": node_id}).single()["c"] > 0
+
+
+def _graph_children(neo4j_session, node_id: str, depth: int) -> int:
+    return neo4j_session.run(f"MATCH (n)-[:PART_OF*1..{depth}]->(x {{id: $id}}) RETURN count(n) AS c", {"id": node_id}).single()["c"]
+
+
+def test_delete_cascades_graph_and_removes_store_files(services, neo4j_session, git_repo):
+    """Deleting a chapter/document removes the full graph subtree and the owned store files."""
+    doc_svc, ch_svc, store = services
+    document_id = "d-delete"
+    try:
+        doc = doc_svc.create(document_id, title="DeleteMe", author="Test")
+        assert doc.id == document_id
+        _add_chapters(ch_svc, document_id)
+        assert ch_svc.save_document("c2", "First paragraph sentence.\n\nSecond paragraph.") is not None
+        assert _graph_children(neo4j_session, "c2", 3) >= 2
+
+        # Chapter delete: graph subtree gone, own file git-rm'd, siblings intact.
+        assert ch_svc.delete("c2") is True
+        assert not _graph_has(neo4j_session, "c2")
+        assert _graph_children(neo4j_session, "c2", 3) == 0
+        assert not store.chapter_exists("DeleteMe", "", "Second")
+        assert store.chapter_exists("DeleteMe", "", "First")
+        assert store.document_exists("DeleteMe")
+        assert any("remove: chapter Second" in line for line in _git(git_repo, "log", "--oneline").splitlines())
+        assert _git(git_repo, "status", "--porcelain").strip() == ""
+
+        # Same chapter title is free again: recreate is clean.
+        ch_svc.create("c2b", "Second", document_id, after_chapter_id="c1")
+        assert _graph_has(neo4j_session, "c2b")
+        assert store.chapter_exists("DeleteMe", "", "Second")
+        assert _git(git_repo, "status", "--porcelain").strip() == ""
+
+        # Document delete: whole graph subtree and the whole store tree go.
+        assert doc_svc.delete(document_id) is True
+        assert not _graph_has(neo4j_session, document_id)
+        assert _graph_children(neo4j_session, document_id, 2) == 0
+        assert not store.document_exists("DeleteMe")
+        assert any("remove: DeleteMe" in line for line in _git(git_repo, "log", "--oneline").splitlines())
+        assert _git(git_repo, "status", "--porcelain").strip() == ""
+
+        # Re-import path: the same id/title creates cleanly again.
+        doc2 = doc_svc.create(document_id, title="DeleteMe", author="Test")
+        assert doc2.id == document_id
+        assert store.document_exists("DeleteMe")
+    finally:
+        neo4j_session.run(_CLEANUP_CYPHER, {"id": document_id})
