@@ -27,7 +27,7 @@ SET r.index = p.index
 _NEW_CYPHER = f"""
 MATCH (d:Document {{id: $document_id}})
 MERGE (c:Chapter {{id: $chapter_id}})
-SET c.title = $title, c.act = $act, c.title_key = toLower($title), c.document_id = $document_id
+SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 MERGE (c)-[rc:PART_OF]->(d)
 SET rc.index = $index
 WITH d, c
@@ -41,7 +41,7 @@ FOREACH (e IN later_rels | SET e.index = e.index + 1)
 _CHANGED_CYPHER = f"""
 MATCH (d:Document {{id: $document_id}})
 MERGE (c:Chapter {{id: $chapter_id}})
-SET c.title = $title, c.act = $act, c.title_key = toLower($title), c.document_id = $document_id
+SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 MERGE (c)-[:PART_OF]->(d)
 {_PARAGRAPH_UNWIND_CYPHER}
 WITH c, COLLECT(p.id) AS keep_ids
@@ -70,7 +70,7 @@ SET r.index = entry.index
 
 _LIST_BY_DOCUMENT_CYPHER = """
 MATCH (c:Chapter)-[r:PART_OF]->(d:Document {id: $document_id})
-RETURN c.id AS id, c.title AS title, c.act AS act, r.index AS index
+RETURN c.id AS id, c.title AS title, c.act AS act, c.category AS category, r.index AS index
 ORDER BY r.index
 """
 
@@ -85,7 +85,7 @@ OPTIONAL MATCH (p:Paragraph)-[rp:PART_OF]->(c)
 OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
-  c.id AS chapter_id, c.title AS chapter_title, c.act AS chapter_act,
+  c.id AS chapter_id, c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
   p.id AS paragraph_id, rp.index AS paragraph_index,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
@@ -119,18 +119,20 @@ class ChapterRepository(BaseRepository[Chapter]):
             "chapter_id": model.id,
             "title": model.title,
             "act": model.act,
+            "category": model.category,
             "index": int(parent_ids.get("index", "0")),
             "paragraphs": [{"id": p.id, "index": i} for i, p in enumerate(model.paragraphs)],
         }
 
     def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
-        """Return ``[{id, title, act, index}]`` summaries for chapters of *document_id*."""
+        """Return ``[{id, title, act, category, index}]`` summaries for chapters of *document_id*."""
         records = list(self._session.run(_LIST_BY_DOCUMENT_CYPHER, {"document_id": document_id}))
         return [
             {
                 "id": r["id"],
                 "title": r.get("title") or "",
                 "act": r.get("act") or "",
+                "category": r.get("category") or "Chapter",
                 "index": r.get("index") or 0,
             }
             for r in records
@@ -166,6 +168,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             id=first["chapter_id"],
             title=first.get("chapter_title") or "",
             act=first.get("chapter_act") or "",
+            category=first.get("chapter_category") or "Chapter",
             state=DataState.SYNC,
         )
 

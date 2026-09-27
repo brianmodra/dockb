@@ -43,6 +43,7 @@ class ChapterAttrs(BaseModel):
     id: str | None = None
     title: str = Field(min_length=1)
     act: str = ""
+    category: Literal["Chapter", "Character"] = "Chapter"
 
     @field_validator("title")
     @classmethod
@@ -59,6 +60,7 @@ class ChapterSummary(BaseModel):
     id: str
     title: str
     act: str = ""
+    category: Literal["Chapter", "Character"] = "Chapter"
 
 
 # ---------------------------------------------------------------------------

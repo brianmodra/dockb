@@ -71,6 +71,23 @@ class TestSaveNewChapter:
         _, params = extract_call(neo4j_session)
         assert params["act"] == "Act I"
 
+    def test_passes_category(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+        chapter.category = "Character"
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        _, params = extract_call(neo4j_session)
+        assert params["category"] == "Character"
+
+    def test_sets_category_property(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "c.category = $category" in cypher
+
     def test_sets_document_id_and_title_key(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
         chapter.title = "Intro"
@@ -172,6 +189,16 @@ class TestSaveChangedChapter:
         assert "c.title_key = toLower($title)" in cypher
         assert "c.document_id = $document_id" in cypher
 
+    def test_changed_persists_category(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.CHANGED
+        chapter.category = "Character"
+
+        chapter_repo.save(chapter, document_id="d1")
+
+        cypher, params = extract_call(neo4j_session)
+        assert "c.category = $category" in cypher
+        assert params["category"] == "Character"
+
     def test_passes_only_current_paragraphs_after_removal(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.CHANGED
         para_a = Paragraph(text="Hello.")
@@ -232,13 +259,13 @@ class TestListByDocument:
 
     def test_returns_id_title_and_index(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "ch-1", "title": "Chapter 1", "act": "", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1},
         ]
         result = chapter_repo.list_by_document("d-1")
         assert result == [
-            {"id": "ch-1", "title": "Chapter 1", "act": "", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1},
         ]
 
     def test_orders_by_relationship_index(self, chapter_repo, neo4j_session):
@@ -260,19 +287,35 @@ class TestListByDocument:
 
     def test_returns_act(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1},
         ]
         result = chapter_repo.list_by_document("d-1")
         assert result == [
-            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
+            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1},
+        ]
+
+    def test_returns_category(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
+            {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1},
+        ]
+        result = chapter_repo.list_by_document("d-1")
+        assert result == [
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
+            {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1},
         ]
 
     def test_defaults_missing_act_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "act": None, "index": 0}]
         result = chapter_repo.list_by_document("d-1")
         assert result[0]["act"] == ""
+
+    def test_defaults_missing_category_to_chapter(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "ch-1", "title": "C", "act": "", "index": 0}]
+        result = chapter_repo.list_by_document("d-1")
+        assert result[0]["category"] == "Chapter"
 
     def test_defaults_missing_title_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "index": 0}]
@@ -367,6 +410,7 @@ class TestLoadChapter:
                 "chapter_id": "ch-1",
                 "chapter_title": "Intro",
                 "chapter_act": "Act I",
+                "chapter_category": "Chapter",
                 "paragraph_id": None,
                 "paragraph_index": None,
                 "sentence_id": None,
@@ -387,6 +431,40 @@ class TestLoadChapter:
         ch = chapter_repo.load("ch-1")
         assert ch is not None
         assert ch.act == "Act I"
+
+    def test_loads_category_from_graph(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "chapter_id": "ch-1",
+                "chapter_title": "Dramatis",
+                "chapter_act": "",
+                "chapter_category": "Character",
+                "paragraph_id": None,
+                "paragraph_index": None,
+                "sentence_id": None,
+                "sentence_index": None,
+                "token_id": None,
+                "token_index": None,
+                "token_text": None,
+                "token_type": None,
+                "token_trailing_ws": None,
+                "token_pos": None,
+                "token_lemma": None,
+                "token_is_digit": None,
+                "token_like_num": None,
+                "token_is_alpha": None,
+                "token_is_stop": None,
+            }
+        ]
+        ch = chapter_repo.load("ch-1")
+        assert ch is not None
+        assert ch.category == "Character"
+
+    def test_defaults_null_category_to_chapter(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_act": None}]
+        ch = chapter_repo.load("ch-1")
+        assert ch is not None
+        assert ch.category == "Chapter"
 
     def test_defaults_null_act_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_act": None}]

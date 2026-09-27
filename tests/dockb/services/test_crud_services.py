@@ -432,6 +432,14 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert self.uow.committed
         assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0"}
 
+    def test_create_defaults_category_chapter(self) -> None:
+        ch = self.svc.create("c1", title="Intro", document_id="d1")
+        assert ch.category == "Chapter"
+
+    def test_create_with_category_sets_category_on_chapter(self) -> None:
+        ch = self.svc.create("c1", title="Intro", document_id="d1", category="Character")
+        assert ch.category == "Character"
+
     def test_create_without_after_places_first(self) -> None:
         self.svc.create("c1", title="Intro", document_id="d1", after_chapter_id=None)
         assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0"}

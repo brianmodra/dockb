@@ -49,6 +49,20 @@ def test_chapter_attrs_act_defaults_empty():
     assert ChapterAttrs(id="ch-1", title="Ch").act == ""
 
 
+def test_chapter_attrs_accepts_category():
+    attrs = ChapterAttrs(id="ch-1", title="Ch", category="Character")
+    assert attrs.category == "Character"
+
+
+def test_chapter_attrs_category_defaults_chapter():
+    assert ChapterAttrs(id="ch-1", title="Ch").category == "Chapter"
+
+
+def test_chapter_attrs_rejects_unknown_category():
+    with pytest.raises(ValidationError):
+        ChapterAttrs(id="ch-1", title="Ch", category="Weasel")
+
+
 def test_create_chapter_requires_relations():
     with pytest.raises(ValidationError):
         CreateChapterRequest(attrs=ChapterAttrs(id="ch-1", title="Ch"))

@@ -21,6 +21,7 @@ export interface ChapterSummary {
   id: string;
   title: string;
   act: string;
+  category?: "Chapter" | "Character";
 }
 
 export interface DocumentWire {
@@ -32,12 +33,14 @@ export interface ChapterAttrs {
   id: string | null;
   title: string;
   act?: string;
+  category?: "Chapter" | "Character";
 }
 
 export interface ChapterNodeAttrs {
   id: string | null;
   title: string;
   act: string;
+  category?: "Chapter" | "Character";
 }
 
 export interface TextNode {
@@ -68,6 +71,7 @@ export interface ChapterListRow {
   title: string;
   act: string;
   index: number;
+  category?: "Chapter" | "Character";
 }
 
 export interface ChapterRelations {

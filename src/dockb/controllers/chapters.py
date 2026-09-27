@@ -57,6 +57,7 @@ def create_chapter(
             title=body.attrs.title,
             document_id=body.relations.document_id,
             after_chapter_id=body.relations.after_chapter_id,
+            category=body.attrs.category,
         )
     except ChapterAfterNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from dockb.models.paragraph import Paragraph
@@ -15,6 +17,7 @@ class Chapter(DockbModel):
 
     title: str = ""
     act: str = ""
+    category: Literal["Chapter", "Character"] = "Chapter"
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

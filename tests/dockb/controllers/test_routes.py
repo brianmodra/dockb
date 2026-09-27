@@ -93,7 +93,14 @@ class MockChapterService:
     def open(self, chapter_id: str) -> Chapter | None:
         return self._chapters.get(chapter_id)
 
-    def create(self, chapter_id: str, title: str, document_id: str, after_chapter_id: str | None = None) -> Chapter:
+    def create(
+        self,
+        chapter_id: str,
+        title: str,
+        document_id: str,
+        after_chapter_id: str | None = None,
+        category: str = "Chapter",
+    ) -> Chapter:
         for ch_id, ch in self._chapters.items():
             if self._owners.get(ch_id) == document_id and ch.title.lower() == title.lower():
                 raise DuplicateTitleError(title)
@@ -418,6 +425,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             title="Ch2",
             document_id="d1",
             after_chapter_id="c1",
+            category="Chapter",
         )
 
     def test_create_chapter_after_not_found(self) -> None:

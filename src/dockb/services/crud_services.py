@@ -17,7 +17,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from dockb.exceptions import ChapterAfterNotFoundError, DuplicateTitleError
 from dockb.infrastructure.document_store.store import DocumentMetadata
@@ -370,12 +370,13 @@ class ChapterService:
         store.write_chapter(document.title, ch.act, ch.title, content)
         store.git_commit(document.title, f"materialize: chapter {ch.id[:8]}")
 
-    def create(
+    def create(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         chapter_id: str,
         title: str,
         document_id: str,
         after_chapter_id: str | None = None,
+        category: Literal["Chapter", "Character"] = "Chapter",
     ) -> Chapter:
         """Create a new empty chapter, placed after *after_chapter_id*, and commit it.
 
@@ -387,7 +388,7 @@ class ChapterService:
         for row in self._chapter_repo.list_by_document(document_id):
             if str(row.get("title") or "").lower() == title.lower():
                 raise DuplicateTitleError(title)
-        ch = Chapter(id=chapter_id, title=title, state=DataState.NEW)
+        ch = Chapter(id=chapter_id, title=title, category=category, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id, index=str(index))
         uow.commit()

@@ -73,7 +73,7 @@ and a flat list of chapter summaries (attrs only, no child content):
 {
   "attrs": { "id": "doc-uuid", "title": "Forgiveness", "author": "Wes Almond" },
   "chapter_summaries": [
-    { "id": "ch-uuid-1", "title": "Chapter 1", "act": "" }
+    { "id": "ch-uuid-1", "title": "Chapter 1", "act": "", "category": "Chapter" }
   ]
 }
 ```
@@ -84,12 +84,17 @@ The FE loads a chapter via `GET /api/chapters/{id}` to get its full tree.
 
 ```
 document: { attrs: { id: string, title: string, author: string }, chapter_summaries: chapter_summary* }
-chapter_summary: { id: string, title: string, act: string }
-chapter:   { content: "paragraph+", attrs: { id: string, title: string, act: string } }
+chapter_summary: { id: string, title: string, act: string, category: "Chapter" | "Character" }
+chapter:   { content: "paragraph+", attrs: { id: string, title: string, act: string, category: "Chapter" | "Character" } }
 paragraph: { content: "sentence+",  attrs: { id: string } }
 sentence:  { content: "text*",      attrs: { id: string } }
 text:      { inline: true,          attrs: {} }
 ```
+
+`category` is either `"Chapter"` (the manuscript) or `"Character"` (supporting
+material that is never published — see the publishing note in
+`services/README.md`). It defaults to `"Chapter"` for chapters created through
+the API or loaded from pre-`category` data.
 
 Note: attrs in this codebase at the point of typing up this spec file are simple. Obviously
 there will be more than title, author, and other content, such as a premise, an elevator pitch, etc.
@@ -199,7 +204,7 @@ it creates an empty chapter with the supplied attributes.
 The body of a POST method to the /api/chapter endpoint will conform to the following schema:
 
 ```
-chapter: { attrs: { id: string, title: string, act?: string }, relations: { document_id: string, after_chapter_id?: string } }
+chapter: { attrs: { id: string, title: string, act?: string, category?: "Chapter" | "Character" }, relations: { document_id: string, after_chapter_id?: string } }
 ```
 
 E.g.
@@ -227,7 +232,7 @@ Or, to add after an existing chapter:
 The body of a PUT method to the /api/chapter endpoint will conform to the following schema:
 
 ```
-chapter: { attrs: { id?: string, title: string, act?: string } }
+chapter: { attrs: { id?: string, title: string, act?: string, category?: "Chapter" | "Character" } }
 ```
 
 E.g.

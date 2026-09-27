@@ -121,7 +121,7 @@ def test_serialize_chapter_empty():
     d = node.model_dump()
     assert d == {
         "type": "chapter",
-        "attrs": {"id": "ch-1", "title": "Intro", "act": ""},
+        "attrs": {"id": "ch-1", "title": "Intro", "act": "", "category": "Chapter"},
         "content": [],
     }
 
@@ -132,6 +132,13 @@ def test_serialize_chapter_carries_act():
     node = serialize_chapter(ch)
     d = node.model_dump()
     assert d["attrs"]["act"] == "Act I"
+
+
+def test_serialize_chapter_carries_category():
+    ch = _make_chapter("ch-1", "Intro")
+    ch.category = "Character"
+    node = serialize_chapter(ch)
+    assert node.attrs.category == "Character"
 
 
 def test_serialize_chapter_act_defaults_empty():
@@ -177,7 +184,7 @@ def test_serialize_chapter_summary():
     ch = _make_chapter("ch-1", "Intro")
     summary = serialize_chapter_summary(ch)
     d = summary.model_dump()
-    assert d == {"id": "ch-1", "title": "Intro", "act": ""}
+    assert d == {"id": "ch-1", "title": "Intro", "act": "", "category": "Chapter"}
 
 
 def test_serialize_chapter_summary_carries_act():
@@ -185,6 +192,13 @@ def test_serialize_chapter_summary_carries_act():
     ch.act = "Act I"
     summary = serialize_chapter_summary(ch)
     assert summary.act == "Act I"
+
+
+def test_serialize_chapter_summary_carries_category():
+    ch = _make_chapter("ch-1", "Intro")
+    ch.category = "Character"
+    summary = serialize_chapter_summary(ch)
+    assert summary.category == "Character"
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +222,18 @@ def test_serialize_document_with_chapters():
     d = serialize_document(doc)
     assert d["attrs"]["id"] == "d-1"
     assert len(d["chapter_summaries"]) == 2
-    assert d["chapter_summaries"][0] == {"id": "ch-1", "title": "Chapter 1", "act": ""}
-    assert d["chapter_summaries"][1] == {"id": "ch-2", "title": "Chapter 2", "act": ""}
+    assert d["chapter_summaries"][0] == {
+        "id": "ch-1",
+        "title": "Chapter 1",
+        "act": "",
+        "category": "Chapter",
+    }
+    assert d["chapter_summaries"][1] == {
+        "id": "ch-2",
+        "title": "Chapter 2",
+        "act": "",
+        "category": "Chapter",
+    }
 
 
 def test_serialize_document_no_child_content():
@@ -220,4 +244,9 @@ def test_serialize_document_no_child_content():
     d = serialize_document(doc)
     # chapter_summaries should only have attrs, not nested content
     assert "content" not in d["chapter_summaries"][0]
-    assert d["chapter_summaries"][0] == {"id": "ch-1", "title": "Ch", "act": ""}
+    assert d["chapter_summaries"][0] == {
+        "id": "ch-1",
+        "title": "Ch",
+        "act": "",
+        "category": "Chapter",
+    }
