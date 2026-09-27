@@ -2,21 +2,9 @@
 
 ## Executive Summary
 
-This document specifies how markdown chapter files are brought back into the knowledge graph.
-`detect_changes` turns a saved file into a paragraph-level report — what to add, change, and delete,
-and where new paragraphs go — without re-parsing the chapter the graph already holds.
-`apply_chapter_file` (in `dockb.services.markdown_import`) checks the file's chapter really belongs
-to the document being edited, then puts that report into effect as graph writes.
+This note explains how a saved chapter file is compared with the knowledge graph and written back. It is for someone changing import or change detection.
 
-`import_document_directory` drives the same process from the shell: it walks a document's directory
-for chapter files, resolves the directory to one `Document` by its metadata, imports each chapter,
-and rewrites changed files into the canonical span format — front matter plus one identity span per
-paragraph — so the next import matches them. Write-back (file rewrites, front-matter identity, and
-the document's `document_metadata.yaml`) is on by default only when the source lies inside the
-store tree (`DOCKB_CHAPTERS_DIR`); `--write-back`/`--no-write-back` force it either way, and with it
-off the source files stay untouched while repeated imports assign a fresh id per file. Read this
-document to learn how chapter files map back into the graph, which files count as new versus
-edited, what the caller guarantees, and how a document directory becomes graph data.
+A folder of chapter files becomes one document. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were.
 
 ## Calling context
 

@@ -2,19 +2,9 @@
 
 ## Executive Summary
 
-This document records why markdown is DockB's source of truth and what fell out of that decision.
-Each chapter is a markdown file whose text is canonical: the backend rehydrates the knowledge
-graph from it, paragraph identity travels in `data-par-id` spans holding the sentences one per
-line, and the backend alone owns the files, the title/act-keyed tree, and its git repo. Chapter
-order comes from the tree: numbered `Act <name>` directories, then each file's sequence number,
-trailing in its name or embedded between spaces, so a chapter directory tree becomes the
-document's chapter order. It records the decisions — drop the editor front end, synchronous
-save-and-rehydrate, span-based paragraph identity, interactive-only syntax checking — and the
-alternatives that lost to them.
+This note explains why DockB treats a markdown file as the real text of a chapter, and why the server — not the editor — owns those files and their history. It is the record of the decisions that shaped the product, including the ones that were rejected.
 
-Read this for the rationale and the roadmap. The live behavior lives in the code under `src/dockb/`
-(especially `infrastructure/document_store/` and `infrastructure/markdown/`) and their READMEs;
-this document is the record of why the format and ownership model are what they are.
+Read it when you need the reason, not the current function names. The live behavior is in the code and the shorter notes next to it.
 
 ## 1. The problem we were trying to solve
 
@@ -240,9 +230,8 @@ are ordered by the sequence number in their name with at most one letter — tra
 embedded between spaces — so `Setup 5b.md` follows `Setup 5.md` and precedes `Setup 6.md`; an
 unnumbered chapter file, or two acts or files numbering the same, abort the import.
 
-**Publishing.** Publishing a manuscript is a later feature. A `Character` chapter is supporting
-material and is never published — it is not part of the manuscript, and a future publish step must
-exclude it. Only `category: Chapter` is manuscript text. See `src/dockb/services/README.md`.
+**Publishing.** Publishing a manuscript is a later feature. A `Character` chapter is never
+published. See `src/dockb/services/README.md`.
 
 ### git branch approach rejected
 

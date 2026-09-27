@@ -1,11 +1,17 @@
 # model hierarchy
+
+## Executive Summary
+
+This note is the map of DockB's text model. A document holds chapters, a chapter holds paragraphs, a paragraph holds sentences, and a sentence holds tokens. Read it to see how a manuscript is split into pieces the rest of the system can store and edit.
+
+A token is a word, punctuation, or whitespace. The classes themselves live in this directory; this file only names the hierarchy.
+
 The system of models is a hierarchy of classes as follows:
 
 ## Document
 Document has a list of Chapter objects.
 ## Chapter
-Chapter has a list of Paragraph objects. Its `category` is `Chapter` (manuscript, the default) or
-`Character` (supporting material, never published).
+Chapter has a list of Paragraph objects.
 ## Paragraph
 Paragraph has a list of Sentence objects.
 ## Sentence

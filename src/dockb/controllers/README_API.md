@@ -1,5 +1,11 @@
 # API Design: Frontend ↔ Backend
 
+## Executive Summary
+
+This note is the contract between DockB's editor and the server. It lists the requests the editor may send, the shape of each reply, and what the server refuses. Grammar details stay on the server and are not part of this contract.
+
+Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff.
+
 ## Core Principle
 
 **Semantic events, not text diffs.** The FE tells the BE *what* changed relative to the hierarchy, as opposed to what character offset it occurred at.

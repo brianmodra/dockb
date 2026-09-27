@@ -2,17 +2,9 @@
 
 ## Executive Summary
 
-This is the UI design for DockB's desktop markdown editor. It is a thin client:
-it sends raw text and gets canonical text back, and never touches files or git.
-The window has a menubar, a left chapter list, a central edit panel (WYSIWYG or
-raw markdown of the same document), a bottom message console, and a right panel
-that starts closed. Startup signs the user in if needed, then restores the last
-document or asks them to pick one.
+This is the design of DockB's writing window. It explains the menus, the chapter list, the editor, and the dialogs, so someone new can see what the writer sees and why each click does what it does.
 
-Read this for the layout, menus, modals, and how documents are deleted or
-edited and chapters renamed, moved, and deleted. The backend and the canonical
-markdown format are in `README_markdown_redesign.md`; login and app state are
-in `README_auth.md`.
+The window only sends text to the server and gets text back. It never touches files. How the files and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
 
 ## 1. Context and constraints
 

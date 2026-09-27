@@ -2,16 +2,9 @@
 
 ## Executive Summary
 
-DockB's markdown-is-source-of-truth design lives on disk in the document store: a tree of
-chapter files that the backend — never the editor — writes, keyed by titles the graph owns, so
-paths are always under the store's control. Read this to learn the on-disk layout, how title
-paths are kept escape-proof, and how the store's git commits work.
+This note describes the folder where DockB keeps each document's markdown. The server writes those files. The editor never does. Paths come from titles the graph already owns, so a hostile title cannot escape the folder.
 
-Ownership ends as well as begins here: deleting or renaming a document or
-chapter moves or removes its owned files (committed) before the graph is
-changed, so a store failure leaves the graph recoverable and a successful
-operation leaves no stale markdown behind. Hydrating a file back into the
-knowledge graph is the caller's job, not the store's.
+Read it to see where a chapter file lands, including supporting character chapters, and how a rename or delete stays in git. A failed file change leaves the graph recoverable.
 
 ## Layout
 

@@ -2,29 +2,14 @@
 
 ## Executive Summary
 
-This document covers the backend service layer for editing a document's text and semantics: how
-model changes are queued and re-tokenized per session, how sentences are split during re-tokenization,
-and how deletion cascades. It is written for developers touching the editing services.
+This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It is for someone changing those editing services, not the files on disk.
 
-One service is deliberately outside this flow: the bulk re-sync import caller
-(`services/markdown_import.py`, `apply_chapter_file`) matches a saved markdown chapter file back
-against the graph as a one-shot, whole-chapter write instead of fine-grained edit requests. It is
-described at `../infrastructure/changes/README.md`; what follows here is the editing side.
-
-The counterpart export service, `services/markdown_export.py`, goes the other way at whole-chapter
-granularity: `reconstruct_chapter_markdown(chapter_id, chapter_repo, nlp)` loads a chapter from the
-graph and renders its canonical markdown file, and `reconstruct_chapter_file(..., path, nlp)` writes
-that file to a path. Both raise `ChapterMismatchError` when the graph has no such chapter. The
-serialization itself is owned by `../infrastructure/markdown/`, so exported files match the import
-and history formats.
+Import and export sit beside that flow and are named here so you know they are separate. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
 
 ### Publishing
 
 Publishing a manuscript is a later feature. There is no whole-book exporter. When it is added, a
-chapter whose `category` is `Character` is supporting material and is never published: it has no
-act, it lives under the document's `Characters/` directory rather than an act, and it stays out of
-the manuscript. A `Chapter` is the manuscript chapter and is the only category that publishing
-includes. The default category is `Chapter`.
+`Character` chapter is never published. Only `category` `Chapter` is manuscript text.
 
 ## Context
 

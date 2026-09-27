@@ -13,7 +13,11 @@ from .base import DockbModel
 
 
 class Chapter(DockbModel):
-    """A chapter containing a list of paragraphs."""
+    """A chapter containing a list of paragraphs.
+
+    ``category`` is ``Chapter`` (the manuscript, the default) or ``Character``
+    (supporting material). A ``Character`` chapter is never published.
+    """
 
     title: str = ""
     act: str = ""

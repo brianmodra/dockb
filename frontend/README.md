@@ -2,13 +2,9 @@
 
 ## Executive Summary
 
-This is DockB's desktop editor: an Electron app that talks only to the backend
-API. Writers sign in, open a document, and edit a chapter in WYSIWYG or raw
-markdown. The editor never writes files or git; save and restore go through
-the API. How the window should look is in `../README_markdown_editor_ui.md`.
+This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a document, and edit a chapter. It never writes files itself.
 
-Commands (`npm run dev`, `npm test`, `npm run build`) live below. App state
-and login come from the backend (`README_auth.md`), not from files on disk.
+Read it to run the app and to find which file owns the chapter list, the editor, and login. How the window should look is in `../README_markdown_editor_ui.md`.
 
 ## API client and session
 

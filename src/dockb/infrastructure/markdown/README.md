@@ -2,17 +2,9 @@
 
 ## Executive Summary
 
-This package owns the on-disk markdown format for a single chapter: its YAML front matter and the
-canonical body in which every paragraph is one identity span holding its sentences as lines. It is
-the one implementation of that
-format, shared by the directory import (`services/markdown_import.py`), the history snapshots
-(`infrastructure/history/`), and the change detector (`infrastructure/changes/detect_changes.py`),
-so those callers cannot drift apart. Read this to learn how a chapter file's front matter is
-parsed, rendered, and merged without touching the body.
+This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart.
 
-The package holds no repository or Neo4j code: it operates on strings and models only. Loading a
-chapter from the graph before serialising it belongs to its caller (see
-`services/markdown_export.py`).
+It does not talk to the database. Whoever calls it loads the chapter first, then asks this package to read or write the text.
 
 ## Front matter
 
@@ -77,11 +69,10 @@ Rendering rules:
   of their own.
 - Sentence text is HTML-escaped; a backslash-newline hard break and soft
   newlines inside a sentence survive because the writer does not re-split text.
-- The front matter is `attrs` verbatim when given, else `{id, title}` from the
-  chapter, plus `act` when set and `category` always (`Chapter` or `Character`).
-  The front-matter block and body are joined by a blank line; an empty
-  chapter renders as the block alone.
+- The front matter is `attrs` verbatim when given, else the chapter's own identity
+  (`render_chapter_markdown`). The front-matter block and body are joined by a blank
+  line; an empty chapter renders as the block alone.
 
 `SnapshotWriter` (history) feeds `{id, title, **chapter.model_extra}` as `attrs`; the import
-write-back feeds the file's existing attributes with `id`/`title`/`category` set to the chapter's
-(and `act` when set). The reader and the change detector never write.
+write-back feeds the file's existing attributes plus the chapter's identity. The reader
+and the change detector never write.
