@@ -1,1 +1,1 @@
-"""Session lifecycle management (OAuth token validation, session context persistence)."""
+"""Session lifecycle management (session cookie signing, live session context)."""

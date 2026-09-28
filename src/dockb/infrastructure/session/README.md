@@ -12,8 +12,7 @@ infrastructure/session/
 ├── README.md               # This file
 ├── __init__.py
 ├── session_cookie.py       # SessionSigner — signs and verifies the cookie value
-├── session_manager.py      # SessionManager — live SessionContext per account
-└── token_validator.py      # Dead code, see below
+└── session_manager.py      # SessionManager — live SessionContext per account
 ```
 
 ## Components
@@ -63,14 +62,14 @@ pending notification queue for async results such as sentence splits.
 It lives in `services/session_context.py` rather than here, because it bundles
 service-level constructs rather than owning storage or signing.
 
-### `TokenValidator` (dead code)
+### Removed: `TokenValidator`
 
-`src/dockb/infrastructure/session/token_validator.py` is a stub left over from an
-earlier design. Its `validate()` ignores its argument and always returns `None`, and
-nothing in `src/` or `tests/` imports or calls it. It is superseded by the signed
-cookie above, and should be deleted rather than documented further.
+`token_validator.py` was a stub from an earlier design in which each request validated a
+provider token and looked the account up in a `SessionManager`. Its `validate()` ignored
+its argument and always returned `None`, and nothing in `src/` or `tests/` called it. The
+signed cookie above replaced it and the file has been deleted.
 
-An earlier version of this file described a `user_store.py` persisting OAuth profiles
-with TinyDB. No such module exists, TinyDB is not a dependency, and the profile store
-is `infrastructure/accounts/` (SQLite via the stdlib `sqlite3` module) — see
-`README_auth.md` §3.
+That design also assumed a `user_store.py` persisting OAuth profiles with TinyDB. No such
+module ever existed, TinyDB is not a dependency, and the profile store is
+`infrastructure/accounts/` (SQLite via the stdlib `sqlite3` module) — see `README_auth.md`
+§3.
