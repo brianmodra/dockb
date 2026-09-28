@@ -10,3 +10,4 @@ run/
 frontend/dist
 frontend/dist-electron
 .codegraph
+dockb_chapters_dir/

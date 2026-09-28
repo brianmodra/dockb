@@ -6,20 +6,20 @@ Without ``--out`` the chapter is written into the server-owned markdown tree
 ``DOCKB_CHAPTERS_DIR``, defaulting to ``cwd/dockb_chapters_dir``) and
 git-committed; ``--out`` writes the exact path given instead. The Neo4j
 connection comes from ``NEO4J_URL``, ``NEO4J_USER`` and ``NEO4J_PASSWORD``
-(or a ``.env`` file, exactly as the API server reads them).
+(or a ``.env`` file, exactly as the API server reads them). A missing variable or model
+is reported as a single ``error:`` line and exit 1, not a traceback — see ``startup.py``.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from contextlib import ExitStack
 from pathlib import Path
 
-import spacy
 from dotenv import load_dotenv
 
+from dockb.cli.startup import MissingConfigurationError, load_spacy_model, neo4j_settings
 from dockb.composition import resolve_document_base_dir
 from dockb.exceptions import ChapterMismatchError
 from dockb.infrastructure.document_store import DocumentStore
@@ -37,12 +37,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv()
+    try:
+        settings = neo4j_settings()
+        nlp = load_spacy_model()
+    except MissingConfigurationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     session_factory = SessionFactory(
-        uri=os.environ["NEO4J_URL"],
-        user=os.environ["NEO4J_USER"],
-        password=os.environ["NEO4J_PASSWORD"],
+        uri=settings["NEO4J_URL"],
+        user=settings["NEO4J_USER"],
+        password=settings["NEO4J_PASSWORD"],
     )
-    nlp = spacy.load("en_core_web_sm")
     with ExitStack() as stack:
         session = stack.enter_context(session_factory.session())
         chapter_repo = ChapterRepository(session)

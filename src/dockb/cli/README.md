@@ -6,6 +6,15 @@ These are DockB's two shell commands for chapter files. One walks a folder of ma
 
 Use them when you need to load an existing manuscript, or rebuild a chapter file, without opening the editor. They use the same database settings as the API server.
 
+## Missing settings
+
+Both commands need `NEO4J_URL`, `NEO4J_USER`, and `NEO4J_PASSWORD` — from the environment or a
+`.env` file — and the `en_core_web_sm` spaCy model. A variable that is absent or set to an empty
+string, or a model that is not installed, is reported as a single `error:` line naming what is
+missing, and the command exits 1. Nothing is opened or imported first, so a misconfigured shell
+never reaches the database. `startup.py` owns that check for both commands; only a model that is
+installed but broken is left to raise, since that is a real fault rather than a missing setting.
+
 ## Import a document directory
 
 `python -m dockb.cli.import_document <document_dir> [--single-newline-paragraphs]` walks a

@@ -6,6 +6,11 @@
 discovered while developing is forgotten. Each entry names what is missing and points at the
 design document for it; delete an entry when it is finished.
 
+A completed entry was removed here: the two shell commands used to raise a raw traceback when
+`NEO4J_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` were missing or empty, and now print one `error:` line
+and exit 1. A missing `en_core_web_sm` model is reported the same way. That behaviour lives in
+`src/dockb/cli/README.md`.
+
 The auth work in particular is specified at the root (`README_auth.md`, `README_mcp_auth.md`)
 rather than in the packages that will own it, because the decisions had to be made before the
 code had a home. As that work is implemented, `README_auth.md` should get **smaller**, not
@@ -42,9 +47,7 @@ and every parent up to the root.
   (`services/markdown_import.py`) is driven today only by the command line
   (`python -m dockb.cli.import_document`); nothing in `controllers/` exposes it over HTTP and
   `composition.py` does not register it. Design: `infrastructure/changes/README.md`.
-- **Friendly CLI errors** — `python -m dockb.cli.import_document` surfaces a raw `KeyError`
-  traceback when `NEO4J_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` are missing or unset. Print a
-  one-line explanation instead.
+
 - **Filesystem-unsafe titles pass the API** — a document or chapter title containing `/`, `\`,
   control characters, `.`/`..`, or the empty string satisfies the API schema (`title_not_blank`)
   but is rejected by `DocumentStore._validate_title`, so saving/opening it fails with a 500. The

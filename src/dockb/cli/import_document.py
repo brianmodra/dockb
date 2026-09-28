@@ -2,7 +2,9 @@
 
 Run with ``python -m dockb.cli.import_document <document_dir>``. The Neo4j
 connection comes from ``NEO4J_URL``, ``NEO4J_USER`` and ``NEO4J_PASSWORD``
-(or a ``.env`` file, exactly as the API server reads them).
+(or a ``.env`` file, exactly as the API server reads them), and the sentence
+pipeline must be installed. A missing variable or model is reported as a single
+``error:`` line and exit 1, not a traceback — see ``startup.py``.
 
 By default source files are only written back when *document_dir* lies inside
 the store tree (``DOCKB_CHAPTERS_DIR``): external source directories are left
@@ -15,13 +17,14 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import sys
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
-import spacy
 from dotenv import load_dotenv
 
+from dockb.cli.startup import MissingConfigurationError, load_spacy_model, neo4j_settings
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.chapter import Chapter
@@ -47,7 +50,7 @@ def _default_write_back(document_dir: Path, chapters_dir: str | None) -> bool:
     return Path(document_dir).resolve().is_relative_to(Path(chapters_dir).resolve())
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-locals
     """Import *document_dir* into the graph, printing one line per chapter file."""
     parser = argparse.ArgumentParser(prog="dockb import-document", description=__doc__)
     parser.add_argument("document_dir", type=Path, help="directory of markdown chapter files")
@@ -76,10 +79,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv()
+    try:
+        settings = neo4j_settings()
+        nlp = load_spacy_model()
+    except MissingConfigurationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     session_factory = SessionFactory(
-        uri=os.environ["NEO4J_URL"],
-        user=os.environ["NEO4J_USER"],
-        password=os.environ["NEO4J_PASSWORD"],
+        uri=settings["NEO4J_URL"],
+        user=settings["NEO4J_USER"],
+        password=settings["NEO4J_PASSWORD"],
     )
     with ExitStack() as stack:
         session = stack.enter_context(session_factory.session())
@@ -96,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         summaries = import_document_directory(
             args.document_dir,
             getpass.getuser(),
-            spacy.load("en_core_web_sm"),
+            nlp,
             repos[Document],
             repos[Chapter],
             uow_factory,

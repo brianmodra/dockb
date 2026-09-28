@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dockb.cli import import_document as import_document_cli
+from dockb.cli import startup
 from dockb.cli.import_document import _default_write_back, main
 
 
@@ -62,7 +63,7 @@ class TestMainFlags:
             "import_document_directory",
             lambda *args, **kwargs: captured.update(kwargs=kwargs) or [],
         )
-        monkeypatch.setattr(import_document_cli.spacy, "load", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(startup.spacy, "load", lambda *a, **k: MagicMock())
         monkeypatch.setattr(import_document_cli, "SessionFactory", lambda **k: MagicMock())
 
         main([*extra_args, str(source)])
@@ -91,3 +92,93 @@ class TestMainFlags:
 
         with pytest.raises(SystemExit):
             main(["--write-back", "--no-write-back", str(source)])
+
+
+class TestMissingStartupSettings:
+    @staticmethod
+    def _patch_dependencies(monkeypatch):
+        monkeypatch.setattr(import_document_cli, "load_dotenv", MagicMock())
+        monkeypatch.setattr(import_document_cli, "SessionFactory", MagicMock())
+
+    def test_missing_neo4j_url_reports_and_exits_1(self, monkeypatch, capsys, tmp_path):
+        for name in startup.NEO4J_VARS:
+            monkeypatch.delenv(name, raising=False)
+        self._patch_dependencies(monkeypatch)
+
+        exit_code = main([str(tmp_path)])
+
+        assert exit_code == 1
+        error = capsys.readouterr().err
+        assert error.startswith("error: ")
+        assert "NEO4J_URL" in error
+        assert error.count("\n") == 1, "the explanation must be a single line, not a traceback"
+
+    def test_missing_neo4j_password_names_only_that_variable(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setenv("NEO4J_URL", "bolt://nowhere")
+        monkeypatch.setenv("NEO4J_USER", "u")
+        monkeypatch.delenv("NEO4J_PASSWORD", raising=False)
+        self._patch_dependencies(monkeypatch)
+
+        exit_code = main([str(tmp_path)])
+
+        assert exit_code == 1
+        error = capsys.readouterr().err
+        assert "NEO4J_PASSWORD" in error
+        assert "NEO4J_URL" not in error
+
+    def test_empty_neo4j_url_counts_as_missing(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setenv("NEO4J_URL", "")
+        monkeypatch.setenv("NEO4J_USER", "u")
+        monkeypatch.setenv("NEO4J_PASSWORD", "p")
+        self._patch_dependencies(monkeypatch)
+
+        exit_code = main([str(tmp_path)])
+
+        assert exit_code == 1
+        assert "NEO4J_URL" in capsys.readouterr().err
+
+    def test_missing_neo4j_settings_do_not_load_the_spacy_model(self, monkeypatch, tmp_path):
+        for name in startup.NEO4J_VARS:
+            monkeypatch.delenv(name, raising=False)
+        self._patch_dependencies(monkeypatch)
+        loaded: list[str] = []
+        monkeypatch.setattr(startup.spacy, "load", lambda model: loaded.append(model) or MagicMock())
+
+        main([str(tmp_path)])
+
+        assert not loaded
+
+    def test_missing_spacy_model_reports_and_exits_1(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setenv("NEO4J_URL", "bolt://nowhere")
+        monkeypatch.setenv("NEO4J_USER", "u")
+        monkeypatch.setenv("NEO4J_PASSWORD", "p")
+        self._patch_dependencies(monkeypatch)
+
+        def missing_model(model: str) -> object:
+            raise OSError(f"[E050] Can't find model '{model}'")
+
+        monkeypatch.setattr(startup.spacy, "load", missing_model)
+        session_factory = MagicMock()
+        monkeypatch.setattr(import_document_cli, "SessionFactory", lambda **k: session_factory)
+
+        exit_code = main([str(tmp_path)])
+
+        assert exit_code == 1
+        error = capsys.readouterr().err
+        assert startup.SPACY_MODEL in error
+        assert f"python -m spacy download {startup.SPACY_MODEL}" in error
+        session_factory.session.assert_not_called()
+
+    def test_unrelated_spacy_error_still_propagates(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("NEO4J_URL", "bolt://nowhere")
+        monkeypatch.setenv("NEO4J_USER", "u")
+        monkeypatch.setenv("NEO4J_PASSWORD", "p")
+        self._patch_dependencies(monkeypatch)
+
+        def broken(model: str) -> object:
+            raise ValueError("the pipeline is malformed")
+
+        monkeypatch.setattr(startup.spacy, "load", broken)
+
+        with pytest.raises(ValueError, match="malformed"):
+            main([str(tmp_path)])

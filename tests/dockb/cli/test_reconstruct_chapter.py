@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dockb.cli import reconstruct_chapter as cli
+from dockb.cli import startup
 from dockb.exceptions import ChapterMismatchError
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
@@ -29,7 +30,7 @@ class TestReconstructChapter:
         session_factory_maker = MagicMock(return_value=session_factory)
         monkeypatch.setattr(cli, "SessionFactory", session_factory_maker)
         self.nlp = MagicMock()
-        monkeypatch.setattr(cli.spacy, "load", lambda *a, **k: self.nlp)
+        monkeypatch.setattr(startup.spacy, "load", lambda *a, **k: self.nlp)
         self.session_factory_maker = session_factory_maker
 
     def test_without_out_writes_into_store_layout(self, _neo4j_env, capsys, monkeypatch, tmp_path):
@@ -92,9 +93,44 @@ class TestReconstructChapter:
         assert exit_code == 1
         assert "not found in the knowledge graph" in capsys.readouterr().err
 
-    def test_missing_neo4j_url_is_an_error(self, monkeypatch):
+    def test_missing_neo4j_url_reports_and_exits_1(self, monkeypatch, capsys):
         monkeypatch.delenv("NEO4J_URL", raising=False)
+        monkeypatch.setenv("NEO4J_USER", "neo4j")
+        monkeypatch.setenv("NEO4J_PASSWORD", "secret")
         self._patch_dependencies(monkeypatch)
 
-        with pytest.raises(KeyError, match="NEO4J_URL"):
-            cli.main(["c1"])
+        exit_code = cli.main(["c1"])
+
+        assert exit_code == 1
+        error = capsys.readouterr().err
+        assert error.startswith("error: ")
+        assert "NEO4J_URL" in error
+        assert error.count("\n") == 1, "the explanation must be a single line, not a traceback"
+        self.session_factory_maker.assert_not_called()
+
+    def test_empty_neo4j_url_reports_and_exits_1(self, monkeypatch, capsys):
+        monkeypatch.setenv("NEO4J_URL", "")
+        monkeypatch.setenv("NEO4J_USER", "neo4j")
+        monkeypatch.setenv("NEO4J_PASSWORD", "secret")
+        self._patch_dependencies(monkeypatch)
+
+        exit_code = cli.main(["c1"])
+
+        assert exit_code == 1
+        assert "NEO4J_URL" in capsys.readouterr().err
+
+    def test_missing_spacy_model_reports_and_exits_1(self, _neo4j_env, monkeypatch, capsys):
+        self._patch_dependencies(monkeypatch)
+
+        def missing_model(model: str) -> object:
+            raise OSError(f"[E050] Can't find model '{model}'")
+
+        monkeypatch.setattr(startup.spacy, "load", missing_model)
+
+        exit_code = cli.main(["c1"])
+
+        assert exit_code == 1
+        error = capsys.readouterr().err
+        assert startup.SPACY_MODEL in error
+        assert f"python -m spacy download {startup.SPACY_MODEL}" in error
+        self.session_factory_maker.assert_not_called()
