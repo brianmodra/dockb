@@ -1,6 +1,9 @@
 # Session Infrastructure
 
-Manages per-user session lifecycle on the server side.
+The backend's own login session: the signed cookie that carries it, and the in-memory
+registry of per-user context that hangs off it. For why the backend is a confidential
+OAuth client, where accounts are stored, and the local-mode and account-lifecycle
+decisions, see `README_auth.md` at the repository root.
 
 ## Package Structure
 
@@ -8,80 +11,66 @@ Manages per-user session lifecycle on the server side.
 infrastructure/session/
 ├── README.md               # This file
 ├── __init__.py
-├── token_validator.py      # OAuth token validation → account ID
-├── user_store.py           # Persistent OAuth user profile storage (TinyDB)
-└── session_manager.py      # Create/get/remove SessionContexts
+├── session_cookie.py       # SessionSigner — signs and verifies the cookie value
+├── session_manager.py      # SessionManager — live SessionContext per account
+└── token_validator.py      # Dead code, see below
 ```
 
 ## Components
 
-### `TokenValidator`
+### `SessionSigner`
 
-Validates OAuth tokens from supported providers (Google, GitHub, etc.) and
-extracts the authenticated account ID. Called once per request by middleware.
+Issues and verifies the backend's own `dockb_session` cookie, a Fernet token over the
+username (`src/dockb/infrastructure/session/session_cookie.py`).
 
-- `validate(token: str) -> str | None` — returns account ID or `None` if
-  the token is invalid/expired.
+- `sign(username: str) -> str` — returns a token carrying the username.
+- `verify(token: str) -> str | None` — returns the username if the token is ours and
+  unexpired, else `None`.
+- `ttl_seconds` — the cookie's `max-age`, from `OAUTH_SESSION_TTL_HOURS` (default 48).
 
-### `UserStore`
+The token is self-contained: it embeds its own timestamp and an HMAC, so the backend
+verifies the issuer and the expiry without any server-side session lookup. The signing
+key is derived from `DOCKB_SECRET_KEY` via SHA-256; without that variable the backend
+uses an ephemeral key, so cookies do not survive a restart.
 
-Persists OAuth user profile information using [TinyDB](https://tinydb.readthedocs.io/) —
-a lightweight, pure-Python document database stored as a JSON file. Kept separate from
-Neo4j because auth metadata does not belong in the document graph.
-
-- `get(account_id) -> UserInfo | None` — lookup by account ID
-- `upsert(account_id, UserInfo)` — create or update user profile
-- `list_all() -> list[UserInfo]` — admin/prometheus endpoint support
-
-Stored fields:
-
-| Field           | Type  | Description                        |
-|-----------------|-------|------------------------------------|
-| `account_id`    | str   | Unique account ID (primary key)    |
-| `provider`      | str   | OAuth provider (google, github…)   |
-| `email`         | str   | Verified email from provider       |
-| `display_name`  | str   | User-facing name                   |
-| `avatar_url`    | str   | Profile photo URL                  |
-| `created_at`    | float | First-login timestamp (Unix epoch) |
-| `last_login_at` | float | Most-recent-login timestamp        |
-
-The `account_id` is the same value returned by `TokenValidator.validate()`. On first
-login a new doc is inserted; on subsequent logins `last_login_at` (and optionally
-`display_name` / `avatar_url`) are updated.
-
-TinyDB is configured with a JSON file path from settings (default:
-`~/.dockb/users.json`). The JSON file is safe to inspect and back up.
+The cookie is set `HttpOnly` and `samesite="lax"`, with `path="/"` — so it is sent to
+every path on the host. Narrowing the path is deferred work; see `README_todo.md`.
 
 ### `SessionManager`
 
-Long-lived singleton that owns all active `SessionContext` instances, keyed by
-account ID.
+A long-lived singleton holding the live `SessionContext` for each signed-in account,
+keyed by username (`src/dockb/infrastructure/session/session_manager.py`).
 
-- `get(account_id) -> SessionContext | None` — lookup
-- `create(account_id) -> SessionContext` — create new context
-- `remove(account_id)` — destroy context (logout / timeout)
+- `get(username) -> SessionContext | None` — lookup.
+- `create(username) -> SessionContext` — create and store a new context.
+- `remove(username)` — drop the context (logout / teardown).
+
+State is in memory only, so a backend restart drops every context. A cookie issued
+before the restart still verifies — `SessionSigner` is stateless — so `get_current_user`
+resolves the username and API calls keep working. What is gone is the `SessionContext`:
+`get_current_session_context` 401s with `session_expired_relogin` until the user signs
+in again, because there is no live context to hand back. No shipped route depends on it
+today; `app_state` is gated on `get_current_user` alone, and the only caller of
+`get_current_session_context` is a route defined inside a test
+(`tests/dockb/controllers/test_auth_flow.py`). See `README_auth.md` §10.
 
 ### `SessionContext`
 
-Per-user state bundle kept for the duration of the session. Lives in
-`services/session_context.py` (not in the infrastructure layer) because it
-orchestrates services-level constructs.
+Per-user state for the duration of the session, holding the `JobQueue` (semantic
+reconstruction jobs), the `DocCache` (spaCy `Doc` objects with TTL eviction), and a
+pending notification queue for async results such as sentence splits.
 
-Contains:
-- **JobQueue** — semantic processing queue (ReconstructJob, DeleteJob)
-- **DocCache** — spaCy Doc objects with TTL eviction
-- **Notification queue** — pending async notifications (e.g. sentence split
-  results) delivered to the client piggy-back on the next response or via
-  `GET /api/notifications` poll.
+It lives in `services/session_context.py` rather than here, because it bundles
+service-level constructs rather than owning storage or signing.
 
-## Lifecycle
+### `TokenValidator` (dead code)
 
-```
-Request → TokenValidator.validate(token)
-           ↓ account_id
-         SessionManager.get(account_id)
-           ↓ create if missing
-         SessionContext ← JobQueue, DocCache, Notification queue
-```
+`src/dockb/infrastructure/session/token_validator.py` is a stub left over from an
+earlier design. Its `validate()` ignores its argument and always returns `None`, and
+nothing in `src/` or `tests/` imports or calls it. It is superseded by the signed
+cookie above, and should be deleted rather than documented further.
 
-Session is torn down on logout or expiry via `SessionManager.remove()`.
+An earlier version of this file described a `user_store.py` persisting OAuth profiles
+with TinyDB. No such module exists, TinyDB is not a dependency, and the profile store
+is `infrastructure/accounts/` (SQLite via the stdlib `sqlite3` module) — see
+`README_auth.md` §3.
