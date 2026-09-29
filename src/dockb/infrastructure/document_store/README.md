@@ -39,13 +39,35 @@ The tree:
 
 ## Path safety
 
-`DocumentStore._validate_title` runs on every title before any path is built —
-the document title, the chapter title, and the *derived* act directory name
-(so an act like `Act ../../x` cannot escape either). It rejects empty titles and
-titles containing `.` or `..` as a segment, a path separator (`/` or `\`), or
-control characters. Because paths are then built by joining these validated
-single-segment titles under the base directory, no title-derived path can escape
-the tree. All write methods create parent directories on demand.
+A document title, a chapter title, and a chapter's act all become path segments
+under the base directory, so each must be a single segment that cannot climb out
+of the tree. That rule is not the store's — it belongs to the value, not to the
+layer that uses it, and the wire schema has to reject the same inputs or an
+editor would have to satisfy two contracts. It therefore lives in
+`dockb/titles.py`: `is_unsafe_segment(value)` reports whether *value* cannot be a
+path segment, and `validate_segment(value)` raises `ValueError` naming it. A
+value is unsafe when it is empty, is `.` or `..`, contains a path separator
+(`/` or `\`), or contains a control character (`ord < 32`, or `127`). Names that
+merely *look* like traversal are fine: `...`, `..a`, `a..`, and `.hidden` are all
+legal single segments.
+
+`DocumentStore._validate_title` calls `validate_segment` on every title before
+any path is built — the document title, the chapter title, and the *derived* act
+directory name (so an act like `Act ../../x` cannot escape either). Because paths
+are then built by joining these validated single segments under the base
+directory, no title-derived path can escape the tree. All write methods create
+parent directories on demand.
+
+The schemas add the rule to the API, which turns a hostile title into a `422`
+(`controllers/schemas/documents.py::DocumentAttrs.title_not_blank` and
+`controllers/schemas/nodes.py::ChapterAttrs.title_not_blank`). A schema rejects
+the same unsafe segments plus blank and whitespace-only titles, which the store
+permits — a whitespace directory is filesystem-legal, so the store has no reason
+to refuse it, while a whitespace *title* is meaningless. The one-sided rule is
+that the schema is never looser than the store: any title the store can place on
+disk is accepted by the API. `ChapterAttrs.act` is checked for the same reason,
+but not for blankness, because an empty act is legitimate and maps to the
+reserved `Act None` directory.
 
 ## Metadata
 

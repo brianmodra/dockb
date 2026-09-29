@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from dockb.titles import validate_segment
+
 # ---------------------------------------------------------------------------
 # Attrs models (forward-extensible)
 # ---------------------------------------------------------------------------
@@ -48,9 +50,24 @@ class ChapterAttrs(BaseModel):
     @field_validator("title")
     @classmethod
     def title_not_blank(cls, value: str) -> str:
-        """Reject empty and whitespace-only titles."""
+        """Reject a title that is blank or could escape the chapter directory."""
         if not value.strip():
             raise ValueError("title must not be blank")
+        validate_segment(value)
+        return value
+
+    @field_validator("act")
+    @classmethod
+    def act_is_a_safe_segment(cls, value: str) -> str:
+        """Reject an act that could escape the chapter directory.
+
+        An empty act is legitimate — it maps to the reserved ``Act None``
+        directory — so only the path-safety rule applies, not the blank rule
+        that titles carry. The store likewise validates the act directory it
+        derives rather than the raw act, so both sides see the same value.
+        """
+        if value:
+            validate_segment(value)
         return value
 
 

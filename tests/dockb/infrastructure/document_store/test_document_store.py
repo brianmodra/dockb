@@ -5,7 +5,9 @@ from __future__ import annotations
 import subprocess
 
 import pytest
+from pydantic import ValidationError
 
+from dockb.controllers.schemas.documents import DocumentAttrs
 from dockb.exceptions import SnapshotError
 from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
 
@@ -112,6 +114,29 @@ def test_path_traversal_acts_rejected(store, bad_act):
         store.act_dir(_SAFE_TITLE, bad_act)
     with pytest.raises(ValueError, match="not a valid title"):
         store.chapter_file(_SAFE_TITLE, bad_act, _SAFE_CHAPTER)
+
+
+def test_store_agrees_with_the_api_schema_on_every_title(store):
+    """The store and the wire schema must reject exactly the same titles.
+
+    A title the API accepts but the store refuses reaches the filesystem as a
+    500, and one the store accepts but the API rejects is a contract the editor
+    cannot satisfy. Both sides read one rule, so they cannot drift.
+    """
+    for title in ("Faith", "Book 1: The Beginning", "...", ".hidden", "a/b", "../x", "..", "nul\x00", "a\\b", "del\x7f"):
+        try:
+            DocumentAttrs(title=title, author="Author")
+        except ValidationError:
+            api_accepts = False
+        else:
+            api_accepts = True
+        try:
+            store.document_dir(title)
+        except ValueError:
+            store_accepts = False
+        else:
+            store_accepts = True
+        assert api_accepts == store_accepts, f"schema and store disagree about {title!r}"
 
 
 def test_write_and_read_metadata_roundtrip(store):

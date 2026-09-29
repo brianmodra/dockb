@@ -36,6 +36,7 @@ import yaml
 
 from dockb.exceptions import SnapshotError
 from dockb.infrastructure.markdown import front_matter
+from dockb.titles import validate_segment
 
 _METADATA_FILE = "document_metadata.yaml"
 _ACT_NONE = "Act None"
@@ -336,9 +337,4 @@ class DocumentStore:
     @staticmethod
     def _validate_title(value: str) -> None:
         """Reject a title that could escape the base directory."""
-        if not value:
-            raise ValueError("empty title is not a valid title")
-        if value in {".", ".."} or "/" in value or "\\" in value:
-            raise ValueError(f"{value!r} is not a valid title")
-        if any(ord(char) < 32 or ord(char) == 127 for char in value):
-            raise ValueError(f"{value!r} is not a valid title")
+        validate_segment(value)

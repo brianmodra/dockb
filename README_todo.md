@@ -47,9 +47,3 @@ and every parent up to the root.
   (`services/markdown_import.py`) is driven today only by the command line
   (`python -m dockb.cli.import_document`); nothing in `controllers/` exposes it over HTTP and
   `composition.py` does not register it. Design: `infrastructure/changes/README.md`.
-
-- **Filesystem-unsafe titles pass the API** — a document or chapter title containing `/`, `\`,
-  control characters, `.`/`..`, or the empty string satisfies the API schema (`title_not_blank`)
-  but is rejected by `DocumentStore._validate_title`, so saving/opening it fails with a 500. The
-  filesystem-safety rules should be enforced in the schema layer (→ 400) instead of only at file
-  access. Design: `infrastructure/document_store/README.md`.

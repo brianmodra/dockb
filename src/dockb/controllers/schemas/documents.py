@@ -9,6 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dockb.controllers.schemas.nodes import ChapterSummary
+from dockb.titles import validate_segment
 
 
 class DocumentAttrs(BaseModel):
@@ -28,9 +29,10 @@ class DocumentAttrs(BaseModel):
     @field_validator("title")
     @classmethod
     def title_not_blank(cls, value: str) -> str:
-        """Reject empty and whitespace-only titles."""
+        """Reject a title that is blank or could escape the document directory."""
         if not value.strip():
             raise ValueError("title must not be blank")
+        validate_segment(value)
         return value
 
 
