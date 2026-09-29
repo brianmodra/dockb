@@ -120,6 +120,45 @@ but in reality, all IDs will be UUIDs.
 
 ---
 
+## Authentication
+
+Every endpoint below the root is authenticated, except the ones needed to obtain a
+session. The gate is `get_current_user`
+(`src/dockb/controllers/auth.py`), applied as a router-level dependency in
+`src/dockb/app_factory.py` to the documents, chapters, paragraphs, sentences,
+history, and notifications routers. `app_state` carries the same gate on its own
+routes because each needs the resolved username.
+
+| Endpoint | Auth |
+| --- | --- |
+| `GET /api/auth/login` | none — this is how a session is obtained |
+| `GET /api/auth/config` | none — the editor reads it to decide whether to show a login gate |
+| `GET /api/auth/me` | session |
+| `GET /callback` | none — the provider redirects here with the code |
+| everything else under `/api` | session |
+
+A request with no valid session cookie gets `401` with `{"detail": "not_authenticated"}`.
+The check runs before the handler, so an unauthenticated caller cannot tell a
+valid route from an invalid one, and cannot reach a service.
+
+**Local mode.** With no OAuth provider configured there is no login step: the
+identity is the OS username and no cookie is needed, so the gate falls through to
+it rather than refusing the request. In that mode the API is not protected — what
+keeps it safe is that the backend binds to loopback. `GET /api/auth/config`
+reports which mode is active (`{"login_required": bool, "providers": [...]}`), so
+the editor can skip its own login gate in local mode.
+
+The session cookie is scoped to `path="/api"`, so it is sent to these endpoints
+and withheld from everything else the host serves. See
+`../infrastructure/session/README.md`.
+
+> **The editor cannot yet send this cookie.** In OAuth mode the renderer has no working path to
+> the gate: it does not request credentials, and a `SameSite=lax` cookie is not sent to a
+> cross-site origin at all. The editor works today because local mode needs no cookie. See the
+> corresponding entry in `README_todo.md`.
+
+---
+
 ## REST Endpoints
 
 A "summary" response (returned by list endpoints) lists the attrs of model objects, not their content.

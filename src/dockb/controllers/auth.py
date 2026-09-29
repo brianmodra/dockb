@@ -94,7 +94,10 @@ def auth_callback(
         return HTMLResponse(_error_page(f"Sign-in could not be completed ({exc}). Please try again."))
     token = svc.session_cookie(user_id)
     response = HTMLResponse(_SUCCESS_PAGE)
-    response.set_cookie(_SESSION_COOKIE, token, max_age=svc.session_ttl_seconds, httponly=True, samesite="lax", path="/")
+    # The cookie is scoped to /api rather than / so it is sent to the manuscript
+    # routes that authenticate it and withheld from everything else the server
+    # serves, including /callback and the interactive docs.
+    response.set_cookie(_SESSION_COOKIE, token, max_age=svc.session_ttl_seconds, httponly=True, samesite="lax", path="/api")
     return response
 
 

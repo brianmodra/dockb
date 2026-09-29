@@ -32,8 +32,10 @@ verifies the issuer and the expiry without any server-side session lookup. The s
 key is derived from `DOCKB_SECRET_KEY` via SHA-256; without that variable the backend
 uses an ephemeral key, so cookies do not survive a restart.
 
-The cookie is set `HttpOnly` and `samesite="lax"`, with `path="/"` — so it is sent to
-every path on the host. Narrowing the path is deferred work; see `README_todo.md`.
+The cookie is set `HttpOnly` and `samesite="lax"`, with `path="/api"`. The whole
+manuscript API lives under `/api`, so the cookie reaches everything that
+authenticates it while being withheld from the rest of the host — the `/callback`
+page that sets it, and the interactive docs at `/docs` and `/openapi.json`.
 
 ### `SessionManager`
 

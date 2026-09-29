@@ -4,11 +4,12 @@ Call ``create_app()`` to get a FastAPI app with all routers and middleware
 registered.  Service wiring is handled separately by ``composition.wire()``.
 """
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from dockb.controllers.app_state import router as app_state_router
+from dockb.controllers.auth import get_current_user
 from dockb.controllers.auth import router as auth_router
 from dockb.controllers.chapters import router as chapters_router
 from dockb.controllers.documents import router as documents_router
@@ -21,6 +22,13 @@ from dockb.timing import TimingMiddleware
 # The Electron shell loads the built renderer from file://, whose Origin is the
 # literal "null"; served development flows arrive from the Vite dev server.
 _CORS_ORIGINS = ["null", "http://localhost:3000", "http://127.0.0.1:3000"]
+
+# The manuscript routers serve the editor and are gated on the session identity.
+# `auth` stays open — it is how a caller obtains a session — and `app_state`
+# carries the gate on its own routes, because each needs the resolved username.
+# `get_current_user` raises 401 when login is required and no valid cookie is
+# presented, and falls back to the local OS identity in local mode.
+_authenticated = (Depends(get_current_user),)
 
 
 def create_app() -> FastAPI:
@@ -35,12 +43,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     application.add_middleware(TimingMiddleware)
-    application.include_router(documents_router)
+    application.include_router(documents_router, dependencies=_authenticated)
     application.include_router(auth_router)
     application.include_router(app_state_router)
-    application.include_router(chapters_router)
-    application.include_router(paragraphs_router)
-    application.include_router(sentences_router)
-    application.include_router(history_router)
-    application.include_router(notifications_router)
+    application.include_router(chapters_router, dependencies=_authenticated)
+    application.include_router(paragraphs_router, dependencies=_authenticated)
+    application.include_router(sentences_router, dependencies=_authenticated)
+    application.include_router(history_router, dependencies=_authenticated)
+    application.include_router(notifications_router, dependencies=_authenticated)
     return application

@@ -7,7 +7,8 @@ server-side session), and hand out the signed session cookie.
 
 With no provider configured (``providers={}``) the service runs in **local mode**:
 there is no login step, the identity is the OS username (``local_username()``), and
-``ensure_local_user`` gives it a ``users`` row lazily. See ``README_auth.md``.
+``ensure_local_user`` gives it a ``users`` row lazily — once per process, since
+every gated request resolves the identity. See ``README_auth.md``.
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ class AuthService:
         self._accounts = account_store
         self._sessions = session_manager
         self._signer = signer
+        self._local_user: str | None = None
 
     @property
     def requires_login(self) -> bool:
@@ -63,8 +65,18 @@ class AuthService:
         return os.environ.get("USER") or getpass.getuser()
 
     def ensure_local_user(self, username: str) -> str:
-        """Return *username*, creating a minimal ``users`` row when it is absent."""
-        return self._accounts.get_or_create_local_user(username)
+        """Return *username*, creating a minimal ``users`` row when it is absent.
+
+        The local identity is the OS username and never changes for the life of
+        the process, so the row is created once and remembered. Every gated
+        request passes through here in local mode, and a write transaction per
+        request would make a read-only call cost a database commit.
+        """
+        if self._local_user == username:
+            return username
+        created = self._accounts.get_or_create_local_user(username)
+        self._local_user = created
+        return created
 
     def begin_login(self, provider: str) -> str:
         """Return the *provider*'s consent URL, remembering state + verifier."""

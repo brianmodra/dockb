@@ -8,11 +8,31 @@
 
 from __future__ import annotations
 
+import contextlib
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _as_a_signed_in_user():
+    """Let a test reach a gated manuscript route.
+
+    The manuscript routers require the session identity. These tests are about
+    middleware and timing, not authentication, so the gate is overridden rather
+    than satisfied with a real login.
+    """
+    from fastapi.testclient import TestClient
+
+    from dockb.app_factory import create_app
+    from dockb.controllers.auth import get_current_user
+
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: "abby"
+    with TestClient(app) as client:
+        yield client
 
 
 class TestCreateApp:
@@ -510,9 +530,6 @@ class TestTimingMiddleware:
         import re
         import time
 
-        from fastapi.testclient import TestClient
-
-        from dockb.app_factory import create_app
         from dockb.controllers.chapters import set_ch_service
         from dockb.timing import measure
 
@@ -525,8 +542,8 @@ class TestTimingMiddleware:
         set_ch_service(FakeChapterService())
         try:
             caplog.set_level(logging.INFO, logger="dockb.timing")
-            client = TestClient(create_app())
-            response = client.get("/api/chapters/c1/document")
+            with _as_a_signed_in_user() as client:
+                response = client.get("/api/chapters/c1/document")
             assert response.status_code == 200
             lines = [r.message for r in caplog.records if r.name == "dockb.timing"]
             assert any(
@@ -543,9 +560,6 @@ class TestTimingMiddleware:
         import logging
         import re
 
-        from fastapi.testclient import TestClient
-
-        from dockb.app_factory import create_app
         from dockb.controllers.chapters import set_ch_service
 
         class QuietService:
@@ -555,8 +569,8 @@ class TestTimingMiddleware:
         set_ch_service(QuietService())
         try:
             caplog.set_level(logging.INFO, logger="dockb.timing")
-            client = TestClient(create_app())
-            response = client.get("/api/chapters/c1/document")
+            with _as_a_signed_in_user() as client:
+                response = client.get("/api/chapters/c1/document")
             assert response.status_code == 200
             lines = [r.message for r in caplog.records if r.name == "dockb.timing"]
             assert any(re.match(r"^request GET /api/chapters/c1/document 200 \d+ms$", line) for line in lines)
@@ -570,6 +584,7 @@ class TestTimingMiddleware:
         from fastapi.testclient import TestClient
 
         from dockb.app_factory import create_app
+        from dockb.controllers.auth import get_current_user
         from dockb.controllers.chapters import set_ch_service
 
         class FailingService:
@@ -579,7 +594,9 @@ class TestTimingMiddleware:
         set_ch_service(FailingService())
         try:
             caplog.set_level(logging.INFO, logger="dockb.timing")
-            client = TestClient(create_app(), raise_server_exceptions=False)
+            app = create_app()
+            app.dependency_overrides[get_current_user] = lambda: "abby"
+            client = TestClient(app, raise_server_exceptions=False)
             response = client.get("/api/chapters/c1/document")
             assert response.status_code == 500
             lines = [r.message for r in caplog.records if r.name == "dockb.timing"]

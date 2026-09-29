@@ -102,7 +102,7 @@ class TestCallbackEndpoint:
         set_cookie = resp.headers["set-cookie"]
         assert "dockb_session=" in set_cookie
         assert "HttpOnly" in set_cookie
-        assert "Path=/;" in set_cookie
+        assert "Path=/api" in set_cookie
         assert "Max-Age=7200;" in set_cookie
 
     def test_callback_with_bad_state_shows_error_no_cookie(self, tmp_path) -> None:
