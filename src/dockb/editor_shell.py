@@ -6,7 +6,7 @@ The packaged renderer used to be loaded from ``file://`` and talk to the API at
 Serving the built shell from the backend removes the cross-site request, and with
 it the need for ``SameSite=None``, an https origin, and a CORS grant for the
 ``null`` origin — a grant that let any local ``file://`` page read the API as the
-signed-in user. See ``README_auth.md`` §4 and §6.
+signed-in user. See ``README_auth.md`` §4.
 
 The build output lives at ``frontend/dist`` and is gitignored, so a checkout that
 has not run ``npm run build`` simply has no shell to serve. That is not an error:

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a document, and edit a chapter. It never writes files itself.
+This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a document, and edit a chapter. It never writes files itself. The window does not even load its own interface from disk — the backend serves it, so the app and the API share an origin and the signed-in session reaches every route.
 
 Read it to run the app and to find which file owns the chapter list, the editor, and login. How the window should look is in `../README_markdown_editor_ui.md`.
 
@@ -11,18 +11,16 @@ Read it to run the app and to find which file owns the chapter list, the editor,
 The renderer is served **by the backend** at `/editor/`, not loaded from a local file. `src/main/main.ts`
 builds that URL from `DOCKB_API_ORIGIN` (default `http://localhost:8000`) and loads it with
 `loadURL`; when `VITE_DEV_SERVER_URL` is set it loads that instead, so `npm run dev` is unchanged.
-That makes the renderer **same-origin** with the API, which is what lets the `SameSite=lax` session
-cookie reach the gated manuscript routes and why no CORS middleware is registered at all. A
-`file://` shell talking to `http://localhost:8000` would be a cross-site request, and browsers
-withhold a `lax` cookie on those — the reason OAuth mode was unreachable from the editor.
+Being same-origin with the API is what lets the `SameSite=lax` session cookie reach the gated
+routes and removes the need for both `credentials: "include"` and any CORS grant. `README_auth.md`
+§4 has the reasoning.
 
 The renderer talks to the backend through a typed client in
 `src/renderer/api/`: `client.ts` (documents, chapters, chapter-document
 lifecycle, reorder, app state, auth), `http.ts` (`ApiError` on non-2xx), and
 `session.ts` (`checkSession`, `login`). `index.ts` wires the client into
 `mountShell`: its API base is the relative `/api`, unless a `VITE_API_BASE`
-build-time override is set. Being same-origin is also what removes the need for
-`credentials: "include"` — a same-origin request carries the cookie by default.
+build-time override is set.
 
 Opening the system browser crosses the Electron sandbox through one vetted IPC
 channel. `src/main/ipc.ts` accepts **only** `http:`/`https:` URLs on

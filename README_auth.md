@@ -27,7 +27,7 @@ table below is the baseline, verified against the code, so a build can start fro
 
 As this work lands, this document should get smaller. The decisions and their rationale stay here;
 the implementation detail moves down into the package that owns it — `infrastructure/accounts/`
-(new README, for the user and token schema and the admin CLI), `infrastructure/session/`, and
+(the user and token schema and the admin CLI), `infrastructure/session/`, and
 `controllers/README_API.md`. See `README_todo.md`.
 
 ## 1. Context and constraints

@@ -1,5 +1,7 @@
 # Accounts
 
+## Executive Summary
+
 The backend's server-owned account data, in one SQLite file: the users, their linked
 OAuth provider accounts, and each user's editor state. Accounts are not part of the
 document graph, so they live in their own relational store rather than in Neo4j. For why

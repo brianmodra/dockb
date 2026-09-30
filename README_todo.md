@@ -16,11 +16,11 @@ The auth work in particular is specified at the root (`README_auth.md`, `README_
 rather than in the packages that will own it, because the decisions had to be made before the
 code had a home. As that work is implemented, `README_auth.md` should get **smaller**, not
 bigger: the decisions and their rationale stay, and the implementation detail moves down into
-the package that owns it — `src/dockb/infrastructure/accounts/README.md` (new, for the user, token, and
+the package that owns it — `src/dockb/infrastructure/accounts/README.md` (the user, token, and
 admin-CLI schema), `src/dockb/infrastructure/session/README.md` (the session cookie), and
-`src/dockb/controllers/README_API.md` (the manuscript auth gate). This mirrors the project
-convention that the relevant `README*.md` files for a piece of code are those in its own directory
-and every parent up to the root.
+`src/dockb/controllers/README_API.md` (the manuscript auth gate and the editor shell it
+serves). This mirrors the project convention that the relevant `README*.md` files for a piece
+of code are those in its own directory and every parent up to the root.
 
 ## Entries
 
