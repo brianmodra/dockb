@@ -100,6 +100,11 @@ Or as an Electron app:
 npm run build && npm start
 ```
 
+`npm start` needs the backend already serving on `:8000` — the built editor is
+loaded from the backend at `/editor/` rather than from disk, so that the renderer is
+same-origin with the API and the session cookie is sent. Point the window elsewhere with
+`DOCKB_API_ORIGIN` (default `http://localhost:8000`).
+
 Checks: `make` from the repo root for the backend, and
 `npm test && npm run lint && npm run build` in `frontend/`.
 

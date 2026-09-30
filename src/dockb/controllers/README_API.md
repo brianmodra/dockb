@@ -151,13 +151,13 @@ reports which mode is active (`{"login_required": bool, "providers": [...]}`), s
 the editor can skip its own login gate in local mode.
 
 The session cookie is scoped to `path="/api"`, so it is sent to these endpoints
-and withheld from everything else the host serves. See
+and withheld from everything else the host serves — including `/editor` and `/callback`. See
 `../infrastructure/session/README.md`.
 
-> **The editor cannot yet send this cookie.** In OAuth mode the renderer has no working path to
-> the gate: it does not request credentials, and a `SameSite=lax` cookie is not sent to a
-> cross-site origin at all. The editor works today because local mode needs no cookie. See the
-> corresponding entry in `README_todo.md`.
+A `SameSite=lax` cookie is only withheld from a **cross-site** request, and the editor is
+same-origin with the API because the backend serves the renderer itself at `/editor/` (see § The
+editor shell). A same-origin request also carries the cookie without asking for credentials, so
+no `credentials: "include"` is needed anywhere in the renderer.
 
 ---
 

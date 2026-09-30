@@ -8,15 +8,21 @@ Read it to run the app and to find which file owns the chapter list, the editor,
 
 ## API client and session
 
+The renderer is served **by the backend** at `/editor/`, not loaded from a local file. `src/main/main.ts`
+builds that URL from `DOCKB_API_ORIGIN` (default `http://localhost:8000`) and loads it with
+`loadURL`; when `VITE_DEV_SERVER_URL` is set it loads that instead, so `npm run dev` is unchanged.
+That makes the renderer **same-origin** with the API, which is what lets the `SameSite=lax` session
+cookie reach the gated manuscript routes and why no CORS middleware is registered at all. A
+`file://` shell talking to `http://localhost:8000` would be a cross-site request, and browsers
+withhold a `lax` cookie on those — the reason OAuth mode was unreachable from the editor.
+
 The renderer talks to the backend through a typed client in
 `src/renderer/api/`: `client.ts` (documents, chapters, chapter-document
 lifecycle, reorder, app state, auth), `http.ts` (`ApiError` on non-2xx), and
 `session.ts` (`checkSession`, `login`). `index.ts` wires the client into
-`mountShell`: its API base is a `VITE_API_BASE` build-time override if set,
-else `http://localhost:8000/api` when the built shell is loaded from a `file://`
-origin, else the relative `/api` (served by the Vite proxy). The backend must
-allow that cross-origin shell in (`app_factory.py` CORS allows the `null`
-file:// origin and the Vite dev origins).
+`mountShell`: its API base is the relative `/api`, unless a `VITE_API_BASE`
+build-time override is set. Being same-origin is also what removes the need for
+`credentials: "include"` — a same-origin request carries the cookie by default.
 
 Opening the system browser crosses the Electron sandbox through one vetted IPC
 channel. `src/main/ipc.ts` accepts **only** `http:`/`https:` URLs on
@@ -34,7 +40,8 @@ Run these from `frontend/`:
   and the Electron main/preload (`tsc -p tsconfig.node.json`).
 - `npm test` — Vitest run (jsdom).
 - `npm run lint` — ESLint.
-- `npm start` — run the built Electron app (`electron .`).
+- `npm start` — run the built Electron app (`electron .`). The backend must already be serving
+  on `:8000`; the window loads the shell from it, not from disk.
 
 ## Window layout
 
