@@ -695,7 +695,8 @@ The server writes the parts to a temporary directory, walks it, and deletes it.
 Nothing is written back to the uploaded files, and the caller's own files are
 never touched. The owner is the session's user, never a value from the body.
 
-Returns one summary per chapter the walker applied:
+Returns one summary per chapter file in the document, whether or not that file had
+changed (`created` and the three counts say which):
 
 ```json
 {
@@ -714,12 +715,11 @@ Returns one summary per chapter the walker applied:
 ```
 
 The path and size rules are the security boundary of the feature and live in
-`src/dockb/uploads.py`: a filename may not be absolute, contain a backslash, name
-a drive, carry a control character, or contain an empty, `.` or `..` segment, and
-the resolved destination must stay inside the temporary directory. An upload is
-capped at 64 MiB and 2000 files, counted across the whole request rather than per
-file. Note the cap bounds what DockB writes; the web server in front of it is
-what bounds the size of the request itself.
+`src/dockb/uploads.py`. In short, a filename must be a relative POSIX path of real
+segments, and the file it resolves to has to stay inside the temporary directory.
+An upload is capped at 64 MiB and 2000 files, counted across the whole request
+rather than per file. Note the cap bounds what DockB writes; the web server in
+front of it is what bounds the size of the request itself.
 
 ## Error Responses
 

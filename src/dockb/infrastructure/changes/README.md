@@ -4,7 +4,7 @@
 
 This note explains how a saved chapter file is compared with the knowledge graph and written back. It is for someone changing import or change detection.
 
-A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need no numbers. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were.
+A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need no numbers. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were. A folder reaches this package either as a path — from the shell command or the API's upload route, which stages the files in a temporary directory first — or one file at a time.
 
 ## Calling context
 
@@ -45,7 +45,10 @@ chapter file — `*.md` files inside a top-level `Act <name>` directory, process
 order (digits, Roman numerals, or the Unicode single-character numerals, with `Act None` first)
 then by the file's sequence number with at most one letter — trailing at the end or embedded
 between spaces in the name (5, 5a, 5b, 6; "Bad Guys Close In 48 Jael" → 48) — returning one
-summary per file. Files inside the reserved `Characters` directory follow after all
+`ChapterImportSummary` per file, carrying the chapter's `id`, `title` and resolved `category`
+alongside the created/changed/added/deleted counts, so a caller that did not read the file
+itself still knows what the walk produced. Files inside the reserved `Characters` directory
+follow after all
 acts, carried with no act and category `Character`: they need no sequence number, import in
 file-name order, and numbers in (or duplicated across) their names are ignored. Root-level
 and other non-act files are not chapters. A malformed act name, an

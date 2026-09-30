@@ -129,7 +129,12 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
                         category=category or "",
                     ),
                 )
-        return ChapterImportSummary(chapter_id=chapter_id, created=diff.created)
+        return ChapterImportSummary(
+            chapter_id=chapter_id,
+            created=diff.created,
+            title=diff.title,
+            category=_resolved_category(diff, category, load_once(chapter_id)),
+        )
 
     chapter = _build_chapter(chapter_id, diff, load_once(chapter_id))
     if act is not None:
@@ -154,10 +159,26 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
         chapter_id=chapter.id,
         created=diff.created,
         title=diff.title,
+        category=chapter.category,
         changed=len(changed_paragraphs),
         added=len(added_paragraphs),
         deleted=len(diff.deleted),
     )
+
+
+def _resolved_category(diff: ChapterDiff, override: str | None, loaded: Chapter | None) -> str:
+    """Return the category a summary reports for a file whose diff is empty.
+
+    A file with nothing to change never builds a chapter model, so the summary
+    has to work the same precedence out from the diff, the directory override
+    and the graph: the override wins, then the file's own front matter, then
+    what the chapter already is, and ``Chapter`` where none of those say.
+    """
+    if override is not None:
+        return override
+    if diff.category:
+        return diff.category
+    return (loaded.category if loaded is not None else "") or "Chapter"
 
 
 def import_document_directory(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals

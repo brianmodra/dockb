@@ -21,7 +21,11 @@ class StubImportService:
     """Records the arguments the route passes, and returns a fixed result."""
 
     def __init__(self, summaries=None, raises: Exception | None = None) -> None:
-        self.summaries = summaries if summaries is not None else [ChapterImportSummary(chapter_id="c1", created=True, title="Opening 1")]
+        self.summaries = (
+            summaries
+            if summaries is not None
+            else [ChapterImportSummary(chapter_id="c1", created=True, title="Opening 1", category="Chapter")]
+        )
         self.raises = raises
         self.calls: list[dict[str, object]] = []
 
@@ -65,7 +69,7 @@ class TestImportRoute:
                 {
                     "chapter_id": "c1",
                     "title": "Opening 1",
-                    "category": "",
+                    "category": "Chapter",
                     "created": True,
                     "changed": 0,
                     "added": 0,

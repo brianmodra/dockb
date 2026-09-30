@@ -3,32 +3,21 @@
 ## Executive Summary
 
 `README_todo.md` is the running list of DockB work that is known but not done yet, so nothing
-discovered while developing is forgotten. Each entry names what is missing and points at the
-design document for it; delete an entry when it is finished.
+discovered while building is forgotten. Each entry says what is missing, why it matters, and
+points at the design document that already settles how it should be built; an entry is deleted
+when the work lands, and the design document is expected to absorb it.
 
-A completed entry was removed here: the two shell commands used to raise a raw traceback when
-`NEO4J_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` were missing or empty, and now print one `error:` line
-and exit 1. A missing `en_core_web_sm` model is reported the same way. That behaviour lives in
-`src/dockb/cli/README.md`.
-
-Two more were removed: the manuscript API now sits behind the session gate, and a document or
-chapter title that could escape the document directory is refused by the schema rather than
-failing at file access. Both live where they belong — the gate in
-`src/dockb/controllers/README_API.md` and the cookie scope in
-`src/dockb/infrastructure/session/README.md`; the title rule in
-`src/dockb/infrastructure/document_store/README.md`.
-
-A third was removed: `POST /api/import` now drives the directory walker over an uploaded document
-directory, wired in `composition.py` and behind the same session gate as the other manuscript
-routes. Its contract is in `src/dockb/controllers/README_API.md` § Import and its path and size
-rules in `src/dockb/uploads.py`. What replaced that entry is the editor half: nothing in the
-frontend can send multipart data or pick a folder yet.
+It currently holds two entries, and both are about the editor rather than the server: the
+renderer cannot yet send the session cookie, and it has no way to send a document directory to
+the import endpoint. The backend for both is in place — the manuscript API is gated, and
+`POST /api/import` imports an uploaded document directory — so what is left on each is a
+frontend path, not a design question.
 
 The auth work in particular is specified at the root (`README_auth.md`, `README_mcp_auth.md`)
 rather than in the packages that will own it, because the decisions had to be made before the
 code had a home. As that work is implemented, `README_auth.md` should get **smaller**, not
-bigger: the decisions and their rationale stay, and the implementation detail moves down into the
-package that owns it — `src/dockb/infrastructure/accounts/README.md` (new, for the user, token, and
+bigger: the decisions and their rationale stay, and the implementation detail moves down into
+the package that owns it — `src/dockb/infrastructure/accounts/README.md` (new, for the user, token, and
 admin-CLI schema), `src/dockb/infrastructure/session/README.md` (the session cookie), and
 `src/dockb/controllers/README_API.md` (the manuscript auth gate). This mirrors the project
 convention that the relevant `README*.md` files for a piece of code are those in its own directory

@@ -144,6 +144,43 @@ class TestNewChapter:
         chapter, _ = _saved_chapter(uow)
         assert chapter.act == "Act II"
 
+    def test_the_summary_reports_the_chapter_it_created(self, nlp, tmp_path):
+        """A caller that uploaded a directory needs the identity of what came back."""
+        file = tmp_path / "Chapter 1.md"
+        file.write_text("Body.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow_factory.get_unit_of_work.return_value = MagicMock()
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert summary.title == "Chapter 1"
+        assert summary.category == "Chapter"
+
+    def test_the_summary_reports_the_characters_directory_category(self, nlp, tmp_path):
+        file = tmp_path / "Jael.md"
+        file.write_text("Body.")
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow_factory.get_unit_of_work.return_value = MagicMock()
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+
+        assert summary.category == "Character"
+
+    def test_the_summary_reports_the_category_of_an_unchanged_chapter(self, nlp, tmp_path, header):
+        """A file with no diff still reports what it names, or the caller sees nothing."""
+        file = tmp_path / "c1.md"
+        file.write_text(f"{header}\n\nBody.")
+        document = _make_document("d1", _make_chapter("c1", _make_paragraph("p1", "Body.")))
+        chapter_repo, uow_factory = _setup(_make_chapter("c1", _make_paragraph("p1", "Body.")))
+        uow_factory.get_unit_of_work.return_value = MagicMock()
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+
+        assert summary.category == "Chapter"
+        assert summary.created is False
+
     def test_new_file_with_front_matter_id_is_rejected(self, nlp, tmp_path, header):
         file = tmp_path / "orphan.md"
         file.write_text(f"{header}\n\nBody.")
