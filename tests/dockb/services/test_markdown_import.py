@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dockb.exceptions import ChapterMismatchError
+from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -685,6 +685,12 @@ class TestDocumentMetadata:
         assert metadata.title == tmp_path.name
         assert metadata.author == "User"
 
+    def test_malformed_yaml_raises_a_document_format_error(self, tmp_path):
+        """Unparsable YAML is the caller's document being wrong, not a YAML crash."""
+        (tmp_path / "document_metadata.yaml").write_text("title: [unclosed\nauthor: Brian\n")
+        with pytest.raises(DocumentFormatError, match="document_metadata.yaml"):
+            _read_document_metadata(tmp_path, "User")
+
 
 class TestResolveDocument:
     def _repo_with(self, rows):
@@ -1017,7 +1023,7 @@ class TestImportDocumentDirectory:
         assert not result
 
     def test_missing_directory_raises(self, nlp, tmp_path):
-        with pytest.raises(ValueError, match="does not exist"):
+        with pytest.raises(DocumentFormatError, match="does not exist"):
             import_document_directory(tmp_path / "nope", "User", nlp, None, None, None)
 
 

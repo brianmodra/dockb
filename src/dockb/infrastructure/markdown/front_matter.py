@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 import yaml
 
-from dockb.exceptions import ChapterMismatchError
+from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 
 
 def parse(content: str) -> tuple[dict[str, object], str]:
@@ -14,7 +14,10 @@ def parse(content: str) -> tuple[dict[str, object], str]:
 
     A file with no opening ``---`` has no front matter: the attributes are empty
     and the body is the whole content. An opened-but-unclosed block, or a block
-    that is not a YAML mapping, is malformed and raises ``ChapterMismatchError``.
+    that is not a YAML mapping, is malformed and raises ``ChapterMismatchError``;
+    a block whose YAML does not parse raises ``DocumentFormatError``. Both name
+    the file being wrong rather than letting a parser error escape, so a caller
+    reading an uploaded or stored document can answer the reader for it.
     """
     if not content.startswith("---"):
         return {}, content
@@ -22,7 +25,10 @@ def parse(content: str) -> tuple[dict[str, object], str]:
     closing = next((index for index in range(1, len(lines)) if lines[index].startswith("---")), None)
     if closing is None:
         raise ChapterMismatchError("Snapshot file is missing closing '---' for front matter")
-    attrs = yaml.safe_load("".join(lines[1:closing])) or {}
+    try:
+        attrs = yaml.safe_load("".join(lines[1:closing])) or {}
+    except yaml.YAMLError as exc:
+        raise DocumentFormatError(f"File's front matter is not valid YAML: {exc}") from exc
     if not isinstance(attrs, dict):
         raise ChapterMismatchError("Front matter must be a mapping of key: value pairs")
     return dict(attrs), "".join(lines[closing + 1 :])

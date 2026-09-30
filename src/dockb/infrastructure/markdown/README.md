@@ -27,7 +27,9 @@ Second sentence.
 - `parse(content)` -> `(attrs, body)`. With no opening `---` there is no front matter (`attrs` empty,
   `body` the whole content); otherwise `attrs` is the parsed mapping and `body` is everything after
   the closing `---` line. A block that is opened but never closed, or whose YAML is not a mapping,
-  raises `ChapterMismatchError`.
+  raises `ChapterMismatchError`; a block whose YAML does not parse raises `DocumentFormatError`. The
+  second is its own type so a reader of an uploaded document can tell a malformed file from a
+  fault of its own, and answer the caller for it rather than surfacing a YAML parser error.
 - `render(attrs)` -> a complete delimited block.
 - `merge(content, updates)` -> `content` with `updates` merged into its front matter, body
   untouched and existing attribute positions kept (new keys appended); a file with no front matter

@@ -49,8 +49,9 @@ summary per file. Files inside the reserved `Characters` directory follow after 
 acts, carried with no act and category `Character`: they need no sequence number, import in
 file-name order, and numbers in (or duplicated across) their names are ignored. Root-level
 and other non-act files are not chapters. A malformed act name, an
-unnumbered act file, or two acts or two act files numbering the same abort the walk. A chapter file
-whose front-matter `id` belongs to a different document aborts the whole directory import. When
+unnumbered act file, or two acts or two act files numbering the same abort the walk with
+`DocumentFormatError`. A chapter file whose front-matter `id` belongs to a different document aborts
+the whole directory import with `ChapterMismatchError`. When
 write-back is on and the file's diff is non-empty the caller rewrites the file in place from the
 rebuilt chapter: the front
 matter carries the chapter `id`, `title`, and `category`, any other attributes being
@@ -64,6 +65,15 @@ still given an identity: it is persisted as an empty chapter and its file receiv
 is updated and every source file is left exactly as it was. From a shell,
 `python -m dockb.cli.import_document <document_dir>` drives the walker
 (flags: `--write-back`, `--no-write-back`).
+
+Over HTTP the same walker is driven by `POST /api/import`, which stages a
+multipart upload in a temporary directory and then runs the walker over it with
+write-back off — an upload has no file on the server to canonicalise, so the
+caller's own bytes are never rewritten. Because the walker is synchronous and
+slow, it runs in a threadpool rather than on the event loop. The route's
+contract is in `../controllers/README_API.md` § Import; the path and size rules
+that keep an untrusted upload inside its temporary directory are in
+`dockb.uploads`.
 
 ## Contract
 

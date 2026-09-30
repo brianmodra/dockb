@@ -21,6 +21,7 @@ from dockb.controllers.auth import set_auth_service
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import set_doc_service
 from dockb.controllers.history import set_history_service
+from dockb.controllers.imports import set_import_service
 from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
 from dockb.controllers.sentences import set_sent_service
@@ -43,6 +44,7 @@ from dockb.repositories.sentence_repository import SentenceRepository
 from dockb.services.auth_service import AuthService
 from dockb.services.crud_services import ChapterService, DocumentService, ParagraphService, SentenceService
 from dockb.services.history_service import HistoryService
+from dockb.services.import_service import ImportService
 from dockb.services.session_context import SessionContext
 
 _stack: ExitStack | None = None
@@ -144,6 +146,15 @@ def wire(  # pylint: disable=too-many-locals
     )
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])
     sent_svc = SentenceService(uow_factory=uow_factory, sentence_repo=repos[Sentence])
+    if nlp is not None:
+        set_import_service(
+            ImportService(
+                nlp=nlp,
+                document_repo=repos[Document],
+                chapter_repo=repos[Chapter],
+                uow_factory=uow_factory,
+            )
+        )
 
     ctx = SessionContext()
 
@@ -176,6 +187,7 @@ def unwire() -> None:
     set_sent_service(None)
     set_session_context(None)
     set_history_service(None)
+    set_import_service(None)
     if _stack is not None:
         _stack.close()
         _stack = None

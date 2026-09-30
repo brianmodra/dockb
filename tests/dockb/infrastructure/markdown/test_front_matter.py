@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from dockb.exceptions import ChapterMismatchError
+from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.infrastructure.markdown import front_matter
 
 
@@ -26,6 +26,15 @@ class TestParse:
     def test_non_mapping_front_matter_raises(self):
         with pytest.raises(ChapterMismatchError, match="mapping"):
             front_matter.parse("---\n- a\n- b\n---\n\nBody.")
+
+    def test_unparsable_yaml_raises_a_document_format_error(self):
+        """Broken YAML is the file being malformed, not a YAML parser failure.
+
+        The import route answers 422 for a document it cannot read; a raw
+        yaml error would reach the caller as a 500 instead.
+        """
+        with pytest.raises(DocumentFormatError, match="front matter"):
+            front_matter.parse("---\nid: [unclosed\n---\n\nBody.")
 
     def test_id_inside_body_is_not_front_matter(self):
         attrs, body = front_matter.parse("Body with --- dashes --- inside.")

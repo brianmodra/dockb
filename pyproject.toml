@@ -23,6 +23,7 @@ dependencies = [
   "cachetools>=7.1.3",
   "spacy>=3.8.14",
   "en-core-web-sm",
+  "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

@@ -4,6 +4,8 @@
 
 This note is the contract between DockB's editor and the server. It lists the requests the editor may send, the shape of each reply, and what the server refuses. Grammar details stay on the server and are not part of this contract.
 
+It also describes the two ways a document gets into the graph. `POST /api/documents` and the chapter/paragraph/sentence routes carry ordinary editor edits. `POST /api/import` instead takes a whole document directory as a multipart upload and runs the same directory walker the command line uses, so a manuscript can be brought in without naming a path on the server. Because an upload is untrusted, that route has its own path and size rules, and it is where a document's owner comes from the session rather than the request.
+
 Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff.
 
 ## Core Principle
@@ -126,8 +128,8 @@ Every endpoint below the root is authenticated, except the ones needed to obtain
 session. The gate is `get_current_user`
 (`src/dockb/controllers/auth.py`), applied as a router-level dependency in
 `src/dockb/app_factory.py` to the documents, chapters, paragraphs, sentences,
-history, and notifications routers. `app_state` carries the same gate on its own
-routes because each needs the resolved username.
+history, notifications, and imports routers. `app_state` carries the same gate on
+its own routes because each needs the resolved username.
 
 | Endpoint | Auth |
 | --- | --- |
@@ -651,6 +653,74 @@ Returns an empty `notifications` array if the queue has nothing pending (no bloc
 
 Note that a paragraph split can include sentence splits, and a sentence operation could cause a paragraph split.
 
+### Import
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/import` | Import a document directory sent as a multipart upload |
+
+Brings a whole document into the graph in one request. It runs the same
+directory walker as the command line (`python -m dockb.cli.import_document`), so
+the on-disk layout and the change-detection rules are identical — the endpoint
+only replaces "name a path on the server" with "send the files".
+
+The body is `multipart/form-data`:
+
+| Part | Type | Meaning |
+|---|---|---|
+| `files` | file, repeatable | One per file in the document. The part's filename is its path, relative to the upload root. |
+| `single_newline_paragraphs` | text, optional | Same meaning as the import CLI flag. Default `false`. |
+
+Each filename must name a real file below a single shared document directory, and
+that directory name becomes the document's default title. So a valid upload
+looks like:
+
+```
+Linchpin/document_metadata.yaml
+Linchpin/Act I/Opening 1.md
+```
+
+A flat upload (`Chapter 1.md` with no document directory) or an upload spanning
+two document directories is refused with `422`: both mean the caller did not send
+one document directory. So does a set of parts that does not describe a tree — one
+part's path being another's directory — and a document the walker cannot read: an
+unnumbered act directory, an unnumbered chapter file, two acts or two chapter files
+numbering the same, or front matter naming a chapter that is not this document's.
+Those are `DocumentFormatError` and `ChapterMismatchError`, and only those named
+failures are the caller's document being wrong: anything else escaping the import —
+a full disk, a bug of ours — answers 500 rather than being reported as a bad
+document.
+
+The server writes the parts to a temporary directory, walks it, and deletes it.
+Nothing is written back to the uploaded files, and the caller's own files are
+never touched. The owner is the session's user, never a value from the body.
+
+Returns one summary per chapter the walker applied:
+
+```json
+{
+  "imports": [
+    {
+      "chapter_id": "c-1",
+      "title": "Opening 1",
+      "category": "Chapter",
+      "created": true,
+      "changed": 3,
+      "added": 1,
+      "deleted": 0
+    }
+  ]
+}
+```
+
+The path and size rules are the security boundary of the feature and live in
+`src/dockb/uploads.py`: a filename may not be absolute, contain a backslash, name
+a drive, carry a control character, or contain an empty, `.` or `..` segment, and
+the resolved destination must stay inside the temporary directory. An upload is
+capped at 64 MiB and 2000 files, counted across the whole request rather than per
+file. Note the cap bounds what DockB writes; the web server in front of it is
+what bounds the size of the request itself.
+
 ## Error Responses
 
 An error response is indicated by the status.code not being "ok".
@@ -674,4 +744,6 @@ Following is a non-exhaustive illustrative list of error responses and HTTP code
 | `invalid_payload` | 422 | JSON body does not match expected schema |
 | `processing_error` | 500 | spaCy/hydration/internal failure |
 | `conflict` | 409 | Document version mismatch (optimistic locking) |
+| `upload_too_large` | 413 | The upload passed the 64 MiB / 2000 file caps |
+| `invalid_upload` | 422 | A part's filename is unsafe, the parts are not one document directory, or the walker cannot read the document (`DocumentFormatError` / `ChapterMismatchError`) |
 

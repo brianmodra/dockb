@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from dockb.exceptions import DocumentFormatError
 from dockb.services import markdown_import
 
 # pylint: disable=too-many-public-methods
@@ -54,7 +55,7 @@ class TestDiscoverChapterFiles:
     def test_unicode_and_ascii_roman_conflict_raises(self, tmp_path):
         (tmp_path / "Act IV").mkdir()
         (tmp_path / "Act \u2163").mkdir()  # Ⅳ = 4
-        with pytest.raises(ValueError, match="both number as 4"):
+        with pytest.raises(DocumentFormatError, match="both number as 4"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_empty_act_none_sorts_first(self, tmp_path):
@@ -118,7 +119,7 @@ class TestDiscoverChapterFiles:
         act = tmp_path / "Act I"
         act.mkdir()
         (act / "48 Jael.md").write_text("x")
-        with pytest.raises(ValueError, match="not numbered"):
+        with pytest.raises(DocumentFormatError, match="not numbered"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_files_in_nested_directories_under_an_act_are_chapters(self, tmp_path):
@@ -133,14 +134,14 @@ class TestDiscoverChapterFiles:
         act = tmp_path / "Act I"
         act.mkdir()
         (act / "Notes.md").write_text("x")
-        with pytest.raises(ValueError, match="not numbered"):
+        with pytest.raises(DocumentFormatError, match="not numbered"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_multiple_letter_suffix_raises(self, tmp_path):
         act = tmp_path / "Act I"
         act.mkdir()
         (act / "Setup 5ab.md").write_text("x")
-        with pytest.raises(ValueError, match="not numbered"):
+        with pytest.raises(DocumentFormatError, match="not numbered"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_same_chapter_number_in_different_acts_ok(self, tmp_path):
@@ -155,18 +156,18 @@ class TestDiscoverChapterFiles:
 
     def test_act_with_letter_suffix_raises(self, tmp_path):
         (tmp_path / "Act IVa").mkdir()
-        with pytest.raises(ValueError, match="not numbered"):
+        with pytest.raises(DocumentFormatError, match="not numbered"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_unparsable_act_name_raises(self, tmp_path):
         (tmp_path / "Act Foobar").mkdir()
-        with pytest.raises(ValueError, match="not numbered"):
+        with pytest.raises(DocumentFormatError, match="not numbered"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_acts_numbering_the_same_raise(self, tmp_path):
         (tmp_path / "Act 1").mkdir()
         (tmp_path / "Act I").mkdir()
-        with pytest.raises(ValueError, match="both number as 1"):
+        with pytest.raises(DocumentFormatError, match="both number as 1"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_duplicate_chapter_sequence_in_one_act_raises(self, tmp_path):
@@ -174,7 +175,7 @@ class TestDiscoverChapterFiles:
         act.mkdir()
         (act / "Opening 5.md").write_text("x")
         (act / "Setup 5.md").write_text("x")
-        with pytest.raises(ValueError, match="Duplicate chapter"):
+        with pytest.raises(DocumentFormatError, match="Duplicate chapter"):
             list(markdown_import._discover_chapter_files(tmp_path))
 
     def test_characters_dir_yields_character_chapters_after_acts(self, tmp_path):

@@ -13,7 +13,7 @@ from typing import Literal
 import yaml
 from spacy.language import Language
 
-from dockb.exceptions import ChapterMismatchError
+from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.infrastructure.changes.detect_changes import (
     ChangedParagraph,
     ChapterDiff,
@@ -194,7 +194,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     """
     dir_path = Path(document_dir)
     if not dir_path.is_dir():
-        raise ValueError(f"Document directory '{dir_path}' does not exist")
+        raise DocumentFormatError(f"Document directory '{dir_path}' does not exist")
     metadata = _read_document_metadata(dir_path, user_name)
     document = _resolve_document(dir_path, metadata, document_repo, uow_factory, write_back=write_back)
     summaries = []
@@ -282,15 +282,15 @@ def _parse_act_directory(subdir: Path) -> tuple[int, str]:
     The name after the ``Act `` prefix must be digits or a strict Roman
     numeral, whose value orders the act. The reserved ``Act None`` is the
     empty act: number 0, sorting before every numbered act. Any other name —
-    a letter suffix, free text, an empty label — raises ValueError, because a
-    chapter must sit in a numbered act.
+    a letter suffix, free text, an empty label — raises DocumentFormatError,
+    because a chapter must sit in a numbered act.
     """
     label = subdir.name[len("Act ") :]
     if label == "None":
         return 0, ""
     number = int(label) if label.isascii() and label.isdigit() else _roman_to_int(label)
     if number is None:
-        raise ValueError(f"Act directory '{subdir.name}' is not numbered with digits or Roman numerals")
+        raise DocumentFormatError(f"Act directory '{subdir.name}' is not numbered with digits or Roman numerals")
     return number, subdir.name
 
 
@@ -301,11 +301,11 @@ def _chapter_sort_key(file_path: Path) -> tuple[int, str]:
     one trailing letter, sitting either at the end of the name (``Opening 5``
     → ``(5, '')``, ``Setup 5b`` → ``(5, 'b')``) or embedded and flanked by
     spaces (``Bad Guys Close In 48 Jael`` → ``(48, '')``). A stem with no
-    such number is not a numbered chapter and raises ValueError.
+    such number is not a numbered chapter and raises DocumentFormatError.
     """
     matches = list(_CHAPTER_SEQUENCE_RE.finditer(file_path.stem))
     if not matches:
-        raise ValueError(f"Chapter file '{file_path}' is not numbered")
+        raise DocumentFormatError(f"Chapter file '{file_path}' is not numbered")
     match = matches[-1]
     number, letter = match.group(1, 2)
     if number is None:
@@ -331,7 +331,7 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["
     file-name order, whatever their name says.
     Anything else — a root-level or non-act file, a non-``Characters``
     directory, an unparsable act name, two act files in one act numbering
-    the same, or two acts numbering the same — raises ValueError.
+    the same, or two acts numbering the same — raises DocumentFormatError.
     """
     acts: list[tuple[tuple[int, str], Path]] = [
         (_parse_act_directory(subdir), subdir) for subdir in document_dir.iterdir() if subdir.is_dir() and subdir.name.startswith("Act ")
@@ -341,7 +341,7 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["
     for (number, act), subdir in acts:
         if previous is not None:
             if previous[0] == number:
-                raise ValueError(f"Acts '{previous[1]}' and '{subdir.name}' both number as {number}")
+                raise DocumentFormatError(f"Acts '{previous[1]}' and '{subdir.name}' both number as {number}")
         previous = (number, subdir.name)
         chapters = sorted(
             ((_chapter_sort_key(file_path), file_path) for file_path in subdir.rglob("*.md")),
@@ -350,7 +350,7 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["
         last_key: tuple[int, str] | None = None
         for key, chapter_file in chapters:
             if key == last_key:
-                raise ValueError(f"Duplicate chapter number '{chapter_file.stem}' in '{subdir.name}'")
+                raise DocumentFormatError(f"Duplicate chapter number '{chapter_file.stem}' in '{subdir.name}'")
             last_key = key
             yield act, "Chapter", chapter_file
 
@@ -401,12 +401,18 @@ def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetad
     """Read a document directory's metadata, defaulting the missing fields.
 
     ``title`` defaults to the directory name, ``author`` to *user_name* when
-    ``document_metadata.yaml`` is absent or does not carry the field.
+    ``document_metadata.yaml`` is absent or does not carry the field. A metadata
+    file whose YAML does not parse raises ``DocumentFormatError`` — the caller's
+    file is wrong, and the reader needs to be told that rather than have a YAML
+    error escape as a server fault.
     """
     attrs: dict[str, object] = {}
     metadata_path = document_dir / _METADATA_FILE
     if metadata_path.is_file():
-        parsed = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+        try:
+            parsed = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            raise DocumentFormatError(f"{_METADATA_FILE} is not valid YAML: {exc}") from exc
         if isinstance(parsed, dict):
             attrs = parsed
     return DocumentMetadata(
