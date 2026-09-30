@@ -133,6 +133,25 @@ class TestMountEditorShell:
         assert client.get("/editor/api/auth/config").text == '{"login_required": false}'
 
 
+class TestMountPath:
+    def test_the_frontend_and_the_backend_name_the_same_path(self):
+        """The window loads /editor/ and the backend mounts /editor.
+
+        The path is written down twice, once in each language, and nothing else
+        ties them together: if they drift the window loads a 404 with no error
+        anywhere. This reads the TypeScript constant.
+        """
+        import re
+        from pathlib import Path
+
+        from dockb.editor_shell import EDITOR_MOUNT_PATH
+
+        source = Path(__file__).resolve().parents[2] / "frontend" / "src" / "main" / "main.ts"
+        match = re.search(r'const EDITOR_PATH = "([^"]+)"', source.read_text(encoding="utf-8"))
+        assert match is not None, "EDITOR_PATH not found in frontend/src/main/main.ts"
+        assert match.group(1) == f"{EDITOR_MOUNT_PATH}/"
+
+
 class TestUnbuiltShell:
     def test_no_mount_when_the_directory_is_missing(self, tmp_path, monkeypatch):
         from dockb.editor_shell import mount_editor_shell

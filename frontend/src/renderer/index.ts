@@ -4,17 +4,16 @@ import { mountShell } from "./main";
 
 /** Resolve the API base the renderer talks to.
  *
- * A `VITE_API_BASE` build-time variable wins. Otherwise, when the app is
- * loaded from a local `file://` (the packaged Electron shell) the client
- * points straight at the loopback backend; when served over http the Vite dev
- * proxy answers on the same origin, so a relative `/api` base is used.
+ * A `VITE_API_BASE` build-time variable wins. Otherwise the relative `/api`:
+ * the shell is served by the backend, so the renderer and the API share an
+ * origin and a relative base stays correct wherever the backend is reached.
  */
-export function apiBase(location: { protocol: string } = window.location): string {
+export function apiBase(): string {
   const override = import.meta.env.VITE_API_BASE;
   if (override) {
     return override;
   }
-  return location.protocol === "file:" ? "http://localhost:8000/api" : "/api";
+  return "/api";
 }
 
 export function bootRenderer(root: HTMLElement | null): void {
