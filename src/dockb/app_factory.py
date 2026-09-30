@@ -5,7 +5,6 @@ registered.  Service wiring is handled separately by ``composition.wire()``.
 """
 
 from fastapi import Depends, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from dockb.controllers.app_state import router as app_state_router
@@ -18,11 +17,8 @@ from dockb.controllers.imports import router as imports_router
 from dockb.controllers.notifications import router as notifications_router
 from dockb.controllers.paragraphs import router as paragraphs_router
 from dockb.controllers.sentences import router as sentences_router
+from dockb.editor_shell import mount_editor_shell
 from dockb.timing import TimingMiddleware
-
-# The Electron shell loads the built renderer from file://, whose Origin is the
-# literal "null"; served development flows arrive from the Vite dev server.
-_CORS_ORIGINS = ["null", "http://localhost:3000", "http://127.0.0.1:3000"]
 
 # The manuscript routers serve the editor and are gated on the session identity.
 # `auth` stays open — it is how a caller obtains a session — and `app_state`
@@ -36,13 +32,6 @@ def create_app() -> FastAPI:
     """Create and return a FastAPI application with all routers and middleware."""
     application = FastAPI(title="DockB")
     application.add_middleware(GZipMiddleware, minimum_size=500)
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins=_CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
     application.add_middleware(TimingMiddleware)
     application.include_router(documents_router, dependencies=_authenticated)
     application.include_router(auth_router)
@@ -53,4 +42,11 @@ def create_app() -> FastAPI:
     application.include_router(history_router, dependencies=_authenticated)
     application.include_router(notifications_router, dependencies=_authenticated)
     application.include_router(imports_router, dependencies=_authenticated)
+    # The editor is served from here rather than loaded from file://, so it is
+    # same-origin with /api. That is what lets the SameSite=lax session cookie
+    # reach the manuscript routes, and it means no CORS grant is needed — or
+    # wanted: one for the file:// "null" origin would let any local file page
+    # read the API as the signed-in user. Mounted last, and under its own
+    # prefix, so it cannot shadow a route above.
+    mount_editor_shell(application)
     return application

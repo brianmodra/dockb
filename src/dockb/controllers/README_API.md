@@ -721,6 +721,25 @@ An upload is capped at 64 MiB and 2000 files, counted across the whole request
 rather than per file. Note the cap bounds what DockB writes; the web server in
 front of it is what bounds the size of the request itself.
 
+### The editor shell
+
+`GET /editor/` serves the built renderer — the `index.html` from `npm run build` in
+`frontend/`, plus its hashed assets under `/editor/assets/`. The desktop shell loads that URL
+rather than a `file://` path, so the editor is **same-origin with `/api`**. Two things follow,
+and both are why it is served this way:
+
+- The `SameSite=lax` session cookie reaches the gated manuscript routes. A `file://` renderer
+  talking to `http://localhost:8000` is a cross-site request, and the browser withholds a
+  `lax` cookie on those — which is what made OAuth mode unreachable from the editor.
+- There is no CORS middleware. Same-origin needs none, and a grant for the `null` origin a
+  `file://` page sends would let any local file read the API as the signed-in user.
+
+The mount is skipped when the build output is absent (`DOCKB_FRONTEND_DIST`, default
+`frontend/dist`), so a source checkout without `npm run build` serves the whole API and 404s
+at `/editor`. It is **not authenticated** — a client cannot present a session before it has
+loaded the shell that would read it — and it serves only build output, never user data. It is
+mounted last and under its own prefix, so it cannot shadow an API route.
+
 ## Error Responses
 
 An error response is indicated by the status.code not being "ok".

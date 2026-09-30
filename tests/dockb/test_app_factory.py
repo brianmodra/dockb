@@ -55,29 +55,29 @@ class TestCreateApp:
         middleware_classes = [m.cls for m in app.user_middleware]
         assert GZipMiddleware in middleware_classes
 
-    def test_cors_middleware_allows_the_desktop_client(self) -> None:
+    def test_registers_no_cors_middleware(self) -> None:
+        """The editor is served from the backend, so it is same-origin with the API.
+
+        A CORS middleware here would only re-admit cross-origin callers — the
+        `null` origin of a `file://` page above all, which could then read the
+        API as the signed-in user.
+        """
         from dockb.app_factory import create_app
 
         app = create_app()
         from fastapi.middleware.cors import CORSMiddleware
 
-        cors = next(m for m in app.user_middleware if m.cls is CORSMiddleware)
-        assert cors.kwargs["allow_credentials"] is True
-        assert set(cors.kwargs["allow_origins"]) == {
-            "null",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        }
+        assert CORSMiddleware not in [m.cls for m in app.user_middleware]
 
-    def test_cors_headers_on_responses_to_the_file_origin(self) -> None:
+    def test_the_null_file_origin_gets_no_cors_grant(self) -> None:
         from fastapi.testclient import TestClient
 
         from dockb.app_factory import create_app
 
         client = TestClient(create_app())
         response = client.get("/api/auth/login", headers={"Origin": "null"})
-        assert response.headers["access-control-allow-origin"] == "null"
-        assert response.headers.get("access-control-allow-credentials") == "true"
+        assert "access-control-allow-origin" not in response.headers
+        assert response.headers.get("access-control-allow-credentials") is None
 
     def test_all_crud_routers_registered(self) -> None:
         from dockb.app_factory import create_app

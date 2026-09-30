@@ -101,7 +101,12 @@ store interface and route-controller call sites do not change.
 - **Episode secrets, not repo secrets.** Provider client id/secret come from environment
   variables/`.env` only, never committed.
 - **HttpOnly session cookie.** The backend's own session is not readable by JS; the editor holds no
-  provider credential that could leak.
+  provider credential that could leak. It is scoped to `/api`, so it is sent to the manuscript
+  routes that authenticate it and to nothing else the server serves, including `/editor` and
+  `/callback`.
+- **Same-origin editor.** The renderer is served by the backend rather than loaded from `file://`,
+  so no cross-site cookie is needed and no CORS grant is issued. This is what keeps the `null`
+  origin — which every `file://` page sends — from reading the API.
 - **Loopback callback scoped.** The OAuth client for the desktop app registers only the loopback
   redirect URI, so the code cannot be intercepted by a third origin.
 
@@ -147,9 +152,14 @@ operator asks for by name.
   `{"login_required": false, "providers": []}`, and the editor opens its Sign-in gate **only**
   when that response says login is required — so in local mode the gate never appears and the
   menubar simply shows the OS username.
-- The built Electron shell loads the renderer from `file://`, a cross-origin (`null`) client.
-  `app_factory.py` registers a CORS middleware that admits that origin (and the Vite dev origins)
-  so the editor can read the API responses.
+- The built Electron shell loads the renderer from the **backend**, at `/editor/`, so the editor
+  is same-origin with `/api`. That is what lets the `SameSite=lax` session cookie reach the gated
+  routes: a `file://` renderer talking to `http://localhost:8000` is a cross-site request, and
+  browsers withhold a `lax` cookie on those. It also means the app needs **no CORS middleware**,
+  which is the stronger half of the win — a grant for the `null` origin a `file://` page sends,
+  with credentials, let any local file read the API as the signed-in user. The Vite dev server
+  needs none either, because its `/api` proxy is same-origin to the browser. See
+  `src/dockb/controllers/README_API.md` § The editor shell and `editor_shell.py`.
 - Auth wiring runs whenever there is an accounts directory, which is always: the chapters directory,
   resolved by `resolve_document_base_dir` (`DOCKB_CHAPTERS_DIR`, defaulting to `cwd`/`dockb_chapters_dir`
   and provisioned when missing). `DOCKB_SECRET_KEY` is not required: without it the backend uses an
