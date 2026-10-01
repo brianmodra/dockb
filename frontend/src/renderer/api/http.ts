@@ -20,13 +20,20 @@ async function parseError(response: Response): Promise<string> {
   return response.statusText || `HTTP ${response.status}`;
 }
 
+function defaultHeaders(init: RequestInit): HeadersInit {
+  if (typeof FormData !== "undefined" && init.body instanceof FormData) {
+    return init.headers ?? {};
+  }
+  return { "Content-Type": "application/json", ...(init.headers ?? {}) };
+}
+
 export async function request<T>(
   url: string,
   init: RequestInit = {},
 ): Promise<T> {
   const response = await fetch(url, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    headers: defaultHeaders(init),
   });
   if (!response.ok) {
     throw new ApiError(response.status, await parseError(response));

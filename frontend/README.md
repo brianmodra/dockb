@@ -29,6 +29,22 @@ registers `quit` to `app.quit()`. The preload exposes them as
 `window.dockb.openExternal` and `window.dockb.quit`. Login stays server-side
 (`README_auth.md` §6): the backend sets the HttpOnly session cookie.
 
+The preload also exposes `window.dockb.getPathForFile`, `webUtils.getPathForFile`
+by way of it, which is how the renderer learns the absolute path of a file the
+user chose in a native dialog. Electron 32 removed `File.path`, so this is the
+supported way to get one. It is the renderer's only route to a filesystem path, it
+returns an empty string for a `File` not backed by disk so it cannot be used to
+probe arbitrary paths, and a compromised renderer could learn the path of any file
+the user picks — the user reviewed and accepted that.
+
+### Multipart requests
+
+`http.ts` labels a body `Content-Type: application/json` unless it is a
+`FormData`, which is sent with no `Content-Type` at all so the browser can write
+the multipart boundary itself. A header the caller sets explicitly still wins, so
+the rule is only about the default. Every other body type stays on the JSON
+default; `importDocument` is the only caller that sends `FormData`.
+
 ## Commands
 
 Run these from `frontend/`:

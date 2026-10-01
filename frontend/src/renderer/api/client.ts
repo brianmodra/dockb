@@ -9,6 +9,7 @@ import type {
   ChapterRelations,
   DocumentContentResponse,
   DocumentWire,
+  ImportResponse,
   MutationResponse,
   UserProfile,
 } from "./types";
@@ -23,6 +24,43 @@ export interface CreateDocumentData {
   id: string;
   title: string;
   author: string;
+}
+
+/**
+ * The multipart filename for one picked file: the document directory, then the
+ * file's path within it.
+ *
+ * A picked file's relative path is renderer-supplied, and this is what becomes the
+ * name the server stages the file under, so a path that is empty, absolute, or
+ * climbing out of the document is refused here rather than sent for the server to
+ * refuse. The server checks the same thing independently; this is the earlier of
+ * the two.
+ */
+function partName(directoryName: string, relativePath: string): string {
+  const name = directoryName.trim();
+  if (name === "") {
+    throw new Error("Import needs the document directory name");
+  }
+  const path = String(relativePath ?? "");
+  if (path.includes("\\") || /^[a-zA-Z]:/.test(path) || /^[\\/]/.test(path)) {
+    throw new Error(badPath(path));
+  }
+  for (const char of path) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code < 32 || code === 127) {
+      throw new Error(badPath(path));
+    }
+  }
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === "." || segment === "..") {
+      throw new Error(badPath(path));
+    }
+  }
+  return `${name}/${path}`;
+}
+
+function badPath(path: string): string {
+  return `Import needs a relative path within the document directory, got "${path}"`;
 }
 
 export interface UpdateDocumentData {
@@ -139,6 +177,32 @@ export class ApiClient {
 
   async getAuthConfig(): Promise<AuthConfig> {
     return request<AuthConfig>(this.url("/auth/config"));
+  }
+
+  /**
+   * Import a document directory as multipart parts.
+   *
+   * `directoryName` is the picked directory's own name, which webkitRelativePath
+   * omits. The server requires every part to sit under one shared first segment and
+   * takes that segment as the document's title, so it is prepended to each file's
+   * relative path here and nowhere else.
+   */
+  async importDocument(
+    directoryName: string,
+    files: File[],
+    options: { singleNewlineParagraphs?: boolean } = {},
+  ): Promise<ImportResponse> {
+    if (files.length === 0) {
+      throw new Error("Import needs at least one file");
+    }
+    const form = new FormData();
+    for (const file of files) {
+      form.append("files", file, partName(directoryName, file.webkitRelativePath));
+    }
+    if (options.singleNewlineParagraphs === true) {
+      form.append("single_newline_paragraphs", "true");
+    }
+    return request<ImportResponse>(this.url("/import"), { method: "POST", body: form });
   }
 
   async getLoginUrl(provider: string): Promise<string> {

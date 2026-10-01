@@ -721,6 +721,16 @@ An upload is capped at 64 MiB and 2000 files, counted across the whole request
 rather than per file. Note the cap bounds what DockB writes; the web server in
 front of it is what bounds the size of the request itself.
 
+The editor is the caller, from `File > Import…`. `ApiClient.importDocument` in
+`frontend/src/renderer/api/client.ts` builds the `FormData` — one part per file
+named `files`, each filename `<directory name>/<file.webkitRelativePath>`, plus
+`single_newline_paragraphs` when the user ticks the box. The directory name is a
+parameter rather than something the client infers, because `webkitRelativePath`
+omits the picked directory's own name and the server needs it as the shared first
+segment. The client applies the same path rule as `validate_part_path` before
+sending, so the user gets a plain message rather than a `422`; the server check
+remains authoritative.
+
 ### The editor shell
 
 `GET /editor/` serves the built renderer — the `index.html` from `npm run build` in `frontend/`,

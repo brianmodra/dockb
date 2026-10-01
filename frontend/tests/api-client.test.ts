@@ -260,3 +260,249 @@ describe("ApiClient app state", () => {
     expect(call.init.method).toBe("PUT");
   });
 });
+function pickedFile(relativePath: string, contents = "text"): File {
+  const file = new File([contents], relativePath.split("/").pop() ?? "file.md", {
+    type: "text/markdown",
+  });
+  Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
+  return file;
+}
+
+function sentForm(): FormData {
+  const calls = vi.mocked(globalThis.fetch).mock.calls;
+  return (calls[0][1] ?? {}).body as FormData;
+}
+
+function partNames(form: FormData): string[] {
+  return [...form.keys()];
+}
+
+function partFilenames(form: FormData, name: string): string[] {
+  return form.getAll(name).map((entry) => (entry as File).name);
+}
+
+describe("ApiClient import", () => {
+  it("posts the picked files as parts named files", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [
+      pickedFile("Act I/Opening 1.md"),
+      pickedFile("Act I/Opening 2.md"),
+    ]);
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/import");
+    expect(call.init.method).toBe("POST");
+    expect(call.init.body).toBeInstanceOf(FormData);
+    expect(partNames(sentForm())).toEqual(["files", "files"]);
+  });
+
+  it("names each part with the directory name ahead of its relative path", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [
+      pickedFile("Act I/Opening 1.md"),
+      pickedFile("document_metadata.yaml"),
+    ]);
+    expect(partFilenames(sentForm(), "files")).toEqual([
+      "Linchpin/Act I/Opening 1.md",
+      "Linchpin/document_metadata.yaml",
+    ]);
+  });
+
+  it("sends no Content-Type so the browser sets the multipart boundary", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")]);
+    const init = (vi.mocked(globalThis.fetch).mock.calls[0][1] ?? {}) as {
+      headers?: Record<string, string>;
+    };
+    expect((init.headers ?? {})["Content-Type"]).toBeUndefined();
+  });
+
+  it("omits the paragraphs part when the option is off", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")]);
+    expect(sentForm().has("single_newline_paragraphs")).toBe(false);
+  });
+
+  it("sends the paragraphs part as true when the option is on", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")], {
+      singleNewlineParagraphs: true,
+    });
+    expect(sentForm().get("single_newline_paragraphs")).toBe("true");
+  });
+
+  it("sends the paragraphs part as false when the option is explicitly off", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")], {
+      singleNewlineParagraphs: false,
+    });
+    expect(sentForm().has("single_newline_paragraphs")).toBe(false);
+  });
+
+  it("returns the per-chapter summaries", async () => {
+    mockFetch(200, {
+      imports: [
+        {
+          chapter_id: "ch-1",
+          title: "Opening 1",
+          category: "Chapter",
+          created: true,
+          changed: 3,
+          added: 1,
+          deleted: 0,
+        },
+        {
+          chapter_id: "ch-2",
+          title: "Dramatis Personae",
+          category: "Character",
+          created: true,
+          changed: 0,
+          added: 5,
+          deleted: 0,
+        },
+      ],
+    });
+    const client = new ApiClient();
+    const result = await client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")]);
+    expect(result.imports).toHaveLength(2);
+    expect(result.imports[0].title).toBe("Opening 1");
+    expect(result.imports[0].changed).toBe(3);
+    expect(result.imports[1].category).toBe("Character");
+  });
+
+  it("raises the server's detail when the upload is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: "too many files" }), { status: 422 })),
+    );
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")]),
+    ).rejects.toThrow("too many files");
+  });
+
+  it("raises the server's detail when the upload is too large", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: "upload exceeds 64.0 MiB" }), { status: 413 })),
+    );
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")]),
+    ).rejects.toThrow("upload exceeds 64.0 MiB");
+  });
+});
+
+describe("ApiClient import part naming", () => {
+  it("refuses a file that carries no relative path", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    const stray = new File(["text"], "stray.md", { type: "text/markdown" });
+    await expect(client.importDocument("Linchpin", [stray])).rejects.toThrow(
+      /relative path/,
+    );
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("refuses a directory name that is empty", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("", [pickedFile("Act I/Opening 1.md")]),
+    ).rejects.toThrow(/directory name/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("refuses an empty file list", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(client.importDocument("Linchpin", [])).rejects.toThrow(/at least one file/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("prepends without normalising, so the layout rule has one implementation", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [pickedFile("Linchpin/Act I/Opening 1.md")]);
+    // webkitRelativePath never repeats the picked directory, so this input does not
+    // occur. The doubled segment pins the decision: the client prepends and leaves
+    // the caller's path alone rather than also knowing how to strip, which would put
+    // the layout rule in two places.
+    expect(partFilenames(sentForm(), "files")).toEqual(["Linchpin/Linchpin/Act I/Opening 1.md"]);
+  });
+
+  it("rejects a relative path that climbs out of the document directory", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("../outside.md")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("rejects a relative path that reaches the filesystem root", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("/etc/passwd")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("rejects a backslash, as the server's own path rule does", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("Act I\\Opening 1.md")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("rejects a drive letter, as the server's own path rule does", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("C:/Windows/system.ini")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("rejects a control character, as the server's own path rule does", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("Act I/Opening\u0007 1.md")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("rejects a . segment, as the server's own path rule does", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("Act I/./Opening 1.md")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("rejects an empty segment, as the server's own path rule does", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await expect(
+      client.importDocument("Linchpin", [pickedFile("Act I//Opening 1.md")]),
+    ).rejects.toThrow(/relative path/);
+    expect(fetchCalls()).toHaveLength(0);
+  });
+
+  it("normalises a backslash-free path without changing its segments", async () => {
+    mockFetch(200, { imports: [] });
+    const client = new ApiClient();
+    await client.importDocument("Linchpin", [pickedFile("Act I/Opening 1.md")]);
+    expect(partFilenames(sentForm(), "files")).toEqual(["Linchpin/Act I/Opening 1.md"]);
+  });
+});

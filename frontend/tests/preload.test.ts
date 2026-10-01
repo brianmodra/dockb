@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { contextBridge, ipcRenderer } = vi.hoisted(() => ({
+const { contextBridge, ipcRenderer, webUtils } = vi.hoisted(() => ({
   contextBridge: { exposeInMainWorld: vi.fn() },
   ipcRenderer: { invoke: vi.fn(async () => undefined), send: vi.fn() },
+  webUtils: { getPathForFile: vi.fn(() => "/docs/Linchpin/Act I/Opening.md") },
 }));
 
-vi.mock("electron", () => ({ contextBridge, ipcRenderer }));
+vi.mock("electron", () => ({ contextBridge, ipcRenderer, webUtils }));
 
 import "../src/main/preload";
 
@@ -36,5 +37,30 @@ describe("preload bridge", () => {
     };
     exposed.quit();
     expect(ipcRenderer.send).toHaveBeenCalledWith("quit");
+  });
+});
+describe("preload path bridge", () => {
+  it("exposes getPathForFile on the dockb bridge", () => {
+    const exposed = contextBridge.exposeInMainWorld.mock.calls[0][1] as {
+      getPathForFile: (file: File) => string;
+    };
+    expect(typeof exposed.getPathForFile).toBe("function");
+  });
+
+  it("getPathForFile asks webUtils for the file's absolute path", () => {
+    const exposed = contextBridge.exposeInMainWorld.mock.calls[0][1] as {
+      getPathForFile: (file: File) => string;
+    };
+    const file = new File(["x"], "Opening.md");
+    expect(exposed.getPathForFile(file)).toBe("/docs/Linchpin/Act I/Opening.md");
+    expect(webUtils.getPathForFile).toHaveBeenCalledWith(file);
+  });
+
+  it("getPathForFile passes through the empty path of a file not on disk", () => {
+    const exposed = contextBridge.exposeInMainWorld.mock.calls[0][1] as {
+      getPathForFile: (file: File) => string;
+    };
+    webUtils.getPathForFile.mockReturnValueOnce("");
+    expect(exposed.getPathForFile(new File(["x"], "made-up.md"))).toBe("");
   });
 });

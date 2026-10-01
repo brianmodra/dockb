@@ -86,6 +86,30 @@ export interface ChapterImportSummaryWire {
   deleted: number;
 }
 
+/**
+ * What importing one chapter file persisted, as POST /api/import reports it.
+ *
+ * Not to be confused with ChapterImportSummaryWire above, which is the chapter
+ * save summary and carries only counts: a caller that uploaded a directory has
+ * to learn which chapters now exist and what they are called, so this adds
+ * identity and category. Mirrors ImportSummaryWire in the server's
+ * controllers/schemas/imports.py.
+ */
+export interface ImportSummaryWire {
+  chapter_id: string;
+  title: string;
+  category: string;
+  created: boolean;
+  changed: number;
+  added: number;
+  deleted: number;
+}
+
+/** POST /api/import response — one summary per imported chapter file. */
+export interface ImportResponse {
+  imports: ImportSummaryWire[];
+}
+
 export interface DocumentContentResponse {
   content: string;
   summary: ChapterImportSummaryWire | null;
