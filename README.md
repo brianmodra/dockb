@@ -68,6 +68,9 @@ source .venv/bin/activate && pip install -e '.[dev]'
 python -m dockb.cli.import_document "/home/brian-modra/Documents/Linchpin" --single-newline-paragraphs --no-write-back
 ```
 
+Or, in the editor, `File > Import…`, which picks the same directory and sends it
+to `POST /api/import`; the editor's own notes are in `frontend/README.md`.
+
 The Document title in this example will be "Linchpin".
 
 Note that the directory structure under Linchpin must be a set of subdirectories called "Act I", "Act II", "Act III" etc.

@@ -30,7 +30,7 @@ describe("menubar", () => {
     const itemLabels = Array.from(dropdown(bar, "File").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(itemLabels).toEqual(["Open", "Save", "Delete", "Edit", "Quit"]);
+    expect(itemLabels).toEqual(["Open", "Import…", "Save", "Delete", "Edit", "Quit"]);
   });
 
   it("safely handles File clicks (Open/Save/Quit wire later)", () => {
@@ -189,5 +189,48 @@ describe("menubar document actions", () => {
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onEditDocument).toHaveBeenCalledTimes(1);
     expect(onEditChapter).toHaveBeenCalledTimes(1);
+  });
+});
+describe("File → Import", () => {
+  it("offers Import… in the File menu", () => {
+    const bar = buildMenubar({});
+    const item = bar.element.querySelector('[data-testid="menu-item-import"]');
+    expect(item?.textContent).toBe("Import…");
+  });
+
+  it("sits directly after Open", () => {
+    const bar = buildMenubar({});
+    const labels = [...bar.element.querySelectorAll(".menu-dropdown .menu-item")].map(
+      (el) => el.textContent,
+    );
+    expect(labels.indexOf("Import…")).toBe(labels.indexOf("Open") + 1);
+  });
+
+  it("reports File → Import to onImport", () => {
+    const onImport = vi.fn();
+    const bar = buildMenubar({ onImport });
+    bar.element
+      .querySelector('[data-testid="menu-item-import"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call onOpen when Import is chosen", () => {
+    const onOpen = vi.fn();
+    const onImport = vi.fn();
+    const bar = buildMenubar({ onOpen, onImport });
+    bar.element
+      .querySelector('[data-testid="menu-item-import"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when no handler was given", () => {
+    const bar = buildMenubar({});
+    expect(() =>
+      bar.element
+        .querySelector('[data-testid="menu-item-import"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    ).not.toThrow();
   });
 });

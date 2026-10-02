@@ -1,5 +1,7 @@
 import type { DocumentAttrs, DocumentWire } from "../api/types";
 import { reportError } from "../log";
+import { openOverlay } from "./overlay";
+import { openSelectList } from "./selectList";
 
 export interface DocumentPickerApi {
   listDocuments(): Promise<DocumentWire[]>;
@@ -71,27 +73,23 @@ export function openDocumentAttrsPicker(
     );
 }
 
+function pickerItems(documents: DocumentWire[]): { key: string; label: string }[] {
+  return documents.map((entry) => ({ key: entry.attrs.id, label: entry.attrs.title }));
+}
+
 function renderPicker(documents: DocumentWire[]): Promise<string | null> {
   return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.dataset.testid = "modal";
-
-    const dialog = document.createElement("div");
-    dialog.className = "modal-dialog";
-
-    const title = document.createElement("h2");
-    title.className = "modal-title";
-    title.dataset.testid = "modal-title";
-    title.textContent = "Open document";
-    dialog.append(title);
+    const overlay = openOverlay({
+      title: "Open document",
+      buttons: [{ label: "Cancel", testId: "document-picker-cancel" }],
+    });
 
     if (documents.length === 0) {
       const empty = document.createElement("div");
       empty.className = "modal-body";
       empty.dataset.testid = "document-picker-empty";
       empty.textContent = "No documents yet.";
-      dialog.append(empty);
+      overlay.body.append(empty);
     } else {
       const list = document.createElement("div");
       list.className = "document-picker-list";
@@ -102,268 +100,68 @@ function renderPicker(documents: DocumentWire[]): Promise<string | null> {
         item.dataset.testid = "document-picker-item";
         item.textContent = entry.attrs.title;
         item.addEventListener("click", () => {
-          overlay.remove();
+          overlay.close();
           resolve(entry.attrs.id);
         });
         list.append(item);
       }
-      dialog.append(list);
+      overlay.body.append(list);
     }
 
-    const buttons = document.createElement("div");
-    buttons.className = "modal-buttons";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "modal-button";
-    cancel.dataset.testid = "document-picker-cancel";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => {
-      overlay.remove();
+    overlay.buttons["document-picker-cancel"].addEventListener("click", () => {
+      overlay.close();
       resolve(null);
     });
-    buttons.append(cancel);
-    dialog.append(buttons);
-
-    overlay.append(dialog);
-    document.body.append(overlay);
   });
 }
 
 function renderDeletePicker(documents: DocumentWire[]): Promise<DeleteDocumentSelection | null> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.dataset.testid = "modal";
-
-    const dialog = document.createElement("div");
-    dialog.className = "modal-dialog";
-
-    const title = document.createElement("h2");
-    title.className = "modal-title";
-    title.dataset.testid = "modal-title";
-    title.textContent = "Delete document";
-    dialog.append(title);
-
-    let selectedId: string | null = null;
-    let selectedTitle: string = "";
-
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "modal-button is-primary";
-    deleteButton.dataset.testid = "document-picker-delete";
-    deleteButton.textContent = "Delete";
-    deleteButton.disabled = true;
-
-    if (documents.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "modal-body";
-      empty.dataset.testid = "document-picker-empty";
-      empty.textContent = "No documents yet.";
-      dialog.append(empty);
-    } else {
-      const list = document.createElement("div");
-      list.className = "document-picker-list";
-      for (const entry of documents) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "document-picker-item";
-        item.dataset.testid = "document-picker-item";
-        item.textContent = entry.attrs.title;
-        item.addEventListener("click", () => {
-          selectedId = entry.attrs.id;
-          selectedTitle = entry.attrs.title;
-          for (const other of list.querySelectorAll(".document-picker-item--selected")) {
-            other.classList.remove("document-picker-item--selected");
-          }
-          item.classList.add("document-picker-item--selected");
-          deleteButton.disabled = false;
-        });
-        list.append(item);
-      }
-      dialog.append(list);
-    }
-
-    deleteButton.addEventListener("click", () => {
-      if (selectedId === null) {
-        return;
-      }
-      overlay.remove();
-      resolve({ documentId: selectedId, title: selectedTitle });
-    });
-
-    const buttons = document.createElement("div");
-    buttons.className = "modal-buttons";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "modal-button";
-    cancel.dataset.testid = "document-picker-cancel";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => {
-      overlay.remove();
-      resolve(null);
-    });
-    buttons.append(cancel, deleteButton);
-    dialog.append(buttons);
-
-    overlay.append(dialog);
-    document.body.append(overlay);
+  const selected = openSelectList({
+    title: "Delete document",
+    items: pickerItems(documents),
+    itemTestId: "document-picker-item",
+    cancelTestId: "document-picker-cancel",
+    confirmTestId: "document-picker-delete",
+    confirmLabel: "Delete",
+    emptyMessage: "No documents yet.",
+    emptyTestId: "document-picker-empty",
+    valueFor: (item) => {
+      const entry = documents.find((doc) => doc.attrs.id === item.key);
+      return { documentId: item.key, title: entry?.attrs.title ?? item.label };
+    },
   });
+  return selected.result;
 }
 
 function renderEditPicker(documents: DocumentWire[]): Promise<DocumentAttrs | null> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.dataset.testid = "modal";
-
-    const dialog = document.createElement("div");
-    dialog.className = "modal-dialog";
-
-    const title = document.createElement("h2");
-    title.className = "modal-title";
-    title.dataset.testid = "modal-title";
-    title.textContent = "Edit document";
-    dialog.append(title);
-
-    let selected = null as DocumentAttrs | null;
-
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "modal-button is-primary";
-    editButton.dataset.testid = "document-picker-edit";
-    editButton.textContent = "Edit";
-    editButton.disabled = true;
-
-    if (documents.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "modal-body";
-      empty.dataset.testid = "document-picker-empty";
-      empty.textContent = "No documents yet.";
-      dialog.append(empty);
-    } else {
-      const list = document.createElement("div");
-      list.className = "document-picker-list";
-      for (const entry of documents) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "document-picker-item";
-        item.dataset.testid = "document-picker-item";
-        item.textContent = entry.attrs.title;
-        item.addEventListener("click", () => {
-          selected = entry.attrs;
-          for (const other of list.querySelectorAll(".document-picker-item--selected")) {
-            other.classList.remove("document-picker-item--selected");
-          }
-          item.classList.add("document-picker-item--selected");
-          editButton.disabled = false;
-        });
-        list.append(item);
-      }
-      dialog.append(list);
-    }
-
-    editButton.addEventListener("click", () => {
-      if (selected === null) {
-        return;
-      }
-      overlay.remove();
-      resolve(selected);
-    });
-
-    const buttons = document.createElement("div");
-    buttons.className = "modal-buttons";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "modal-button";
-    cancel.dataset.testid = "document-picker-cancel";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => {
-      overlay.remove();
-      resolve(null);
-    });
-    buttons.append(cancel, editButton);
-    dialog.append(buttons);
-
-    overlay.append(dialog);
-    document.body.append(overlay);
+  const selected = openSelectList({
+    title: "Edit document",
+    items: pickerItems(documents),
+    itemTestId: "document-picker-item",
+    cancelTestId: "document-picker-cancel",
+    confirmTestId: "document-picker-edit",
+    confirmLabel: "Edit",
+    emptyMessage: "No documents yet.",
+    emptyTestId: "document-picker-empty",
+    valueFor: (item) => {
+      const entry = documents.find((doc) => doc.attrs.id === item.key);
+      return entry?.attrs ?? { id: item.key, title: item.label, author: "" };
+    },
   });
+  return selected.result;
 }
 
 function renderConfirmPicker(documents: DocumentWire[]): Promise<string | null> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.dataset.testid = "modal";
-
-    const dialog = document.createElement("div");
-    dialog.className = "modal-dialog";
-
-    const title = document.createElement("h2");
-    title.className = "modal-title";
-    title.dataset.testid = "modal-title";
-    title.textContent = "Open document";
-    dialog.append(title);
-
-    let selectedId: string | null = null;
-
-    const openButton = document.createElement("button");
-    openButton.type = "button";
-    openButton.className = "modal-button is-primary";
-    openButton.dataset.testid = "document-picker-open";
-    openButton.textContent = "Open";
-    openButton.disabled = true;
-
-    if (documents.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "modal-body";
-      empty.dataset.testid = "document-picker-empty";
-      empty.textContent = "No documents yet.";
-      dialog.append(empty);
-    } else {
-      const list = document.createElement("div");
-      list.className = "document-picker-list";
-      for (const entry of documents) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "document-picker-item";
-        item.dataset.testid = "document-picker-item";
-        item.textContent = entry.attrs.title;
-        item.addEventListener("click", () => {
-          selectedId = entry.attrs.id;
-          for (const other of list.querySelectorAll(".document-picker-item--selected")) {
-            other.classList.remove("document-picker-item--selected");
-          }
-          item.classList.add("document-picker-item--selected");
-          openButton.disabled = false;
-        });
-        list.append(item);
-      }
-      dialog.append(list);
-    }
-
-    openButton.addEventListener("click", () => {
-      if (selectedId === null) {
-        return;
-      }
-      overlay.remove();
-      resolve(selectedId);
-    });
-
-    const buttons = document.createElement("div");
-    buttons.className = "modal-buttons";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "modal-button";
-    cancel.dataset.testid = "document-picker-cancel";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => {
-      overlay.remove();
-      resolve(null);
-    });
-    buttons.append(cancel, openButton);
-    dialog.append(buttons);
-
-    overlay.append(dialog);
-    document.body.append(overlay);
+  const selected = openSelectList({
+    title: "Open document",
+    items: pickerItems(documents),
+    itemTestId: "document-picker-item",
+    cancelTestId: "document-picker-cancel",
+    confirmTestId: "document-picker-open",
+    confirmLabel: "Open",
+    emptyMessage: "No documents yet.",
+    emptyTestId: "document-picker-empty",
+    valueFor: (item) => item.key,
   });
+  return selected.result;
 }

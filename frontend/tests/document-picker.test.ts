@@ -242,3 +242,40 @@ describe("openDocumentAttrsPicker", () => {
     expect(await promise).toBeNull();
   });
 });
+describe("picker titles", () => {
+  function title(): string | null {
+    return document.querySelector("[data-testid='modal-title']")?.textContent ?? null;
+  }
+
+  it("the plain picker says Open document", async () => {
+    const pending = openDocumentPicker(fakeApi());
+    await Promise.resolve();
+    expect(title()).toBe("Open document");
+    document.querySelector<HTMLButtonElement>("[data-testid='document-picker-cancel']")!.click();
+    await pending;
+  });
+
+  it("the confirm picker says Open document", async () => {
+    const pending = openDocumentPickerConfirm(fakeApi());
+    await Promise.resolve();
+    expect(title()).toBe("Open document");
+    document.querySelector<HTMLButtonElement>("[data-testid='document-picker-cancel']")!.click();
+    await pending;
+  });
+
+  it("the delete picker says Delete document", async () => {
+    const pending = openDeleteDocumentPicker(fakeApi());
+    await Promise.resolve();
+    expect(title()).toBe("Delete document");
+    document.querySelector<HTMLButtonElement>("[data-testid='document-picker-cancel']")!.click();
+    await pending;
+  });
+
+  it("the attrs picker says Edit document", async () => {
+    const pending = openDocumentAttrsPicker(fakeApi());
+    await Promise.resolve();
+    expect(title()).toBe("Edit document");
+    document.querySelector<HTMLButtonElement>("[data-testid='document-picker-cancel']")!.click();
+    await pending;
+  });
+});

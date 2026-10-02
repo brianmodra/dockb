@@ -7,6 +7,7 @@ import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
 import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
 import { openLanguageSettings } from "./layout/languageSettings";
+import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
 import { openSignInGate } from "./layout/signInGate";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
@@ -19,18 +20,35 @@ export interface MountShellOptions {
   provider?: string;
 }
 
+async function sendImport(
+  selection: ImportSelection,
+  api: ApiClient,
+  layout: AppLayout,
+): Promise<void> {
+  try {
+    const response = await api.importDocument(selection.directoryName, selection.files, {
+      singleNewlineParagraphs: selection.singleNewlineParagraphs,
+    });
+    showImportSummaries(response.imports);
+  } catch (error) {
+    reportError("Import", error, (text) => layout.pushMessage(text));
+  }
+}
+
 export function mountShell(root: HTMLElement, options: MountShellOptions = {}): AppLayout {
   root.replaceChildren();
 
   const editPanel = options.api ? new EditPanel({ api: options.api }) : null;
   let stateController: AppStateController | null = null;
   let openDocument: () => void = () => {};
+  let runImport: () => void = () => {};
   let runDeleteDocument: () => void = () => {};
   let runEditDocument: () => void = () => {};
   let runEditChapter: () => void = () => {};
 
   const layout = new AppLayout({
     onOpen: () => openDocument(),
+    onImport: () => runImport(),
     onDeleteDocument: () => runDeleteDocument(),
     onEditDocument: () => runEditDocument(),
     onEditChapter: () => runEditChapter(),
@@ -117,6 +135,18 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         void panel.load(documentId);
         void controller.saveLastDocument(documentId);
       });
+    };
+
+    runImport = () => {
+      void openImportDialog(options.bridge, { onMessage: (text) => layout.pushMessage(text) })
+        .then((selection) => {
+          if (selection !== null) {
+            void sendImport(selection, options.api!, layout);
+          }
+        })
+        .catch((error) => {
+          reportError("Import", error, (text) => layout.pushMessage(text));
+        });
     };
 
     runEditDocument = () => {

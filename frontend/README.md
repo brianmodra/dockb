@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a document, and edit a chapter. It never writes files itself. The window does not even load its own interface from disk — the backend serves it, so the app and the API share an origin and the signed-in session reaches every route.
+This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a document, edit a chapter, or import a whole document from a folder on disk. It never writes files itself — an import reads a directory the user picks and hands it to the server, which does the writing. The window does not even load its own interface from disk; the backend serves it, so the app and the API share an origin and the signed-in session reaches every route.
 
 Read it to run the app and to find which file owns the chapter list, the editor, and login. How the window should look is in `../README_markdown_editor_ui.md`.
 
@@ -44,6 +44,33 @@ the user picks — the user reviewed and accepted that.
 the multipart boundary itself. A header the caller sets explicitly still wins, so
 the rule is only about the default. Every other body type stays on the JSON
 default; `importDocument` is the only caller that sends `FormData`.
+
+### Importing a document directory
+
+`File > Import…` imports a whole document from disk. `layout/importDialog.ts`
+puts up a hidden `<input webkitdirectory>`, which raises the native directory
+chooser; cancelling that fires `cancel` and is a cancel, not an error. The picked
+directory's own name is not in `webkitRelativePath`, so `deriveDirectoryName`
+recovers it by stripping the relative path from the file's absolute one. A
+directory that cannot be read this way is reported before the confirm dialog, not
+after.
+
+The confirm dialog shows the directory, the file count, the total size, and a
+checkbox for `single_newline_paragraphs`. On Import the client sends the files and
+the result is one row per chapter with its title, category, whether it was new or
+updated, and its counts. A failed upload reports the server's message in the
+message panel and shows no summary.
+
+The import does not open the imported document: the response carries per-chapter
+ids but no document id, so there is nothing to select. The document appears in
+`Open`, which re-lists each time it is used.
+
+### Shared dialog shape
+
+`layout/overlay.ts` owns the modal every dialog shares — overlay, title, content
+slot, button row — and `layout/selectList.ts` owns the choose-then-confirm list
+that the document pickers use. `layout/documentPicker.ts` is built on both. New
+dialogs should start from `openOverlay` rather than rebuilding it.
 
 ## Commands
 

@@ -5,6 +5,7 @@ export interface MenubarOptions {
   onMode?: (mode: Mode) => void;
   onSave?: () => void;
   onOpen?: () => void;
+  onImport?: () => void;
   onQuit?: () => void;
   onOpenLanguageSettings?: () => void;
   onDeleteDocument?: () => void;
@@ -30,6 +31,7 @@ const MENUS: MenuSpec[] = [
     label: "File",
     items: [
       { key: "open", label: "Open" },
+      { key: "import", label: "Import…" },
       { key: "save", label: "Save" },
       { key: "delete", label: "Delete", children: [{ key: "delete-document", label: "Document" }] },
       {
@@ -181,6 +183,8 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
     options.onSave?.();
   } else if (menu.key === "File" && item.key === "open") {
     options.onOpen?.();
+  } else if (menu.key === "File" && item.key === "import") {
+    options.onImport?.();
   } else if (menu.key === "File" && item.key === "quit") {
     options.onQuit?.();
   } else if (menu.key === "File" && item.key === "delete-document") {
