@@ -727,9 +727,8 @@ named `files`, each filename `<directory name>/<file.webkitRelativePath>`, plus
 `single_newline_paragraphs` when the user ticks the box. The directory name is a
 parameter rather than something the client infers, because `webkitRelativePath`
 omits the picked directory's own name and the server needs it as the shared first
-segment. The client applies the same path rule as `validate_part_path` before
-sending, so the user gets a plain message rather than a `422`; the server check
-remains authoritative.
+segment. The client applies this section's path rule before sending, so the user
+gets a plain message rather than a `422`; the server check remains authoritative.
 
 ### The editor shell
 

@@ -10,7 +10,11 @@ chapter, plus an install command, the API contract, and per-layer backend
 documentation pointed to from here.
 
 The desktop editor (`frontend/`) is a thin API client. Writers edit canonical
-markdown in WYSIWYG or raw view; the editor never writes files or git. Hand
+markdown in WYSIWYG or raw view; the editor never writes files or git, and an
+import only reads the directory a writer picks and hands it to the server. A
+manuscript can arrive either way: `File > Import…` in the editor, or
+`python -m dockb.cli.import_document` on the command line, both running the same
+directory walker. Hand
 edits to the owned markdown files are absorbed the next time a chapter is
 opened. The backend is observable as well as structured: every HTTP request
 logs its total time and a per-stage breakdown, so a slow open shows exactly
