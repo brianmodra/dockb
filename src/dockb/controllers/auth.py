@@ -145,7 +145,11 @@ def auth_me(
         "user": {
             "id": profile["id"],
             "username": profile["username"],
-            "email": profile["email"],
+            # A local-mode or provider account may have no address, and the store keeps
+            # that as NULL so the unique email constraint does not collide two of them.
+            # The wire format stays a plain string, which is what the editor's
+            # UserProfile declares, so the empty string is substituted here.
+            "email": profile["email"] or "",
             "display_name": profile["display_name"],
             "avatar_url": profile["avatar_url"],
         }

@@ -3,12 +3,14 @@
 ## Executive Summary
 
 This document explains how DockB users sign in and where their accounts live.
-They authenticate with Google or GitHub; the backend (not the editor) exchanges
-the code, mints its own session cookie, and stores accounts, tokens, and
-per-user app state in a small SQLite database. Provider tokens never reach the
-editor. **Local mode** — no sign-in, with the identity being the OS username —
-is opt-in via `DOCKB_LOCAL_MODE=true` (see §6); the code still infers it from
-absent provider configuration, which §6 changes.
+Users have their own accounts, created by an admin CLI that issues a temporary
+password which the user must change on first sign-in; they can also authenticate
+with Google or GitHub. In both cases the backend (not the editor) mints its own
+session cookie, and stores accounts, tokens, and per-user app state in a small
+SQLite database. Provider tokens never reach the editor. **Local mode** — no
+sign-in, with the identity being the OS username — is opt-in via
+`DOCKB_LOCAL_MODE=true` (see §6); the code still infers it from absent provider
+configuration, which §6 changes.
 
 The routes, session gate, and app-state endpoints are implemented. On first run
 the editor shows a Sign-in button, then restores the last document or asks the
@@ -22,7 +24,8 @@ table below is the baseline, verified against the code, so a build can start fro
 | --- | --- | --- | --- |
 | §6 local mode is opt-in | `requires_login` is `bool(self._providers)` (`services/auth_service.py`), so local mode is inferred from the absence of provider credentials. `DOCKB_LOCAL_MODE` exists nowhere in `src/`. Because `get_current_user` falls through to the OS user in local mode, the gated routes are open to any caller today. | `DOCKB_LOCAL_MODE=true` turns local mode on; nothing infers it. Provider configuration no longer selects the mode. | With the variable unset and a provider configured, login is required. With it set to `true` and no provider, requests are served as the OS user. The inference path is gone. |
 | §7 account lifecycle is admin-CLI only | No admin CLI exists: `src/dockb/cli/` holds only `import_document.py` and `reconstruct_chapter.py`. There is no password column on `users`. | A CLI that creates accounts and sets or resets a password. No HTTP registration or recovery route. | An account can be created with a password and then sign in. No route accepts a registration or reset request. |
-| §7 password login (a later step) | Not implemented. No password-hashing library is installed — `pyproject.toml` has `cryptography` and stdlib `hashlib` only. | Argon2id, verified off the event loop, constant-time on the not-found path, rate limited. | A wrong password and an unknown username cost the same and both fail; a correct password mints a session cookie. |
+| §7 password login (in build) | Not implemented. No password-hashing library is installed — `pyproject.toml` has `cryptography` and stdlib `hashlib` only. | Argon2id, verified off the event loop, constant-time on the not-found path, rate limited. | A wrong password and an unknown username cost the same and both fail; a correct password mints a session cookie. |
+| §7 username normalization, `email` uniqueness, soft delete | `username` is `UNIQUE` but unnormalized, so SQLite's case-sensitive comparison admits `Brian` and `brian` as two accounts. `email` carries no constraint. `get_or_create_local_user` inserts an *empty string* email, which would collide under a unique constraint. No `deleted_at`. | Usernames lowercased and stripped; `email` nullable but `UNIQUE`, with every passwordless row storing `NULL` rather than `''`; `deleted_at` for a soft delete that keeps `app_state` and OAuth links. | The CLI cannot create two accounts differing only by case, a local-mode and a federated row coexist, and a deleted account keeps its manuscripts attributable. |
 | `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | Gains a `password_login` flag when the password step lands, so the FE can render a form rather than only provider buttons. | The endpoint distinguishes all four states (local, federated only, password only, both) and the editor gates correctly in each. |
 
 As this work lands, this document should get smaller. The decisions and their rationale stay here;
@@ -119,7 +122,7 @@ Google and GitHub, configured by environment variables:
 - `OAUTH_CALLBACK_PORT` (the loopback port for the login redirect)
 - `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens and the
   session-cookie signer key). Without it the backend uses an ephemeral key in memory (see §6).
-- `DOCKB_LOCAL_MODE` (opt in to local mode with `true`; see §6)
+- `DOCKB_LOCAL_MODE` (opt in to local mode with `true`; see §6 — **not yet implemented**)
 - `OAUTH_SESSION_TTL_HOURS` (session cookie lifetime, default 48)
 
 Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from the
@@ -191,9 +194,63 @@ This is a deliberate fit for the current stage: DockB is a writing tool with a s
 users, and a CLI is the right weight for administering it. Opening DockB to untrusted users would
 require a hosted registration and recovery flow, and this decision would be revisited then.
 
-### Password login, when it is added
+### The admin CLI
 
-Password sign-in is a later step, and is not implemented today. When it lands:
+| Command | Effect |
+| --- | --- |
+| `dockb users create --username <name> --email <address>` | Generates a temporary password, prints it once, sets `must_change_password`. |
+| `dockb users list` | Every account with its state. Never prints a password or a hash. |
+| `dockb users block <username>` | Refuses logins, evicts live sessions. Reversible. |
+| `dockb users unblock <username>` | Reverses the above. |
+| `dockb users delete <username>` | Soft delete: sets `deleted_at`, refuses logins, evicts sessions. |
+| `dockb users set-password <username>` | Re-issues a temporary password and re-arms `must_change_password`. |
+
+`delete` is a **soft** delete, so the row, its `app_state`, and its OAuth links survive. Nothing is
+lost when an account is removed, and manuscripts stay attributable to the account that wrote them
+once documents are owned. A soft-deleted username stays taken, since the row holding it is still
+present.
+
+`AccountStore.from_env()` has no callers: `wire()` constructs the store directly and substitutes an
+ephemeral secret when `DOCKB_SECRET_KEY` is unset. The CLI builds its store the same way `wire()`
+does, because `from_env()` *raises* on a missing secret where the server runs happily — reaching for
+it in the CLI would fail where the server succeeds.
+
+### Usernames
+
+A username is a name, not an address, and it is the identity key for sessions, cookies and app state
+(§3). It is stored lowercased with surrounding whitespace stripped, and is `UNIQUE`.
+
+Normalizing is not cosmetic. SQLite compares `TEXT` case-sensitively, so without it `Brian` and
+`brian` would be two accounts — and since the normalized value becomes the document owner, a case
+variant would split one person's documents across two owners. The CLI rejects a username that differs
+from an existing one only by case or surrounding whitespace.
+
+`email` is a separate, admin-supplied property that is **not verified** and is not an identity. It is
+nullable, because a local-mode row and a provider profile may both lack one, and `UNIQUE`, because
+§10 decides accounts are never merged by an address — making the address unique removes the ambiguity
+that a merge would have had to resolve. The CLI requires a non-empty address and reports a duplicate
+as an error rather than silently refusing it.
+
+Two consequences follow from `UNIQUE`, and both need the other nullable. A row with no password — a
+local-mode row, or one created by a federated login — stores `NULL` rather than `''`, because `NULL`
+does not collide under a unique constraint and `''` would. And a person who signs in with a provider
+*and* holds a password account cannot have both when the provider reports the same address. §10
+already records the cost of not linking accounts; this is a second instance of it.
+
+An existing database may already hold addresses the index refuses, because a local-mode row used to be
+written with `''` and a provider could report one address twice. The schema migration clears them —
+blanks to `NULL`, and among duplicates the earliest row keeps the address — because otherwise the index
+cannot be created and the backend will not start. This discards an unverified address, so every affected
+account is logged by username for the operator to re-supply through the CLI.
+
+A federated login reporting an address another account already holds is **refused**. The refusal is
+raised before anything is written, so a failed attempt leaves neither a `users` row nor a provider
+link. An account repeating *its own* address on a later sign-in is not a collision and proceeds.
+Locking a person out of DockB over a provider-reported address is the accepted cost of the
+constraint; an email the admin supplied can be re-supplied through the CLI, and one a provider
+supplied is unverified and therefore not an identity.
+
+### Passwords
 
 - Passwords are stored as **Argon2id** hashes (`argon2-cffi`), not salted SHA-256. The
   parameters come from OWASP's Password Storage Cheat Sheet. One dependency is worth it: the
@@ -209,10 +266,57 @@ Password sign-in is a later step, and is not implemented today. When it lands:
   oracle.
 - Login is rate limited per username and per IP, with lockout or backoff. The federated flow never
   needed this — Google and GitHub did the throttling — and a password endpoint has to do it.
-- The session cookie is tightened to `SameSite=Strict` for the password path. `state` and PKCE
-  protect the federated flow from CSRF, but a password form has no equivalent, and the Electron
-  shell loads the renderer from `file://`, a `null` origin that the CORS middleware admits
-  (see §6).
+- The policy is a minimum of 12 characters and a maximum of 128, with no composition rules. NIST
+  SP 800-63B prefers length and a blocklist over character classes, and rules about capitals,
+  digits and symbols push people toward predictable substitutions. The maximum bounds the Argon2
+  cost of an over-long submission. Changing to the current password is refused.
+
+### Temporary passwords
+
+The CLI generates the temporary password with `secrets`, prints it **once**, and sets
+`must_change_password`. It is never logged, and never accepted as a command-line argument, because
+an argument is recorded in the shell history and the process table; a caller supplying its own reads
+it from stdin. The generated value is exempt from the minimum length, since its entropy comes from
+generation rather than from the person choosing it.
+
+An administrator reads it off the console and passes it to the user out of band. It is not emailed,
+and the address on the account is not verified, so there is nowhere to send it.
+
+### First use must change the password
+
+`must_change_password` is enforced, not merely displayed. A login on a temporary password succeeds
+and mints a session, but the gate then serves **only** the change-password route and logout; every
+manuscript route is refused until the password changes. A flag that is shown without being enforced
+is not a control, and the user would otherwise keep the temporary password indefinitely.
+
+### Blocking, deletion, and invalidating a live session
+
+`blocked_at` and `deleted_at` both refuse a login and both evict the account's live session from the
+in-memory `SessionManager`. Login reports the same generic failure for a wrong password, an unknown
+username, and a blocked account, so the form is not an account-status oracle.
+
+The CLI is a separate process from the server and cannot reach the server's in-memory sessions, so
+eviction alone does not survive `set-password` or `block`: the old session would stay valid for its
+full lifetime. `users.credentials_changed_at` closes that. It is stamped whenever a credential is
+set, reset, blocked or deleted, and the server compares it against the session's creation time on
+every request, refusing an older session. The value lives in the database, so the check works across
+processes, and it costs nothing extra because the request already reads the account row to learn
+whether the account is blocked.
+
+### The session cookie
+
+The session cookie is tightened to `SameSite=Strict` for the password path, where a form post has no
+`state` or PKCE to protect it. It is scoped to `/api` (§4) and the editor is served same-origin from
+`/editor/` (§6), so a cross-site form post to a gated route carries no cookie.
+
+### Deferred
+
+Multi-factor authentication, recovery of a forgotten password over HTTP, and email verification are
+all out of scope. `dockb users set-password` is the only recovery path, which is sufficient while the
+user set is small and known, and would not be for untrusted users.
+
+The column-by-column schema and the store's accessors move down to
+`src/dockb/infrastructure/accounts/README.md` as the code lands.
 
 ## 8. Flow in full (reference)
 
@@ -230,7 +334,15 @@ Password sign-in is a later step, and is not implemented today. When it lands:
 
 ## 9. Open questions
 
-None at present.
+- **The store layout for per-user document ownership** — when documents become owned by their user
+  (§ next cycle), the markdown tree is keyed by title in a shared git repository, so two users
+  cannot both hold a document called "Book One". Per-user trees are the decision; whether that means
+  one git repository per user, or one repository with per-user subdirectories whose commits and
+  history span users, is not yet decided.
+- **Documents belonging to a soft-deleted account** — `deleted_at` keeps the row so manuscripts stay
+  attributable, but ownership raises what *visible* means. Whether such a document is reassigned,
+  shown to an administrator only, or hidden from everyone needs deciding when ownership lands, since
+  the answer changes the delete command's contract.
 
 ## 10. Resolved questions
 

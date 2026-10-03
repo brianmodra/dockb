@@ -26,15 +26,17 @@ missing — so all server-owned on-disk state sits in one place.
 
 It is the stdlib `sqlite3` module, with no ORM, and every value is bound as a query
 parameter. Each accessor opens a connection, ensures the schema, and closes it in a
-`finally`. `PRAGMA foreign_keys = ON` is set per connection, so deleting a user cascades
-to its OAuth links and app state.
+`finally`. `PRAGMA foreign_keys = ON` is set per connection, so hard-deleting a user
+cascades to its OAuth links and app state; accounts are in practice soft-deleted, which
+deliberately does not cascade.
 
 `AccountStore.from_env()` builds the store from `DOCKB_CHAPTERS_DIR` and
 `DOCKB_SECRET_KEY`, and raises if either is missing.
 
 ## Schema
 
-Three tables, declared in `_SCHEMA` and created on every connection.
+Three tables, declared in `_SCHEMA` and created on every connection, then brought up to
+`_SCHEMA_VERSION` by the migrations below.
 
 ### `users`
 
@@ -42,15 +44,31 @@ Three tables, declared in `_SCHEMA` and created on every connection.
 | --- | --- | --- |
 | `id` | TEXT | Internal UUID. Exists only as the `oauth_accounts` foreign key target. |
 | `username` | TEXT | `UNIQUE`, and the identity used everywhere else. |
-| `email` | TEXT | From the provider profile. |
+| `email` | TEXT | `UNIQUE` and nullable. CLI-supplied, or from a provider profile. |
 | `display_name` | TEXT | User-facing name. |
 | `avatar_url` | TEXT | Profile image URL. |
+| `password_hash` | TEXT | Argon2id hash. `NULL` for an account that has only ever signed in through a provider. |
+| `must_change_password` | INTEGER | Set when a generated temporary password is outstanding. |
+| `blocked_at` | TEXT | When the account was blocked; `NULL` if it is not. |
+| `last_login_at` | TEXT | Stamped by `record_login`. |
+| `credentials_changed_at` | TEXT | Stamped by every credential or lifecycle change. |
+| `deleted_at` | TEXT | Set by a soft delete. |
 | `created_at` | TEXT | `CURRENT_TIMESTAMP` default. |
 
 Identity is the `username`, not the `id`: sessions, cookies, and app state all carry it.
-It is the OS username in local mode and the OAuth profile username otherwise, so
-`get_or_create_local_user` inserts a minimal row (display name = username, empty email and
-avatar) with no provider account behind it.
+Every accessor normalizes it with `strip().lower()`, so `Brian`, `brian` and ` Brian ` are
+one account.
+
+`must_change_password` is what gates the UI after a first sign-in with a CLI-generated
+password. `credentials_changed_at` is what invalidates sessions that the CLI cannot reach,
+because it runs in another process from the server's in-memory session manager; it is
+compared as text against a session's creation time, so `_now()` is a fixed-width
+`isoformat(timespec="microseconds")` — a variable width would sort wrongly against
+`CURRENT_TIMESTAMP`, which resolves only to the second.
+
+`get_or_create_local_user` inserts a minimal row with no password and no provider account
+behind it: display name = username, `email` `NULL`, avatar empty. `email` is `NULL` and
+never `''`, because `''` would collide with itself under the unique index.
 
 ### `oauth_accounts`
 
@@ -68,6 +86,33 @@ login refreshes the profile and rotates the token in place. Rows are never merge
 providers: one provider account is one `users` row, and linking by email is deliberately
 not done (`README_auth.md` §10).
 
+`upsert_provider_user` refuses, before writing anything, when the reported address is
+already held by a *different* account — the unique index would otherwise surface it as an
+opaque `IntegrityError` halfway through the write. The same account repeating its own
+address is fine.
+
+## Migrations
+
+`PRAGMA user_version`, an integer in the file header, records how far a database has been
+taken, so there is no second bookkeeping table. A database that did not exist is stamped at
+the current version after `_SCHEMA`; an existing one is stepped through `_MIGRATIONS`.
+
+Each step stamps its version only after it succeeds, so a step failing halfway leaves the
+file at the previous version and the retry finishes the job rather than failing on a
+duplicate column.
+
+Version 2 added the credential, blocking and deletion columns. It had to resolve the
+addresses that the new unique index refuses first, because `get_or_create_local_user` used
+to write `''` and a provider could report one address twice: blanks become `NULL`, and
+among duplicates the earliest row keeps the address and the rest are nulled. That silently
+loses an unverified address, so each affected account is logged by username for the
+operator to re-supply through the CLI.
+
+The unique email index is a named statement rather than an inline `UNIQUE` on the column,
+because SQLite cannot add a constraint with `ALTER TABLE`. It cannot live in `_SCHEMA`
+either — that runs before the migration, so it would be attempted before the duplicates it
+refuses are gone.
+
 ### `app_state`
 
 | Column | Type | Notes |
@@ -80,6 +125,25 @@ not done (`README_auth.md` §10).
 
 `set_app_state` replaces the row wholesale, so the three fields are a snapshot rather
 than a merge.
+
+## Account lifecycle
+
+The password-login work adds the store's half of a lifecycle that `README_auth.md` §7
+specifies; the other half — hashing, verification, sessions — is in `AuthService`, not here.
+
+- `create_user(username, …)` — insert a CLI-created account, `UNIQUE` violations on
+  `username` and `email` raised as `UsernameTakenError` and `EmailTakenError`.
+- `get_credentials(username)` — the hash, `must_change_password`, `blocked_at` and
+  `deleted_at` needed to decide whether a sign-in may proceed. Kept apart from
+  `get_user` so the lifecycle state cannot be read from a listing.
+- `set_password_hash`, `record_login`, `block_user`, `unblock_user`,
+  `soft_delete_user` — each writes its own complete `UPDATE` and raises
+  `UnknownUserError` when no row matched, so a mistyped username in the CLI is reported
+  rather than silently doing nothing.
+- `list_users()` — every account without hashes or ids.
+
+`unblock_user` deliberately does not stamp `credentials_changed_at`: blocking already
+evicted the account's sessions, so there is nothing left to invalidate.
 
 ## Token encryption
 
