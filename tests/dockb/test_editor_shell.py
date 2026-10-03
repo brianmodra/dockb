@@ -10,14 +10,13 @@ from fastapi.testclient import TestClient
 
 from dockb.app_factory import create_app
 
+_INDEX_HTML = '<!doctype html><html><head><script type="module" src="./assets/index-abc123.js"></script></head><body></body></html>'
+
 
 def _write_dist(directory) -> None:
     """Create a built-frontend directory with an index and a hashed asset."""
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "index.html").write_text(
-        '<!doctype html><html><head><script type="module" ' 'src="./assets/index-abc123.js"></script></head><body></body></html>',
-        encoding="utf-8",
-    )
+    (directory / "index.html").write_text(_INDEX_HTML, encoding="utf-8")
     assets = directory / "assets"
     assets.mkdir(exist_ok=True)
     (assets / "index-abc123.js").write_text("export const x = 1;\n", encoding="utf-8")
@@ -133,7 +132,7 @@ class TestMountEditorShell:
         assert client.get("/editor/api/auth/config").text == '{"login_required": false}'
 
 
-class TestMountPath:
+class TestMountPath:  # pylint: disable=too-few-public-methods
     def test_the_frontend_and_the_backend_name_the_same_path(self):
         """The window loads /editor/ and the backend mounts /editor.
 
