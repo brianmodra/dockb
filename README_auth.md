@@ -20,7 +20,7 @@ table below is the baseline, verified against the code, so a build can start fro
 
 | Decision | The code today | The target | Done when |
 | --- | --- | --- | --- |
-| §6 local mode is opt-in | `requires_login` is `bool(self._providers)` (`services/auth_service.py`), so local mode is inferred from the absence of provider credentials. `DOCKB_LOCAL_MODE` exists nowhere in `src/`. | `DOCKB_LOCAL_MODE=true` turns local mode on; nothing infers it. Provider configuration no longer selects the mode. | With the variable unset and a provider configured, login is required. With it set to `true` and no provider, requests are served as the OS user. The inference path is gone. |
+| §6 local mode is opt-in | `requires_login` is `bool(self._providers)` (`services/auth_service.py`), so local mode is inferred from the absence of provider credentials. `DOCKB_LOCAL_MODE` exists nowhere in `src/`. Because `get_current_user` falls through to the OS user in local mode, the gated routes are open to any caller today. | `DOCKB_LOCAL_MODE=true` turns local mode on; nothing infers it. Provider configuration no longer selects the mode. | With the variable unset and a provider configured, login is required. With it set to `true` and no provider, requests are served as the OS user. The inference path is gone. |
 | §7 account lifecycle is admin-CLI only | No admin CLI exists: `src/dockb/cli/` holds only `import_document.py` and `reconstruct_chapter.py`. There is no password column on `users`. | A CLI that creates accounts and sets or resets a password. No HTTP registration or recovery route. | An account can be created with a password and then sign in. No route accepts a registration or reset request. |
 | §7 password login (a later step) | Not implemented. No password-hashing library is installed — `pyproject.toml` has `cryptography` and stdlib `hashlib` only. | Argon2id, verified off the event loop, constant-time on the not-found path, rate limited. | A wrong password and an unknown username cost the same and both fail; a correct password mints a session cookie. |
 | `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | Gains a `password_login` flag when the password step lands, so the FE can render a form rather than only provider buttons. | The endpoint distinguishes all four states (local, federated only, password only, both) and the editor gates correctly in each. |
@@ -169,6 +169,14 @@ operator asks for by name.
 - Per-user app state is keyed by the local username, so two OS users on the same machine get
   separate state.
 
+**This is a security prerequisite, not only a usability one.** Until it lands, `get_current_user`
+does not reject an unauthenticated caller in local mode: it falls through to the OS username and
+serves the request (`src/dockb/controllers/auth.py:116-121`). Since local mode is currently
+*inferred* from the absence of provider credentials, and `.env.example` configures none, every
+gated route answers anyone who can reach the port. `README_mcp_auth.md` §5 depends on this
+changing before it opens a public listener, so it is sequenced before that work rather than
+alongside it.
+
 ## 7. Decision: account lifecycle is admin-CLI only (decided)
 
 Accounts are created, and passwords reset, by an admin-only command-line tool. There is no
@@ -248,5 +256,5 @@ Settled while the design was implemented, or decided since:
   attacker's account. Doing no linking means the vector does not exist; the cost is that one person
   using two providers has two accounts.
 - **Machine-to-machine credentials are separate from user accounts** — the MCP server's service
-  credential is not a user account and never appears in `users`. It lives in the `issued_tokens`
-  table and is documented in `README_mcp_auth.md`.
+  credential is not a user account and never appears in `users`. It is a per-prompt bearer token
+  held in memory, and is documented in `README_mcp_auth.md`.

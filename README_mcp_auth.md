@@ -1,244 +1,322 @@
-# MCP Authentication and the Two-Process System
+# MCP Authentication and Process Boundaries
 
 ## Executive Summary
 
-This document explains how the MCP server and DockB's backend authenticate to
-each other, and to the OpenAI model that calls the MCP server. The model calls
-the MCP server with a bearer token that is generated ahead of time and handed
-to it in the OpenAI Responses API payload; the MCP server in turn calls
-DockB's backend with its own service credential. Neither credential is issued
-through a login screen, because there is no human-consent step anywhere in the
-flow: Brian is the only user and provisions both credentials himself. Both
-credentials are asymmetric JWTs — only the token issuer holds the private
-signing key, and anything that verifies a token needs only the public key,
-which is not a secret.
+This document explains how the MCP server authenticates the OpenAI model that
+calls it. When Brian's code builds a Responses API request it attaches the MCP
+server as a tool and passes a bearer token in that tool's `authorization`
+field; OpenAI's infrastructure then calls the MCP server carrying that token.
+The token is generated for that one prompt, kept in memory, and expires after a
+short window, so a stolen token is dead almost immediately and there is no
+credential anywhere on disk.
 
-The two services run as two processes, not one. The MCP server is the part that
-faces the internet (through an ngrok tunnel today, a public HTTPS endpoint
-later), so it is the only one that is ever exposed; the DockB backend stays on
-the loopback interface. The MCP server imports DockB's Python packages and
-calls the same service methods the HTTP API calls, so the two services share
-code and in-memory state without making HTTP calls between them. Read this for
-the token design, the two-process boundary, and why exposing a single combined
-process would be unsafe.
+The MCP server runs **in the same process** as DockB's backend, mounted on its
+own listener so the public tunnel cannot reach the manuscript API. That is one
+process and two ports rather than two processes, and it is what lets the token
+be a plain in-memory value with nothing to provision and no CLI to administer.
+Read this for the token design, why there is no authorization server, and why
+the two listeners stay separate even though they share a process.
 
-**Status.** This is the decided design. The MCP server, the token issuer, and
-the explicit-local-mode change are not yet implemented; the account and session
-code that exists today is described in `README_auth.md`.
+**Status.** This is the decided design, superseding the earlier two-process and
+`issued_tokens` draft. The MCP server, the token, and the explicit-local-mode
+change are not yet implemented; the account and session code that exists today
+is described in `README_auth.md`.
 
-## 1. The two processes and the three credentials
+## 1. One process, two listeners, two credentials
 
-Three relationships exist, in three different directions, each with a different
-holder of the credential:
+Two relationships exist, each with a different holder of the credential:
 
 | Relationship | Direction | Credential | Verified by |
 | --- | --- | --- | --- |
 | Human → DockB editor | browser | Session cookie | DockB backend |
-| MCP server → DockB backend | service to service | Service credential (JWT) | DockB backend |
-| OpenAI model → MCP server | third-party-attested | Bearer token (JWT) | MCP server |
+| OpenAI's infrastructure → MCP server | third-party-attested | Per-prompt bearer token | MCP server |
 
-The first relationship is the user login covered in `README_auth.md`. This
-document covers the other two, which are machine-to-machine: the MCP server
-authenticates as a service to the DockB backend, and the model authenticates to
-the MCP server with a token that was handed to it out of band.
+There is no third row. In an earlier draft the MCP server called the backend
+with its own service credential; because both now live in one process (§5), it
+calls the service methods directly and there is nothing to authenticate.
 
-The two processes are:
+The model itself never holds a credential. OpenAI's infrastructure holds the
+token and attaches it to each MCP request; the model only ever sees the tool
+results. That matters for the threat model: the model context is where
+exfiltration risk lives, and a long-lived credential should not be in it.
 
-- **DockB backend** (`uvicorn`, port 8000) — the manuscript API (documents,
+One Python process serves two listeners:
+
+- **Loopback listener** (`127.0.0.1:8000`) — the manuscript API (documents,
   chapters, paragraphs, sentences, history), the user-login routes, and the
-  **token issuer** (a Python package living in-process). This is the process
-  that mints tokens.
-- **MCP server** (its own `uvicorn`, its own port) — exposes the MCP endpoint to
-  the model. It verifies the model's bearer token, and calls the DockB backend
-  for every manuscript operation.
+  editor shell. Never tunnelled.
+- **Public listener** (its own port, later reached by an ngrok tunnel) — the MCP
+  endpoint and nothing else. This is the only thing ever exposed.
 
-The MCP server imports DockB's Python packages and calls the same service
-methods the HTTP API calls. There is no HTTP call between the MCP server and the
-DockB backend (see §5).
+Both are the same process, so the MCP tool handlers call the same service
+methods the HTTP API calls, with no HTTP call between them, and the per-prompt
+token is a plain in-memory value shared by the code that mints it and the code
+that verifies it.
 
-## 2. Decision: a token issuer, not an authorization server (decided)
+## 2. Decision: a bearer token, not an authorization server (decided)
 
-The MCP credentials are issued in the **client-credentials** shape
-(RFC 6749 §4.4): machine-to-machine, with no user, no consent screen, no
-redirect, and no interactive step. The token is provisioned by Brian (via a CLI)
-and handed to the holder out of band. This means the parts of an authorization
-server that exist to model a human consenting to a third-party app are never
-exercised:
+The caller is our own code. Building a Responses API request attaches the MCP
+server as a tool and puts a bearer token in that tool's `authorization` field;
+OpenAI's infrastructure then forwards it as `Authorization: Bearer <token>` on
+each MCP request. The token does not have to be an OAuth token — the field
+carries API keys and any other scheme the server implements — and nothing in
+that path asks DockB to mint anything at request time.
 
-- No `/authorize` endpoint and no consent page.
-- No authorization codes, `state`, PKCE, or redirect URIs.
-- No refresh tokens (a service credential is re-minted, not refreshed).
-- No token-introspection endpoint (see §5 — verification is offline).
+Because no MCP *host* drives the flow, the discovery and registration surface of
+OAuth 2.1 is never entered. None of the following is implemented, and none is
+reachable:
 
-The design deliberately does not implement these. A spec-complete authorization
-server would be a large amount of unexercisable code to maintain and audit for
-no benefit, because every feature of it exists to solve a problem this flow does
+- No `/.well-known/oauth-protected-resource` (RFC 9728) or
+  `/.well-known/oauth-authorization-server` (RFC 8414). These exist so a client
+  that got a 401 can discover where to authenticate; our client is handed the
+  token up front.
+- No `/.well-known` challenge on a 401. A bare `WWW-Authenticate: Bearer` is
+  what is left, because there is nothing to point at.
+- No `/authorize` endpoint, consent page, authorization codes, `state`, PKCE, or
+  redirect URIs.
+- No client registry, and so no client id or client secret. There is no client
+  in the protocol sense, so there is no client identity to manage.
+- No dynamic client registration (RFC 7591), which is the endpoint this would
+  otherwise need.
+- No refresh token and no token endpoint, because nothing is minted at runtime.
+
+**What would reverse this.** If an MCP *host* — ChatGPT, Codex, Claude Desktop,
+Cursor — ever connects to the MCP server directly rather than our code handing
+it a token, that host runs the authorization-code + PKCE flow and requires the
+discovery metadata above. Note that such a host does **not** support the
+client-credentials grant, so the registry, `/authorize`, PKCE and a redirect-URI
+allowlist would all become necessary at that point. That is the single trigger
+to revisit, and it has not happened.
+
+A spec-complete authorization server would otherwise be a large amount of
+unexercisable code: every feature of it exists to solve a problem this flow does
 not have.
 
-## 3. Decision: `issued_tokens`, not an OAuth client registry (decided)
+## 3. Decision: a per-prompt secret held in memory (decided)
 
-The issuer keeps a small table of issued credentials. It is deliberately **not**
-modelled as a registry of OAuth clients: with a single consumer and out-of-band
-provisioning, the client *is* the token, and a `clients` table would invite the
-rest of the OAuth spec to be built around it. The table is named `issued_tokens`
-to keep the design small.
+There is no credential store. The token for a prompt is minted immediately
+before the request that carries it, from a fresh random secret kept in module
+state, and forgotten by being overwritten at the next prompt. A process restart
+invalidates every token it held.
 
-`issued_tokens` (schema owned by the token-issuer store, following the
-`AccountStore` pattern in `src/dockb/infrastructure/accounts/store.py`):
+Preparing a prompt:
 
-| Column | Purpose |
-| --- | --- |
-| `token_hash` | Hash of the credential. The plaintext is shown once at mint time and never stored. |
-| `label` | Human-readable name, e.g. the model's name. |
-| `scopes` | The granted scopes (see §4). |
-| `created_at` | When it was minted. |
-| `last_used_at` | Last time a verification succeeded. |
-| `revoked_at` | Set when revoked; NULL while active. |
+1. Generate a new secret (`secrets.token_bytes`) and replace the one in memory.
+2. Set the token's expiry at *now* plus the configured TTL, and stamp the token
+   with this prompt's identity.
+3. Put the token in the MCP tool's `authorization` field.
 
-Tokens are minted and revoked by an admin CLI, like the account-lifecycle CLI
-described in `README_auth.md` §7. There is no HTTP endpoint that mints tokens.
+Verifying a request:
 
-**Asymmetric JWTs from day one.** Tokens are signed with a private key (`RS256`
-or `EdDSA`); only the issuer holds it. Verification requires only the **public**
-key, which is not a secret and is handed to the DockB backend and the MCP server
-as configuration. This matters for two reasons:
+1. Parse the expiry and prompt identity. If the expiry has passed, reject.
+2. Recompute the MAC over both with the **current** in-memory secret.
+3. Compare in constant time. A mismatch means the secret has been rotated and
+   the token is dead.
+4. Log the prompt identity, so a token seen out of place traces to one request
+   (§4).
 
-- It makes verification an **offline, pure function** of the token and the
-  public key. The DockB backend and the MCP server each verify locally — no
-  network hop, no introspection call, and no availability coupling to the
-  issuer.
-- It avoids the "two implementations of token validation drift apart" problem.
-  If the DockB backend (Python) and the MCP server (a different language, see
-  §6) each implemented symmetric validation, they would drift, and a bug in one
-  would be a bypass of the other's check. With a public key there is one
-  definition of "valid" — the signature — and it is checked with a well-tested
-  library in each language.
+The token is `expiry.prompt_id.mac(expiry + "." + prompt_id)`, where `mac` is an
+HMAC-SHA256 under the current secret and `prompt_id` is an opaque per-prompt
+handle. Both fields travel in the clear; neither is a secret, and the MAC covers
+both so neither can be altered without invalidating the token. Binding the
+identity into the MAC rather than merely appending it is what makes it
+attributive — a prompt id that could be swapped would let one request borrow
+another's attribution.
 
-Asymmetric signing is chosen from the start because migrating from a symmetric
-scheme to an asymmetric one is a breaking change for every verifier.
+**A MAC, not a signature.** An earlier draft signed with a private key so a
+verifier could check a token with only a public key. That bought offline
+verification by a party that holds no secret — which mattered only when the MCP
+server was a separate implementation in a separate language. There is no such
+party here: the code that mints the token and the code that verifies it are the
+same process, so both hold the secret and a shared-key MAC is sufficient and
+smaller. No keypair means nothing to generate, store, rotate, or lose.
 
-## 4. Decision: scopes from day one (decided)
+**What this buys.** There is no long-lived secret anywhere: not in an
+environment variable, not in a table, not a key on disk. A secret lifted off the
+machine is useless after the current TTL, and a token lifted off the wire is
+useless after either the TTL or the next prompt, whichever comes first. Nothing
+has to be provisioned by hand, so there is no admin CLI, no `keygen`, no
+provisioning step, and no secret to rotate out of band.
 
-Even though there is a single consumer, tokens are **scoped**. A scope is a
-short string such as `dockb:read` or `dockb:write`, recorded on the
-`issued_tokens` row and checked at verification time.
+**Two sharp edges, both deliberate.**
 
-This is driven by the exposure model, not by multi-client plans. The MCP server
-is reached over a public ngrok tunnel, and the model's bearer token is handed to
-a third party (OpenAI) that stores it and sends it across the internet. That
-token is the most likely credential to leak. With scopes, a leaked token is a
-**read-only** leak rather than a read-write one. This is the cheapest security
-win available and there is no reason to defer it.
+- **One prompt at a time.** Because preparing the next prompt replaces the
+  secret, a token minted for an earlier prompt stops verifying the moment
+  another prompt is prepared. Two concurrent agent sessions would invalidate each
+  other. Accepting this is the price of having no store; if concurrent prompts
+  are ever needed, the secret becomes a short-lived map of live tokens keyed by
+  expiry, which is a small change and keeps every property above.
+- **The TTL must cover model latency, not just tool duration.** The clock starts
+  when the prompt is prepared, but the token is not presented until the model
+  decides to call a tool — which may be a long way off for a reasoning model —
+  and the call then runs to completion. So the bound is *worst-case time to
+  first tool call + longest tool call + retries*. Verification happens on
+  request entry and not again during streaming, so a call that outruns its TTL
+  still completes; what must not expire is the window before the call arrives.
+  The default is 60s, which should be treated as a placeholder until that bound
+  has been measured (see §8).
 
-Two related bounds go with it:
+## 4. Decision: what bounds a token now (decided)
 
-- **Bound what a single MCP call returns.** A token that can read chapters can
-  read *unbounded* chapters. The MCP tools cap the size of a single response so
-  a leaked read token cannot pull the whole manuscript in one call.
-- **Log the token's identity on every MCP call.** The `last_used_at` and `label`
-  on the `issued_tokens` row are what make a leak visible after the fact.
+The earlier draft scoped tokens, on the reasoning that the MCP server is reached
+over a public tunnel and the token is handed to a third party that stores it and
+sends it across the internet — so it is the most likely credential to leak.
+That reasoning holds. What changes is the mechanism, because a grant has to live
+on the token, and the token is a MAC over an expiry and a prompt id with no room
+for a scope set that a verifier would have to resolve.
 
-## 5. Decision: two processes, with the MCP server importing DockB's packages (decided)
+Three bounds replace it, in increasing order of cost:
 
-The MCP server and the DockB backend are two processes. The MCP server imports
-DockB's Python packages and calls the same service methods the HTTP API calls;
-there is no HTTP call between the two services. This gives the benefits of a
-shared codebase (one verifier, shared in-memory state) while keeping the two
-services isolated in the ways that matter.
+- **The TTL.** This is the main one, and it is why §3 insists the window is
+  measured rather than guessed. A leaked token is a leak for the length of that
+  window and no longer, without anyone having to notice and act.
+- **Single use.** A token dies at the next prompt, so a leak has a natural
+  expiry even if the TTL is generous.
+- **What one call can return.** Unchanged and still required: a token that can
+  read chapters can read *unbounded* chapters, so the MCP tools cap the size of a
+  single response. A leaked token with minutes to live should still not be able
+  to pull the whole manuscript in one call.
 
-**Why not one process.** The MCP server is the only component that is exposed to
-the network. Today it is reached through an ngrok tunnel; later it will have a
-public HTTPS endpoint. The DockB backend should stay on the loopback interface.
-Two processes with two ports means the tunnel points at the MCP server's port
-only.
+**Attribution.** `last_used_at` and a client `label` no longer exist, because
+there is no row to hold them. The replacement is the prompt identity bound into
+the token and logged on every MCP call (§3). That is more precise than a
+credential label: it identifies *which request* a token belonged to, so a token
+seen somewhere it should not be traces to one prompt rather than to "the MCP
+client".
 
-A single combined process, with the MCP mounted at a path such as `/mcp`, would
-be unsafe, for two reasons that are both live today:
+## 5. Decision: one process, two listeners (decided, superseding two processes)
 
-- **The manuscript API has no authentication.** The routers registered in
-  `src/dockb/app_factory.py:38-45` have no router-level or app-level auth
-  dependency, and only `app_state` (`src/dockb/controllers/app_state.py:43`) is
-  behind `get_current_user`. A single tunnel on a combined process would expose
-  every document, chapter, paragraph, sentence, history, and notification route
-  to the internet. This is a work item in its own right, sequenced before any
-  exposure rather than as part of it — see `README_todo.md`.
-- **The session cookie is not path-scoped.** It is set with `path="/"`
-  (`src/dockb/controllers/auth.py:97`), so it is sent to every path on the host.
-  An MCP endpoint on the same host would sit inside the same session cookie's
-  scope.
+The MCP server and the DockB backend are one Python process serving two
+listeners: the loopback one carries the manuscript API and the editor shell, and
+the public one carries the MCP endpoint and nothing else. Two ASGI applications
+in one process, bound to different addresses.
 
-**What the separate process buys**, beyond the narrow tunnel:
+**Why two listeners rather than one app with `/mcp` mounted on it.** The concern
+is routing, not processes. The public tunnel must not be able to reach a
+manuscript route, and the cheapest guarantee is that the application serving
+the public port does not contain one. Mounting the manuscript API and the MCP
+endpoint on a single listener puts both within reach of the tunnel, and no amount
+of care in the MCP handler changes that.
 
-- **A separate GIL.** The DockB backend runs spaCy, which is CPU-bound and holds
-  the GIL (see `README.md` on the analysis jobs). In one process, a long
-  MCP-triggered analysis would degrade the editor's responsiveness directly. In
-  two, the editor stays smooth.
-- **A separate crash domain.** A fault in a tool call — which runs
-  agent-authored input, and is the part of the system most exposed to prompt
-  injection — cannot take down the editor or the manuscript.
-- **Independent limits.** The MCP server can be capped, rate-limited, and scaled
-  independently of the backend.
+**Both reasons the earlier draft gave for a separate process are now stale.**
+They were correct when written and were overtaken by other work:
 
-**The ngrok exposure requirement.** The MCP server's port is the only port that
-is ever exposed publicly. The DockB backend is not tunnelled and is not publicly
-reachable. Before the MCP server is exposed, the manuscript API on the DockB
-backend must be authenticated (it currently is not), and the session cookie
-should be reviewed for scope.
+- It claimed *"the manuscript API has no authentication"*, citing
+  `app_factory.py:38-45`. The content routers do carry the gate:
+  `app_factory.py:36-44` attaches `dependencies=_authenticated`
+  (`Depends(get_current_user)`) to documents, chapters, paragraphs, sentences,
+  history, notifications and imports. Only `auth` and `app_state` are open,
+  which is right — `auth` is how a caller obtains a session.
+- It claimed the session cookie is set with `path="/"`. It is `path="/api"`
+  (`src/dockb/controllers/auth.py:100`), so a path like `/mcp` would never
+  receive it. `README_auth.md` §4 had this right.
 
-## 6. Open question: the MCP server's language
+**One live reason remains, and it is a bug rather than a design.** In local
+mode `get_current_user` does not reject an unauthenticated caller: when no valid
+cookie is presented and `requires_login` is false, it falls through to
+`ensure_local_user(local_username())` and serves the request as the OS user
+(`src/dockb/controllers/auth.py:116-121`). `requires_login` is
+`bool(self._providers)` (`src/dockb/services/auth_service.py:56`), so local mode
+is *inferred* from the absence of provider credentials, and `.env.example`
+configures none. Out of the box, every content route answers anyone who can
+reach the port.
 
-The MCP server can be written in Python or TypeScript. The choice is not a
-detail, because it determines how the two services communicate:
+That is exactly the failure mode `README_auth.md` §6 exists to fix: with
+`DOCKB_LOCAL_MODE` explicit and unset meaning login required, those routes need
+a cookie and the last reason for a separate process goes away. **§6 of
+`README_auth.md` is a prerequisite for this work, not a parallel one.** Until it
+lands, the two-listener split is the only thing keeping the manuscript off the
+public port.
 
-- **Python** — the MCP server imports DockB's packages directly. It shares the
-  verifier, the `issued_tokens` store, and in-memory state (the spaCy document
-  cache, the job queue). No HTTP between the services. This is the layout
-  described in §5, and it requires the MCP server to be Python.
-- **TypeScript** — the MCP server calls the DockB backend over HTTP and verifies
-  tokens with the same public key, using a JWT library for TypeScript. This
-  still works because the public key is not a secret (§3), but the two services
-  no longer share code and the manuscript calls go over HTTP.
+**What one process costs.** spaCy is CPU-bound and holds the GIL, so a long
+MCP-triggered analysis competes with the editor rather than being isolated from
+it. The mitigation already exists: analysis runs as a background job
+(`README.md`), off the request path, so this is a latency question rather than a
+correctness one. The crash domain is also shared — a fault in a tool call, which
+runs agent-authored input and is the part most exposed to prompt injection, can
+take down the editor as well as the MCP request. That is not a new exposure: the
+API already runs document processing on request.
 
-The recommendation is **Python**, given that the only MCP client is a model Brian
-calls directly (no third-party MCP clients, so the main argument for TypeScript —
-the more mature MCP SDK ecosystem — buys less than sharing the verifier does). If
-the TypeScript SDK turns out to lack a needed feature, this is the moment to
-revisit.
+**What one process buys.** The spaCy document cache and the job queue are shared
+rather than duplicated, so the MCP server reads the cache the editor warmed
+instead of re-analysing over HTTP. And it is what makes §3's design possible at
+all: the per-prompt secret is a local variable instead of something that has to
+be carried across a process boundary to a listener that must not itself be
+reachable.
 
-## 7. Revocation
+**The exposure requirement, restated.** Only the MCP listener is ever tunnelled
+or public. The loopback listener is not, and the MCP application must not mount
+any manuscript router.
 
-Revocation is done by the admin CLI, which sets `revoked_at` on the
-`issued_tokens` row. How revocation takes effect depends on the token type,
-because JWTs are stateless:
+## 6. Decision: the MCP server is Python, because it is the same process (decided)
 
-- **Service credential (MCP → DockB backend)** — short expiry (minutes) and
-  re-mint. The backend checks the issuer (or a cached copy of the
-  `issued_tokens` store); a revoked credential stops working when its short TTL
-  lapses. There is no long-lived service credential to block.
-- **The model's bearer token (model → MCP server)** — this one is
-  hand-distributed into a third party and is the credential most likely to leak,
-  so it needs to be revocable promptly. The MCP server is its only verifier, so
-  it checks it against a blocklist kept from the issuer (or the `issued_tokens`
-  store directly, if the MCP server shares it). A CLI kill-switch plus a short
-  TTL is sufficient.
+The earlier draft left this open between Python and TypeScript, because it
+determined whether the MCP server could import DockB's packages or had to call
+them over HTTP. One process settles it: the tool handlers are ordinary Python in
+the same interpreter, so there is nothing to choose and no HTTP between them.
+
+The consequence that mattered most when this was open is the one that has gone
+away. A second language would have meant a second implementation of token
+validation, free to drift out of step with the first — and a bug in one would be
+a bypass of the other's check. Sharing the process shares the verifier, so there
+is only one definition of valid.
+
+TypeScript returns only if the MCP server leaves this process, which would also
+mean reintroducing the credential of §1's deleted third row.
+
+## 7. Revocation is automatic
+
+There is no revocation command, because there is nothing to revoke. A token stops
+verifying when any of three things happens:
+
+- **Its TTL passes.** Bounded by the window measured in §3.
+- **Another prompt is prepared.** The secret is replaced, so the MAC no longer
+  recomputes and the token is rejected.
+- **The process restarts.** Nothing is in memory to survive it.
+
+The last two are immediate and unconditional, which is a stronger property than
+the earlier JWT design had. That design was stateless, so revoking meant either
+consulting a store or letting a short TTL lapse — the earlier draft settled on
+"a CLI kill-switch plus a short TTL is sufficient". There is no kill-switch to
+forget to pull, because the mechanism *is* the kill-switch.
+
+The one thing this does not give is revoking a single token while leaving others
+alone, because there is only ever one live token. If that is ever needed, it
+means going back to a set of tokens (§3's sharp edge) and the same rule applies
+per token.
 
 ## 8. Open questions
 
-1. **MCP server language** — Python or TypeScript (see §6). Determines whether
-   the two services share code or communicate over HTTP.
+1. **The TTL bound.** 60s is a placeholder. It has to cover worst-case time to
+   first tool call plus the longest tool call plus retries (§3), which is a
+   measurement, not a preference.
+2. **Concurrent prompts.** One live secret means one prompt at a time (§3). If
+   two agent sessions ever need to overlap, the secret becomes a map of live
+   tokens. Worth deciding before it is discovered.
+3. **A stable public URL.** The MCP listener needs an ngrok reserved domain or a
+   real hostname rather than a per-restart tunnel URL, so that whatever
+   identifies the server does not change under a reconnecting client. There is
+   no OAuth `issuer` to stabilise any more, but the tunnel URL still appears in
+   logs and in the client's configuration.
 
 ## 9. Resolved questions
 
-Settled while designing:
+Settled while designing, or by this revision:
 
-- **Table naming** — the credential store is `issued_tokens`, not an OAuth client
-  registry (§3), so the design does not drift toward a full authorization server.
-- **Asymmetric from day one** — tokens are signed with a private key and verified
-  with a public key (§3), so verification is offline and the scheme does not need
-  a breaking migration later.
-- **Scopes on a single-consumer system** — tokens are scoped because the model's
-  token is the likely leak, not because there are many clients (§4).
-- **Two processes** — the MCP server and the DockB backend are separate processes
-  sharing a repository, with the MCP server importing DockB's packages (§5).
-- **What is exposed** — only the MCP server's port is tunnelled or public; the
-  DockB backend is not (§5).
+- **No authorization server** — the caller is our own code handing OpenAI a
+  bearer token, so discovery, registration, `/authorize`, PKCE and refresh tokens
+  are unreachable (§2). The trigger that would reverse it is recorded there.
+- **No credential store and no admin CLI** — the token is minted per prompt from
+  an in-memory secret, so there is no `issued_tokens` table, no client registry,
+  no `keygen` and nothing to provision by hand (§3).
+- **A MAC, not a signature** — the verifier shares a process with the minter, so
+  there is no third party needing a public key, and no keypair to manage (§3).
+- **What bounds a token** — the TTL, single use, and a cap on what one call
+  returns; scopes had nowhere to live on the token (§4).
+- **One process, two listeners** — shared state and no HTTP between the tool
+  handlers and the services, with the public port unable to reach a manuscript
+  route (§5). This supersedes the two-process decision.
+- **Python** — settled by being the same process, not chosen between options
+  (§6).
+- **Revocation is automatic** — TTL, rotation and restart, with no command to
+  forget to run (§7).

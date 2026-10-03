@@ -52,7 +52,7 @@ Every HTTP request also logs one INFO line (`src/dockb/timing.py`) with the tota
 ## Further reading
 
 - [`README_markdown_redesign.md`](README_markdown_redesign.md) — the markdown-based redesign decision and plan.
-- Auth: [`README_auth.md`](README_auth.md) (user sign-in, accounts, local mode), [`README_mcp_auth.md`](README_mcp_auth.md) (MCP server authentication, the token issuer, the two-process boundary).
+- Auth: [`README_auth.md`](README_auth.md) (user sign-in, accounts, local mode), [`README_mcp_auth.md`](README_mcp_auth.md) (MCP server authentication, the per-prompt token, the process and listener boundary).
 - Backend: [`src/dockb/controllers/README_API.md`](src/dockb/controllers/README_API.md) (API design), [`src/dockb/services/README.md`](src/dockb/services/README.md) (hydrators, reconstructors, jobs), [`src/dockb/services/semantics/README.md`](src/dockb/services/semantics/README.md), [`src/dockb/infrastructure/history/README.md`](src/dockb/infrastructure/history/README.md), [`src/dockb/models/README.md`](src/dockb/models/README.md), [`src/dockb/repositories/README.md`](src/dockb/repositories/README.md), [`src/dockb/cli/README.md`](src/dockb/cli/README.md) (command-line tools).
 - Frontend: [`frontend/README.md`](frontend/README.md).
 - Deferred work: [`README_todo.md`](README_todo.md) — a log of known-but-not-yet-done tasks
