@@ -255,21 +255,68 @@ supplied is unverified and therefore not an identity.
 - Passwords are stored as **Argon2id** hashes (`argon2-cffi`), not salted SHA-256. The
   parameters come from OWASP's Password Storage Cheat Sheet. One dependency is worth it: the
   endpoint is eventually public, and PBKDF2 is CPU-cost-only, so a GPU cracks it far faster.
+  That cheat sheet lists five Argon2id profiles of *equal* defence, differing only in how they
+  trade CPU against RAM, so "the OWASP parameters" is not a number and has to be named. DockB
+  takes the strongest and the most RAM-hungry of the five, `m=47104` (46 MiB), `t=1`, `p=1`:
+  the trade runs the right way for a server, where a login is rare and RAM is not the scarce
+  resource. Dropping to `m=19456, t=2, p=1` is an equal-strength change for a small host, and
+  is one constant in `passwords.py`.
+- The hash is also **peppered** with a key derived from `DOCKB_SECRET_KEY`, keyed in with HMAC
+  before Argon2 sees it. Argon2 has no pepper parameter of its own. Without this, a stolen
+  `dockb_app.db` is an offline cracking target: the salt is per hash, but it is *stored*, so
+  every guess can be tried locally at 46 MiB a time. The pepper is what makes a stolen database
+  alone insufficient. It is domain-separated from the Fernet token key, which is
+  `sha256(secret)` outright, so the two can be rotated apart.
+- The pepper has two costs, both accepted:
+  - **`DOCKB_SECRET_KEY` becomes load-bearing.** It cannot be optional, so `wire()`'s current
+    habit of substituting an ephemeral secret when it is unset has to stop for password login.
+    An ephemeral pepper would differ on every restart and lock every user out.
+  - **Rotating it locks everyone out**, because every stored hash was keyed with the old one.
+    There is no second factor and no reset over HTTP (§7), so recovery is `dockb users
+    set-password`. Token encryption already has this property (`TokenEncryptor.try_decrypt`
+    returns `None` after a rotation), so this is not a new class of operational surprise — but
+    it is a new way to lose access to accounts, and the two should be rotated separately.
 - The verification runs off the event loop. Argon2id is deliberately slow and memory-hard, and
   asyncio is cooperative and single-threaded: a blocking call in an `async def` route stalls
   every concurrent request for its full duration, whether or not it releases the GIL. The login
   route is therefore `async def` and offloads verification with
   `fastapi.concurrency.run_in_threadpool`, leaving the rest of `AuthService` synchronous as it is
   today.
+- The offload belongs at that route and nowhere else, because the other caller has no event loop
+  to stall: the CLI generates, hashes and resets passwords in a plain synchronous process. So
+  `passwords.py` is a synchronous module throughout, and `run_in_threadpool` is applied where the
+  asynchronous caller is.
 - The not-found path verifies against a precomputed dummy hash, so that a request for a
   non-existent username costs the same as a wrong password. Skipping it is a reliable username
-  oracle.
+  oracle. The dummy is hashed with **the same Argon2id parameters** as a real one — a cheaper
+  dummy reintroduces the timing difference it exists to remove — so the test asserts its
+  parameters, not merely that it verifies `False`. It is deliberately *not* peppered: Argon2id
+  costs the same whatever it is given, so equalising what a rejection costs does not require
+  equalising the secret in front of it, and leaving the dummy a constant means the control does
+  not change shape when the pepper does.
+- An account with no password at all — a provider-only row, whose `password_hash` is `NULL` — is
+  verified against that same dummy rather than rejected early. It has to cost the same too, or
+  "this account has no password" becomes a free oracle for anyone who can guess a username.
+- For the same reason a **blocked** or **deleted** account is still verified against its own hash
+  before the refusal. Turning one away on sight costs nothing, which would make "this account is
+  blocked" a free oracle in exactly the way the dummy exists to prevent. The block is checked after
+  the password is proved, never instead of it.
+- Passwords are compared as submitted, with **no Unicode normalization**, per NIST SP 800-63B:
+  normalizing would make a password the person did not choose verify against one they did.
 - Login is rate limited per username and per IP, with lockout or backoff. The federated flow never
   needed this — Google and GitHub did the throttling — and a password endpoint has to do it.
+  Which of lockout and backoff is chosen is decided with `AuthService`, not here.
 - The policy is a minimum of 12 characters and a maximum of 128, with no composition rules. NIST
   SP 800-63B prefers length and a blocklist over character classes, and rules about capitals,
   digits and symbols push people toward predictable substitutions. The maximum bounds the Argon2
-  cost of an over-long submission. Changing to the current password is refused.
+  cost of an over-long submission, so it is checked *before* hashing rather than after. The
+  length is counted in characters, not bytes.
+- Refusing to change a password to the one already in force is **not** part of this policy: it
+  needs the stored hash and a verification, so it belongs to `AuthService`. The policy itself is
+  length only.
+- A password that fails the policy raises one error carrying the reason, because the two callers
+  render it differently — the CLI to stderr, the route as a client error — and neither should have
+  to re-derive which rule was broken.
 
 ### Temporary passwords
 
@@ -278,6 +325,10 @@ The CLI generates the temporary password with `secrets`, prints it **once**, and
 an argument is recorded in the shell history and the process table; a caller supplying its own reads
 it from stdin. The generated value is exempt from the minimum length, since its entropy comes from
 generation rather than from the person choosing it.
+
+So the exemption is an argument to the policy check rather than a different policy: a generated
+value still has to pass the maximum, and the first thing a user does with a temporary password is
+replace it with one that passes the minimum.
 
 An administrator reads it off the console and passes it to the user out of band. It is not emailed,
 and the address on the account is not verified, so there is nowhere to send it.
