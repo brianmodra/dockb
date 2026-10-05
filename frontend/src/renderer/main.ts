@@ -8,7 +8,7 @@ import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker
 import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
 import { openLanguageSettings } from "./layout/languageSettings";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
-import { openSignInGate } from "./layout/signInGate";
+import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
 import { quitApp } from "./state/quit";
@@ -17,7 +17,6 @@ import { reportError } from "./log";
 export interface MountShellOptions {
   api?: ApiClient;
   bridge?: DockbBridge;
-  provider?: string;
 }
 
 async function sendImport(
@@ -193,7 +192,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       });
     };
 
-    void boot(options.api, options.bridge ?? window.dockb, options.provider, layout, panel, controller);
+    void boot(options.api, layout, panel, controller);
   }
 
   return layout;
@@ -201,8 +200,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
 
 async function boot(
   api: ApiClient,
-  bridge: DockbBridge | undefined,
-  provider: string | undefined,
   layout: AppLayout,
   panel: LeftPanel,
   controller: AppStateController,
@@ -215,32 +212,26 @@ async function boot(
     return;
   }
 
+  const onMessage = (text: string): void => layout.pushMessage(text);
+
   let user: import("./api/types").UserProfile | null = null;
   if (config.login_required) {
-    try {
-      user = await checkSession(api);
-    } catch {
-      user = null;
+    // One call for the whole gate: an existing session, a sign-in, and a forced
+    // password change if one is owed.
+    const session = await ensureSignedIn(api, { onMessage });
+    if (!session) {
+      // The user cancelled, or signed out of the change dialog. Stop here rather than
+      // carrying on: every request below needs a session, so continuing would fire a
+      // burst of guaranteed 401s at a server the user has just declined to talk to.
+      return;
     }
-    if (!user) {
-      if (!bridge) {
-        return;
-      }
-      const ok = await openSignInGate(api, bridge, {
-        provider: provider ?? config.providers[0],
-        onMessage: (text) => layout.pushMessage(text),
-      });
-      if (!ok) {
-        return;
-      }
-      user = await checkSession(api);
-    }
+    user = session.user;
   } else {
     try {
-      user = await checkSession(api);
+      user = (await checkSession(api))?.user ?? null;
     } catch (error) {
       user = null;
-      reportError("Check session", error, (text) => layout.pushMessage(text));
+      reportError("Check session", error, onMessage);
     }
   }
   if (user) {

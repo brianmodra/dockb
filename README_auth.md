@@ -25,7 +25,7 @@ table below is the baseline, verified against the code, so a build can start fro
 | §7 account lifecycle is admin-CLI only | No admin CLI exists: `src/dockb/cli/` holds only `import_document.py` and `reconstruct_chapter.py`. There is no password column on `users`. | A CLI that creates accounts and sets or resets a password. No HTTP registration or recovery route. | An account can be created with a password and then sign in. No route accepts a registration or reset request. |
 | §7 password login (in build) | Not implemented. No password-hashing library is installed — `pyproject.toml` has `cryptography` and stdlib `hashlib` only. | Argon2id, verified off the event loop, constant-time on the not-found path, rate limited. | A wrong password and an unknown username cost the same and both fail; a correct password mints a session cookie. |
 | §7 username normalization, `email` uniqueness, soft delete | `username` is `UNIQUE` but unnormalized, so SQLite's case-sensitive comparison admits `Brian` and `brian` as two accounts. `email` carries no constraint. `get_or_create_local_user` inserts an *empty string* email, which would collide under a unique constraint. No `deleted_at`. | Usernames lowercased and stripped; `email` nullable but `UNIQUE`, with every passwordless row storing `NULL` rather than `''`; `deleted_at` for a soft delete that keeps `app_state` and OAuth links. | The CLI cannot create two accounts differing only by case, a local-mode and a federated row coexist, and a deleted account keeps its manuscripts attributable. |
-| `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | `login_required` becomes constant `true`, and the editor renders a username/password form whenever it is true, with provider buttons below it when `providers` is non-empty. No new field: password login is always available, so there is no state left for a flag to distinguish. | With no provider configured the editor still shows a usable password form rather than an empty gate, and with providers configured it shows both ways in. |
+| `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | `login_required` becomes constant `true`, and the editor renders a username/password form whenever it is true. No new field: password login is always available, so there is no state left for a flag to distinguish. | With no provider configured the editor still shows a usable password form rather than an empty gate. |
 
 As this work lands, this document should get smaller. The decisions and their rationale stay here;
 the implementation detail moves down into the package that owns it — `infrastructure/accounts/`
@@ -202,6 +202,12 @@ require a hosted registration and recovery flow, and this decision would be revi
 | `dockb users delete <username> --yes` | Soft delete: sets `deleted_at`, refuses logins, ends sessions. |
 | `dockb users undelete <username>` | Clears `deleted_at`. Restores the account without touching its credentials. |
 | `dockb users set-password <username>` | Re-issues a temporary password and re-arms `must_change_password`. |
+
+`set-password` is also the only way to give an **OAuth-only account** a usable password. The editor's
+sign-in gate is password-only (see §7, *First use must change the password*), and a provider account's
+`password_hash` is `NULL`, so without this command such an account cannot open the editor at all. That
+is the accepted cost of one uniform sign-in screen: the person set is small and known, and the CLI is
+the tool that administers it.
 
 None of these reach into a running server. `block`, `delete` and `set-password` end a live session by
 stamping `credentials_changed_at`, which the server compares on its next request — the CLI cannot evict
@@ -407,7 +413,36 @@ one with an exception.
 The cost is that a first-time user signs in twice — once on the temporary password, once on the
 password they just chose. The change-password route says so in its response (`signed_out: true`) and
 the editor presents the sign-in gate again, rather than leaving the user on a page whose every
-request is about to fail with 401.
+request is about to fail with 401. The editor does **not** sign the user straight back in with the
+new password: doing so would mean holding it in memory to post a second time, so the user types it.
+
+### What the editor shows (decided)
+
+Three screens, in the order a first-time user meets them. The gate is password-only — no provider
+buttons — so the sign-in screen is a username field, a password field, and **Sign in / Cancel**.
+
+- **Sign in** posts `POST /api/auth/login/password`. A 401 renders the server's own generic
+  `invalid_username_or_password` message, because the route refuses a wrong password, an unknown
+  username and a blocked account identically and the form must not become an account-status oracle
+  by re-deriving which one it was. A 429 renders a "wait before trying again" message instead.
+- **Change your password** appears when `/api/auth/me` or the login response reports
+  `password_change_required`, and is shown *before* any manuscript state is loaded, so the editor
+  never issues a request that is about to be refused. It asks for the current password and the
+  replacement, and carries a **Sign out** button: logout is one of the three reachable routes
+  precisely so somebody who signed in on another person's temporary password can get back to the
+  gate, and a dialog with no way out of it is a trap.
+- **Sign in again** follows a successful change, with a message saying the password changed.
+
+Both password fields are `type="password"`. The autocomplete hints are what matter rather than the
+masking: `autocomplete="username"`, `"current-password"`, and `"new-password"`. Paste is allowed,
+because refusing it is hostile and buys nothing. A submitted password is never logged and never
+echoed back in an error message — the field is cleared on a refusal instead, so a wrong guess does
+not leave the value sitting in the DOM.
+
+A 403 `password_change_required` arriving later, on a manuscript request, needs no editor handling:
+every server path that sets `must_change_password` also stamps `credentials_changed_at`, which
+refuses the session outright, so that request would be a 401 rather than a 403. The flag can only be
+true when the editor is booting.
 
 ### Blocking, deletion, and invalidating a live session
 

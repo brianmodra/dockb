@@ -18,7 +18,8 @@ routes and removes the need for both `credentials: "include"` and any CORS grant
 The renderer talks to the backend through a typed client in
 `src/renderer/api/`: `client.ts` (documents, chapters, chapter-document
 lifecycle, reorder, app state, auth), `http.ts` (`ApiError` on non-2xx), and
-`session.ts` (`checkSession`, `login`). `index.ts` wires the client into
+`session.ts` (`checkSession`, `signInWithPassword`, `changePassword`, `signOut`).
+`index.ts` wires the client into
 `mountShell`: its API base is the relative `/api`, unless a `VITE_API_BASE`
 build-time override is set.
 
@@ -127,7 +128,25 @@ the message panel (`onMessage`).
 
 `mountShell` asks `GET /api/auth/config`, which always reports `login_required: true`,
 so the sign-in gate is always shown; the username comes from `/api/auth/me` and is
-shown in the menubar. Then it runs
+shown in the menubar. The gate itself is `layout/signInFlow.ts`'s `ensureSignedIn`,
+which resolves the whole question in one place: an existing session if there is one,
+otherwise `signInGate.ts`'s username/password form, and then `changePasswordDialog.ts`
+if `/api/auth/me` reports a password change is owed. It resolves `null` when the user
+cancels or signs out, and `boot` stops there rather than issuing requests that would
+all be refused.
+
+The gate is **password-only** — there are no provider buttons (`README_auth.md` §7),
+so an account that exists only through OAuth needs `dockb users set-password` before
+it can open the editor. The backend's OAuth routes are unchanged and still work by
+URL; only this screen stopped offering them.
+
+A first-time user signs in twice. Changing a password stamps the account's credentials
+and refuses every session older than the stamp, including the one the change arrived
+on, so the flow presents the sign-in gate again rather than continuing on a dead
+session. The new password is never held in memory to post a second time — the user
+types it. Both dialogs render a refusal inline, above the buttons, and clear the
+password field on failure so a wrong guess does not sit in the DOM; the username
+survives, because a mistyped password is no reason to retype the name. Then it runs
 `runStartup` (restore last document, or pick one); File → Open opens the same
 select-document picker (`documentPicker.ts`
 `openDocumentPickerConfirm`) and loads the chosen document. File → Delete and

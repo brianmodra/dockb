@@ -11,6 +11,7 @@ import type {
   DocumentWire,
   ImportResponse,
   MutationResponse,
+  Session,
   UserProfile,
 } from "./types";
 
@@ -170,9 +171,31 @@ export class ApiClient {
     });
   }
 
-  async getMe(): Promise<UserProfile> {
-    const response = await request<{ user: UserProfile }>(this.url("/auth/me"));
-    return response.user;
+  async getMe(): Promise<Session> {
+    const response = await request<{ user: UserProfile; password_change_required: boolean }>(
+      this.url("/auth/me"),
+    );
+    return { user: response.user, passwordChangeRequired: response.password_change_required };
+  }
+
+  async loginWithPassword(username: string, password: string): Promise<Session> {
+    const response = await request<{ user: UserProfile; password_change_required: boolean }>(
+      this.url("/auth/login/password"),
+      { method: "POST", body: JSON.stringify({ username, password }) },
+    );
+    return { user: response.user, passwordChangeRequired: response.password_change_required };
+  }
+
+  /** Returns nothing useful: the response is always `{status: "ok", signed_out: true}`. */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await request(this.url("/auth/change-password"), {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+  }
+
+  async logout(): Promise<void> {
+    await request(this.url("/auth/logout"), { method: "POST" });
   }
 
   async getAuthConfig(): Promise<AuthConfig> {
@@ -203,12 +226,5 @@ export class ApiClient {
       form.append("single_newline_paragraphs", "true");
     }
     return request<ImportResponse>(this.url("/import"), { method: "POST", body: form });
-  }
-
-  async getLoginUrl(provider: string): Promise<string> {
-    const response = await request<{ authorization_url: string }>(
-      this.url(`/auth/login?provider=${encodeURIComponent(provider)}`),
-    );
-    return response.authorization_url;
   }
 }

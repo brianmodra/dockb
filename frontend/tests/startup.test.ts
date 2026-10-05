@@ -8,8 +8,14 @@ function state(overrides: Partial<AppState> = {}): AppState {
   return { last_document_id: null, panel_widths: null, edit_mode: null, ...overrides };
 }
 
-function user(): { id: string; username: string; email: string; display_name: string; avatar_url: string } {
-  return { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" };
+function user(): {
+  user: { id: string; username: string; email: string; display_name: string; avatar_url: string };
+  password_change_required: boolean;
+} {
+  return {
+    user: { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" },
+    password_change_required: false,
+  };
 }
 
 afterEach(() => {
@@ -97,7 +103,7 @@ describe("mountShell startup integration", () => {
     const bridge = { openExternal: vi.fn(async () => undefined) } as never;
     mountShell(document.body, { api, bridge });
     await new Promise((r) => setTimeout(r, 0));
-    expect(document.querySelector("[data-testid='sign-in']")).not.toBeNull();
+    expect(document.querySelector("[data-testid='sign-in-submit']")).not.toBeNull();
   });
 
   it("stays idle when the sign-in gate is cancelled", async () => {
@@ -117,6 +123,10 @@ describe("mountShell startup integration", () => {
     const cancel = document.querySelector<HTMLElement>("[data-testid='sign-in-cancel']")!;
     cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
+    // Nothing that needs a session may be attempted after the user backs out: every
+    // one of them would be a guaranteed 401 against a server they declined to use.
+    expect(api.getAppState).not.toHaveBeenCalled();
+    expect(api.listDocuments).not.toHaveBeenCalled();
     expect(api.listChapters).not.toHaveBeenCalled();
   });
 });

@@ -202,23 +202,16 @@ describe("ApiClient errors and auth", () => {
     await expect(client.getMe()).rejects.toBeInstanceOf(ApiError);
   });
 
-  it("gets the current user profile", async () => {
+  it("gets the session, including whether a password change is owed", async () => {
     mockFetch(200, {
       user: { id: "u-1", username: "abby", email: "a@b.c", display_name: "A", avatar_url: "" },
+      password_change_required: true,
     });
     const client = new ApiClient();
     const me = await client.getMe();
-    expect(me.id).toBe("u-1");
-    expect(me.username).toBe("abby");
+    expect(me.user.username).toBe("abby");
+    expect(me.passwordChangeRequired).toBe(true);
     expect(fetchCalls()[0].url).toBe("/api/auth/me");
-  });
-
-  it("fetches a login (authorization) URL for a provider", async () => {
-    mockFetch(200, { authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" });
-    const client = new ApiClient();
-    const url = await client.getLoginUrl("google");
-    expect(url).toContain("accounts.google.com");
-    expect(fetchCalls()[0].url).toBe("/api/auth/login?provider=google");
   });
 
   it("reads the auth config from the backend", async () => {

@@ -15,14 +15,15 @@ export interface ModalOptions {
   buttons: ModalButton[];
 }
 
-function makeOverlay(): HTMLElement {
+/** The backdrop every modal sits on. Shared so the auth dialogs match the rest. */
+export function makeOverlay(): HTMLElement {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.dataset.testid = "modal";
   return overlay;
 }
 
-function makeTitle(title: string): HTMLElement {
+export function makeTitle(title: string): HTMLElement {
   const el = document.createElement("h2");
   el.className = "modal-title";
   el.dataset.testid = "modal-title";
@@ -30,7 +31,7 @@ function makeTitle(title: string): HTMLElement {
   return el;
 }
 
-function makeBody(body: Node | string): HTMLElement {
+export function makeBody(body: Node | string): HTMLElement {
   const el = document.createElement("div");
   el.className = "modal-body";
   el.dataset.testid = "modal-body";

@@ -26,11 +26,10 @@ of code are those in its own directory and every parent up to the root.
 - **Admin CLI for accounts** — `README_auth.md` §7. Done: `python -m dockb.cli.users` creates,
   lists, resets, blocks, unblocks, deletes and undeletes accounts, generating every password
   itself. See `src/dockb/cli/README.md`.
-- **Password sign-in in the editor** — `README_auth.md` §7. `POST /api/auth/login/password`,
-  `/api/auth/change-password` and `/api/auth/logout` exist and are gated, but the editor still
-  renders the provider-only gate, so there is nothing on screen to post them from. A fresh
-  install can now create its account and sign in on the generated password, so this is the
-  last thing between a new user and a working editor.
+- **Password sign-in in the editor** — `README_auth.md` §7. Done: a password-only gate, a forced
+  change-password dialog with a sign-out escape, and `ensureSignedIn` to sequence them.
+- **Signing out from the editor** — the change dialog can sign out, but the menubar has no
+  **Sign out** item, so a signed-in user cannot end their own session without the CLI. Worth adding.
 - **Every user signs in** — `README_auth.md` §6. Done: `requires_login` is unconditionally true,
   there is no `DOCKB_LOCAL_MODE`, and the OS-user fall-through is gone.
   Land this before any MCP listener work.

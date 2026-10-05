@@ -214,9 +214,11 @@ features (undecided).
   no modal appears when no chapter is selected.
 - **Sign in** — always: `GET /api/auth/config` always reports `login_required: true`, so there
   is no mode in which the gate is skipped. The gate carries a **username / password form**, which
-  posts to `POST /api/auth/login/password`; provider buttons sit below it when `providers` is
-  non-empty, and each opens the provider in the system browser (after consent, Sign in again to
-  pick up the session). A first-time user on a temporary password is shown a **change your
+  posts to `POST /api/auth/login/password`. It is password-only: there are no provider buttons, so
+  an account that exists only through OAuth has to be given a password by an administrator running
+  `dockb users set-password` before it can open the editor. The backend's OAuth routes
+  (`GET /api/auth/login?provider=…` and `/callback`) still work and are unchanged; only the editor
+  stopped offering them. A first-time user on a temporary password is shown a **change your
   password** screen instead, and the manuscript routes answer 403
   `password_change_required` until they do (`README_auth.md` §7).
 

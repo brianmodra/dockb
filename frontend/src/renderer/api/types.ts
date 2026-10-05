@@ -8,7 +8,20 @@ export interface UserProfile {
 
 export interface AuthConfig {
   login_required: boolean;
+  /** Providers the backend is configured for. The editor offers none of them. */
   providers: string[];
+}
+
+/**
+ * Who is signed in, and whether they still owe a password change.
+ *
+ * `passwordChangeRequired` decides whether the editor may load anything at all: while
+ * it is true the server refuses every manuscript route, so it has to be known before
+ * the first one is issued rather than discovered from a 403.
+ */
+export interface Session {
+  user: UserProfile;
+  passwordChangeRequired: boolean;
 }
 
 export interface DocumentAttrs {

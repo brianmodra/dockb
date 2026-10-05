@@ -12,7 +12,10 @@ function localModeApi(
 ): { api: Record<string, unknown>; bridge: Record<string, unknown> } {
   const api = {
     getAuthConfig: vi.fn(async () => ({ login_required: false, providers: [] })),
-    getMe: vi.fn(async () => ({ id: "u-1", username: "brian", email: "a@b.c", display_name: "Brian", avatar_url: "" })),
+    getMe: vi.fn(async () => ({
+      user: { id: "u-1", username: "brian", email: "a@b.c", display_name: "Brian", avatar_url: "" },
+      password_change_required: false,
+    })),
     getAppState: vi.fn(async () => ({ last_document_id: null, panel_widths: null, edit_mode: null })),
     putAppState: vi.fn(async () => ({ last_document_id: null, panel_widths: null, edit_mode: null })),
     listDocuments: vi.fn(async () => []),

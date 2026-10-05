@@ -277,6 +277,14 @@ body {
   font: inherit;
 }
 
+/* No `display` here on purpose: an author rule setting one would beat the user
+   agent's `[hidden] { display: none }` and leave every empty error line showing. */
+.modal-error {
+  margin: 8px 0 0;
+  color: #a02020;
+  font-size: 12px;
+}
+
 .modal-buttons {
   display: flex;
   justify-content: flex-end;
