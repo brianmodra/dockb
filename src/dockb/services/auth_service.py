@@ -240,6 +240,9 @@ class AuthService:
             token=tokens.refresh_token,
             expires_at=tokens.expires_at.isoformat() if tokens.expires_at is not None else None,
         )
+        credentials = self._accounts.get_credentials(user_id)
+        if credentials and not _may_sign_in(credentials):
+            raise LoginFailedError(_LOGIN_REFUSED)
         self._sessions.create(user_id)
         return user_id
 
