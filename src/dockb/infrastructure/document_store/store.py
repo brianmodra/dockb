@@ -1,19 +1,23 @@
-"""Server-owned, title/act-keyed markdown file tree for the document lifecycle.
+"""Server-owned, account/act-keyed markdown file tree for the document lifecycle.
 
 The backend owns the markdown chapter files and their per-document metadata,
-arranged on disk under a single base directory (``DOCKB_CHAPTERS_DIR``):
+arranged on disk under a single base directory (``DOCKB_CHAPTERS_DIR``). Each
+account has its own directory and its own git repository, so commits and history
+never span accounts:
 
 .. code-block:: text
 
     <base>/
-        <document_title>/
-            document_metadata.yaml
-            Act I/
-                <chapter_title>.md
-            Act None/
-                <chapter_title>.md
-            Characters/
-                <chapter_title>.md
+        <account_id>/
+            .git/
+            <document_title>/
+                document_metadata.yaml
+                Act I/
+                    <chapter_title>.md
+                Act None/
+                    <chapter_title>.md
+                Characters/
+                    <chapter_title>.md
 
 Chapters without an act live under ``Act None``; an act is a directory named
 ``Act <name>`` (the verbatim chapter ``act`` when it is already prefixed).
@@ -21,7 +25,9 @@ Chapters without an act live under ``Act None``; an act is a directory named
 directory whatever their act.
 Paths are derived from titles only, and every title is validated so a hostile
 title cannot escape the base directory (``..``, separators, absolute paths,
-control characters are all rejected).
+control characters are all rejected). The account directory is named by an
+internal account id rather than a username, and that id is validated as a single
+path segment for the same reason titles are.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ import yaml
 
 from dockb.exceptions import SnapshotError
 from dockb.infrastructure.markdown import front_matter
-from dockb.titles import validate_segment
+from dockb.titles import is_unsafe_segment, validate_segment
 
 _METADATA_FILE = "document_metadata.yaml"
 _ACT_NONE = "Act None"
@@ -54,23 +60,47 @@ class DocumentMetadata:
 
 
 class DocumentStore:
-    """Resolve and read/write the server-owned markdown tree under a base dir."""
+    """Resolve and read/write one account's markdown tree under a base dir.
 
-    def __init__(self, base_dir: Path) -> None:
+    Scoped to a single account: there is no way to build a store that spans accounts,
+    because a document's directory lives under the owner's account directory and git
+    commands run inside that account's own repository.
+
+    *account_id* names that directory, so it is held to the same single-segment rule
+    as a title. An account id is minted by the accounts store rather than typed by a
+    user, which is why nothing needs to normalize one — but the store is where paths
+    are built, so it is where an id that is not a segment is refused.
+    """
+
+    def __init__(self, base_dir: Path, account_id: str) -> None:
+        if not account_id or not account_id.strip():
+            raise ValueError("account_id is required: a document store is scoped to one account")
+        if is_unsafe_segment(account_id):
+            raise ValueError(f"{account_id!r} is not a valid account id")
         self._base_dir = Path(base_dir)
+        self._account_id = account_id
 
     @classmethod
-    def from_env(cls) -> DocumentStore:
-        """Build a store rooted at ``DOCKB_CHAPTERS_DIR`` (required)."""
+    def from_env(cls, account_id: str) -> DocumentStore:
+        """Build a store rooted at ``DOCKB_CHAPTERS_DIR`` (required) for *account_id*."""
         base = os.environ.get(_ENV_BASE_DIR)
         if not base:
             raise ValueError(f"{_ENV_BASE_DIR} must be set to the markdown tree base directory")
-        return cls(Path(base))
+        return cls(Path(base), account_id)
+
+    @property
+    def account_id(self) -> str:
+        """The account this store is scoped to, for scoping reads to that account."""
+        return self._account_id
+
+    def account_dir(self) -> Path:
+        """Return the directory holding *account_id*'s repositories and documents (not created)."""
+        return self._base_dir / self._account_id
 
     def document_dir(self, document_title: str) -> Path:
         """Return the directory owned by *document_title* (not created)."""
         self._validate_title(document_title)
-        return self._base_dir / document_title
+        return self.account_dir() / document_title
 
     def act_dir(self, document_title: str, act: str) -> Path:
         """Return the per-act chapter directory for a chapter of *document_title*."""
@@ -172,19 +202,28 @@ class DocumentStore:
         return sorted(path for path in directory.rglob("*.md") if path.is_file())
 
     def git_commit(self, document_title: str, message: str) -> None:
-        """Commit the document's directory to the git repo rooted at the base dir.
+        """Commit the document's directory to the account's own git repository.
 
-        The base directory must be a git repository (as SnapshotWriter expects);
-        only files under *document_title* are staged. When the document has nothing
-        new to commit — even if unrelated untracked files (e.g. runtime state)
-        exist elsewhere in the tree — the call is a no-op.
+        Each account directory is its own repository, so a commit can only ever
+        contain one account's documents; nothing stages across accounts even if a
+        title were to collide. Only files under *document_title* are staged. When the
+        document has nothing new to commit — even if unrelated untracked files (e.g.
+        runtime state) exist elsewhere in the account's tree — the call is a no-op.
+
+        A document with no directory on disk is likewise a no-op, which is what
+        ``remove_document``/``rename_document`` already do for an absent document:
+        "not on disk" means nothing to do, not a failure. The title is still
+        validated, so an unsafe title raises here as it does everywhere else.
         """
-        self.document_dir(document_title)
+        directory = self.document_dir(document_title)
+        if not directory.is_dir():
+            return
+        self._ensure_repo()
         try:
             self._git("add", "--", document_title)
         except SnapshotError as exc:
             if "not a git repository" in str(exc):
-                raise SnapshotError(f"{self._base_dir} is not a git repository; the document store owns the repo") from exc
+                raise SnapshotError(f"{self.account_dir()} is not a git repository; the document store owns the repo") from exc
             raise
         changed = self._git("status", "--porcelain", "--", document_title)
         if not changed.strip():
@@ -201,6 +240,7 @@ class DocumentStore:
         directory = self.document_dir(document_title)
         if not directory.is_dir():
             return
+        self._ensure_repo()
         try:
             self._git("rm", "-r", "-f", "--", document_title)
         except SnapshotError as exc:
@@ -227,8 +267,9 @@ class DocumentStore:
         path = self.chapter_file(document_title, act, chapter_title, category)
         if not path.is_file():
             return
+        self._ensure_repo()
         try:
-            self._git("rm", "-f", "--", str(path.relative_to(self._base_dir)))
+            self._git("rm", "-f", "--", str(path.relative_to(self.account_dir())))
         except SnapshotError as exc:
             if "did not match any files" not in str(exc):
                 raise
@@ -257,6 +298,7 @@ class DocumentStore:
         new_dir = self.document_dir(new_title)
         if new_dir.exists():
             raise SnapshotError(f"cannot rename {old_title!r}: {new_title!r} already exists")
+        self._ensure_repo()
         self._git("mv", "--", old_title, new_title)
         metadata = self.read_metadata(new_title)
         if metadata is not None:
@@ -283,22 +325,38 @@ class DocumentStore:
         new_path = self.chapter_file(document_title, act, new_title, category)
         if new_path.exists():
             raise SnapshotError(f"cannot rename chapter {old_title!r}: {new_title!r} already exists")
+        self._ensure_repo()
         self._git(
             "mv",
             "--",
-            str(old_path.relative_to(self._base_dir)),
-            str(new_path.relative_to(self._base_dir)),
+            str(old_path.relative_to(self.account_dir())),
+            str(new_path.relative_to(self.account_dir())),
         )
         content = self.read_chapter(document_title, act, new_title, category)
         if content is not None:
             self.write_chapter(document_title, act, new_title, front_matter.merge(content, {"title": new_title}), category)
         self.git_commit(document_title, f"rename: chapter {old_title} -> {new_title}")
 
+    def _ensure_repo(self) -> None:
+        """Make sure the account directory exists and is a git repository.
+
+        Each account's documents live in their own repository so a commit cannot span
+        accounts. That repository is created on first use rather than at startup: which
+        accounts exist is a runtime fact, and an account that never writes a document
+        never needs a directory. ``.git`` is checked with the filesystem rather than
+        ``git rev-parse`` so the common case costs no subprocess.
+        """
+        account_dir = self.account_dir()
+        if (account_dir / ".git").is_dir():
+            return
+        account_dir.mkdir(parents=True, exist_ok=True)
+        self._git("init")
+
     def _git(self, *args: str) -> str:
         try:
             result = subprocess.run(
                 ["git", *args],
-                cwd=str(self._base_dir),
+                cwd=str(self.account_dir()),
                 capture_output=True,
                 text=True,
                 check=True,

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 _NEW_CYPHER = """
 MERGE (d:Document {id: $document_id})
-SET d.title = $title, d.author = $author, d.title_key = toLower($title)
+SET d.title = $title, d.author = $author, d.owner = $owner, d.title_key = toLower($title)
 WITH d
 UNWIND $chapters AS ch
 MERGE (chapter:Chapter {id: ch.id})
@@ -35,7 +35,7 @@ DETACH DELETE orphan
 """
 
 _DELETE_CYPHER = """
-MATCH (d:Document {id: $document_id})
+MATCH (d:Document {id: $document_id, owner: $owner})
 OPTIONAL MATCH (c:Chapter)-[:PART_OF]->(d)
 OPTIONAL MATCH (p:Paragraph)-[:PART_OF]->(c)
 OPTIONAL MATCH (s:Sentence)-[:PART_OF]->(p)
@@ -44,7 +44,7 @@ DETACH DELETE t, s, p, c, d
 """
 
 _LOAD_CYPHER = """
-MATCH (d:Document {id: $document_id})
+MATCH (d:Document {id: $document_id, owner: $owner})
 OPTIONAL MATCH (c:Chapter)-[rc:PART_OF]->(d)
 OPTIONAL MATCH (p:Paragraph)-[rp:PART_OF]->(c)
 OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
@@ -64,18 +64,23 @@ ORDER BY chapter_index, paragraph_index, sentence_index, token_index
 """
 
 _LIST_ALL_CYPHER = """
-MATCH (d:Document)
+MATCH (d:Document {owner: $owner})
 RETURN d.id AS id, d.title AS title, d.author AS author
 ORDER BY d.id
 """
 
 _LOAD_SHELL_CYPHER = """
-MATCH (d:Document {id: $document_id})
+MATCH (d:Document {id: $document_id, owner: $owner})
 OPTIONAL MATCH (c:Chapter)-[r:PART_OF]->(d)
 WITH d, c, r ORDER BY r.index
 RETURN
   d.id AS document_id, d.title AS document_title, d.author AS document_author,
   c.id AS chapter_id
+"""
+
+_FIND_OWNER_CYPHER = """
+MATCH (d:Document {id: $document_id})
+RETURN d.owner AS owner
 """
 
 
@@ -99,24 +104,45 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             "document_id": model.id,
             "title": model.title,
             "author": model.author,
+            "owner": model.owner,
             "chapters": [{"id": ch.id, "index": i} for i, ch in enumerate(model.chapters)],
         }
 
-    def list_all(self) -> list[dict[str, str]]:
-        """Return a list of ``{id, title, author}`` dicts for every Document in the graph."""
-        records = list(self._session.run(_LIST_ALL_CYPHER))
+    def list_all(self, owner: str) -> list[dict[str, str]]:
+        """Return a ``{id, title, author}`` dict for every Document owned by *owner*.
+
+        *owner* is an account id. A document with no owner — one created before
+        ownership existed, or one imported without a stamp — is owned by nobody and
+        so is returned to nobody; the admin CLI is what gives it an owner.
+        """
+        records = list(self._session.run(_LIST_ALL_CYPHER, {"owner": owner}))
         return [{"id": r["id"], "title": r["title"], "author": r["author"]} for r in records]
 
-    def load_shell(self, id: str) -> Document | None:  # pylint: disable=redefined-builtin
+    def find_owner(self, document_id: str) -> str | None:
+        """Return the account id that owns *document_id*, or None when unowned or absent.
+
+        The one read here that answers for a document the caller does not own, so it
+        exists for the CLI and admin paths that must resolve an owner before they can
+        scope themselves to one. Nothing serving a request may use it: a request already
+        knows who it is acting for.
+        """
+        records = list(self._session.run(_FIND_OWNER_CYPHER, {"document_id": document_id}))
+        if not records:
+            return None
+        owner = records[0].get("owner")
+        return str(owner) if owner else None
+
+    def load_shell(self, id: str, owner: str) -> Document | None:  # pylint: disable=redefined-builtin
         """Load a Document's attrs and chapter ids from Neo4j — no paragraphs/sentences/tokens.
 
         The returned ``Document`` carries id-only ``Chapter`` stubs in
         relationship index order. Callers that only need the document's
         title (or the chapter id set) should prefer this over ``load``,
-        which materializes the entire hierarchy. Returns None when no
-        document with *id* exists.
+        which materializes the entire hierarchy. Returns None when *owner*
+        owns no document with *id* — which is deliberately the same answer as when no
+        such document exists, so an id belonging to someone else is not confirmable.
         """
-        records = list(self._session.run(_LOAD_SHELL_CYPHER, {"document_id": id}))
+        records = list(self._session.run(_LOAD_SHELL_CYPHER, {"document_id": id, "owner": owner}))
         if not records or records[0].get("document_id") is None:
             logger.debug("Document not found")
             return None
@@ -126,6 +152,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             id=first["document_id"],
             title=str(first.get("document_title") or ""),
             author=str(first.get("document_author") or ""),
+            owner=owner,
             state=DataState.SYNC,
         )
         seen: set[str] = set()
@@ -136,13 +163,14 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
                 document.chapters.append(Chapter(id=ch_id, state=DataState.SYNC))
         return document
 
-    def load(self, id: str) -> Document | None:  # pylint: disable=redefined-builtin,too-many-locals
+    def load(self, id: str, owner: str) -> Document | None:  # pylint: disable=redefined-builtin,too-many-locals
         """Load a Document and its full hierarchy from Neo4j.
 
-        Returns None when no document with *id* exists.
+        Returns None when *owner* owns no document with *id*, for the same
+        reason ``load_shell`` does: an unowned id and an absent one are the same answer.
         """
         logger.debug("Load Document")
-        records = list(self._session.run(_LOAD_CYPHER, {"document_id": id}))
+        records = list(self._session.run(_LOAD_CYPHER, {"document_id": id, "owner": owner}))
         if not records:
             logger.debug("Document not found")
             return None
@@ -169,6 +197,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             id=first["document_id"],
             title=str(first.get("document_title") or ""),
             author=str(first.get("document_author") or ""),
+            owner=owner,
             state=DataState.SYNC,
         )
 

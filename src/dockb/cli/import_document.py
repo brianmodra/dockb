@@ -24,7 +24,13 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from dockb.cli.startup import MissingConfigurationError, load_spacy_model, neo4j_settings
+from dockb.cli.startup import (
+    MissingConfigurationError,
+    UnknownUserError,
+    account_id_for,
+    load_spacy_model,
+    neo4j_settings,
+)
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.chapter import Chapter
@@ -75,13 +81,26 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
         action="store_false",
         help="leave every source file untouched and write no metadata (the default for external sources)",
     )
+    parser.add_argument(
+        "--owner",
+        default=None,
+        help="username the imported document belongs to (required: the document is stored under that account)",
+    )
     parser.set_defaults(write_back=None)
     args = parser.parse_args(argv)
+
+    if not args.owner:
+        print("error: --owner is required: the imported document is stored under that account", file=sys.stderr)
+        return 1
 
     load_dotenv()
     try:
         settings = neo4j_settings()
         nlp = load_spacy_model()
+        owner = account_id_for(args.owner)
+    except UnknownUserError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except MissingConfigurationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -111,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
             uow_factory,
             args.single_newline_paragraphs,
             write_back=write_back_enabled,
+            owner=owner,
         )
         session_factory.close()
     for summary in summaries:

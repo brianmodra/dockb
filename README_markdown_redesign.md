@@ -42,10 +42,11 @@ who writes the file.
 ### The backend owns the markdown files and the git repo
 
 There is **no separate loop process**. The FastAPI backend owns the markdown chapter files — in a
-directory it controls (titled per-document directories of `Act <name>/<chapter title>.md`
-files, plus a `Characters/` directory for `Character` chapters, under an environment-configured base, as the `DocumentStore` in
+directory it controls (one directory per account, each its own git repository, holding per-document
+directories of `Act <name>/<chapter title>.md` files plus a `Characters/` directory for
+`Character` chapters, under an environment-configured base, as the `DocumentStore` in
 `src/dockb/infrastructure/document_store/` maps it) — and
-the git repo. The only writer of record is the API implementation itself: when the editor saves, it
+the git repos. The only writer of record is the API implementation itself: when the editor saves, it
 sends the chapter text to an endpoint, the backend writes the file, rehydrates the graph from it,
 and returns the canonical text. The editor is a thin client that never touches a filesystem path,
 and all work that touches the knowledge graph (tokenization, sentence/paragraph splitting,
@@ -190,7 +191,8 @@ The owned directory tree is the editor's entire world, delivered through the API
   `apply_chapter_file()` first, then the canonical text is returned.
 - **No store:** when the store is not wired (`wire()` called without a base dir, e.g. in tests) the
   `.../document` endpoints report the chapter as not found (404). The running server always wires one:
-  `DOCKB_CHAPTERS_DIR` defaults to `cwd`/`dockb_chapters_dir` and is created + git-initialized when missing.
+  `DOCKB_CHAPTERS_DIR` defaults to `cwd`/`dockb_chapters_dir` and is created when missing; each
+  account's directory below it is git-initialized on that account's first use.
 
 **Chapter ordering.** Chapters of a document are ordered by the `index` property on their
 `PART_OF` relationship to the document (`rc.index` in the document load Cypher). Insertion and

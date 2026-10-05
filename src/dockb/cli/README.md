@@ -4,7 +4,7 @@
 
 These are DockB's three shell commands, all reached through one ``dockb`` command. Two work on chapter files: one walks a folder of markdown and updates the knowledge graph (act chapters line up by the number in their file name, while character chapters need no number), the other writes one chapter back out as markdown, either into the server's folder or to a path you name. The third, `users`, administers accounts — and because there is no self-registration and no password recovery over HTTP, it is the only way to create an account or to get someone back into a lost one.
 
-Use the chapter commands when you need to load an existing manuscript, or rebuild a chapter file, without opening the editor. Use `users` to create, reset, block, or delete an account. All three read the same database settings as the API server.
+Use the chapter commands when you need to load an existing manuscript, or rebuild a chapter file, without opening the editor. Both name the account the work belongs to with `--owner <username>`, because a document is stored under the account that owns it and the tree is keyed by an internal account id rather than a name. Use `users` to create, reset, block, or delete an account. All three read the same database settings as the API server.
 
 ## Missing settings
 
@@ -14,10 +14,13 @@ string, or a model that is not installed, is reported as a single `error:` line 
 missing, and the command exits 1. Nothing is opened or imported first, so a misconfigured shell
 never reaches the database. `startup.py` owns that check for both commands; only a model that is
 installed but broken is left to raise, since that is a real fault rather than a missing setting.
+Resolving `--owner` also goes through `startup.py::account_id_for`, which needs
+`DOCKB_SECRET_KEY` and the accounts database, reports an unknown username as a single `error:`
+line, and returns the internal account id the tree is keyed by.
 
 ## Import a document directory
 
-`dockb import-document <document_dir> [--single-newline-paragraphs]` walks a
+`dockb import-document <document_dir> --owner <username> [--single-newline-paragraphs]` walks a
 directory of markdown chapter files, diffing each against its chapter in the graph and persisting
 changes. Each chapter file is matched through its front-matter `id`; changed or new files are
 rewritten into the canonical span format (one identity span per paragraph). With
@@ -38,6 +41,12 @@ name, and numbers in their names (or duplicated across them) are ignored. A file
 that is not numbered in an act, two acts numbering the same, or two act files in one act
 numbering the same abort the import. See
 `../infrastructure/changes/README.md` for the diffing behavior.
+
+`--owner` is required: the imported document belongs to that account, its title is matched and
+its directory kept within that account's own documents, and it is created there if the account
+has no document of that title. Without an owner the import would write a document into the graph
+that no account can see, so the command refuses instead of guessing. Two accounts may therefore
+each import a directory holding a document of the same title.
 
 ## Administer accounts
 
@@ -82,13 +91,16 @@ request — this process cannot evict an in-memory session it does not own. See
 
 ## Reconstruct a chapter
 
-`dockb reconstruct-chapter <chapter_id> [--out PATH]` renders the chapter with
+`dockb reconstruct-chapter <chapter_id> [--owner <username>] [--out PATH]` renders the chapter with
 `chapter_id` from the knowledge graph as markdown. Without `--out` the canonical chapter file is
-written into the server-owned tree — `<base>/<document title>/<Act X>/<chapter title>.md`, or
-`<base>/<document title>/Characters/<chapter title>.md` for a `Character` chapter — under
-`DOCKB_CHAPTERS_DIR` (defaulting to `cwd/dockb_chapters_dir`) — and git-committed; the written path
-is printed. With `--out` it is written to the exact `PATH` instead, without touching the store tree.
-A chapter id the graph does not know — or a chapter with no owning document (so it cannot be placed) —
+written into that account's tree — `<base>/<account id>/<document title>/<Act X>/<chapter title>.md`, or
+the `Characters` directory for a `Character` chapter — under
+`DOCKB_CHAPTERS_DIR` (defaulting to `cwd/dockb_chapters_dir`) — and git-committed in the account's own
+repository; the written path is printed. With `--out` it is written to the exact `PATH` instead,
+without touching the store tree, and `--owner` is then not needed. Without `--out` the command
+refuses to run rather than pick an account, since a chapter written under the wrong one would be a
+manuscript nobody sees. A chapter id the graph does not know — a chapter the named account does not
+own, or a chapter with no owning document (so it cannot be placed) —
 prints the error message to stderr and exits non-zero. The serialization itself is the shared format
 owned by `../infrastructure/markdown/`.
 

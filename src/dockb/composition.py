@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -25,7 +24,7 @@ from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
 from dockb.controllers.sentences import set_sent_service
 from dockb.infrastructure.accounts.store import AccountStore
-from dockb.infrastructure.document_store import DocumentStore
+from dockb.infrastructure.document_store import DocumentStoreFactory
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.infrastructure.oauth.factory import providers_from_env
@@ -56,9 +55,12 @@ def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
     """Return the effective server-owned markdown base directory, provisioning it.
 
     Defaults to ``cwd/dockb_chapters_dir`` when neither ``DOCKB_CHAPTERS_DIR``
-    nor *base_dir* is set. A missing directory is created, and a directory that
-    is not yet a git repository is ``git init``-ed — the document store owns
-    the repo (its ``git_commit`` requires one).
+    nor *base_dir* is set. A missing directory is created.
+
+    The base directory is not itself a git repository: each account's directory
+    below it is, so that a commit cannot span accounts (``DocumentStore`` owns
+    that provisioning). ``SnapshotWriter`` keeps its own separate base directory
+    and repository, which is why nothing here depends on this one being a repo.
     """
     if base_dir is not None:
         base = Path(base_dir)
@@ -68,15 +70,7 @@ def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
             base = Path(configured)
         else:
             base = Path.cwd() / _DOCUMENTS_DIR_NAME
-    if not (base / ".git").is_dir():
-        base.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "init"],
-            cwd=str(base),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
+    base.mkdir(parents=True, exist_ok=True)
     return base
 
 
@@ -144,14 +138,19 @@ def wire(  # pylint: disable=too-many-locals
         reconstructor=None,
     )
 
-    document_store = DocumentStore(base_dir=document_base_dir) if document_base_dir is not None else None
+    document_store_factory = DocumentStoreFactory(base_dir=document_base_dir) if document_base_dir is not None else None
     nlp = spacy.load("en_core_web_sm") if (document_base_dir is not None or snapshot_base_dir is not None) else None
-    doc_svc = DocumentService(uow_factory=uow_factory, document_repo=repos[Document], document_store=document_store, nlp=nlp)
+    doc_svc = DocumentService(
+        uow_factory=uow_factory,
+        document_repo=repos[Document],
+        document_store_factory=document_store_factory,
+        nlp=nlp,
+    )
     ch_svc = ChapterService(
         uow_factory=uow_factory,
         chapter_repo=repos[Chapter],
         document_repo=repos[Document],
-        document_store=document_store,
+        document_store_factory=document_store_factory,
         nlp=nlp,
     )
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])

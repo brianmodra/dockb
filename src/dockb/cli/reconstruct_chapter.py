@@ -19,7 +19,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from dockb.cli.startup import MissingConfigurationError, load_spacy_model, neo4j_settings
+from dockb.cli.startup import (
+    MissingConfigurationError,
+    UnknownUserError,
+    account_id_for,
+    load_spacy_model,
+    neo4j_settings,
+)
 from dockb.composition import resolve_document_base_dir
 from dockb.exceptions import ChapterMismatchError
 from dockb.infrastructure.document_store import DocumentStore
@@ -34,7 +40,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dockb reconstruct-chapter", description=__doc__)
     parser.add_argument("chapter_id", help="id of the chapter to reconstruct")
     parser.add_argument("-o", "--out", type=Path, default=None, help="write the markdown to PATH instead of the store tree")
+    parser.add_argument(
+        "--owner",
+        default=None,
+        help="username owning the chapter's document (required unless --out is given)",
+    )
     args = parser.parse_args(argv)
+
+    if args.out is None and not args.owner:
+        print("error: --owner is required without --out: the store tree is per-account", file=sys.stderr)
+        return 1
 
     load_dotenv()
     try:
@@ -56,9 +71,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.out is not None:
                 reconstruct_chapter_file(args.chapter_id, chapter_repo, args.out, nlp)
                 return 0
-            store = DocumentStore(base_dir=resolve_document_base_dir())
+            store = DocumentStore(base_dir=resolve_document_base_dir(), account_id=account_id_for(args.owner or ""))
             path = reconstruct_chapter_to_store(args.chapter_id, chapter_repo, document_repo, store, nlp)
             print(path)
+        except UnknownUserError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         except ChapterMismatchError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1

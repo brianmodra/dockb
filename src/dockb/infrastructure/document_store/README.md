@@ -2,29 +2,44 @@
 
 ## Executive Summary
 
-This note describes the folder where DockB keeps each document's markdown. The server writes those files. The editor never does. Paths come from titles the graph already owns, so a hostile title cannot escape the folder.
+This note describes the folder where DockB keeps each account's markdown. The server writes those files. The editor never does. Every account has its own directory and its own git repository below one shared base directory, so a document's files live under the account that owns it and a commit can never span two accounts.
 
-Read it to see where a chapter file lands, including supporting character chapters, and how a rename or delete stays in git. A failed file change leaves the graph recoverable.
+Read it to see where a chapter file lands, including supporting character chapters, which account's tree it is written to, and how a rename or delete stays in git. A failed file change leaves the graph recoverable.
 
 ## Layout
 
 Everything lives under one base directory, configured with the `DOCKB_CHAPTERS_DIR`
-environment variable (`DocumentStore.from_env()` requires it set; at server startup
+environment variable (`DocumentStoreFactory.from_env()` requires it set; at server startup
 `resolve_document_base_dir` in `composition.py` defaults it to `cwd`/`dockb_chapters_dir`
-when unset, creating the directory and git-initializing it so the store can own the repo).
-The tree:
+when unset, creating the directory but not a repository in it). Under it, one directory
+per account, each an independent git repository that the store creates on first use. The
+tree:
 
 ```
 <base>/
-    <document_title>/
-        document_metadata.yaml
-        Act <name>/
-            <chapter_title>.md
-        Act None/
-            <chapter_title>.md
-        Characters/
-            <chapter_title>.md
+    <account_id>/
+        .git/
+        <document_title>/
+            document_metadata.yaml
+            Act <name>/
+                <chapter_title>.md
+            Act None/
+                <chapter_title>.md
+            Characters/
+                <chapter_title>.md
 ```
+
+- `<account_id>` is the internal account id (`users.id`), not a username. Usernames are
+  mutable provider data — a rename or a merge would otherwise move or split a tree — and
+  an id is minted once and never changes.
+- A `DocumentStore` is scoped to exactly one account: `DocumentStore(base_dir, account_id)`
+  refuses a blank id, and `DocumentStoreFactory.for_account(account_id)` hands out the
+  store for one account. Services hold the factory rather than a store, so the account a
+  write lands under is decided by the request being served rather than by whichever call
+  site remembered to pass a store.
+- A document with no `owner` in the graph — one imported before accounts owned documents —
+  has no tree and no account to serve it. `dockb users assign` gives it one; nothing that
+  serves a request can reach it.
 
 - `document_title`, `act`, and `chapter_title` come from the graph and are used
   verbatim as path segments. An empty act maps to the reserved `Act None`
@@ -39,9 +54,9 @@ The tree:
 
 ## Path safety
 
-A document title, a chapter title, and a chapter's act all become path segments
-under the base directory, so each must be a single segment that cannot climb out
-of the tree. That rule is not the store's — it belongs to the value, not to the
+A document title, a chapter title, a chapter's act, and the account id all become
+path segments under the base directory, so each must be a single segment that
+cannot climb out of the tree. That rule is not the store's — it belongs to the value, not to the
 layer that uses it, and the wire schema has to reject the same inputs or an
 editor would have to satisfy two contracts. It therefore lives in
 `dockb/titles.py`: `is_unsafe_segment(value)` reports whether *value* cannot be a
@@ -53,10 +68,10 @@ legal single segments.
 
 `DocumentStore._validate_title` calls `validate_segment` on every title before
 any path is built — the document title, the chapter title, and the *derived* act
-directory name (so an act like `Act ../../x` cannot escape either). Because paths
-are then built by joining these validated single segments under the base
-directory, no title-derived path can escape the tree. All write methods create
-parent directories on demand.
+directory name (so an act like `Act ../../x` cannot escape either). The constructor
+applies the same rule to the account id. Because paths are then built by joining
+these validated single segments under the base directory, no derived path can
+escape the tree. All write methods create parent directories on demand.
 
 The schemas add the rule to the API, which turns a hostile title into a `422`
 (`controllers/schemas/documents.py::DocumentAttrs.title_not_blank` and
@@ -80,19 +95,25 @@ shared with the directory import in `services/markdown_import.py`.
 
 ## Git
 
-The base directory is a git repository (the server owns it, as described in
-`README_markdown_redesign.md`). `git_commit(document_title, message)` stages only
-the document's directory — `git add -- <document_title>` — and commits it;
-whether anything is staged is decided by `git status --porcelain -- <document_title>`
-alone, so unrelated untracked files left in the tree (e.g. runtime state) are
-never committed and never trip the commit. A document with nothing new to
-commit is a no-op — the call does not fail on git's "nothing to commit". This
-is how newly materialized trees enter history with a single commit.
+Each account's directory is its own git repository, created on first use, so a
+commit contains one account's documents and nothing else. (The snapshot writer
+keeps a separate base directory and repository of its own; the document base
+directory is deliberately not a repository.) `git_commit(document_title, message)`
+runs inside that repository, stages only the document's directory —
+`git add -- <account_id>/<document_title>` — and commits it; whether anything is
+staged is decided by `git status --porcelain -- <document_title>` alone, so
+unrelated untracked files left in the account's tree (e.g. runtime state) are
+never committed and never trip the commit. A document with nothing new to commit
+is a no-op — the call does not fail on git's "nothing to commit" — as is a
+document whose directory does not exist on disk, which is what "not on disk"
+already means to `remove_document` and `rename_document`. This is how newly
+materialized trees enter history with a single commit.
 
 `remove_document(document_title)` and `remove_chapter(...)` undo ownership:
 each removes its files from disk and from git (`git rm`, committed), in both
 cases tolerating files that were never tracked and directories that are
-already gone. `remove_chapter` also deletes the act, `Characters`, and document directories
+already gone. Deleting a document therefore removes its manuscript as well as
+its graph subtree. `remove_chapter` also deletes the act, `Characters`, and document directories
 when the removal empties them, so `document_exists` stays accurate once the
 last chapter of a document is removed. The services call these before marking
 the graph node `DELETED`, so a store failure leaves the graph intact for a

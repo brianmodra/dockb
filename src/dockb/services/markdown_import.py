@@ -190,6 +190,7 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     uow_factory: UnitOfWorkFactory,
     single_newline_paragraphs: bool = False,
     write_back: bool = True,
+    owner: str = "",
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
@@ -212,12 +213,17 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     ``single_newline_paragraphs`` is forwarded to every ``apply_chapter_file``
     call; ``write_back`` is forwarded to both the document resolution (its
     metadata write-back) and every chapter apply.
+
+    *owner* is the account id the imported document belongs to. Title matching and
+    the document created when nothing matches are both scoped to *owner*, so two
+    accounts may each import a document of the same title without colliding, and a
+    document imported with no owner belongs to nobody until the admin CLI assigns one.
     """
     dir_path = Path(document_dir)
     if not dir_path.is_dir():
         raise DocumentFormatError(f"Document directory '{dir_path}' does not exist")
     metadata = _read_document_metadata(dir_path, user_name)
-    document = _resolve_document(dir_path, metadata, document_repo, uow_factory, write_back=write_back)
+    document = _resolve_document(dir_path, metadata, document_repo, uow_factory, write_back=write_back, owner=owner)
     summaries = []
     for act, category, chapter_file in _discover_chapter_files(dir_path):
         summary = apply_chapter_file(
@@ -442,33 +448,33 @@ def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetad
     )
 
 
-def _resolve_document(
+def _resolve_document(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     document_dir: Path,
     metadata: DocumentMetadata,
     document_repo: DocumentRepository,
     uow_factory: UnitOfWorkFactory,
     write_back: bool = True,
+    owner: str = "",
 ) -> Document:
     """Return the graph Document for a document directory, creating it if missing.
 
-    An existing Document is matched by title (case-insensitively) and reused
-    as a shell (attrs and chapter ids — the import needs no paragraph
-    hierarchy); a directory whose title no Document answers for is turned
-    into a fresh
-    NEW Document and persisted immediately, so later chapter imports can link
-    to it. The resolved ``title``/``author`` are written back to the
-    directory's ``document_metadata.yaml`` (preserving other keys) unless
-    ``write_back`` is false.
+    An existing Document owned by *owner* is matched by title (case-insensitively)
+    and reused as a shell (attrs and chapter ids — the import needs no paragraph
+    hierarchy); a directory whose title no Document *owner* owns is turned into a
+    fresh NEW Document stamped with *owner* and persisted immediately, so later
+    chapter imports can link to it. The resolved ``title``/``author`` are written
+    back to the directory's ``document_metadata.yaml`` (preserving other keys)
+    unless ``write_back`` is false.
     """
-    matches = [row for row in document_repo.list_all() if str(row.get("title") or "").lower() == metadata.title.lower()]
+    matches = [row for row in document_repo.list_all(owner) if str(row.get("title") or "").lower() == metadata.title.lower()]
     if matches:
         if len(matches) > 1:
             logger.warning("Multiple documents titled %r; reusing %r", metadata.title, matches[0]["id"])
-        document = document_repo.load_shell(matches[0]["id"])
+        document = document_repo.load_shell(matches[0]["id"], owner)
         if document is not None:
             return document
         logger.warning("Document %r listed but could not be loaded", matches[0]["id"])
-    document = Document(title=metadata.title, author=metadata.author, state=DataState.NEW)
+    document = Document(title=metadata.title, author=metadata.author, owner=owner, state=DataState.NEW)
     uow = uow_factory.get_unit_of_work()
     uow.register(document)
     uow.commit()

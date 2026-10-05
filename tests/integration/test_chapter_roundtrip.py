@@ -19,6 +19,8 @@ from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer
 
 pytestmark = pytest.mark.integration
 
+ACCOUNT = "acct-roundtrip"
+
 CHAPTER_TEXT = (
     "First paragraph first sentence. First paragraph second sentence.\n\n"
     "Second paragraph first sentence. Second paragraph second sentence. "
@@ -47,9 +49,9 @@ _TOKENS_FIELDS = [
 ]
 
 
-def _build_and_hydrate(nlp) -> Document:
+def _build_and_hydrate(nlp, owner: str) -> Document:
     """Create a Document with one chapter, hydrate paragraphs/sentences, and tokenize."""
-    doc = Document()
+    doc = Document(owner=owner)
     chapter = Chapter(text=CHAPTER_TEXT)
     doc.append_child(chapter)
 
@@ -120,12 +122,12 @@ def _assert_structures_match(loaded: Document, original: Document) -> None:
 
 def test_chapter_roundtrip(neo4j_session, nlp):
     """Build a chapter, save to Neo4j, read back, compare, and clean up."""
-    doc = _build_and_hydrate(nlp)
+    doc = _build_and_hydrate(nlp, ACCOUNT)
 
     _save(neo4j_session, doc)
 
     doc_repo = DocumentRepository(neo4j_session)
-    loaded_doc = doc_repo.load(doc.id)
+    loaded_doc = doc_repo.load(doc.id, ACCOUNT)
     assert loaded_doc is not None
     _assert_structures_match(loaded_doc, doc)
 

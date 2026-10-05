@@ -21,6 +21,14 @@ Chapter-level paths that only need the document's title or chapter ids use
 hierarchy). The full `load` is for paths that render whole documents, such as
 materializing a document's store tree.
 
+Every document read and write names the account that owns it: `load`, `load_shell`,
+`delete` and `list_all` all take the account id, and an id belonging to another
+account reads as absent rather than as an error, so a caller cannot confirm that a
+document it may not see exists. `find_owner(document_id)` is the one unscoped read —
+it answers "who owns this" for the paths that must resolve an owner before they can
+scope themselves, and is not for serving a request. A document with no `owner`
+property predates ownership and belongs to nobody.
+
 # Writing to the database
 
 This will mostly be a Sentence (and all its Tokens) at a time. Each model object has a unique ID,

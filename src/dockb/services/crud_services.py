@@ -19,7 +19,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchError, DuplicateTitleError
+from dockb.exceptions import (
+    ChapterAfterNotFoundError,
+    ChapterCategoryMismatchError,
+    DocumentNotFoundError,
+    DocumentOwnershipError,
+    DuplicateTitleError,
+)
 from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
@@ -36,6 +42,7 @@ from dockb.timing import measure
 if TYPE_CHECKING:
     from spacy.language import Language
 
+    from dockb.infrastructure.document_store.factory import DocumentStoreFactory
     from dockb.infrastructure.document_store.store import DocumentStore
     from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
     from dockb.repositories.chapter_repository import ChapterRepository
@@ -61,44 +68,59 @@ class ChapterSaveResult:
 
 
 class DocumentService:
-    """CRUD operations for Document entities."""
+    """CRUD operations for Document entities, always scoped to one owning account.
+
+    Every method takes the account id it is acting for. There is no unscoped
+    entry point, so a caller cannot reach another account's document by forgetting to
+    pass one: an id that *owner* does not own reads as absent.
+    """
 
     def __init__(
         self,
         uow_factory: UnitOfWorkFactory,
         document_repo: DocumentRepository,
-        document_store: DocumentStore | None = None,
+        document_store_factory: DocumentStoreFactory | None = None,
         nlp: Language | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._document_repo = document_repo
-        self._document_store = document_store
+        self._document_store_factory = document_store_factory
         self._nlp = nlp
 
-    def list_all(self) -> list[dict[str, str]]:
-        """Return lightweight summaries for every document."""
-        return self._document_repo.list_all()
+    def _store(self, owner: str) -> DocumentStore | None:
+        """Return *owner*'s document store, or None when no store is configured."""
+        if self._document_store_factory is None:
+            return None
+        return self._document_store_factory.for_account(owner)
 
-    def get(self, document_id: str) -> Document | None:
-        """Load a full document hierarchy, or None."""
-        return self._document_repo.load(document_id)
+    def list_all(self, owner: str) -> list[dict[str, str]]:
+        """Return lightweight summaries for every document *owner* owns."""
+        return self._document_repo.list_all(owner)
 
-    def open(self, document_id: str) -> Document | None:
+    def get(self, document_id: str, owner: str) -> Document | None:
+        """Load a full document hierarchy, or None when *owner* does not own it."""
+        return self._document_repo.load(document_id, owner)
+
+    def open(self, document_id: str, owner: str) -> Document | None:
         """Load a document, materializing its owned file tree when absent.
 
         When a store is configured and the document's directory does not exist
         yet, the tree (metadata + one chapter file per graph chapter) is
         serialized from the graph and committed to git; otherwise the metadata
         file is refreshed from the graph. The document is then returned.
+
+        Returns None when *owner* does not own the document, and writes nothing —
+        the tree belongs to whoever does own it.
         """
-        doc = self._document_repo.load(document_id)
+        doc = self._document_repo.load(document_id, owner)
         if doc is None:
             return None
-        if self._document_store is not None:
-            if not self._document_store.document_exists(doc.title):
-                self._materialize(self._document_store, doc)
+        store = self._store(owner)
+        if store is not None:
+            if not store.document_exists(doc.title):
+                self._materialize(store, doc)
             else:
-                self._document_store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
+                store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
         return doc
 
     def _materialize(self, store: DocumentStore, doc: Document) -> None:
@@ -114,22 +136,30 @@ class DocumentService:
         document_id: str,
         title: str,
         author: str,
+        owner: str,
     ) -> Document:
-        """Create a new empty document and commit it.
+        """Create a new empty document owned by *owner* and commit it.
 
-        A case-insensitive title match against the knowledge graph is
-        rejected, and the server-owned metadata file for the document is
-        materialized when a document store is configured.
+        A case-insensitive title match against *owner*'s documents is rejected, so two
+        accounts may each hold a document with the same title. The server-owned metadata
+        file for the document is materialized when a document store is configured.
+
+        Raises DocumentOwnershipError when *owner* is blank, before anything is
+        written: a document with no account has no directory to keep its manuscript
+        in, and a node committed first would belong to nobody.
         """
-        if any(str(row.get("title") or "").lower() == title.lower() for row in self._document_repo.list_all()):
+        if not owner or not owner.strip():
+            raise DocumentOwnershipError("an account id is required to create a document")
+        if any(str(row.get("title") or "").lower() == title.lower() for row in self._document_repo.list_all(owner)):
             raise DuplicateTitleError(title)
 
-        doc = Document(id=document_id, title=title, author=author, state=DataState.NEW)
+        doc = Document(id=document_id, title=title, author=author, owner=owner, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
         uow.commit()
-        if self._document_store is not None:
-            self._document_store.write_metadata(title, DocumentMetadata(title=title, author=author))
+        store = self._store(owner)
+        if store is not None:
+            store.write_metadata(title, DocumentMetadata(title=title, author=author))
         return doc
 
     def update(
@@ -137,17 +167,19 @@ class DocumentService:
         document_id: str,
         title: str,
         author: str,
+        owner: str,
     ) -> Document | None:
         """Update document attrs, renaming the owned tree and refreshing the graph.
 
-        Returns None if not found. The graph is updated first; a title change
-        then git mv's the owned directory (metadata rewritten with the new
+        Returns None when *owner* does not own the document, which is deliberately the
+        same answer as when no such document exists. The graph is updated first; a title
+        change then git mv's the owned directory (metadata rewritten with the new
         title), and the metadata file is always brought in line with the graph.
         """
-        doc = self._document_repo.load(document_id)
+        doc = self._document_repo.load(document_id, owner)
         if doc is None:
             return None
-        for row in self._document_repo.list_all():
+        for row in self._document_repo.list_all(owner):
             if row["id"] != document_id and str(row.get("title") or "").lower() == title.lower():
                 raise DuplicateTitleError(title)
         old_title = doc.title
@@ -157,25 +189,28 @@ class DocumentService:
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
         uow.commit()
-        if self._document_store is not None:
+        store = self._store(owner)
+        if store is not None:
             if title != old_title:
-                self._document_store.rename_document(old_title, title)
-            self._document_store.write_metadata(title, DocumentMetadata(title=title, author=author))
-            self._document_store.git_commit(title, f"update: document {document_id[:8]}")
+                store.rename_document(old_title, title)
+            store.write_metadata(title, DocumentMetadata(title=title, author=author))
+            store.git_commit(title, f"update: document {document_id[:8]}")
         return doc
 
-    def delete(self, document_id: str) -> bool:
+    def delete(self, document_id: str, owner: str) -> bool:
         """Delete a document: remove its owned store tree, then the graph subtree.
 
         The store directory (``git rm`` + commit) goes first so a failure leaves
         the graph intact for a retry. The graph DELETED write cascades to every
-        chapter, paragraph, sentence, and token. Returns False if not found.
+        chapter, paragraph, sentence, and token. Returns False when *owner* does not
+        own the document, leaving both the tree and the graph untouched.
         """
-        doc = self._document_repo.load(document_id)
+        doc = self._document_repo.load(document_id, owner)
         if doc is None:
             return False
-        if self._document_store is not None:
-            self._document_store.remove_document(doc.title)
+        store = self._store(owner)
+        if store is not None:
+            store.remove_document(doc.title)
         doc.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
@@ -221,17 +256,23 @@ class ChapterService:
         uow_factory: UnitOfWorkFactory,
         chapter_repo: ChapterRepository,
         document_repo: DocumentRepository | None = None,
-        document_store: DocumentStore | None = None,
+        document_store_factory: DocumentStoreFactory | None = None,
         nlp: Language | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
         self._document_repo = document_repo
-        self._document_store = document_store
+        self._document_store_factory = document_store_factory
         self._nlp = nlp
         self._save_locks: dict[str, threading.Lock] = {}
         self._save_users: dict[str, int] = {}
         self._save_registry_guard = threading.Lock()
+
+    def _store(self, owner: str) -> DocumentStore | None:
+        """Return *owner*'s document store, or None when no store is configured."""
+        if self._document_store_factory is None:
+            return None
+        return self._document_store_factory.for_account(owner)
 
     def _save_lock(self, chapter_id: str) -> threading.Lock:
         """Return the per-chapter save lock, registering *chapter_id* as in use.
@@ -284,30 +325,35 @@ class ChapterService:
         """Load a full chapter hierarchy, or None."""
         return self._chapter_repo.load(chapter_id)
 
-    def open(self, chapter_id: str) -> Chapter | None:
+    def open(self, chapter_id: str, owner: str) -> Chapter | None:
         """Load a chapter, materializing its owned markdown file when absent.
 
         When a store is configured, the chapter's owning document is resolved
         from the graph and, if ``chapter-{id}.md`` does not exist yet, the file
         is serialized from the graph and git-committed. Documents without a
         graph parent (orphans) are returned as-is.
+
+        *owner* selects which account's store the file is written under, and the
+        owning document is loaded scoped to that account, so a chapter belonging to
+        someone else resolves to no document and nothing is written.
         """
         ch = self._chapter_repo.load(chapter_id)
         if ch is None:
             return None
-        if self._document_store is None or self._document_repo is None:
+        store = self._store(owner)
+        if store is None or self._document_repo is None:
             return ch
         document_id = self._chapter_repo.find_document_id(chapter_id)
         if document_id is None:
             return ch
-        document = self._document_repo.load_shell(document_id)
+        document = self._document_repo.load_shell(document_id, owner)
         if document is None:
             return ch
-        if not self._document_store.chapter_exists(document.title, ch.act, ch.title, ch.category):
-            self._materialize_chapter(self._document_store, document, ch)
+        if not store.chapter_exists(document.title, ch.act, ch.title, ch.category):
+            self._materialize_chapter(store, document, ch)
         return ch
 
-    def save_document(self, chapter_id: str, content: str) -> ChapterSaveResult | None:
+    def save_document(self, chapter_id: str, content: str, owner: str) -> ChapterSaveResult | None:
         """Save a chapter: write *content* to its owned file, rehydrate the graph, git-snap.
 
         The chapter's ``id``/``title`` (and its ``act``/``category`` when set)
@@ -315,10 +361,11 @@ class ChapterService:
         into the file's front matter — the server, not the editor, owns
         identity. The returned ``content`` is the canonical span-form text and
         ``summary`` records what changed. Returns ``None`` for a missing
-        chapter, an orphan, or when no store / nlp is configured (the endpoint
-        reports 404).
+        chapter, a chapter *owner* does not own, an orphan, or when no store / nlp is
+        configured (the endpoint reports 404).
         """
-        if self._document_store is None or self._nlp is None or self._document_repo is None:
+        store = self._store(owner)
+        if store is None or self._nlp is None or self._document_repo is None:
             return None
         ch = self._chapter_repo.load(chapter_id)
         if ch is None:
@@ -326,7 +373,7 @@ class ChapterService:
         document_id = self._chapter_repo.find_document_id(chapter_id)
         if document_id is None:
             return None
-        document = self._document_repo.load_shell(document_id)
+        document = self._document_repo.load_shell(document_id, owner)
         if document is None:
             return None
         with self._save_scope(chapter_id):
@@ -334,7 +381,7 @@ class ChapterService:
             if ch.act:
                 updates["act"] = ch.act
             updates["category"] = ch.category
-            self._document_store.write_chapter(
+            store.write_chapter(
                 document.title,
                 ch.act,
                 ch.title,
@@ -343,24 +390,26 @@ class ChapterService:
             )
             summary = apply_chapter_file(
                 document,
-                self._document_store.chapter_file(document.title, ch.act, ch.title, ch.category),
+                store.chapter_file(document.title, ch.act, ch.title, ch.category),
                 self._nlp,
                 self._chapter_repo,
                 self._uow_factory,
             )
-            self._document_store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
-        canonical = self._document_store.read_chapter(document.title, ch.act, ch.title, ch.category)
+            store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
+        canonical = store.read_chapter(document.title, ch.act, ch.title, ch.category)
         return ChapterSaveResult(content=canonical or "", summary=summary)
 
-    def open_document(self, chapter_id: str) -> str | None:
+    def open_document(self, chapter_id: str, owner: str) -> str | None:
         """Read a chapter's owned file as canonical text, reconciling it first.
 
         Materializes ``chapter-{id}.md`` from the graph when it is missing,
         otherwise absorbs any hand edit through ``apply_chapter_file()``, then
         git-snaps and returns the canonical text. Returns ``None`` for a missing
-        chapter, an orphan, or when no store / nlp is configured (404).
+        chapter, a chapter *owner* does not own, an orphan, or when no store / nlp is
+        configured (404).
         """
-        if self._document_store is None or self._nlp is None or self._document_repo is None:
+        store = self._store(owner)
+        if store is None or self._nlp is None or self._document_repo is None:
             return None
         with measure("repo.chapter.load"):
             ch = self._chapter_repo.load(chapter_id)
@@ -371,26 +420,26 @@ class ChapterService:
         if document_id is None:
             return None
         with measure("repo.document.load"):
-            document = self._document_repo.load_shell(document_id)
+            document = self._document_repo.load_shell(document_id, owner)
         if document is None:
             return None
         with self._save_scope(chapter_id):
-            if not self._document_store.chapter_exists(document.title, ch.act, ch.title, ch.category):
+            if not store.chapter_exists(document.title, ch.act, ch.title, ch.category):
                 with measure("stage.materialize"):
-                    self._materialize_chapter(self._document_store, document, ch)
+                    self._materialize_chapter(store, document, ch)
             else:
                 with measure("stage.apply_chapter_file"):
                     apply_chapter_file(
                         document,
-                        self._document_store.chapter_file(document.title, ch.act, ch.title, ch.category),
+                        store.chapter_file(document.title, ch.act, ch.title, ch.category),
                         self._nlp,
                         self._chapter_repo,
                         self._uow_factory,
                     )
                 with measure("stage.git_commit"):
-                    self._document_store.git_commit(document.title, f"open: chapter {chapter_id[:8]}")
+                    store.git_commit(document.title, f"open: chapter {chapter_id[:8]}")
         with measure("stage.read_chapter"):
-            return self._document_store.read_chapter(document.title, ch.act, ch.title, ch.category)
+            return store.read_chapter(document.title, ch.act, ch.title, ch.category)
 
     def _materialize_chapter(self, store: DocumentStore, document: Document, ch: Chapter) -> None:
         """Write the chapter's owned markdown file from the graph and git-commit it."""
@@ -405,25 +454,32 @@ class ChapterService:
         document_id: str,
         after_chapter_id: str | None = None,
         category: Literal["Chapter", "Character"] = "Chapter",
+        owner: str = "",
     ) -> Chapter:
         """Create a new empty chapter, placed after *after_chapter_id*, and commit it.
 
         ``after_chapter_id=None`` places the chapter first (index 0). The empty
         ``chapter-{id}.md`` (front matter only) is written when a document store
-        is configured.
+        is configured. *owner* must own *document_id*: a create against a document
+        belonging to someone else raises ``DocumentNotFoundError`` rather than
+        attaching a chapter to it.
         """
         index = self._resolve_index(document_id, after_chapter_id)
         for row in self._chapter_repo.list_by_document(document_id):
             if str(row.get("title") or "").lower() == title.lower():
                 raise DuplicateTitleError(title)
+        document_repo = self._document_repo
+        if document_repo is None or document_repo.load_shell(document_id, owner) is None:
+            raise DocumentNotFoundError(document_id)
         ch = Chapter(id=chapter_id, title=title, category=category, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id, index=str(index))
         uow.commit()
-        if self._document_store is not None and self._document_repo is not None:
-            document = self._document_repo.load_shell(document_id)
+        store = self._store(owner)
+        if store is not None and self._document_repo is not None:
+            document = self._document_repo.load_shell(document_id, owner)
             if document is not None:
-                self._materialize_new_chapter(self._document_store, document, ch)
+                self._materialize_new_chapter(store, document, ch)
         return ch
 
     def _resolve_index(self, document_id: str, after_chapter_id: str | None) -> int:
@@ -492,12 +548,13 @@ class ChapterService:
         self,
         chapter_id: str,
         title: str,
+        owner: str = "",
     ) -> Chapter | None:
         """Update the chapter title, renaming its owned file and refreshing the graph.
 
         Returns None if not found. The graph is updated first; a title change
         then git mv's the markdown file and rewrites the front matter title to
-        match.
+        match. *owner* scopes which account's tree the rename happens in.
         """
         ch = self._chapter_repo.load(chapter_id)
         if ch is None:
@@ -513,13 +570,14 @@ class ChapterService:
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id or "")
         uow.commit()
-        if self._document_store is not None and self._document_repo is not None and document_id is not None and title != old_title:
-            document = self._document_repo.load_shell(document_id)
+        store = self._store(owner)
+        if store is not None and self._document_repo is not None and document_id is not None and title != old_title:
+            document = self._document_repo.load_shell(document_id, owner)
             if document is not None:
-                self._document_store.rename_chapter(document.title, ch.act, old_title, title, ch.category)
+                store.rename_chapter(document.title, ch.act, old_title, title, ch.category)
         return ch
 
-    def delete(self, chapter_id: str) -> bool:
+    def delete(self, chapter_id: str, owner: str = "") -> bool:
         """Delete a chapter: remove its owned store file, then the graph subtree.
 
         The markdown file (``git rm`` + commit) goes first so a failure leaves
@@ -530,10 +588,11 @@ class ChapterService:
         if ch is None:
             return False
         document_id = self._chapter_repo.find_document_id(chapter_id)
-        if self._document_store is not None and self._document_repo is not None and document_id is not None:
-            document = self._document_repo.load_shell(document_id)
+        store = self._store(owner)
+        if store is not None and self._document_repo is not None and document_id is not None:
+            document = self._document_repo.load_shell(document_id, owner)
             if document is not None:
-                self._document_store.remove_chapter(document.title, ch.act, ch.title, ch.category)
+                store.remove_chapter(document.title, ch.act, ch.title, ch.category)
         ch.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(ch, document_id=document_id or "")

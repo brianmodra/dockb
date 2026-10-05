@@ -194,7 +194,7 @@ class TestListAllDocuments:
             {"id": "d-1", "title": "T1", "author": "A1"},
             {"id": "d-2", "title": "T2", "author": "A2"},
         ]
-        result = document_repo.list_all()
+        result = document_repo.list_all("acct-1")
         assert result == [
             {"id": "d-1", "title": "T1", "author": "A1"},
             {"id": "d-2", "title": "T2", "author": "A2"},
@@ -202,16 +202,114 @@ class TestListAllDocuments:
 
     def test_returns_empty_list_when_no_documents(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        result = document_repo.list_all()
+        result = document_repo.list_all("acct-1")
         assert result == []
 
     def test_runs_list_all_cypher(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        document_repo.list_all()
+        document_repo.list_all("acct-1")
         cypher, _ = extract_call(neo4j_session)
-        assert "MATCH (d:Document)" in cypher
+        assert "MATCH (d:Document {owner: $owner})" in cypher
         assert "d.title AS title" in cypher
         assert "d.author AS author" in cypher
+
+    def test_scopes_the_listing_to_the_owner(self, document_repo, neo4j_session):
+        """The picker must not be every user's library.
+
+        A bare ``MATCH (d:Document)`` returns the whole graph, so the owner has to be
+        part of the pattern itself: filtering in Python would still have read every
+        document, and a document owned by nobody is owned by nobody.
+        """
+        neo4j_session.run.return_value = []
+        document_repo.list_all("acct-1")
+        cypher, params = extract_call(neo4j_session)
+        assert params == {"owner": "acct-1"}
+        assert "WHERE" not in cypher
+
+
+# ---------------------------------------------------------------------------
+# Ownership
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentOwnership:
+    """The account id that owns a document, and how reads are scoped by it."""
+
+    def test_new_document_stamps_the_owner(self, document_repo, neo4j_session, document):
+        document.owner = "acct-1"
+        document.state = DataState.NEW
+
+        document_repo.save(document)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "d.owner = $owner" in cypher
+        assert params["owner"] == "acct-1"
+
+    def test_changed_document_keeps_its_owner(self, document_repo, neo4j_session, document):
+        document.owner = "acct-1"
+        document.state = DataState.CHANGED
+
+        document_repo.save(document)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "d.owner = $owner" in cypher
+
+    def test_delete_is_scoped_to_the_owner(self, document_repo, neo4j_session, document):
+        document.owner = "acct-1"
+        document.state = DataState.DELETED
+
+        document_repo.save(document)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
+        assert params["owner"] == "acct-1"
+
+    def test_load_shell_is_scoped_to_the_owner(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        document_repo.load_shell("d-1", "acct-1")
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
+        assert params == {"document_id": "d-1", "owner": "acct-1"}
+
+    def test_load_is_scoped_to_the_owner(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        document_repo.load("d-1", "acct-1")
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
+        assert params == {"document_id": "d-1", "owner": "acct-1"}
+
+    def test_loaded_document_carries_its_owner(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": None},
+        ]
+        doc = document_repo.load_shell("d-1", "acct-1")
+        assert doc is not None
+        assert doc.owner == "acct-1"
+
+    def test_find_owner_returns_the_account_id(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"owner": "acct-1"}]
+        assert document_repo.find_owner("d-1") == "acct-1"
+
+    def test_find_owner_is_none_for_an_unowned_document(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"owner": None}]
+        assert document_repo.find_owner("d-1") is None
+
+    def test_find_owner_is_none_for_a_missing_document(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert document_repo.find_owner("ghost") is None
+
+    def test_find_owner_does_not_filter_by_owner(self, document_repo, neo4j_session):
+        """It answers for a document the caller does not own — that is its one purpose.
+
+        Scoping this read would make it useless to the CLI paths that resolve an owner
+        before they can scope themselves, and would leave a soft-deleted user's
+        manuscripts unreachable even to the admin command meant to recover them.
+        """
+        neo4j_session.run.return_value = [{"owner": "acct-1"}]
+        document_repo.find_owner("d-1")
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id})" in cypher
+        assert params == {"document_id": "d-1"}
 
 
 # ---------------------------------------------------------------------------
@@ -224,29 +322,29 @@ class TestLoadShellDocuments:
 
     def test_runs_shell_cypher_without_hierarchy(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        document_repo.load_shell("d-1")
+        document_repo.load_shell("d-1", "acct-1")
         cypher, params = extract_call(neo4j_session)
-        assert "MATCH (d:Document {id: $document_id})" in cypher
+        assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
         assert "c.id AS chapter_id" in cypher
         assert "ORDER BY" in cypher
         assert "Token" not in cypher
         assert "Sentence" not in cypher
         assert "Paragraph" not in cypher
-        assert params == {"document_id": "d-1"}
+        assert params == {"document_id": "d-1", "owner": "acct-1"}
 
     def test_returns_none_when_document_missing(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        assert document_repo.load_shell("ghost") is None
+        assert document_repo.load_shell("ghost", "acct-1") is None
 
     def test_returns_none_when_document_id_absent(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [{"document_id": None, "document_title": None}]
-        assert document_repo.load_shell("ghost") is None
+        assert document_repo.load_shell("ghost", "acct-1") is None
 
     def test_builds_document_attrs(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [
             {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": None},
         ]
-        doc = document_repo.load_shell("d-1")
+        doc = document_repo.load_shell("d-1", "acct-1")
         assert doc is not None
         assert doc.id == "d-1"
         assert doc.title == "Faith"
@@ -259,7 +357,7 @@ class TestLoadShellDocuments:
             {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": "c-1"},
             {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": "c-2"},
         ]
-        doc = document_repo.load_shell("d-1")
+        doc = document_repo.load_shell("d-1", "acct-1")
         assert doc is not None
         assert [ch.id for ch in doc.chapters] == ["c-1", "c-2"]
         assert all(ch.state == DataState.SYNC for ch in doc.chapters)
@@ -270,6 +368,6 @@ class TestLoadShellDocuments:
             {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": "c-1"},
             {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": None},
         ]
-        doc = document_repo.load_shell("d-1")
+        doc = document_repo.load_shell("d-1", "acct-1")
         assert doc is not None
         assert [ch.id for ch in doc.chapters] == ["c-1"]

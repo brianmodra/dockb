@@ -20,6 +20,7 @@ class Document(DockbModel):
 
     title: str = ""
     author: str = ""
+    owner: str = ""
     chapters: DockbCollection[Chapter] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

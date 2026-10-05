@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from dockb.cli import startup
 from dockb.cli.startup import MissingConfigurationError, load_spacy_model, neo4j_settings
+
+_ACCOUNT_ID = "11111111-1111-1111-1111-111111111111"
 
 
 class TestNeo4jSettings:
@@ -97,3 +101,47 @@ class TestLoadSpacyModel:
 
         with pytest.raises(ValueError, match="malformed"):
             load_spacy_model()
+
+
+class TestAccountIdFor:
+    """A command names a username; the tree is keyed by the account id behind it."""
+
+    @pytest.fixture(autouse=True)
+    def _account_db(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(startup, "load_dotenv", lambda *a, **k: None)
+        monkeypatch.setattr(startup, "resolve_document_base_dir", lambda *a, **k: tmp_path)
+        self.store = MagicMock()
+        self.seen_kwargs: dict[str, object] = {}
+        monkeypatch.setattr(startup, "AccountStore", self._account_store)
+
+    def _account_store(self, **kwargs):
+        self.seen_kwargs = kwargs
+        return self.store
+
+    def test_returns_the_id_behind_the_username(self, monkeypatch):
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "secret")
+        self.store.get_user.return_value = {"id": _ACCOUNT_ID}
+
+        assert startup.account_id_for("Alice") == _ACCOUNT_ID
+
+        self.store.get_user.assert_called_once_with("alice")
+        assert self.seen_kwargs["secret"] == "secret"
+
+    def test_missing_secret_is_a_configuration_error(self, monkeypatch):
+        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
+
+        with pytest.raises(startup.MissingConfigurationError, match="DOCKB_SECRET_KEY"):
+            startup.account_id_for("alice")
+
+    def test_blank_secret_counts_as_missing(self, monkeypatch):
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "   ")
+
+        with pytest.raises(startup.MissingConfigurationError, match="DOCKB_SECRET_KEY"):
+            startup.account_id_for("alice")
+
+    def test_unknown_user_is_reported(self, monkeypatch):
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "secret")
+        self.store.get_user.return_value = None
+
+        with pytest.raises(startup.UnknownUserError, match="unknown user 'alice'"):
+            startup.account_id_for("alice")

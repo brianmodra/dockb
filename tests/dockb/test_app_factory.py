@@ -289,7 +289,9 @@ class TestWireServices:
         wire(mock_sf, document_base_dir=tmp_path)
 
         svc = get_doc_service()
-        assert svc._document_store is not None  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        assert svc._document_store_factory is not None
+        assert svc._document_store_factory.for_account("acct-1").account_dir() == tmp_path / "acct-1"
 
     def test_unwire_clears_services(self) -> None:
         from dockb.composition import unwire
@@ -480,7 +482,7 @@ class TestWireServices:
 class TestResolveDocumentBaseDir:
     """resolve_document_base_dir provisions the server-owned markdown tree."""
 
-    def test_defaults_to_cwd_dockb_chapters_dir_and_git_inits_it(self, tmp_path, monkeypatch) -> None:
+    def test_defaults_to_cwd_dockb_chapters_dir(self, tmp_path, monkeypatch) -> None:
         from pathlib import Path
 
         from dockb.composition import resolve_document_base_dir
@@ -493,9 +495,23 @@ class TestResolveDocumentBaseDir:
         expected = Path(tmp_path) / "dockb_chapters_dir"
         assert base == expected
         assert base.is_dir()
-        assert (base / ".git").is_dir()
 
-    def test_uses_configured_dir_and_git_inits_when_missing(self, tmp_path, monkeypatch) -> None:
+    def test_the_base_dir_is_not_a_git_repository(self, tmp_path, monkeypatch) -> None:
+        """Each account directory is its own repository; the base holds only those.
+
+        A repository here would put every account's documents in one history and let
+        a title collision span accounts.
+        """
+        from dockb.composition import resolve_document_base_dir
+
+        monkeypatch.setenv("DOCKB_CHAPTERS_DIR", str(tmp_path / "chapters"))
+
+        base = resolve_document_base_dir()
+
+        assert base.is_dir()
+        assert not (base / ".git").exists()
+
+    def test_uses_configured_dir_when_missing(self, tmp_path, monkeypatch) -> None:
         from dockb.composition import resolve_document_base_dir
 
         target = tmp_path / "chapters"
@@ -505,7 +521,6 @@ class TestResolveDocumentBaseDir:
 
         assert base == target
         assert base.is_dir()
-        assert (base / ".git").is_dir()
 
     def test_returns_existing_dir_without_clobbering(self, tmp_path, monkeypatch) -> None:
 

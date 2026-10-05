@@ -57,7 +57,7 @@ def reconstruct_chapter_to_store(
     if chapter is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
     document_id = chapter_repo.find_document_id(chapter_id)
-    document = document_repo.load_shell(document_id) if document_id is not None else None
+    document = document_repo.load_shell(document_id, store.account_id) if document_id is not None else None
     if document is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' has no owning document")
     path = store.chapter_file(document.title, chapter.act, chapter.title, chapter.category)

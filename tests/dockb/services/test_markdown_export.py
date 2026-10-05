@@ -54,11 +54,24 @@ def _doc_repo(document: Document | None) -> MagicMock:
     return repo
 
 
+_ACCOUNT = "acct-1"
+
+
+@pytest.fixture()
+def git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give git a commit identity without a repository or the machine's own config.
+
+    An account directory is its own repository, created on first use, so a test
+    cannot pre-configure one with ``git config``.
+    """
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@test.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@test.com")
+
+
 def _git_store(tmp_path) -> DocumentStore:
-    subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), check=True, capture_output=True)
-    return DocumentStore(base_dir=tmp_path)
+    return DocumentStore(base_dir=tmp_path, account_id=_ACCOUNT)
 
 
 def test_reconstruct_chapter_markdown_renders_loaded_chapter(nlp):
@@ -104,7 +117,7 @@ def test_reconstruct_to_store_writes_title_act_layout_and_commits(nlp, tmp_path)
 
     assert path == store.chapter_file("Faith", "Act I", "Intro")
     assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
-    log = subprocess.run(["git", "log", "--format=%H"], cwd=str(tmp_path), capture_output=True, text=True, check=False)
+    log = subprocess.run(["git", "log", "--format=%H"], cwd=str(store.account_dir()), capture_output=True, text=True, check=False)
     assert log.returncode == 0
     assert log.stdout.strip()
 

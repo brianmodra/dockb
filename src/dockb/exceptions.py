@@ -31,6 +31,24 @@ class DocumentFormatError(ValueError):
     """
 
 
+class DocumentNotFoundError(Exception):
+    """No document with the given id exists, or *owner* does not own it.
+
+    The two are the same error on purpose: a caller must not be able to tell a
+    document belonging to someone else from one that was never created.
+    """
+
+
+class DocumentOwnershipError(Exception):
+    """Raised when an operation is given no account to act for.
+
+    A document is stored under the directory of the account that owns it, so an
+    operation with a blank owner has nowhere to put the manuscript. Rejecting it up
+    front also keeps a half-created document out of the graph, where it would belong
+    to nobody and be reachable only through ``dockb users assign``.
+    """
+
+
 class DuplicateTitleError(Exception):
     """Raised when a document title already exists in the knowledge graph."""
 

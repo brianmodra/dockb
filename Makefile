@@ -27,6 +27,8 @@ run:
 	@bash scripts/run.sh
 
 migrate:
-	neo4j-migrations --database=$(NEO4J_DATABASE) migrate
+	neo4j-migrations --location=file:$(CURDIR)/neo4j/migrations --address=$(NEO4J_URL) \
+		--username=$(NEO4J_USER) --password:env=NEO4J_PASSWORD \
+		--database=$(NEO4J_DATABASE) migrate
 
 .PHONY: all check_static_typing lint detect_cycles sort run test test_integration migrate

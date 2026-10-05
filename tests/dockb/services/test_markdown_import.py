@@ -744,7 +744,7 @@ class TestResolveDocument:
         result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
 
         assert result is loaded
-        repo.load_shell.assert_called_once_with("d1")
+        repo.load_shell.assert_called_once_with("d1", "")
         uow_factory.get_unit_of_work.assert_not_called()
 
     def test_matches_title_case_insensitively(self):
@@ -767,7 +767,7 @@ class TestResolveDocument:
         result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
 
         assert result is loaded
-        repo.load_shell.assert_called_once_with("d1")
+        repo.load_shell.assert_called_once_with("d1", "")
 
     def test_created_document_writes_metadata_file(self, tmp_path):
         repo = self._repo_with([])
@@ -993,7 +993,7 @@ class TestImportDocumentDirectory:
 
         import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock(), write_back=False)
 
-        assert seen["resolve_kwargs"] == {"write_back": False}
+        assert seen["resolve_kwargs"] == {"write_back": False, "owner": ""}
         assert seen["apply_kwargs"] == {
             "act": "Act I",
             "category": "Chapter",

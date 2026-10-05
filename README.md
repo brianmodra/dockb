@@ -69,8 +69,13 @@ source .venv/bin/activate && pip install -e '.[dev]'
 ## Import an existing set of Markdown files
 
 ```
-dockb import-document "/home/brian-modra/Documents/Linchpin" --single-newline-paragraphs --no-write-back
+dockb import-document "/home/brian-modra/Documents/Linchpin" --owner abby --single-newline-paragraphs --no-write-back
 ```
+
+`--owner` is the username of the account the document belongs to; the imported
+manuscript is filed under that account and titled against that account's own
+documents, so two accounts may each import a document with the same title. Create
+the account first (below).
 
 Or, in the editor, `File > Import…`, which picks the same directory and sends it
 to `POST /api/import`; the editor's own notes are in `frontend/README.md`.
@@ -92,8 +97,11 @@ dockb users create --username abby --email abby@example.com
 
 That prints a temporary password once; signing in asks for a new one. The same command
 lists, resets, blocks, and deletes accounts, and deleting a user deletes the files they
-own. The command reference is in [`src/dockb/cli/README.md`](src/dockb/cli/README.md);
-the reasoning is in [`README_auth.md`](README_auth.md) §7.
+own. Every document belongs to an account, and each account's markdown lives in its own
+directory and its own git repository, so the account a document belongs to decides where
+its files are kept. The command reference is in
+[`src/dockb/cli/README.md`](src/dockb/cli/README.md); the reasoning is in
+[`README_auth.md`](README_auth.md) §7.
 
 ## Run the dev servers
 

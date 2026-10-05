@@ -64,8 +64,19 @@ class StubRepo:
 
 
 class StubDocumentRepo(StubRepo):
-    def load(self, model_id: str) -> Document | None:
-        return super().load(model_id)  # type: ignore[return-value]
+    def load(self, model_id: str, owner: str) -> Document | None:  # pylint: disable=arguments-differ
+        model = self._store.get(model_id)
+        if not isinstance(model, Document) or model.owner != owner:
+            return None
+        return model
+
+    def load_shell(self, model_id: str, owner: str) -> Document | None:
+        return self.load(model_id, owner)
+
+    def list_all(self, owner: str) -> list[dict[str, str]]:  # pylint: disable=arguments-differ
+        return [
+            {"id": m.id, "title": m.title, "author": m.author} for m in self._store.values() if isinstance(m, Document) and m.owner == owner
+        ]
 
 
 class StubChapterRepo(StubRepo):
@@ -156,26 +167,31 @@ class TestSessionContextEnhancements:
 class TestDocumentServiceNoAsync:
     """Document operations never enqueue async jobs."""
 
+    _OWNER = "acct-1"
+
     def setup_method(self) -> None:
         self.repo = StubDocumentRepo()
         self.uow = StubUnitOfWork()
         self.factory = StubUnitOfWorkFactory(self.uow)
         self.svc = DocumentService(uow_factory=self.factory, document_repo=self.repo)
 
+    def _own(self, document_id: str = "d1", title: str = "T") -> Document:
+        doc = Document(id=document_id, title=title, author="A", owner=self._OWNER, state=DataState.SYNC)
+        self.repo._store[document_id] = doc
+        return doc
+
     def test_create_does_not_enqueue_jobs(self) -> None:
-        self.svc.create("d1", title="T", author="A")
+        self.svc.create("d1", title="T", author="A", owner=self._OWNER)
         assert self.uow.committed
 
     def test_update_does_not_enqueue_jobs(self) -> None:
-        doc = Document(id="d1", title="Old", author="Old", state=DataState.SYNC)
-        self.repo._store["d1"] = doc
-        self.svc.update("d1", title="New", author="New")
+        self._own(title="Old")
+        self.svc.update("d1", title="New", author="New", owner=self._OWNER)
         assert self.uow.committed
 
     def test_delete_does_not_enqueue_jobs(self) -> None:
-        doc = Document(id="d1", title="T", author="A", state=DataState.SYNC)
-        self.repo._store["d1"] = doc
-        self.svc.delete("d1")
+        self._own()
+        self.svc.delete("d1", self._OWNER)
         assert self.uow.committed
 
 
@@ -187,14 +203,19 @@ class TestDocumentServiceNoAsync:
 class TestChapterServiceNoAsync:
     """Chapter operations never enqueue async jobs."""
 
+    _OWNER = "acct-1"
+
     def setup_method(self) -> None:
         self.repo = StubChapterRepo()
+        self.doc_repo = StubDocumentRepo()
         self.uow = StubUnitOfWork()
         self.factory = StubUnitOfWorkFactory(self.uow)
         self.svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo)
 
     def test_create_does_not_enqueue_jobs(self) -> None:
-        self.svc.create("c1", title="T", document_id="d1")
+        self.doc_repo._store["d1"] = Document(id="d1", title="T", author="A", owner=self._OWNER, state=DataState.SYNC)
+        self.svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=self.doc_repo)
+        self.svc.create("c1", title="T", document_id="d1", owner=self._OWNER)
         assert self.uow.committed
 
     def test_update_does_not_enqueue_jobs(self) -> None:

@@ -10,6 +10,8 @@ from dockb.cli import import_document as import_document_cli
 from dockb.cli import startup
 from dockb.cli.import_document import _default_write_back, main
 
+_ACCOUNT_ID = "11111111-1111-1111-1111-111111111111"
+
 
 class TestDefaultWriteBack:
     def test_source_inside_base_defaults_on(self, tmp_path):
@@ -65,8 +67,9 @@ class TestMainFlags:
         )
         monkeypatch.setattr(startup.spacy, "load", lambda *a, **k: MagicMock())
         monkeypatch.setattr(import_document_cli, "SessionFactory", lambda **k: MagicMock())
+        monkeypatch.setattr(import_document_cli, "account_id_for", lambda username: _ACCOUNT_ID)
 
-        main([*extra_args, str(source)])
+        main([*extra_args, "--owner", "alice", str(source)])
 
         return captured, source, base
 
@@ -86,6 +89,11 @@ class TestMainFlags:
         captured, _, _ = self._run(monkeypatch, tmp_path, "--no-write-back", inside_base=True)
         assert captured["kwargs"]["write_back"] is False
 
+    def test_owner_is_forwarded_as_the_resolved_account_id(self, monkeypatch, tmp_path):
+        captured, _, _ = self._run(monkeypatch, tmp_path, inside_base=False)
+
+        assert captured["kwargs"]["owner"] == _ACCOUNT_ID
+
     def test_both_flags_are_rejected(self, tmp_path):
         source = tmp_path / "Linchpin"
         source.mkdir()
@@ -99,13 +107,14 @@ class TestMissingStartupSettings:
     def _patch_dependencies(monkeypatch):
         monkeypatch.setattr(import_document_cli, "load_dotenv", MagicMock())
         monkeypatch.setattr(import_document_cli, "SessionFactory", MagicMock())
+        monkeypatch.setattr(import_document_cli, "account_id_for", lambda username: _ACCOUNT_ID)
 
     def test_missing_neo4j_url_reports_and_exits_1(self, monkeypatch, capsys, tmp_path):
         for name in startup.NEO4J_VARS:
             monkeypatch.delenv(name, raising=False)
         self._patch_dependencies(monkeypatch)
 
-        exit_code = main([str(tmp_path)])
+        exit_code = main(["--owner", "alice", str(tmp_path)])
 
         assert exit_code == 1
         error = capsys.readouterr().err
@@ -119,7 +128,7 @@ class TestMissingStartupSettings:
         monkeypatch.delenv("NEO4J_PASSWORD", raising=False)
         self._patch_dependencies(monkeypatch)
 
-        exit_code = main([str(tmp_path)])
+        exit_code = main(["--owner", "alice", str(tmp_path)])
 
         assert exit_code == 1
         error = capsys.readouterr().err
@@ -132,7 +141,7 @@ class TestMissingStartupSettings:
         monkeypatch.setenv("NEO4J_PASSWORD", "p")
         self._patch_dependencies(monkeypatch)
 
-        exit_code = main([str(tmp_path)])
+        exit_code = main(["--owner", "alice", str(tmp_path)])
 
         assert exit_code == 1
         assert "NEO4J_URL" in capsys.readouterr().err
@@ -144,7 +153,7 @@ class TestMissingStartupSettings:
         loaded: list[str] = []
         monkeypatch.setattr(startup.spacy, "load", lambda model: loaded.append(model) or MagicMock())
 
-        main([str(tmp_path)])
+        main(["--owner", "alice", str(tmp_path)])
 
         assert not loaded
 
@@ -161,7 +170,7 @@ class TestMissingStartupSettings:
         session_factory = MagicMock()
         monkeypatch.setattr(import_document_cli, "SessionFactory", lambda **k: session_factory)
 
-        exit_code = main([str(tmp_path)])
+        exit_code = main(["--owner", "alice", str(tmp_path)])
 
         assert exit_code == 1
         error = capsys.readouterr().err
@@ -181,4 +190,41 @@ class TestMissingStartupSettings:
         monkeypatch.setattr(startup.spacy, "load", broken)
 
         with pytest.raises(ValueError, match="malformed"):
-            main([str(tmp_path)])
+            main(["--owner", "alice", str(tmp_path)])
+
+
+class TestDocumentOwner:
+    """The imported document is stored under the named account, never under nobody's."""
+
+    @staticmethod
+    def _patch_dependencies(monkeypatch):
+        monkeypatch.setattr(import_document_cli, "load_dotenv", MagicMock())
+        monkeypatch.setattr(import_document_cli, "SessionFactory", MagicMock())
+        monkeypatch.setattr(startup.spacy, "load", lambda *a, **k: MagicMock())
+        monkeypatch.setenv("NEO4J_URL", "bolt://nowhere")
+        monkeypatch.setenv("NEO4J_USER", "u")
+        monkeypatch.setenv("NEO4J_PASSWORD", "p")
+
+    def test_owner_is_required(self, monkeypatch, capsys, tmp_path):
+        self._patch_dependencies(monkeypatch)
+        monkeypatch.setattr(import_document_cli, "import_document_directory", MagicMock())
+
+        exit_code = main([str(tmp_path)])
+
+        assert exit_code == 1
+        error = capsys.readouterr().err
+        assert "--owner is required" in error
+        assert error.count("\n") == 1, "the explanation must be a single line, not a traceback"
+
+    def test_unknown_owner_reports_and_exits_1(self, monkeypatch, capsys, tmp_path):
+        self._patch_dependencies(monkeypatch)
+
+        def unknown(username: str) -> str:
+            raise startup.UnknownUserError(f"unknown user {username!r}")
+
+        monkeypatch.setattr(import_document_cli, "account_id_for", unknown)
+
+        exit_code = main(["--owner", "nobody", str(tmp_path)])
+
+        assert exit_code == 1
+        assert "unknown user 'nobody'" in capsys.readouterr().err
