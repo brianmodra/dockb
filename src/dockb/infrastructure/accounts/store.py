@@ -5,8 +5,8 @@ backend's owned markdown tree (``DOCKB_CHAPTERS_DIR``). Accounts are not
 part of the document graph (Neo4j), so they live in their own SQLite store.
 
 User identity is the unique ``users.username`` column everywhere: sessions,
-cookies, and app state carry the username (the OS user in local mode, the
-OAuth profile username otherwise).
+cookies, and app state all carry it — the account's own for a password sign-in,
+the OAuth profile username otherwise.
 
 See ``README_auth.md``.
 """

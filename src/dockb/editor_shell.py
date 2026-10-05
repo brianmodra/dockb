@@ -2,7 +2,7 @@
 
 The packaged renderer used to be loaded from ``file://`` and talk to the API at
 ``http://localhost:8000``, which is cross-site: the browser withheld the
-``SameSite=lax`` session cookie, so OAuth mode was unreachable from the editor.
+``SameSite`` session cookie, so OAuth mode was unreachable from the editor.
 Serving the built shell from the backend removes the cross-site request, and with
 it the need for ``SameSite=None``, an https origin, and a CORS grant for the
 ``null`` origin — a grant that let any local ``file://`` page read the API as the

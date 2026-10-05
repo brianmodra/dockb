@@ -18,9 +18,10 @@ Read this for the token design, why there is no authorization server, and why
 the two listeners stay separate even though they share a process.
 
 **Status.** This is the decided design, superseding the earlier two-process and
-`issued_tokens` draft. The MCP server, the token, and the explicit-local-mode
-change are not yet implemented; the account and session code that exists today
-is described in `README_auth.md`.
+`issued_tokens` draft. The MCP server and its per-prompt token are not yet
+implemented; the account and session code that exists today is described in
+`README_auth.md`, and the no-local-mode change that prerequisite depended on has
+since landed.
 
 ## 1. One process, two listeners, two credentials
 
@@ -211,22 +212,17 @@ They were correct when written and were overtaken by other work:
   (`src/dockb/controllers/auth.py:100`), so a path like `/mcp` would never
   receive it. `README_auth.md` §4 had this right.
 
-**One live reason remains, and it is a bug rather than a design.** In local
-mode `get_current_user` does not reject an unauthenticated caller: when no valid
-cookie is presented and `requires_login` is false, it falls through to
-`ensure_local_user(local_username())` and serves the request as the OS user
-(`src/dockb/controllers/auth.py:116-121`). `requires_login` is
-`bool(self._providers)` (`src/dockb/services/auth_service.py:56`), so local mode
-is *inferred* from the absence of provider credentials, and `.env.example`
-configures none. Out of the box, every content route answers anyone who can
-reach the port.
+**The prerequisite has landed.** `README_auth.md` §6 made every user sign in:
+`requires_login` is unconditionally true, `DOCKB_LOCAL_MODE` does not exist, and
+`get_current_user` refuses an unauthenticated caller instead of falling through to
+the OS user. Every content route now needs a session cookie that
+`/api/auth/login/password` mints, so the last reason for a separate process is
+gone and **the two-listener split is now this work's design, not a workaround for
+a bug.**
 
-That is exactly the failure mode `README_auth.md` §6 exists to fix: with
-every user required to sign in, those routes need a cookie and the last
-reason for a separate process goes away. **§6 of `README_auth.md` is a
-prerequisite for this work, not a parallel one.** Until it lands, the
-two-listener split is the only thing keeping the manuscript off the
-public port.
+What remains is the part that has never been built: the public listener itself.
+`app_factory.py` mounts one router set on one app, so there is no second listener
+to speak MCP on yet. That is the next build step, not this section's blocker.
 
 **What one process costs.** spaCy is CPU-bound and holds the GIL, so a long
 MCP-triggered analysis competes with the editor rather than being isolated from

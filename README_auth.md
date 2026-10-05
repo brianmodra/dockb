@@ -355,9 +355,34 @@ and the address on the account is not verified, so there is nowhere to send it.
 ### First use must change the password
 
 `must_change_password` is enforced, not merely displayed. A login on a temporary password succeeds
-and mints a session, but the gate then serves **only** the change-password route and logout; every
-manuscript route is refused until the password changes. A flag that is shown without being enforced
+and mints a session, but the gate then serves **only** the routes needed to get out of the
+situation: `POST /api/auth/change-password`, `POST /api/auth/logout`, and `GET /api/auth/me`. Every
+manuscript route, and the app-state routes that carry the editor's record, are refused with 403
+`password_change_required` until the password changes. A flag that is shown without being enforced
 is not a control, and the user would otherwise keep the temporary password indefinitely.
+
+`GET /api/auth/me` is among the three because the editor needs to know *who* it is talking to and
+that a change is pending, in order to render the change-password screen at all. It returns
+`password_change_required`, and it reads only the account row. It is not a way to the data: every
+route that serves a manuscript is still closed.
+
+The change is enforced by `get_current_user`, which is the dependency the manuscript routers are
+registered with, so it covers every gated route in one place rather than needing each router to
+remember. The three exceptions are the auth router's own routes, which authenticate through
+`get_authenticated_user` instead — the same check without the must-change refusal.
+
+### Changing the password ends the session that asked
+
+Setting a password stamps `credentials_changed_at`, and `resolve_session` refuses any session older
+than that stamp. This is the CLI's block-and-reset rule (§ *Blocking, deletion, and invalidating a
+live session*) applying to the user's own change, and it is left to apply rather than carved out:
+one rule, "a credential change ends every session that predates it", is easier to reason about than
+one with an exception.
+
+The cost is that a first-time user signs in twice — once on the temporary password, once on the
+password they just chose. The change-password route says so in its response (`signed_out: true`) and
+the editor presents the sign-in gate again, rather than leaving the user on a page whose every
+request is about to fail with 401.
 
 ### Blocking, deletion, and invalidating a live session
 
@@ -375,6 +400,12 @@ blocked or deleted, and the server compares it against the session's creation ti
 refusing an older session. The value lives in the database, so the check works across processes, and
 it costs nothing extra because the request already reads the account row to learn whether the
 account is blocked.
+
+A refused session is also **dropped**, not just left not resolving. Refusal here is permanent rather
+than temporary — a stamp only moves forward, and a block or delete is not undone — so a
+`SessionContext` kept in that state could never serve a request again while holding its job queue
+and doc cache. The block, delete and reset paths depend on this too, since the CLI that causes them
+cannot reach the server's sessions to evict them.
 
 Recording a session's creation time is therefore part of the design rather than an implementation
 detail: `SessionManager.create()` has to keep it, or the comparison has nothing to make.
@@ -399,10 +430,12 @@ The column-by-column schema and the store's accessors move down to
 1. The editor asks `GET /api/auth/config`, which always reports `login_required: true`, and shows
    the Sign-in gate with a username/password form. Provider buttons appear underneath it only when
    `providers` is non-empty.
-   - **Password:** the editor posts the username and password to the backend, which verifies the
-     Argon2id hash, starts the server-side session, and sets its own HttpOnly session cookie. A
-     first-time user whose `must_change_password` is set may then do only two things: change the
-     password, or sign out.
+   - **Password:** the editor posts the username and password to `POST /api/auth/login/password`,
+     which verifies the Argon2id hash, starts the server-side session, and sets its own HttpOnly
+     session cookie. The response carries the profile and `password_change_required`. A first-time
+     user whose `must_change_password` is set is then served only `/api/auth/me`,
+     `/api/auth/change-password` and `/api/auth/logout`, and is shown the change-password screen
+     until the password changes.
    - **Provider:** the editor asks the backend for a login URL (`GET /api/auth/login?provider=google`),
      which returns the provider consent URL with `state` and a PKCE `code_verifier` the backend
      remembers.

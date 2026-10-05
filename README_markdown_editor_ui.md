@@ -212,11 +212,13 @@ features (undecided).
   selected chapter's title and **Cancel / Save**. **Save** updates the title via
   `PUT /api/chapters/{id}` (renaming the chapter's store file) and reloads the chapter list;
   no modal appears when no chapter is selected.
-- **Sign in** — first-run when login is required: **Sign in** / **Cancel**. Sign in opens the
-  provider in the system browser; after consent, Sign in again to pick up the session. In
-  **local mode** (no OAuth provider configured) this gate is skipped entirely — the editor
-  learns this from `GET /api/auth/config` (`login_required: false`) and `/api/auth/me` answers
-  from the OS username (`README_auth.md` §6).
+- **Sign in** — always: `GET /api/auth/config` always reports `login_required: true`, so there
+  is no mode in which the gate is skipped. The gate carries a **username / password form**, which
+  posts to `POST /api/auth/login/password`; provider buttons sit below it when `providers` is
+  non-empty, and each opens the provider in the system browser (after consent, Sign in again to
+  pick up the session). A first-time user on a temporary password is shown a **change your
+  password** screen instead, and the manuscript routes answer 403
+  `password_change_required` until they do (`README_auth.md` §7).
 
 ### Unsaved-change detection (decided)
 
@@ -226,9 +228,9 @@ reformats. A menubar badge (`● Unsaved`) makes the state visible.
 
 ## 9. Start-up behaviour (decided)
 
-On launch the editor asks `GET /api/auth/config` and opens the **Sign in** gate only when login
-is required (an OAuth provider is configured); in local mode the OS username is read from
-`GET /api/auth/me` and shown in the menubar. Once signed in it restores the **last document**
+On launch the editor asks `GET /api/auth/config`, which always reports `login_required: true`,
+so the **Sign in** gate is always shown; the username comes from `GET /api/auth/me`, which also
+reports `password_change_required`, and is shown in the menubar. Once signed in it restores the **last document**
 from app state. If there is one, it loads the chapter list (panel widths and mode live in the
 same state). If there is none, it shows the **select a document** modal. The state is stored
 per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_state` table (see

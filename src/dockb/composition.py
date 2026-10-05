@@ -89,8 +89,9 @@ def _build_auth_service(document_base_dir: Path) -> AuthService:
     to start is the honest response to a missing secret.
 
     Without a secret there is no way to verify a password either, which is the more
-    important reason: the previous fallback existed because local mode signed nothing.
-    There is no local mode now.
+    important reason: the previous fallback existed because a local-mode install signed
+    nobody in, so there were no sessions or hashes to invalidate. There is no local mode
+    now, so there is no deployment in which nothing is signed.
     """
     secret = os.environ.get("DOCKB_SECRET_KEY")
     # Stripped, not merely tested for truth: a whitespace secret is truthy, and would be a

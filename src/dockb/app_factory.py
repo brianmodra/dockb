@@ -23,8 +23,8 @@ from dockb.timing import TimingMiddleware
 # The manuscript routers serve the editor and are gated on the session identity.
 # `auth` stays open — it is how a caller obtains a session — and `app_state`
 # carries the gate on its own routes, because each needs the resolved username.
-# `get_current_user` raises 401 when login is required and no valid cookie is
-# presented, and falls back to the local OS identity in local mode.
+# `get_current_user` raises 401 when no valid cookie is presented, and 403 when
+# the account must change its password first (README_auth.md §7).
 _authenticated = (Depends(get_current_user),)
 
 
@@ -43,7 +43,7 @@ def create_app() -> FastAPI:
     application.include_router(notifications_router, dependencies=_authenticated)
     application.include_router(imports_router, dependencies=_authenticated)
     # The editor is served from here rather than loaded from file://, so it is
-    # same-origin with /api. That is what lets the SameSite=lax session cookie
+    # same-origin with /api. That is what lets the SameSite=Strict session cookie
     # reach the manuscript routes, and it means no CORS grant is needed — or
     # wanted: one for the file:// "null" origin would let any local file page
     # read the API as the signed-in user. Mounted last, and under its own

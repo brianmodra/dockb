@@ -23,11 +23,16 @@ of code are those in its own directory and every parent up to the root.
 
 ## Entries
 
-- **Every user signs in** — `README_auth.md` §6. `DOCKB_LOCAL_MODE` is unimplemented, so local
-  mode is still inferred from the absence of provider credentials, and `get_current_user`
-  serves an unauthenticated caller as the OS user. This is a **blocker, not just a cleanup**:
-  until it lands, every gated route on the loopback listener answers anyone who can reach the
-  port, which is the last reason `README_mcp_auth.md` §5 keeps the public listener separate.
+- **Admin CLI for accounts** — `README_auth.md` §7. Accounts and password resets are admin-CLI
+  only by decision, but `src/dockb/cli/` holds only `import_document.py` and
+  `reconstruct_chapter.py`, so there is no `dockb users create`. Until it lands, a fresh install
+  has no account and therefore nobody can sign in: the password routes exist (§4) but no
+  password does.
+- **Password sign-in in the editor** — `README_auth.md` §7. `POST /api/auth/login/password`,
+  `/api/auth/change-password` and `/api/auth/logout` exist and are gated, but the editor still
+  renders the provider-only gate, so there is nothing on screen to post them from.
+- **Every user signs in** — `README_auth.md` §6. Done: `requires_login` is unconditionally true,
+  there is no `DOCKB_LOCAL_MODE`, and the OS-user fall-through is gone.
   Land this before any MCP listener work.
 
 - **MCP server and its per-prompt token** — `README_mcp_auth.md` §1–§5. Nothing exists yet: no

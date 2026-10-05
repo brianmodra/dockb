@@ -58,6 +58,16 @@ MANUSCRIPT_ROUTES = [
 PUBLIC_ROUTES = [
     ("GET", "/api/auth/login?provider=fake"),
     ("GET", "/api/auth/config"),
+    ("POST", "/api/auth/login/password"),
+]
+
+# The routes that stay reachable while a password change is pending. Each is
+# named rather than parametrized: the list is small, and a route that were added
+# here by accident would otherwise be invisible in the diff.
+PENDING_CHANGE_OPEN_ROUTES = [
+    ("GET", "/api/auth/me"),
+    ("POST", "/api/auth/change-password"),
+    ("POST", "/api/auth/logout"),
 ]
 
 
@@ -187,6 +197,43 @@ class TestPublicRoutesStayOpen:
     @pytest.mark.parametrize(("method", "path"), PUBLIC_ROUTES, ids=lambda v: v if isinstance(v, str) else "")
     def test_does_not_require_a_session(self, login_app, method, path):
         assert TestClient(login_app).request(method, path).status_code != 401
+
+    @pytest.mark.parametrize(("method", "path"), PENDING_CHANGE_OPEN_ROUTES, ids=lambda v: v if isinstance(v, str) else "")
+    def test_stays_open_while_a_password_change_is_pending(self, tmp_path, method, path):
+        """These three are the whole way out of a temporary password.
+
+        Driven against an account that actually has a change pending, so the 403 the
+        manuscript routes get proves the refusal is live and these three are the
+        exemptions rather than an absence of it.
+        """
+        store = AccountStore(base_dir=tmp_path, secret=_SECRET)
+        store.create_user(
+            "abby",
+            email=None,
+            display_name="Abby",
+            password_hash="a-hash",
+            must_change_password=True,
+        )
+        service = AuthService(
+            {},
+            PendingLoginStore(),
+            store,
+            SessionManager(),
+            SessionSigner(_SECRET, ttl_hours=2),
+            pepper=pepper_from(_SECRET),
+        )
+        # A live session for an account whose password must change.
+        service._sessions.create("abby")  # pylint: disable=protected-access
+        set_auth_service(service)
+        _wire_stub_services()
+        try:
+            client = TestClient(create_app())
+            client.cookies.set("dockb_session", service.session_cookie("abby"))
+            # The control: a manuscript route must be refused for this same session.
+            assert client.get("/api/documents").status_code == 403
+            assert client.request(method, path).status_code != 403, f"{method} {path} is closed to a pending change"
+        finally:
+            set_auth_service(None)
 
     def test_no_provider_configured_still_needs_a_cookie(self, wired_password_only_app):
         """Having no OAuth provider is not a way past the gate; it is a password deployment."""

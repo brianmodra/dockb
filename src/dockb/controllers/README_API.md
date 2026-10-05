@@ -143,18 +143,24 @@ A request with no valid session cookie gets `401` with `{"detail": "not_authenti
 The check runs before the handler, so an unauthenticated caller cannot tell a
 valid route from an invalid one, and cannot reach a service.
 
-**Local mode.** With no OAuth provider configured there is no login step: the
-identity is the OS username and no cookie is needed, so the gate falls through to
-it rather than refusing the request. In that mode the API is not protected — what
-keeps it safe is that the backend binds to loopback. `GET /api/auth/config`
-reports which mode is active (`{"login_required": bool, "providers": [...]}`), so
-the editor can skip its own login gate in local mode.
+**There is no local mode.** Every request needs a session cookie, whatever the
+deployment looks like. Having no OAuth provider configured is a password-only
+deployment, not a way past the gate. `GET /api/auth/config` reports
+`{"login_required": true, "providers": [...]}` — the first is constant, because no
+configuration makes it false — so the editor always shows its sign-in gate and
+always offers a username and password form.
+
+**A pending password change** is refused separately: `403` with
+`{"detail": "password_change_required"}` on every gated route, so a session minted on
+a temporary password cannot reach the manuscript. `/api/auth/me`,
+`/api/auth/change-password` and `/api/auth/logout` stay open so the user can get out
+of it.
 
 The session cookie is scoped to `path="/api"`, so it is sent to these endpoints
 and withheld from everything else the host serves — including `/editor` and `/callback`. See
 `../infrastructure/session/README.md`.
 
-A `SameSite=lax` cookie is only withheld from a **cross-site** request, and the editor is
+A `SameSite=Strict` cookie is withheld from a **cross-site** request, and the editor is
 same-origin with the API because the backend serves the renderer itself at `/editor/` (see § The
 editor shell). A same-origin request also carries the cookie without asking for credentials, so
 no `credentials: "include"` is needed anywhere in the renderer.

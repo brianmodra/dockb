@@ -10,7 +10,7 @@ const DEFAULT_API_ORIGIN = "http://localhost:8000";
 /** The URL the window loads: the backend's editor shell.
  *
  * Loading a URL rather than a local file is what makes the renderer
- * same-origin with the API, so the SameSite=lax session cookie is sent
+ * same-origin with the API, so the SameSite=Strict session cookie is sent
  * and no CORS grant is needed.
  */
 export function editorUrl(env: NodeJS.ProcessEnv = process.env): string {

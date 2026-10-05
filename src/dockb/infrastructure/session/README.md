@@ -5,7 +5,7 @@
 This package holds the backend's own login session: the signed cookie that carries it, and the
 in-memory registry of per-user context that hangs off it. Nothing here decides *how* a user signs
 in or where accounts live — for the confidential-OAuth-client decision, the SQLite accounts
-store, and the local-mode and account-lifecycle calls, see `README_auth.md` at the repository
+store, and the no-local-mode and account-lifecycle calls, see `README_auth.md` at the repository
 root.
 
 ## Package Structure
@@ -32,22 +32,25 @@ username (`src/dockb/infrastructure/session/session_cookie.py`).
 
 The token is self-contained: it embeds its own timestamp and an HMAC, so the backend
 verifies the issuer and the expiry without any server-side session lookup. The signing
-key is derived from `DOCKB_SECRET_KEY` via SHA-256; without that variable the backend
-uses an ephemeral key, so cookies do not survive a restart.
+key is derived from `DOCKB_SECRET_KEY` via SHA-256, which is **required**: there is no
+ephemeral fallback, because the same secret also encrypts OAuth refresh tokens and peppers
+password hashes, so a per-process key would invalidate all three on every restart.
 
-The cookie is set `HttpOnly` and `samesite="lax"`, with `path="/api"`. The whole
+The cookie is set `HttpOnly` and `samesite="strict"`, with `path="/api"`. The whole
 manuscript API lives under `/api`, so the cookie reaches everything that
 authenticates it while being withheld from the rest of the host — the `/callback`
 page that sets it, the editor shell at `/editor/`, and the interactive docs at
 `/docs` and `/openapi.json`.
 
-`lax` is sufficient **because the editor is same-origin with the API**: the backend serves
-the renderer itself (`dockb/editor_shell.py`), so the browser classifies the request as
-same-site and sends the cookie. `lax` withholds a cookie from *cross-site* requests, which is
-what a `file://` renderer loading the app from disk produced — the reason OAuth mode was
-unreachable from the editor. The fix was to remove the cross-site request, not to weaken this
-attribute to `none`: `SameSite=None` would have required `Secure`, an https origin, and would
-have let the cookie ride along on requests from any site. Nothing in the renderer sets
+`strict` withholds a cookie from *cross-site* requests, which is what a `file://` renderer
+loading the app from disk produced — the reason OAuth mode was unreachable from the editor. The
+fix was to remove the cross-site request, not to weaken this attribute to `none`:
+`SameSite=None` would have required `Secure`, an https origin, and would have let the cookie
+ride along on requests from any site. The editor is same-origin with the API because the backend
+serves the renderer itself (`dockb/editor_shell.py`), and the OAuth callback is a top-level
+navigation to a loopback URL on this same origin, so both still carry the cookie. `strict` is
+strictly stronger than the `lax` this replaces, and password sign-in needs it: a cross-site form
+post carries no `state` or PKCE to protect it. Nothing in the renderer sets
 `credentials: "include"`, because a same-origin request carries the cookie by default. See
 `README_auth.md` §4.
 

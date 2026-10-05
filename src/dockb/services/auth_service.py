@@ -193,14 +193,23 @@ class AuthService:
         None when the session is gone, the account is blocked or deleted, or the
         credentials were changed after the session began. The last of those is what makes
         an admin CLI's block or reset take effect on a session it cannot reach.
+
+        A session refused here is also dropped, rather than merely not resolving. Refusing
+        is a permanent state, not a temporary one — a stamp only moves forward, and a block
+        or delete is not undone — so a context left behind could never serve a request
+        again and would sit holding its job queue and doc cache for the life of the process.
+        The block, delete and reset paths all depend on this, since the CLI cannot reach
+        the server's sessions to evict them itself.
         """
         session = self._sessions.get(user_id)
         if session is None:
             return None
         credentials = self._accounts.get_credentials(user_id)
         if credentials is None or not _may_sign_in(credentials):
+            self._sessions.remove(user_id)
             return None
         if _credentials_changed_since(credentials["credentials_changed_at"], session.created_at):
+            self._sessions.remove(user_id)
             return None
         return user_id
 
@@ -261,6 +270,15 @@ class AuthService:
     def session_for(self, user_id: str) -> object | None:
         """Return the live SessionContext for *user_id*, possibly None (e.g. after restart)."""
         return self._sessions.get(user_id)
+
+    def end_session(self, user_id: str) -> None:
+        """Drop *user_id*'s server-side session, so its cookie stops resolving.
+
+        The cookie itself is signed and will still verify — only the session behind
+        it is gone — so the route also has to clear it in the browser. Dropping the
+        session is what does the work: the cookie alone is not a session.
+        """
+        self._sessions.remove(user_id)
 
     def get_app_state(self, user_id: str) -> dict[str, object] | None:
         """Return the user's stored app-state row, or None."""

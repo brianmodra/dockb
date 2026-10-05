@@ -11,7 +11,7 @@ Read it to run the app, to find which file owns the chapter list, the editor, an
 The renderer is served **by the backend** at `/editor/`, not loaded from a local file. `src/main/main.ts`
 builds that URL from `DOCKB_API_ORIGIN` (default `http://localhost:8000`) and loads it with
 `loadURL`; when `VITE_DEV_SERVER_URL` is set it loads that instead, so `npm run dev` is unchanged.
-Being same-origin with the API is what lets the `SameSite=lax` session cookie reach the gated
+Being same-origin with the API is what lets the `SameSite=Strict` session cookie reach the gated
 routes and removes the need for both `credentials: "include"` and any CORS grant. `README_auth.md`
 §4 has the reasoning.
 
@@ -125,9 +125,9 @@ the message panel (`onMessage`).
 
 ### Startup and quit
 
-`mountShell` asks `GET /api/auth/config` and opens the sign-in gate only when
-login is required (an OAuth provider is configured); in local mode it reads the
-OS username from `/api/auth/me` and shows it in the menubar. Then it runs
+`mountShell` asks `GET /api/auth/config`, which always reports `login_required: true`,
+so the sign-in gate is always shown; the username comes from `/api/auth/me` and is
+shown in the menubar. Then it runs
 `runStartup` (restore last document, or pick one); File → Open opens the same
 select-document picker (`documentPicker.ts`
 `openDocumentPickerConfirm`) and loads the chosen document. File → Delete and

@@ -473,6 +473,38 @@ class TestChangePassword:
         service.change_password("abby", _PASSWORD, "a brand new password")
         assert service.resolve_session("abby") is None
 
+    def test_a_refused_session_is_dropped_rather_than_left_behind(self, tmp_path) -> None:
+        """A dead SessionContext is holding a job queue and doc cache; keep nothing alive.
+
+        The block, delete and reset paths land here too, and the CLI that causes them
+        cannot reach the server's sessions to evict them.
+        """
+        service, _, _, _ = _with_password(tmp_path)
+        service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1")
+        service.change_password("abby", _PASSWORD, "a brand new password")
+        service.resolve_session("abby")
+        assert service._sessions.get("abby") is None  # pylint: disable=protected-access
+
+    def test_a_dropped_session_is_not_resurrected_by_a_later_sign_in(self, tmp_path) -> None:
+        """The refusal is permanent; only a real sign-in starts a session again."""
+        service, _, _, clock = _with_password(tmp_path)
+        service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1")
+        service.change_password("abby", _PASSWORD, "a brand new password")
+        assert service.resolve_session("abby") is None
+        assert service.resolve_session("abby") is None
+        clock.advance(1)
+        service.login_with_password("abby", "a brand new password", client_ip="10.0.0.1")
+        assert service.resolve_session("abby") == "abby"
+
+    def test_a_change_does_not_refuse_a_session_started_after_it(self, tmp_path) -> None:
+        """The stamp is only older than the sessions that predate it."""
+        service, _, _, clock = _with_password(tmp_path)
+        service.change_password("abby", _PASSWORD, "a brand new password")
+        # The session has to begin after the stamp, or it predates it and is refused.
+        clock.advance(1)
+        service.login_with_password("abby", "a brand new password", client_ip="10.0.0.1")
+        assert service.resolve_session("abby") == "abby"
+
 
 class TestResolveSession:
     def test_live_session_resolves(self, tmp_path) -> None:

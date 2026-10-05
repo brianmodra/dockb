@@ -1,7 +1,7 @@
 """Tests for serving the built editor shell from the backend.
 
 The packaged renderer is loaded from the backend rather than ``file://`` so it is
-same-origin with the API and the ``SameSite=lax`` session cookie is sent.
+same-origin with the API and the ``SameSite=Strict`` session cookie is sent.
 """
 
 from __future__ import annotations
