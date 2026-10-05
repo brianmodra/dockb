@@ -71,9 +71,15 @@ def auth_login(
 def auth_config(
     svc: Any = Depends(get_auth_service),
 ) -> dict[str, Any]:
-    """Describe whether OAuth login is required, so the editor can skip its gate in local mode."""
+    """Describe the available ways in, so the editor can render a password form.
+
+    ``login_required`` is constant: no configuration makes this false, because there is
+    no way to reach the API without signing in. A service that is not wired yet still
+    answers true, so the editor shows its gate rather than opening onto a login it cannot
+    complete.
+    """
     if svc is None:
-        return {"login_required": False, "providers": []}
+        return {"login_required": True, "providers": []}
     return {"login_required": svc.requires_login, "providers": svc.providers}
 
 
@@ -107,18 +113,15 @@ def get_current_user(
 ) -> str:
     """Resolve the authenticated username from the session cookie.
 
-    In OAuth mode a valid cookie is required (401 without it). In local mode — no
-    provider configured — the identity is the OS username and no cookie is needed;
-    the local ``users`` row is created lazily.
+    A valid cookie is required. There is no branch in which a missing cookie resolves
+    to an identity — see ``README_auth.md`` §6 — so an anonymous caller is a 401.
     """
     if svc is None:
         raise HTTPException(status_code=401, detail="not_authenticated")
     token = request.cookies.get(_SESSION_COOKIE, "")
     user_id: str | None = svc.authenticate_cookie(token)
-    if user_id is None and svc.requires_login:
+    if user_id is None or svc.resolve_session(user_id) is None:
         raise HTTPException(status_code=401, detail="not_authenticated")
-    if user_id is None:
-        user_id = svc.ensure_local_user(svc.local_username())
     return user_id
 
 

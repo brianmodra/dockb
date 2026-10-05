@@ -96,28 +96,6 @@ def test_get_user_by_provider_account_round_trip(tmp_path) -> None:
     assert row["email"] == _EMAIL
 
 
-def test_get_or_create_local_user_creates_row(tmp_path) -> None:
-    store = _store(tmp_path)
-    username = store.get_or_create_local_user("brian")
-    assert username == "brian"
-    row = store.get_user("brian")
-    assert row is not None
-    assert row["username"] == "brian"
-    assert row["display_name"] == "brian"
-    # NULL, not '' — a unique constraint does not collide two NULLs, and two local rows
-    # holding '' would. README_auth.md §7.
-    assert row["email"] is None
-
-
-def test_get_or_create_local_user_is_idempotent(tmp_path) -> None:
-    store = _store(tmp_path)
-    first = store.get_or_create_local_user("brian")
-    second = store.get_or_create_local_user("brian")
-    assert first == second == "brian"
-    rows = store._connect().execute("SELECT COUNT(*) AS n FROM users WHERE username = ?", ("brian",)).fetchone()
-    assert rows["n"] == 1
-
-
 # ----------------------------------------------------------- oauth links
 
 
@@ -171,9 +149,9 @@ def test_app_state_round_trip(tmp_path) -> None:
     assert state["edit_mode"] == "wysiwyg"
 
 
-def test_app_state_works_for_local_user_without_oauth(tmp_path) -> None:
+def test_app_state_works_for_a_password_user_without_oauth(tmp_path) -> None:
     store = _store(tmp_path)
-    store.get_or_create_local_user("brian")
+    store.create_user("brian", email=None, display_name="Brian")
     store.set_app_state("brian", {"last_document_id": "doc-1"})
     state = store.get_app_state("brian")
     assert state is not None
@@ -316,7 +294,7 @@ def test_migration_keeps_existing_rows_and_their_credentials(tmp_path) -> None:
 
 
 def test_migration_resolves_blank_and_duplicate_emails(tmp_path) -> None:
-    # get_or_create_local_user wrote '' and a provider could report one address twice,
+    # A password account can have no address, and a provider can report one address twice,
     # either of which would make the unique index fail and stop the backend starting.
     _legacy_database(tmp_path, (("abby", ""), ("brian", "same@example.com"), ("carol", "same@example.com")))
     store = _store(tmp_path)
@@ -400,12 +378,6 @@ def test_upsert_provider_user_normalizes_the_username(tmp_path) -> None:
     assert username == "brian"
 
 
-def test_get_or_create_local_user_normalizes_the_username(tmp_path) -> None:
-    store = _store(tmp_path)
-    assert store.get_or_create_local_user("  Brian  ") == "brian"
-    assert store.get_user("BRIAN") is not None
-
-
 def test_upsert_provider_user_accepts_a_provider_with_no_email(tmp_path) -> None:
     # §7 makes email nullable precisely because a provider profile may lack one.
     store = _store(tmp_path)
@@ -458,12 +430,12 @@ def test_duplicate_email_is_rejected(tmp_path) -> None:
         store.create_user("alex", email=_EMAIL, display_name="Alex")
 
 
-def test_local_user_row_has_null_email_not_empty_string(tmp_path) -> None:
+def test_an_absent_email_is_null_not_an_empty_string(tmp_path) -> None:
     # '' would collide with another '' under the unique constraint; NULL does not.
     store = _store(tmp_path)
-    assert store.get_or_create_local_user("brian") == "brian"
+    store.create_user("brian", email=None, display_name="Brian")
     assert store.get_user("brian")["email"] is None
-    store.get_or_create_local_user("alex")
+    store.create_user("alex", email=None, display_name="Alex")
     assert store.get_user("alex")["email"] is None
 
 

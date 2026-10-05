@@ -12,7 +12,10 @@ from dockb.infrastructure.oauth.fake import FakeOAuthProvider
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
 from dockb.infrastructure.session.session_cookie import SessionSigner
 from dockb.infrastructure.session.session_manager import SessionManager
+from dockb.passwords import pepper_from
 from dockb.services.auth_service import AuthService
+
+_SECRET = "a-server-secret"
 
 
 def _make_app() -> FastAPI:
@@ -25,20 +28,12 @@ def _make_app() -> FastAPI:
 
 
 def _build_service(tmp_path) -> AuthService:
-    store = AccountStore(base_dir=tmp_path, secret="secret")
+    store = AccountStore(base_dir=tmp_path, secret=_SECRET)
     pending = PendingLoginStore()
     sessions = SessionManager()
-    signer = SessionSigner("secret", ttl_hours=2)
+    signer = SessionSigner(_SECRET, ttl_hours=2)
     fake = FakeOAuthProvider(email="abby@example.com", display_name="Abby")
-    return AuthService({"fake": fake}, pending, store, sessions, signer)
-
-
-def _build_local_service(tmp_path) -> AuthService:
-    store = AccountStore(base_dir=tmp_path, secret="secret")
-    pending = PendingLoginStore()
-    sessions = SessionManager()
-    signer = SessionSigner("secret", ttl_hours=2)
-    return AuthService({}, pending, store, sessions, signer)
+    return AuthService({"fake": fake}, pending, store, sessions, signer, pepper=pepper_from(_SECRET))
 
 
 class TestAppState:
@@ -96,39 +91,16 @@ class TestAppState:
     def test_state_is_per_user(self, tmp_path) -> None:
         self._sign_in(tmp_path)
         self.client.put("/api/app/state", json={"last_document_id": "doc-1"})
-        store = AccountStore(base_dir=tmp_path, secret="secret")
+        store = AccountStore(base_dir=tmp_path, secret=_SECRET)
         pending = PendingLoginStore()
         sessions = SessionManager()
-        signer = SessionSigner("secret", ttl_hours=2)
+        signer = SessionSigner(_SECRET, ttl_hours=2)
         fake = FakeOAuthProvider(provider_account_id="fake-bob", username="bob", email="bob@example.com", display_name="Bob")
-        set_auth_service(AuthService({"fake": fake}, pending, store, sessions, signer))
+        set_auth_service(AuthService({"fake": fake}, pending, store, sessions, signer, pepper=pepper_from(_SECRET)))
         login = self.client.get("/api/auth/login", params={"provider": "fake"})
         state = login.json()["authorization_url"].split("state=")[1].split("&")[0]
         callback = self.client.get("/callback", params={"code": "the-code", "state": state})
         assert callback.status_code == 200
-        got = self.client.get("/api/app/state")
-        assert got.json()["last_document_id"] is None
-
-    def test_local_mode_state_uses_os_username(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("USER", "dave")
-        set_auth_service(_build_local_service(tmp_path))
-        put = self.client.put("/api/app/state", json={"last_document_id": "doc-9"})
-        assert put.status_code == 200
-        got = self.client.get("/api/app/state")
-        assert got.status_code == 200
-        assert got.json()["last_document_id"] == "doc-9"
-
-    def test_local_mode_state_no_cookie_required(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("USER", "dave")
-        set_auth_service(_build_local_service(tmp_path))
-        assert self.client.get("/api/app/state").status_code == 200
-
-    def test_local_mode_state_is_per_os_user(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("USER", "dave")
-        set_auth_service(_build_local_service(tmp_path))
-        self.client.put("/api/app/state", json={"last_document_id": "dave-doc"})
-        monkeypatch.setenv("USER", "kate")
-        set_auth_service(_build_local_service(tmp_path))
         got = self.client.get("/api/app/state")
         assert got.json()["last_document_id"] is None
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,16 +30,28 @@ class SessionContext:
     Bundles the JobQueue, DocCache, and a pending notification queue for
     delivering async results (e.g. sentence splits from ReconstructJob) to
     the client.
+
+    ``created_at`` is when the session began, and is what ``users.credentials_changed_at``
+    is compared against to invalidate a session the CLI cannot reach. It is stamped by
+    ``SessionManager``, which owns the clock.
     """
 
     def __init__(
         self,
         job_queue: JobQueue | None = None,
         doc_cache: DocCache | None = None,
+        *,
+        created_at: datetime | None = None,
     ) -> None:
         self.job_queue = job_queue
         self.doc_cache = doc_cache
+        self._created_at = created_at or datetime.now(timezone.utc)
         self._notifications: list[Notification] = []
+
+    @property
+    def created_at(self) -> datetime:
+        """When this session began, timezone-aware UTC."""
+        return self._created_at
 
     def add_notification(self, notification: Notification) -> None:
         """Enqueue a notification for delivery to the client."""

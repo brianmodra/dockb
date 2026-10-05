@@ -222,26 +222,6 @@ class AccountStore:
             connection.close()
         return dict(row) if row is not None else None
 
-    def get_or_create_local_user(self, username: str) -> str:
-        """Return *username*, creating a minimal local user row when absent.
-
-        Local (non-OAuth) mode identifies the browser by the OS username; the
-        row gives the foreign key a target without any provider account. The email is
-        NULL rather than '' so that a second local row does not collide with this one
-        under the unique email constraint.
-        """
-        key = normalize_username(username)
-        connection = self._connect()
-        try:
-            connection.execute(
-                "INSERT OR IGNORE INTO users (id, username, email, display_name, avatar_url) VALUES (?, ?, NULL, ?, '')",
-                (str(uuid.uuid4()), key, key),
-            )
-            connection.commit()
-        finally:
-            connection.close()
-        return key
-
     def upsert_provider_user(  # pylint: disable=too-many-arguments
         # token/expires_at are keyword-only and keep the login call site readable
         self,
@@ -618,7 +598,7 @@ _SCHEMA_VERSION = 2
 _EMAIL_UNIQUE_INDEX = "CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email);"
 
 # An existing database predates every column below and predates the unique email
-# index, and it may already hold the duplicates that index refuses: get_or_create_local_user
+# index, and it may already hold the duplicates that index refuses: a password account
 # wrote an empty string rather than NULL, and a provider may have reported the same
 # address twice. The duplicates are resolved first or creating the index fails and the
 # backend will not start. The earliest row keeps the address and the rest are nulled,

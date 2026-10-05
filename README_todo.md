@@ -23,7 +23,7 @@ of code are those in its own directory and every parent up to the root.
 
 ## Entries
 
-- **Explicit local mode** — `README_auth.md` §6. `DOCKB_LOCAL_MODE` is unimplemented, so local
+- **Every user signs in** — `README_auth.md` §6. `DOCKB_LOCAL_MODE` is unimplemented, so local
   mode is still inferred from the absence of provider credentials, and `get_current_user`
   serves an unauthenticated caller as the OS user. This is a **blocker, not just a cleanup**:
   until it lands, every gated route on the loopback listener answers anyone who can reach the

@@ -11,6 +11,8 @@ from __future__ import annotations
 import contextlib
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -274,9 +276,12 @@ class TestWireServices:
         mock_ch_repo: MagicMock,
         mock_doc_repo: MagicMock,
         tmp_path,
+        monkeypatch,
     ) -> None:
         from dockb.composition import wire
         from dockb.controllers.documents import get_doc_service
+
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "test-secret")
 
         mock_sf = MagicMock()
         mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
@@ -344,7 +349,7 @@ class TestWireServices:
     @patch("dockb.composition.ParagraphRepository")
     @patch("dockb.composition.SentenceRepository")
     @patch("dockb.composition.UnitOfWorkFactory")
-    def test_wire_injects_local_mode_auth_service_without_secret(
+    def test_wire_refuses_to_start_without_a_secret(
         self,
         mock_uow_factory: MagicMock,
         mock_sent_repo: MagicMock,
@@ -354,9 +359,8 @@ class TestWireServices:
         tmp_path,
         monkeypatch,
     ) -> None:
-        from dockb.composition import unwire, wire
-        from dockb.controllers.auth import get_auth_service
-        from dockb.services.auth_service import AuthService
+        """No ephemeral substitute: it would invalidate cookies, tokens and hashes on restart."""
+        from dockb.composition import wire
 
         monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
         monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
@@ -365,11 +369,69 @@ class TestWireServices:
         mock_sf = MagicMock()
         mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
 
+        with pytest.raises(ValueError, match="DOCKB_SECRET_KEY"):
+            wire(mock_sf, document_base_dir=tmp_path)
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_refuses_to_start_on_a_blank_secret(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        """A whitespace secret would HMAC as an empty key, dropping the pepper silently."""
+        from dockb.composition import wire
+
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "   ")
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        with pytest.raises(ValueError, match="DOCKB_SECRET_KEY"):
+            wire(mock_sf, document_base_dir=tmp_path)
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_without_providers_still_requires_a_login(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        """No provider configured means password only, not no gate."""
+        from dockb.composition import unwire, wire
+        from dockb.controllers.auth import get_auth_service
+        from dockb.services.auth_service import AuthService
+
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "test-secret")
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
+        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv("OAUTH_GOOGLE_CLIENT_ID", raising=False)
+        monkeypatch.delenv("OAUTH_GOOGLE_CLIENT_SECRET", raising=False)
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
         wire(mock_sf, document_base_dir=tmp_path)
         try:
             svc = get_auth_service()
             assert isinstance(svc, AuthService)
-            assert svc.requires_login is False
+            assert svc.requires_login is True
             assert svc.providers == []
         finally:
             unwire()
@@ -380,7 +442,7 @@ class TestWireServices:
     @patch("dockb.composition.ParagraphRepository")
     @patch("dockb.composition.SentenceRepository")
     @patch("dockb.composition.UnitOfWorkFactory")
-    def test_local_mode_me_and_app_state_work_without_a_secret(  # pylint: disable=too-many-locals
+    def test_wired_me_without_a_cookie_is_401(  # pylint: disable=too-many-locals
         self,
         mock_uow_factory: MagicMock,
         mock_sent_repo: MagicMock,
@@ -390,12 +452,13 @@ class TestWireServices:
         tmp_path,
         monkeypatch,
     ) -> None:
+        """End to end through the real wiring, with providers present and the OS user set."""
         from fastapi.testclient import TestClient
 
         from dockb.app_factory import create_app
         from dockb.composition import unwire, wire
 
-        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "test-secret")
         monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
         monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
         monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-id")
@@ -408,56 +471,8 @@ class TestWireServices:
         wire(mock_sf, document_base_dir=tmp_path)
         try:
             client = TestClient(create_app())
-            me = client.get("/api/auth/me")
-            assert me.status_code == 200
-            assert me.json()["user"]["username"] == "dave"
-
-            state = client.get("/api/app/state")
-            assert state.status_code == 200
-            put = client.put("/api/app/state", json={"last_document_id": "d1"})
-            assert put.status_code == 200
-            assert put.json()["last_document_id"] == "d1"
-        finally:
-            unwire()
-
-    @patch("dockb.composition.DocumentRepository")
-    @patch("dockb.composition.ChapterRepository")
-    @patch("dockb.composition.ParagraphRepository")
-    @patch("dockb.composition.SentenceRepository")
-    @patch("dockb.composition.UnitOfWorkFactory")
-    def test_wire_accounts_base_dir_enables_local_mode_me_and_app_state(  # pylint: disable=too-many-locals
-        self,
-        mock_uow_factory: MagicMock,
-        mock_sent_repo: MagicMock,
-        mock_para_repo: MagicMock,
-        mock_ch_repo: MagicMock,
-        mock_doc_repo: MagicMock,
-        tmp_path,
-        monkeypatch,
-    ) -> None:
-        from fastapi.testclient import TestClient
-
-        from dockb.app_factory import create_app
-        from dockb.composition import unwire, wire
-
-        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
-        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
-        monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
-        monkeypatch.setenv("USER", "dave")
-
-        mock_sf = MagicMock()
-        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
-
-        wire(mock_sf, accounts_base_dir=tmp_path)
-        try:
-            client = TestClient(create_app())
-            me = client.get("/api/auth/me")
-            assert me.status_code == 200
-            assert me.json()["user"]["username"] == "dave"
-
-            put = client.put("/api/app/state", json={"last_document_id": "d1"})
-            assert put.status_code == 200
-            assert client.get("/api/app/state").json()["last_document_id"] == "d1"
+            assert client.get("/api/auth/me").status_code == 401
+            assert client.get("/api/app/state").status_code == 401
         finally:
             unwire()
 

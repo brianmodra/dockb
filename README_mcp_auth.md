@@ -222,10 +222,10 @@ configures none. Out of the box, every content route answers anyone who can
 reach the port.
 
 That is exactly the failure mode `README_auth.md` §6 exists to fix: with
-`DOCKB_LOCAL_MODE` explicit and unset meaning login required, those routes need
-a cookie and the last reason for a separate process goes away. **§6 of
-`README_auth.md` is a prerequisite for this work, not a parallel one.** Until it
-lands, the two-listener split is the only thing keeping the manuscript off the
+every user required to sign in, those routes need a cookie and the last
+reason for a separate process goes away. **§6 of `README_auth.md` is a
+prerequisite for this work, not a parallel one.** Until it lands, the
+two-listener split is the only thing keeping the manuscript off the
 public port.
 
 **What one process costs.** spaCy is CPU-bound and holds the GIL, so a long

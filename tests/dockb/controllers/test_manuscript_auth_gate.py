@@ -16,8 +16,11 @@ from dockb.infrastructure.oauth.fake import FakeOAuthProvider
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
 from dockb.infrastructure.session.session_cookie import SessionSigner
 from dockb.infrastructure.session.session_manager import SessionManager
+from dockb.passwords import pepper_from
 from dockb.services.auth_service import AuthService
 from dockb.services.session_context import SessionContext
+
+_SECRET = "a-server-secret"
 
 # Every route the six manuscript routers expose, as (method, path). A body or a
 # query parameter is not supplied: the gate must reject before the handler runs,
@@ -59,33 +62,34 @@ PUBLIC_ROUTES = [
 
 
 def _login_service(tmp_path) -> AuthService:
-    store = AccountStore(base_dir=tmp_path, secret="secret")
-    signer = SessionSigner("secret", ttl_hours=2)
+    store = AccountStore(base_dir=tmp_path, secret=_SECRET)
+    signer = SessionSigner(_SECRET, ttl_hours=2)
     return AuthService(
         {"fake": FakeOAuthProvider(email="abby@example.com", display_name="Abby")},
         PendingLoginStore(),
         store,
         SessionManager(),
         signer,
+        pepper=pepper_from(_SECRET),
     )
 
 
-def _local_service(tmp_path) -> AuthService:
-    store = AccountStore(base_dir=tmp_path, secret="secret")
-    return AuthService({}, PendingLoginStore(), store, SessionManager(), SessionSigner("secret", ttl_hours=2))
+def _password_only_service(tmp_path) -> AuthService:
+    """No OAuth provider configured. Password is the only way in, and still is required."""
+    store = AccountStore(base_dir=tmp_path, secret=_SECRET)
+    return AuthService(
+        {},
+        PendingLoginStore(),
+        store,
+        SessionManager(),
+        SessionSigner(_SECRET, ttl_hours=2),
+        pepper=pepper_from(_SECRET),
+    )
 
 
 @pytest.fixture()
 def login_app(tmp_path):
     service = _login_service(tmp_path)
-    set_auth_service(service)
-    yield create_app()
-    set_auth_service(None)
-
-
-@pytest.fixture()
-def local_app(tmp_path):
-    service = _local_service(tmp_path)
     set_auth_service(service)
     yield create_app()
     set_auth_service(None)
@@ -146,8 +150,8 @@ def wired_login_app(tmp_path):
 
 
 @pytest.fixture()
-def wired_local_app(tmp_path):
-    set_auth_service(_local_service(tmp_path))
+def wired_password_only_app(tmp_path):
+    set_auth_service(_password_only_service(tmp_path))
     _wire_stub_services()
     yield create_app()
     set_auth_service(None)
@@ -184,10 +188,9 @@ class TestPublicRoutesStayOpen:
     def test_does_not_require_a_session(self, login_app, method, path):
         assert TestClient(login_app).request(method, path).status_code != 401
 
-    def test_local_mode_needs_no_cookie(self, wired_local_app):
-        """Local mode is the OS identity, so the gate must not close the door."""
-        assert TestClient(wired_local_app).get("/api/documents").status_code < 500
-        assert TestClient(wired_local_app).get("/api/documents").status_code != 401
+    def test_no_provider_configured_still_needs_a_cookie(self, wired_password_only_app):
+        """Having no OAuth provider is not a way past the gate; it is a password deployment."""
+        assert TestClient(wired_password_only_app).get("/api/documents").status_code == 401
 
 
 class TestSessionCookieScope:

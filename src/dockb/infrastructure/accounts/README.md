@@ -66,9 +66,8 @@ compared as text against a session's creation time, so `_now()` is a fixed-width
 `isoformat(timespec="microseconds")` — a variable width would sort wrongly against
 `CURRENT_TIMESTAMP`, which resolves only to the second.
 
-`get_or_create_local_user` inserts a minimal row with no password and no provider account
-behind it: display name = username, `email` `NULL`, avatar empty. `email` is `NULL` and
-never `''`, because `''` would collide with itself under the unique index.
+`create_user` writes `email` as `NULL` when given none, and never `''`, because `''`
+would collide with itself under the unique index.
 
 ### `oauth_accounts`
 
@@ -102,8 +101,8 @@ file at the previous version and the retry finishes the job rather than failing 
 duplicate column.
 
 Version 2 added the credential, blocking and deletion columns. It had to resolve the
-addresses that the new unique index refuses first, because `get_or_create_local_user` used
-to write `''` and a provider could report one address twice: blanks become `NULL`, and
+addresses that the new unique index refuses first, because a password account can have
+no address and a provider can report one address twice: blanks become `NULL`, and
 among duplicates the earliest row keeps the address and the rest are nulled. That silently
 loses an unverified address, so each affected account is logged by username for the
 operator to re-supply through the CLI.

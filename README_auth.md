@@ -7,10 +7,9 @@ Users have their own accounts, created by an admin CLI that issues a temporary
 password which the user must change on first sign-in; they can also authenticate
 with Google or GitHub. In both cases the backend (not the editor) mints its own
 session cookie, and stores accounts, tokens, and per-user app state in a small
-SQLite database. Provider tokens never reach the editor. **Local mode** — no
-sign-in, with the identity being the OS username — is opt-in via
-`DOCKB_LOCAL_MODE=true` (see §6); the code still infers it from absent provider
-configuration, which §6 changes.
+SQLite database. Provider tokens never reach the editor. **There is no local mode:**
+every request requires a sign-in, and `get_current_user` falls through to the OS user
+when no provider is configured (see §6).
 
 The routes, session gate, and app-state endpoints are implemented. On first run
 the editor shows a Sign-in button, then restores the last document or asks the
@@ -22,11 +21,11 @@ table below is the baseline, verified against the code, so a build can start fro
 
 | Decision | The code today | The target | Done when |
 | --- | --- | --- | --- |
-| §6 local mode is opt-in | `requires_login` is `bool(self._providers)` (`services/auth_service.py`), so local mode is inferred from the absence of provider credentials. `DOCKB_LOCAL_MODE` exists nowhere in `src/`. Because `get_current_user` falls through to the OS user in local mode, the gated routes are open to any caller today. | `DOCKB_LOCAL_MODE=true` turns local mode on; nothing infers it. Provider configuration no longer selects the mode. | With the variable unset and a provider configured, login is required. With it set to `true` and no provider, requests are served as the OS user. The inference path is gone. |
+| §6 every user signs in | `requires_login` is `bool(self._providers)` (`services/auth_service.py`), so with no provider configured `get_current_user` falls through to the OS user and the gated routes are open to any caller today. `DOCKB_LOCAL_MODE` exists nowhere in `src/`. | `requires_login` is unconditionally true. No `DOCKB_LOCAL_MODE`, no OS-user fall-through, and `local_username`/`ensure_local_user`/`get_or_create_local_user` are removed. `DOCKB_SECRET_KEY` becomes required rather than optionally replaced by an ephemeral key. | With no provider configured and no session cookie, a gated route answers 401 instead of serving the request. No deployment setting can make it serve an unauthenticated caller. |
 | §7 account lifecycle is admin-CLI only | No admin CLI exists: `src/dockb/cli/` holds only `import_document.py` and `reconstruct_chapter.py`. There is no password column on `users`. | A CLI that creates accounts and sets or resets a password. No HTTP registration or recovery route. | An account can be created with a password and then sign in. No route accepts a registration or reset request. |
 | §7 password login (in build) | Not implemented. No password-hashing library is installed — `pyproject.toml` has `cryptography` and stdlib `hashlib` only. | Argon2id, verified off the event loop, constant-time on the not-found path, rate limited. | A wrong password and an unknown username cost the same and both fail; a correct password mints a session cookie. |
 | §7 username normalization, `email` uniqueness, soft delete | `username` is `UNIQUE` but unnormalized, so SQLite's case-sensitive comparison admits `Brian` and `brian` as two accounts. `email` carries no constraint. `get_or_create_local_user` inserts an *empty string* email, which would collide under a unique constraint. No `deleted_at`. | Usernames lowercased and stripped; `email` nullable but `UNIQUE`, with every passwordless row storing `NULL` rather than `''`; `deleted_at` for a soft delete that keeps `app_state` and OAuth links. | The CLI cannot create two accounts differing only by case, a local-mode and a federated row coexist, and a deleted account keeps its manuscripts attributable. |
-| `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | Gains a `password_login` flag when the password step lands, so the FE can render a form rather than only provider buttons. | The endpoint distinguishes all four states (local, federated only, password only, both) and the editor gates correctly in each. |
+| `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | `login_required` becomes constant `true`, and the editor renders a username/password form whenever it is true, with provider buttons below it when `providers` is non-empty. No new field: password login is always available, so there is no state left for a flag to distinguish. | With no provider configured the editor still shows a usable password form rather than an empty gate, and with providers configured it shows both ways in. |
 
 As this work lands, this document should get smaller. The decisions and their rationale stay here;
 the implementation detail moves down into the package that owns it — `infrastructure/accounts/`
@@ -85,7 +84,7 @@ Three tables (`src/dockb/infrastructure/accounts/store.py` owns the exact schema
 `users`, `oauth_accounts` (per provider account, holding the encrypted refresh `token` and its
 `expires_at`), and `app_state` (per user, holding the editor state the UI record keeps open).
 User identity is the unique `users.username` column everywhere: sessions, cookies, and app state
-carry the username — the OS user in local (non-OAuth) mode, the OAuth profile username otherwise.
+carry the username — the account's own for a password login, the OAuth profile username otherwise.
 `users` keeps an internal UUID `id` only for the `oauth_accounts` foreign key; `app_state` and the
 public store accessors are keyed by `username`.
 
@@ -120,65 +119,63 @@ Google and GitHub, configured by environment variables:
 - `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET`
 - `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET`
 - `OAUTH_CALLBACK_PORT` (the loopback port for the login redirect)
-- `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens and the
-  session-cookie signer key). Without it the backend uses an ephemeral key in memory (see §6).
-- `DOCKB_LOCAL_MODE` (opt in to local mode with `true`; see §6 — **not yet implemented**)
+- `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens, the
+  session-cookie signer key, and the password pepper). **Required** — there is no ephemeral
+  fallback (see §6).
 - `OAUTH_SESSION_TTL_HOURS` (session cookie lifetime, default 48)
 
 Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from the
 consent URL and the token exchange profile.
 
-## 6. Local (non-OAuth) mode is opt-in (decided)
+## 6. Decision: there is no local mode — every user signs in (decided)
 
-Local mode is enabled explicitly, with `DOCKB_LOCAL_MODE=true`. It is **not** inferred from the
-absence of a configured provider. This inverts the earlier behaviour, which ran in local mode
-whenever no provider was configured, for a security reason: inference means a deployment that
-forgets one environment variable silently serves every request as the local OS user, with no
-error anywhere. That is an authentication bypass by misconfiguration, and it is only harmless
-while a single person uses the machine. Once real accounts exist, local mode has to be a decision
-rather than a default.
+**Every user authenticates with a username and password. There is no mode in which a
+request is served without a login.** `DOCKB_LOCAL_MODE` does not exist and local mode is
+gone, not deferred.
 
-When local mode is on, OAuth is off, no login step exists, and the identity is the OS username
-(`$USER`, falling back to `getpass.getuser()`). A provider client id without its secret still
-does not count as configured, since a provider is only configured when its id *and* secret are
-both present — but with the mode explicit, provider configuration no longer selects it.
+This reverses the previous decision, which made local mode opt-in via
+`DOCKB_LOCAL_MODE=true`. The reason for dropping it is that opting in was the wrong shape
+of control. A local-mode flag is an authentication bypass that ships *enabled or disabled
+by an environment variable*, so its safety depends on an operator knowing it exists, and
+the failure is silent: a deployment that sets it serves every request as the OS user with
+no error anywhere. Nothing in the product needs that bypass — the accounts, the
+lifecycle and the password flow all work for one user or fifty — so the mode was removed
+rather than made safe. Requiring a login unconditionally is the version with no
+misconfiguration that opens it.
 
-The set of enabled sign-in methods is therefore a matrix rather than a single boolean: local
-mode, federated providers only, password only, or federated and password together. The one
-combination that skips the login gate is deliberate local mode, which is now something an
-operator asks for by name.
+The consequences, all deliberate:
 
-- The session cookie is not required; `get_current_user` falls back to the local username and
-  `ensure_local_user` creates the minimal `users` row lazily (display name = username, empty
-  email/avatar).
-- `/api/auth/me` answers with that local profile. `GET /api/auth/config` reports
-  `{"login_required": false, "providers": []}`, and the editor opens its Sign-in gate **only**
-  when that response says login is required — so in local mode the gate never appears and the
-  menubar simply shows the OS username.
-- The built Electron shell loads the renderer from the **backend**, at `/editor/`, so the editor
-  is same-origin with `/api`. That is what lets the `SameSite=lax` session cookie reach the gated
-  routes: a `file://` renderer talking to `http://localhost:8000` is a cross-site request, and
-  browsers withhold a `lax` cookie on those. It also means the app needs **no CORS middleware**,
-  which is the stronger half of the win — a grant for the `null` origin a `file://` page sends,
-  with credentials, let any local file read the API as the signed-in user. The Vite dev server
-  needs none either, because its `/api` proxy is same-origin to the browser. See
+- `requires_login` is always true. The `/api/auth/config` contract keeps the field, because
+  the editor branches on it, but it is no longer a variable the deployment sets.
+- `AuthService.local_username`, `AuthService.ensure_local_user` and
+  `AccountStore.get_or_create_local_user` are removed. They existed only to serve the OS
+  user without a login, and keeping them would leave code implying a path that is not
+  supported.
+- `get_current_user` has no fall-through. There is no branch in which a missing cookie
+  resolves to an identity.
+- `DOCKB_SECRET_KEY` is **required**, with no ephemeral fallback. This follows from the
+  removal rather than being decided alongside it: with no local mode, the secret signs
+  session cookies, encrypts refresh tokens *and* peppers password hashes, so a key
+  generated per process would invalidate sessions, tokens and every password on every
+  restart. `wire()` substitutes an ephemeral key today; that substitution is removed.
+- **Nobody can sign in until an account exists**, so the first account comes from the CLI,
+  under the same admin-only rule as every other account (§7). A fresh install therefore
+  presents a sign-in that no one can pass until an administrator runs `dockb users create`
+  on the host. This is the accepted cost of not having a bypass.
+- The built Electron shell loads the renderer from the **backend**, at `/editor/`, so the
+  editor is same-origin with `/api`. That is what lets the `SameSite=lax` session cookie
+  reach the gated routes: a `file://` renderer talking to `http://localhost:8000` is a
+  cross-site request, and browsers withhold a `lax` cookie on those. It also means the
+  app needs **no CORS middleware**, which is the stronger half of the win — a grant for
+  the `null` origin a `file://` page sends, with credentials, let any local file read the
+  API as the signed-in user. The Vite dev server needs none either, because its `/api`
+  proxy is same-origin to the browser. See
   `src/dockb/controllers/README_API.md` § The editor shell and `editor_shell.py`.
-- Auth wiring runs whenever there is an accounts directory, which is always: the chapters directory,
-  resolved by `resolve_document_base_dir` (`DOCKB_CHAPTERS_DIR`, defaulting to `cwd`/`dockb_chapters_dir`
-  and provisioned when missing). `DOCKB_SECRET_KEY` is not required: without it the backend uses an
-  ephemeral signer/encryption key in memory (nothing is signed or encrypted in local mode, and the
-  accounts DB may be recreated on restart), and OAuth providers are ignored even if their id/secret
-  pairs are set — a provider is only enabled when a secret is present.
-- Per-user app state is keyed by the local username, so two OS users on the same machine get
-  separate state.
 
-**This is a security prerequisite, not only a usability one.** Until it lands, `get_current_user`
-does not reject an unauthenticated caller in local mode: it falls through to the OS username and
-serves the request (`src/dockb/controllers/auth.py:116-121`). Since local mode is currently
-*inferred* from the absence of provider credentials, and `.env.example` configures none, every
-gated route answers anyone who can reach the port. `README_mcp_auth.md` §5 depends on this
-changing before it opens a public listener, so it is sequenced before that work rather than
-alongside it.
+This also removes the precondition on `README_mcp_auth.md`: its public listener needed
+login to be unconditionally required before it opened, and that is now true of the
+baseline rather than of pending work.
+
 
 ## 7. Decision: account lifecycle is admin-CLI only (decided)
 
@@ -211,9 +208,9 @@ once documents are owned. A soft-deleted username stays taken, since the row hol
 present.
 
 `AccountStore.from_env()` has no callers: `wire()` constructs the store directly and substitutes an
-ephemeral secret when `DOCKB_SECRET_KEY` is unset. The CLI builds its store the same way `wire()`
-does, because `from_env()` *raises* on a missing secret where the server runs happily — reaching for
-it in the CLI would fail where the server succeeds.
+ephemeral secret when `DOCKB_SECRET_KEY` is unset, and the CLI builds its store the same way. Once
+`DOCKB_SECRET_KEY` is required (§6), `from_env()`'s existing raise on a missing secret becomes the
+rule for both, so the two paths converge on it rather than continuing to disagree.
 
 ### Usernames
 
@@ -303,9 +300,17 @@ supplied is unverified and therefore not an identity.
   the password is proved, never instead of it.
 - Passwords are compared as submitted, with **no Unicode normalization**, per NIST SP 800-63B:
   normalizing would make a password the person did not choose verify against one they did.
-- Login is rate limited per username and per IP, with lockout or backoff. The federated flow never
-  needed this — Google and GitHub did the throttling — and a password endpoint has to do it.
-  Which of lockout and backoff is chosen is decided with `AuthService`, not here.
+- Login is rate limited per username and per IP, by **exponential backoff** rather than lockout
+  (decided). The federated flow never needed this — Google and GitHub did the throttling — and a
+  password endpoint has to do it. Backoff, not a lockout, because DockB's user set is small and
+  known: a hard lockout is a weapon anyone can point at the one legitimate user, and for a
+  single-user install that user is the owner. Backoff slows the same attacker without ever
+  closing the door to the person who owns it. Each consecutive failure lengthens the delay, and it
+  decays back to zero after a quiet period. Both counters are in-memory and reset on restart,
+  matching the existing in-memory `SessionManager`; the limit is therefore per server process,
+  not per deployment.
+- **A successful login clears both the username and the IP counter.** Someone who fumbles twice
+  and then signs in correctly should not be left throttled for the rest of the window.
 - The policy is a minimum of 12 characters and a maximum of 128, with no composition rules. NIST
   SP 800-63B prefers length and a blocklist over character classes, and rules about capitals,
   digits and symbols push people toward predictable substitutions. The maximum bounds the Argon2
@@ -314,6 +319,20 @@ supplied is unverified and therefore not an identity.
 - Refusing to change a password to the one already in force is **not** part of this policy: it
   needs the stored hash and a verification, so it belongs to `AuthService`. The policy itself is
   length only.
+
+### Changing a password
+
+Changing a password requires proving the **current** one (decided), even though the caller already
+holds a session. The session is the thing being defended: without the check, anyone who walks up to
+an unlocked browser, or who has stolen a session cookie, can change the password and take the account
+over permanently — a stolen session that can only read is a much smaller problem than one that can
+lock the owner out. It costs one field, and it does not burden the first-use case, because a user
+arriving at the change form with `must_change_password` set knows the temporary password they
+just signed in with.
+
+Proving the current password means verifying it, not comparing it: a non-empty new password is
+rejected when it verifies against the stored hash. That is why the refusal needs the hash and so
+belongs to `AuthService` rather than to the policy, which never sees a hash.
 - A password that fails the policy raises one error carrying the reason, because the two callers
   render it differently — the CLI to stderr, the route as a client error — and neither should have
   to re-derive which rule was broken.
@@ -342,17 +361,23 @@ is not a control, and the user would otherwise keep the temporary password indef
 
 ### Blocking, deletion, and invalidating a live session
 
-`blocked_at` and `deleted_at` both refuse a login and both evict the account's live session from the
-in-memory `SessionManager`. Login reports the same generic failure for a wrong password, an unknown
-username, and a blocked account, so the form is not an account-status oracle.
+`blocked_at` and `deleted_at` both refuse a login, and both are re-checked on every gated request
+by re-reading the account row. Login reports the same generic failure for a wrong password, an
+unknown username, and a blocked account, so the form is not an account-status oracle.
 
-The CLI is a separate process from the server and cannot reach the server's in-memory sessions, so
-eviction alone does not survive `set-password` or `block`: the old session would stay valid for its
-full lifetime. `users.credentials_changed_at` closes that. It is stamped whenever a credential is
-set, reset, blocked or deleted, and the server compares it against the session's creation time on
-every request, refusing an older session. The value lives in the database, so the check works across
-processes, and it costs nothing extra because the request already reads the account row to learn
-whether the account is blocked.
+Blocking does **not** work by evicting the session at the moment of the block, because there is no
+in-process block to evict from: the only thing that blocks is `dockb users block`, and the CLI is a
+separate process from the server that cannot reach the server's in-memory `SessionManager`.
+
+`users.credentials_changed_at` is what actually enforces it, and it covers blocking, deletion and
+password resets with a single comparison. The column is stamped whenever a credential is set, reset,
+blocked or deleted, and the server compares it against the session's creation time on every request,
+refusing an older session. The value lives in the database, so the check works across processes, and
+it costs nothing extra because the request already reads the account row to learn whether the
+account is blocked.
+
+Recording a session's creation time is therefore part of the design rather than an implementation
+detail: `SessionManager.create()` has to keep it, or the comparison has nothing to make.
 
 ### The session cookie
 
@@ -371,10 +396,16 @@ The column-by-column schema and the store's accessors move down to
 
 ## 8. Flow in full (reference)
 
-1. The editor asks `GET /api/auth/config` and only shows the Sign-in gate when `login_required`
-   is true. User clicks "Sign in"; the editor asks the backend for a login URL
-   (`GET /api/auth/login?provider=google`), which returns the provider consent URL with `state` and
-   a PKCE `code_verifier` the backend remembers.
+1. The editor asks `GET /api/auth/config`, which always reports `login_required: true`, and shows
+   the Sign-in gate with a username/password form. Provider buttons appear underneath it only when
+   `providers` is non-empty.
+   - **Password:** the editor posts the username and password to the backend, which verifies the
+     Argon2id hash, starts the server-side session, and sets its own HttpOnly session cookie. A
+     first-time user whose `must_change_password` is set may then do only two things: change the
+     password, or sign out.
+   - **Provider:** the editor asks the backend for a login URL (`GET /api/auth/login?provider=google`),
+     which returns the provider consent URL with `state` and a PKCE `code_verifier` the backend
+     remembers.
 2. The editor opens that URL in the system browser; the user consents.
 3. Provider redirects to `http://localhost:{OAUTH_CALLBACK_PORT}/callback?...&code=...`.
 4. The backend verifies `state`, exchanges the code (with `code_verifier`), stores the encrypted
@@ -410,8 +441,8 @@ Settled while the design was implemented, or decided since:
 - **State/PKCE memory** — pending login states (with their PKCE verifiers) are valid for 10
   minutes and single-use; storing them alongside the code-swap protects logins against CSRF and
   code-swapping, matching the security goals in §4.
-- **Explicit local mode** — local mode is `DOCKB_LOCAL_MODE=true`, never inferred from absent
-  provider configuration (§6).
+- **Every user signs in** — there is no local mode; `requires_login` is unconditionally true and no
+  environment variable can make a gated route serve an unauthenticated caller (§6).
 - **Account linking** — not supported. Every provider account, and every password account, is its
   own `users` row, and accounts are never merged by email. Linking on a verified email is an
   account-takeover vector: an attacker registers the victim's address first, and when the victim

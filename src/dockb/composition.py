@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 import subprocess
 from contextlib import ExitStack
 from pathlib import Path
@@ -37,6 +36,7 @@ from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.passwords import pepper_from
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
 from dockb.repositories.paragraph_repository import ParagraphRepository
@@ -83,18 +83,26 @@ def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
 def _build_auth_service(document_base_dir: Path) -> AuthService:
     """Build the AuthService wired for *document_base_dir*.
 
-    With ``DOCKB_SECRET_KEY`` set the configured OAuth providers (id + secret
-    pairs) enable the login flow. Without a secret there is nothing to sign
-    cookies or encrypt tokens with, so the backend runs in **local mode**: the
-    identity is the OS username, no login is required, and an ephemeral key is
-    used in memory (nothing is signed or encrypted in local mode).
+    ``DOCKB_SECRET_KEY`` is required. It signs session cookies, encrypts OAuth refresh
+    tokens and peppers password hashes, so an ephemeral substitute would invalidate all
+    three on every restart — locking out every user, not merely degrading a cache. Failing
+    to start is the honest response to a missing secret.
+
+    Without a secret there is no way to verify a password either, which is the more
+    important reason: the previous fallback existed because local mode signed nothing.
+    There is no local mode now.
     """
     secret = os.environ.get("DOCKB_SECRET_KEY")
-    providers = providers_from_env() if secret is not None else {}
-    if secret is None:
-        secret = secrets.token_hex(32)
+    # Stripped, not merely tested for truth: a whitespace secret is truthy, and would be a
+    # weak Fernet key as well as an HMAC key that behaves like an empty one.
+    if not secret or not secret.strip():
+        raise ValueError(
+            "DOCKB_SECRET_KEY must be set: it signs session cookies, encrypts provider "
+            "tokens and peppers password hashes. Without it every restart would "
+            "invalidate all three."
+        )
     return AuthService(
-        providers=providers,
+        providers=providers_from_env(),
         pending_store=PendingLoginStore(),
         account_store=AccountStore(base_dir=document_base_dir, secret=secret),
         session_manager=SessionManager(),
@@ -102,6 +110,7 @@ def _build_auth_service(document_base_dir: Path) -> AuthService:
             secret,
             ttl_hours=int(os.environ.get("OAUTH_SESSION_TTL_HOURS", "48")),
         ),
+        pepper=pepper_from(secret),
     )
 
 
