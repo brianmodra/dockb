@@ -13,7 +13,7 @@ The desktop editor (`frontend/`) is a thin API client. Writers edit canonical
 markdown in WYSIWYG or raw view; the editor never writes files or git, and an
 import only reads the directory a writer picks and hands it to the server. A
 manuscript can arrive either way: `File > Import…` in the editor, or
-`python -m dockb.cli.import_document` on the command line, both running the same
+`dockb import-document` on the command line, both running the same
 directory walker. Hand
 edits to the owned markdown files are absorbed the next time a chapter is
 opened. The backend is observable as well as structured: every HTTP request
@@ -69,7 +69,7 @@ source .venv/bin/activate && pip install -e '.[dev]'
 ## Import an existing set of Markdown files
 
 ```
-python -m dockb.cli.import_document "/home/brian-modra/Documents/Linchpin" --single-newline-paragraphs --no-write-back
+dockb import-document "/home/brian-modra/Documents/Linchpin" --single-newline-paragraphs --no-write-back
 ```
 
 Or, in the editor, `File > Import…`, which picks the same directory and sends it
@@ -80,6 +80,20 @@ The Document title in this example will be "Linchpin".
 Note that the directory structure under Linchpin must be a set of subdirectories called "Act I", "Act II", "Act III" etc.
 In each "Act..." dubdirectory, a set of markdown files, each with a consecutive number after the chapter title name. E.g. "Opening 1".
 And also supported in a subdirectory called "Characters", which will hold the markdown files (one per character) to describe the characters.
+
+## Create the first account
+
+There is no sign-up form and no password-recovery email, so an account is made from the
+command line:
+
+```
+dockb users create --username abby --email abby@example.com
+```
+
+That prints a temporary password once; signing in asks for a new one. The same command
+lists, resets, blocks, and deletes accounts, and deleting a user deletes the files they
+own. The command reference is in [`src/dockb/cli/README.md`](src/dockb/cli/README.md);
+the reasoning is in [`README_auth.md`](README_auth.md) §7.
 
 ## Run the dev servers
 

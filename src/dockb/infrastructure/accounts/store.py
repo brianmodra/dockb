@@ -16,7 +16,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
-import os
 import sqlite3
 import uuid
 from collections.abc import Callable
@@ -129,17 +128,6 @@ class AccountStore:
     def __init__(self, base_dir: Path, secret: str) -> None:
         self._db_path = Path(base_dir) / _DB_FILENAME
         self._encryptor = TokenEncryptor(secret)
-
-    @classmethod
-    def from_env(cls) -> AccountStore:
-        """Build a store rooted at ``DOCKB_CHAPTERS_DIR`` with ``DOCKB_SECRET_KEY``."""
-        base = os.environ.get("DOCKB_CHAPTERS_DIR")
-        if not base:
-            raise ValueError("DOCKB_CHAPTERS_DIR must be set to the markdown tree base directory")
-        secret = os.environ.get("DOCKB_SECRET_KEY")
-        if not secret:
-            raise ValueError("DOCKB_SECRET_KEY must be set for token encryption")
-        return cls(Path(base), secret)
 
     # ------------------------------------------------------------------ wiring
 
@@ -477,6 +465,30 @@ class AccountStore:
             cursor = connection.execute(
                 "UPDATE users SET deleted_at = ?, credentials_changed_at = ? WHERE username = ?",
                 (stamp, stamp, normalize_username(username)),
+            )
+            _reject_unknown_user(cursor.rowcount, username)
+            connection.commit()
+        finally:
+            connection.close()
+
+    def restore_user(self, username: str) -> None:
+        """Clear ``deleted_at`` for *username* and stamp ``credentials_changed_at``.
+
+        The inverse of ``soft_delete_user``, and deliberately narrow: it touches nothing
+        else, so it restores the credentials that survived the delete rather than
+        re-arming ``must_change_password`` or re-issuing a password.
+
+        It does stamp the credentials, because a session that began before the delete
+        must not come back to life with the account. Otherwise delete followed by
+        undelete would reinstate a session issued while the account was meant to be
+        gone.
+        """
+        stamp = _now()
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                "UPDATE users SET deleted_at = NULL, credentials_changed_at = ? WHERE username = ?",
+                (stamp, normalize_username(username)),
             )
             _reject_unknown_user(cursor.rowcount, username)
             connection.commit()

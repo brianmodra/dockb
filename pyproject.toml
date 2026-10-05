@@ -27,6 +27,9 @@ dependencies = [
   "python-multipart>=0.0.9",
 ]
 
+[project.scripts]
+dockb = "dockb.cli.main:main"
+
 [dependency-groups]
 dev = [
   "pytest>=8.1",

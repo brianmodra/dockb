@@ -196,21 +196,44 @@ require a hosted registration and recovery flow, and this decision would be revi
 | Command | Effect |
 | --- | --- |
 | `dockb users create --username <name> --email <address>` | Generates a temporary password, prints it once, sets `must_change_password`. |
-| `dockb users list` | Every account with its state. Never prints a password or a hash. |
-| `dockb users block <username>` | Refuses logins, evicts live sessions. Reversible. |
+| `dockb users list` | Every account with its state, including soft-deleted ones. Never prints a password or a hash. |
+| `dockb users block <username>` | Refuses logins and ends live sessions, on the next request. Reversible. |
 | `dockb users unblock <username>` | Reverses the above. |
-| `dockb users delete <username>` | Soft delete: sets `deleted_at`, refuses logins, evicts sessions. |
+| `dockb users delete <username> --yes` | Soft delete: sets `deleted_at`, refuses logins, ends sessions. |
+| `dockb users undelete <username>` | Clears `deleted_at`. Restores the account without touching its credentials. |
 | `dockb users set-password <username>` | Re-issues a temporary password and re-arms `must_change_password`. |
+
+None of these reach into a running server. `block`, `delete` and `set-password` end a live session by
+stamping `credentials_changed_at`, which the server compares on its next request — the CLI cannot evict
+an in-memory session it does not own, and the table does not claim it does. A blocked or deleted
+account still refuses a login *after* its password is verified, so the CLI's answer and the login
+route's answer cannot be used to learn whether an account exists.
 
 `delete` is a **soft** delete, so the row, its `app_state`, and its OAuth links survive. Nothing is
 lost when an account is removed, and manuscripts stay attributable to the account that wrote them
 once documents are owned. A soft-deleted username stays taken, since the row holding it is still
-present.
+present — which is why `undelete` exists, and why `list` shows deleted rows rather than hiding them:
+an account that is deleted and one that never existed are different states, and hiding the first would
+make the second look like it.
 
-`AccountStore.from_env()` has no callers: `wire()` constructs the store directly and substitutes an
-ephemeral secret when `DOCKB_SECRET_KEY` is unset, and the CLI builds its store the same way. Once
-`DOCKB_SECRET_KEY` is required (§6), `from_env()`'s existing raise on a missing secret becomes the
-rule for both, so the two paths converge on it rather than continuing to disagree.
+`--yes` is required on `delete`. It is the one command whose effect an administrator cannot undo by
+running its own name again, the username is a bare positional argument, and the cost of a mistyped one
+is somebody losing access to their account. Every other command is reversible or self-evidently what it
+says.
+
+`undelete` clears `deleted_at` and nothing else. It deliberately does **not** re-arm
+`must_change_password` or re-issue a password: the account's credentials survived the delete
+untouched, so an undelete restores what was there rather than inventing a new state. It does stamp
+`credentials_changed_at`, because a session that predates the delete must not come back to life with
+it — otherwise delete followed by undelete would quietly reinstate a session issued while the account
+was supposed to be gone.
+
+`AccountStore.from_env()` is removed. It had no callers, and it was wrong twice over: it rooted the
+store at `DOCKB_CHAPTERS_DIR` directly rather than through `resolve_document_base_dir`, so it would
+have missed the default base directory and the git provisioning the server does, and it raised its own
+message for a missing `DOCKB_SECRET_KEY` where the server raises a different one. The CLI resolves the
+base directory the same way the server does and reports the same missing-setting errors, so the two
+cannot drift.
 
 ### Usernames
 
@@ -223,19 +246,19 @@ variant would split one person's documents across two owners. The CLI rejects a 
 from an existing one only by case or surrounding whitespace.
 
 `email` is a separate, admin-supplied property that is **not verified** and is not an identity. It is
-nullable, because a local-mode row and a provider profile may both lack one, and `UNIQUE`, because
+nullable, because a row created by a federated login may lack one, and `UNIQUE`, because
 §10 decides accounts are never merged by an address — making the address unique removes the ambiguity
 that a merge would have had to resolve. The CLI requires a non-empty address and reports a duplicate
 as an error rather than silently refusing it.
 
-Two consequences follow from `UNIQUE`, and both need the other nullable. A row with no password — a
-local-mode row, or one created by a federated login — stores `NULL` rather than `''`, because `NULL`
+Two consequences follow from `UNIQUE`, and both need the other nullable. A row with no password — one
+created by a federated login — stores `NULL` rather than `''`, because `NULL`
 does not collide under a unique constraint and `''` would. And a person who signs in with a provider
 *and* holds a password account cannot have both when the provider reports the same address. §10
 already records the cost of not linking accounts; this is a second instance of it.
 
 An existing database may already hold addresses the index refuses, because a local-mode row used to be
-written with `''` and a provider could report one address twice. The schema migration clears them —
+written with `''` before local mode was removed, and a provider could report one address twice. The schema migration clears them —
 blanks to `NULL`, and among duplicates the earliest row keeps the address — because otherwise the index
 cannot be created and the backend will not start. This discards an unverified address, so every affected
 account is logged by username for the operator to re-supply through the CLI.
@@ -340,10 +363,12 @@ belongs to `AuthService` rather than to the policy, which never sees a hash.
 ### Temporary passwords
 
 The CLI generates the temporary password with `secrets`, prints it **once**, and sets
-`must_change_password`. It is never logged, and never accepted as a command-line argument, because
-an argument is recorded in the shell history and the process table; a caller supplying its own reads
-it from stdin. The generated value is exempt from the minimum length, since its entropy comes from
-generation rather than from the person choosing it.
+`must_change_password`. It is never logged, and no command takes one as an argument, because an
+argument is recorded in the shell history and the process table. There is no way to supply your own:
+an administrator who wants to choose a person's first password has them sign in on the generated one
+and change it, which is the flow the temporary password exists to start. The generated value is exempt
+from the minimum length, since its entropy comes from generation rather than from the person choosing
+it.
 
 So the exemption is an argument to the policy check rather than a different policy: a generated
 value still has to pass the maximum, and the first thing a user does with a temporary password is

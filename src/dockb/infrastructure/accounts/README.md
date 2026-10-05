@@ -30,8 +30,11 @@ parameter. Each accessor opens a connection, ensures the schema, and closes it i
 cascades to its OAuth links and app state; accounts are in practice soft-deleted, which
 deliberately does not cascade.
 
-`AccountStore.from_env()` builds the store from `DOCKB_CHAPTERS_DIR` and
-`DOCKB_SECRET_KEY`, and raises if either is missing.
+The constructor takes `(base_dir, secret)` directly; nothing in the store reads the
+environment, so every caller resolves its own configuration and a test can build a store
+against a temporary directory without patching the process. The server passes the resolved
+`DOCKB_CHAPTERS_DIR` and `DOCKB_SECRET_KEY`; the admin CLI resolves the same two values the
+same way before constructing one.
 
 ## Schema
 
