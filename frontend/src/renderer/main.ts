@@ -1,6 +1,6 @@
 import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
-import { checkSession } from "./api/session";
+import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
@@ -11,12 +11,22 @@ import { openImportDialog, showImportSummaries, type ImportSelection } from "./l
 import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
-import { quitApp } from "./state/quit";
+import { quitApp, confirmUnsaved } from "./state/quit";
 import { reportError } from "./log";
 
 export interface MountShellOptions {
   api?: ApiClient;
   bridge?: DockbBridge;
+}
+
+/**
+ * How the menu asks for a sign-out.
+ *
+ * `request` stays inert until boot has a session to end, so a writer who cancelled the
+ * gate cannot ask the editor to log out of something it was never in.
+ */
+interface SignOutFlow {
+  request: () => void;
 }
 
 async function sendImport(
@@ -44,6 +54,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runDeleteDocument: () => void = () => {};
   let runEditDocument: () => void = () => {};
   let runEditChapter: () => void = () => {};
+  const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
     onOpen: () => openDocument(),
@@ -65,6 +76,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         }
       });
     },
+    onSignOut: () => signOut.request(),
     onQuit: () => {
       void quitApp({
         isDirty: () => editPanel?.isDirty() ?? false,
@@ -192,30 +204,57 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       });
     };
 
-    void boot(options.api, layout, panel, controller);
+    void boot(options.api, { layout, panel, controller, editPanel, signOut });
   }
 
   return layout;
 }
 
-async function boot(
-  api: ApiClient,
-  layout: AppLayout,
-  panel: LeftPanel,
-  controller: AppStateController,
-): Promise<void> {
+interface BootContext {
+  layout: AppLayout;
+  panel: LeftPanel;
+  controller: AppStateController;
+  editPanel: EditPanel;
+  signOut: SignOutFlow;
+}
+
+async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
+  const { layout, panel, controller, editPanel, signOut: signOutFlow } = ctx;
+  const onMessage = (text: string): void => layout.pushMessage(text);
+
   let config: import("./api/types").AuthConfig;
   try {
     config = await api.getAuthConfig();
   } catch (error) {
-    reportError("Backend config", error, (text) => layout.pushMessage(text));
+    reportError("Backend config", error, onMessage);
     return;
   }
 
-  const onMessage = (text: string): void => layout.pushMessage(text);
+  if (!config.login_required) {
+    // Nobody signed in, so there is no session for File → Sign out to end; the entry
+    // keeps the inert handler mountShell gave it.
+    let user: import("./api/types").UserProfile | null = null;
+    try {
+      user = (await checkSession(api))?.user ?? null;
+    } catch (error) {
+      user = null;
+      reportError("Check session", error, onMessage);
+    }
+    if (user) {
+      layout.setUser(user.username);
+    }
+    await startUp();
+    return;
+  }
 
-  let user: import("./api/types").UserProfile | null = null;
-  if (config.login_required) {
+  // One pass per session. Signing out finishes the pass, and the next one opens the
+  // gate again, so the editor never needs a reload to get back to a login it can show.
+  for (;;) {
+    let resume: () => void = () => {};
+    const signedOut = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+
     // One call for the whole gate: an existing session, a sign-in, and a forced
     // password change if one is owed.
     const session = await ensureSignedIn(api, { onMessage });
@@ -223,29 +262,67 @@ async function boot(
       // The user cancelled, or signed out of the change dialog. Stop here rather than
       // carrying on: every request below needs a session, so continuing would fire a
       // burst of guaranteed 401s at a server the user has just declined to talk to.
+      signOutFlow.request = () => {};
       return;
     }
-    user = session.user;
-  } else {
-    try {
-      user = (await checkSession(api))?.user ?? null;
-    } catch (error) {
-      user = null;
-      reportError("Check session", error, onMessage);
-    }
-  }
-  if (user) {
-    layout.setUser(user.username);
+    layout.setUser(session.user.username);
+
+    let ending = false;
+    const requestSignOut = (): void => {
+      if (ending) {
+        return;
+      }
+      ending = true;
+      void confirmUnsaved({
+        isDirty: () => editPanel.isDirty(),
+        save: () => editPanel.save(),
+        confirmLabel: "Save",
+        proceed: () => {
+          void finishSignOut();
+        },
+      }).then((resolved) => {
+        if (!resolved) {
+          // Cancelled: still signed in, so the entry has to work again.
+          ending = false;
+          signOutFlow.request = requestSignOut;
+        }
+      });
+    };
+    signOutFlow.request = requestSignOut;
+
+    const finishSignOut = async (): Promise<void> => {
+      try {
+        await signOut(api);
+      } catch (error) {
+        // The server still holds this session, so the editor stays signed in rather
+        // than showing a gate that the next request would walk straight back through.
+        reportError("Sign out", error, onMessage);
+        ending = false;
+        signOutFlow.request = requestSignOut;
+        return;
+      }
+      panel.clear();
+      editPanel.clear();
+      layout.setUser("");
+      signOutFlow.request = () => {};
+      resume();
+    };
+
+    await startUp();
+    await signedOut;
   }
 
-  const savedState = await controller.load();
-  await runStartup({
-    savedState,
-    restoreView: (panelWidths, editMode) => layout.restoreState({ panel_widths: panelWidths, edit_mode: editMode }),
-    pickDocument: () => openDocumentPicker(api),
-    loadDocument: async (documentId) => {
-      await panel.load(documentId);
-      await controller.saveLastDocument(documentId);
-    },
-  });
+  async function startUp(): Promise<void> {
+    const savedState = await controller.load();
+    await runStartup({
+      savedState,
+      restoreView: (panelWidths, editMode) =>
+        layout.restoreState({ panel_widths: panelWidths, edit_mode: editMode }),
+      pickDocument: () => openDocumentPicker(api),
+      loadDocument: async (documentId) => {
+        await panel.load(documentId);
+        await controller.saveLastDocument(documentId);
+      },
+    });
+  }
 }

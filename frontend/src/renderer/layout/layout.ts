@@ -12,6 +12,7 @@ export interface AppLayoutOptions {
   onDeleteDocument?: () => void;
   onEditDocument?: () => void;
   onEditChapter?: () => void;
+  onSignOut?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
 }
 
@@ -65,6 +66,7 @@ export class AppLayout {
       onDeleteDocument: options.onDeleteDocument,
       onEditDocument: options.onEditDocument,
       onEditChapter: options.onEditChapter,
+      onSignOut: options.onSignOut,
     });
 
     this.leftPanel = this.panel("panel-left");
@@ -169,7 +171,7 @@ export class AppLayout {
 
   setUser(username: string): void {
     this.userLabel.textContent = username;
-    this.userLabel.hidden = false;
+    this.userLabel.hidden = username === "";
   }
 
   private panel(name: string): HTMLElement {

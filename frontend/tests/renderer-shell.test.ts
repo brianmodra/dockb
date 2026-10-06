@@ -265,3 +265,150 @@ describe("renderer shell", () => {
     expect(updateDocument).toHaveBeenCalledWith("d2", { title: "Hope", author: "Anna" });
   });
 });
+
+/** An editor with a live session, so boot skips straight past the gate. */
+function signedInApi(overrides: Record<string, unknown> = {}): ReturnType<typeof localModeApi> {
+  let signedIn = true;
+  const session = {
+    user: { id: "u-1", username: "brian", email: "a@b.c", display_name: "Brian", avatar_url: "" },
+    password_change_required: false,
+  };
+  return localModeApi({
+    getAuthConfig: vi.fn(async () => ({ login_required: true, providers: [] })),
+    getMe: vi.fn(async () => {
+      if (!signedIn) {
+        throw new ApiError(401, "not_authenticated");
+      }
+      return session;
+    }),
+    loginWithPassword: vi.fn(async () => {
+      signedIn = true;
+      return session;
+    }),
+    logout: vi.fn(async () => {
+      signedIn = false;
+    }),
+    getAppState: vi.fn(async () => ({
+      last_document_id: "d1",
+      panel_widths: null,
+      edit_mode: null,
+    })),
+    listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+    getChapterDocument: vi.fn(async () => ({
+      content: "# Opening 1\n\nSome text.",
+      summary: null,
+    })),
+    ...overrides,
+  });
+}
+
+function tick(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
+}
+
+function signInForm(): HTMLElement | null {
+  return document.querySelector("[data-testid='sign-in-form']");
+}
+
+function userLabel(): HTMLElement | null {
+  return document.querySelector("[data-testid='user-label']");
+}
+
+function chooseFileItem(key: string): void {
+  (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
+  (document.querySelector<HTMLElement>(`[data-testid='menu-item-${key}']`)!).click();
+}
+
+describe("sign out", () => {
+  it("ends the session, clears the workspace and shows the gate again", async () => {
+    const { api, bridge } = signedInApi();
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(1);
+    expect(userLabel()?.hidden).toBe(false);
+    expect(signInForm()).toBeNull();
+
+    (document.querySelector<HTMLElement>("[data-testid='chapter-row']")!).click();
+    await tick();
+    const editor = document.querySelector<HTMLElement>("[data-testid='edit-wysiwyg']")!;
+    expect(editor.textContent).toContain("Some text.");
+
+    chooseFileItem("sign-out");
+    await tick();
+
+    expect(api.logout).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(0);
+    expect(editor.textContent ?? "").not.toContain("Some text.");
+    expect(userLabel()?.hidden).toBe(true);
+    expect(signInForm()).not.toBeNull();
+    // Exactly one dialog, and it is the gate: a clean buffer must not be asked about.
+    const titles = Array.from(
+      document.querySelectorAll("[data-testid='modal-title']"),
+    ).map((n) => n.textContent);
+    expect(titles).toEqual(["Sign in"]);
+  });
+
+  it("signs back in and starts up again after signing out", async () => {
+    const { api, bridge } = signedInApi();
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    chooseFileItem("sign-out");
+    await tick();
+    expect(signInForm()).not.toBeNull();
+
+    const username = document.querySelector<HTMLInputElement>("[data-testid='sign-in-username']")!;
+    const password = document.querySelector<HTMLInputElement>("[data-testid='sign-in-password']")!;
+    username.value = "brian";
+    password.value = "correct horse";
+    (document.querySelector<HTMLFormElement>("[data-testid='sign-in-form']")!).dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+
+    expect(api.loginWithPassword).toHaveBeenCalledWith("brian", "correct horse");
+    expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(1);
+    expect(userLabel()?.hidden).toBe(false);
+    expect(signInForm()).toBeNull();
+  });
+
+  it("stays signed in when ending the session fails", async () => {
+    const { api, bridge } = signedInApi({
+      logout: vi.fn(async () => {
+        throw new ApiError(500, "boom");
+      }),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    chooseFileItem("sign-out");
+    await tick();
+
+    expect(api.logout).toHaveBeenCalledTimes(1);
+    expect(userLabel()?.hidden).toBe(false);
+    expect(signInForm()).toBeNull();
+    expect(document.querySelector("[data-testid='panel-message']")?.textContent).toContain(
+      "Sign out",
+    );
+  });
+
+  it("does nothing when there is no session to end", async () => {
+    const logout = vi.fn();
+    const { api, bridge } = signedInApi({
+      getMe: vi.fn(async () => {
+        throw new ApiError(401, "not_authenticated");
+      }),
+      logout,
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+    expect(signInForm()).not.toBeNull();
+
+    chooseFileItem("sign-out");
+    await tick();
+
+    expect(logout).not.toHaveBeenCalled();
+    expect(signInForm()).not.toBeNull();
+  });
+});

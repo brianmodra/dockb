@@ -1,14 +1,22 @@
 import { openModal } from "../layout/modals";
 
-export interface QuitAppOptions {
+export interface UnsavedChangesOptions {
   isDirty: () => boolean;
   save?: () => Promise<unknown>;
-  onQuit: () => void;
+  /** The confirm button's wording: "Save and Quit", or "Save" when quitting is not what happens next. */
+  confirmLabel: string;
+  proceed: () => void;
 }
 
-export async function quitApp(options: QuitAppOptions): Promise<boolean> {
+/**
+ * Offer to save an unsaved buffer before running `proceed`.
+ *
+ * Returns false when the person cancelled or the save failed, meaning `proceed`
+ * must not run; true once it has been called.
+ */
+export async function confirmUnsaved(options: UnsavedChangesOptions): Promise<boolean> {
   if (!options.isDirty()) {
-    options.onQuit();
+    options.proceed();
     return true;
   }
   const choice = await openModal({
@@ -17,7 +25,7 @@ export async function quitApp(options: QuitAppOptions): Promise<boolean> {
     buttons: [
       { label: "Cancel", value: "cancel" },
       { label: "Discard", value: "discard" },
-      { label: "Save and Quit", value: "save", primary: true },
+      { label: options.confirmLabel, value: "save", primary: true },
     ],
   });
   if (choice === "cancel") {
@@ -29,6 +37,21 @@ export async function quitApp(options: QuitAppOptions): Promise<boolean> {
       return false;
     }
   }
-  options.onQuit();
+  options.proceed();
   return true;
+}
+
+export interface QuitAppOptions {
+  isDirty: () => boolean;
+  save?: () => Promise<unknown>;
+  onQuit: () => void;
+}
+
+export async function quitApp(options: QuitAppOptions): Promise<boolean> {
+  return confirmUnsaved({
+    isDirty: options.isDirty,
+    save: options.save,
+    confirmLabel: "Save and Quit",
+    proceed: options.onQuit,
+  });
 }

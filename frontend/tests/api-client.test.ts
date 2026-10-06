@@ -499,3 +499,14 @@ describe("ApiClient import part naming", () => {
     expect(partFilenames(sentForm(), "files")).toEqual(["Linchpin/Act I/Opening 1.md"]);
   });
 });
+
+
+describe("ApiClient auth", () => {
+  it("ends the session with POST /api/auth/logout", async () => {
+    mockFetch(200, { status: "ok" });
+    await new ApiClient().logout();
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/auth/logout");
+    expect(call.init.method).toBe("POST");
+  });
+});
