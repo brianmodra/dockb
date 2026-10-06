@@ -7,26 +7,19 @@ discovered while building is forgotten. Each entry says what is missing, why it 
 at the design document that already settles how it should be built; an entry is deleted when the
 work lands, and the design document is expected to absorb it.
 
-Two entries remain. One is small and felt: a signed-in writer has no **Sign out** in the editor's
-File menu, so the only way to end your own session is the change-password dialog, and an account
-that is signed in on a shared machine stays signed in. The other is the whole MCP server — a second
-listener, an endpoint, the tools, and a per-prompt token — which is specified at
-`README_mcp_auth.md` and waiting on three decisions before any of it is written.
+One entry remains: the whole MCP server — a second listener, an endpoint, the tools, and a
+per-prompt token — which is specified at `README_mcp_auth.md` and waiting on three decisions before
+any of it is written.
 
-Everything else this file used to list has landed and been deleted: the admin CLI, password sign-in,
-the editor's change-password dialog, and mandatory sign-in with no local mode. Their decisions and
-reasoning live in `README_auth.md`, and their mechanics in the package that owns them —
-`src/dockb/infrastructure/accounts/README.md` (the user, token and admin-CLI schema),
-`src/dockb/infrastructure/session/README.md` (the session cookie), and
-`src/dockb/controllers/README_API.md` (the manuscript auth gate and the editor shell it serves).
+Everything else this file used to list has landed and been deleted: the admin CLI, password
+sign-in, the editor's change-password dialog, mandatory sign-in with no local mode, and **Sign out**
+in the File menu. Their decisions and reasoning live in `README_auth.md`, and their mechanics in the
+place that owns them: `src/dockb/infrastructure/accounts/README.md` for the user, token and admin-CLI
+schema, `src/dockb/infrastructure/session/README.md` for the session cookie,
+`src/dockb/controllers/README_API.md` for the manuscript auth gate and the editor shell it serves,
+and `frontend/README.md` for the editor's gate, sign-out loop and menu.
 
 ## Entries
-
-- **Signing out from the editor** — the change-password dialog can sign out, but the File menu
-  (`frontend/src/renderer/layout/menubar.ts`) has no **Sign out** item, so a signed-in user cannot
-  end their own session without that dialog. `POST /api/auth/logout` exists and works; this is the
-  menu entry that calls it. Worth adding: signing out is what someone reaches for on a shared
-  machine, and today the route is only reachable from the one screen that is about to disappear.
 
 - **MCP server and its per-prompt token** — `README_mcp_auth.md` §1–§5. Nothing exists yet: no
   second ASGI listener, no MCP endpoint, no tool handlers, no token. The design as decided needs

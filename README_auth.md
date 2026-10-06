@@ -418,6 +418,13 @@ buttons — so the sign-in screen is a username field, a password field, and **S
   gate, and a dialog with no way out of it is a trap.
 - **Sign in again** follows a successful change, with a message saying the password changed.
 
+**Ending a session** has two entrances, both posting `POST /api/auth/logout`: the change-password
+dialog's **Sign out** button above, and **File → Sign out** in the editor's menu for a writer who is
+simply finished for the day. The menu offers an unsaved buffer the same three choices Quit does, then
+clears what the session owned and runs the gate again rather than closing the window. The dialog's
+button exists for a narrower reason: somebody who signed in on another person's temporary password
+must have a way out of a screen that will not let them past it.
+
 Both password fields are `type="password"`. The autocomplete hints are what matter rather than the
 masking: `autocomplete="username"`, `"current-password"`, and `"new-password"`. Paste is allowed,
 because refusing it is hostile and buys nothing. A submitted password is never logged and never
@@ -491,6 +498,10 @@ The column-by-column schema and the store's accessors are in
 5. The editor reads that session; every API call after carries it. `GET /api/app/state` and
    `PUT /api/app/state` are then per-user as the UI record requires; `GET /api/auth/me` returns the
    signed-in user's profile and doubles as a session check from the editor.
+6. The editor ends the session with `POST /api/auth/logout`, which drops the server-side context and
+   deletes the cookie, then clears the manuscript state it was holding and returns to step 1. This is
+   `File → Sign out`; a logout that fails leaves the session in place, because the server still has it
+   and the editor would otherwise show a gate that the very next request walks back through.
 
 ## 9. Open questions
 

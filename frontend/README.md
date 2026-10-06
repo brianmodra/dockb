@@ -105,9 +105,10 @@ its 10px floor.
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
 - `menubar.ts` — File (Open, Import…, Save, Delete ▸ Document, Edit ▸ Document/Chapter,
-  Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on outside click
-  or Esc. There is no **Sign out** item: the only route to `POST /api/auth/logout` is the
-  change-password dialog's own button. See `../README_todo.md`.
+  Sign out, Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on
+  outside click or Esc. **Sign out** and **Quit** both go through `state/quit.ts`'s
+  `confirmUnsaved`, so an unsaved buffer is offered the same three choices either way, with the
+  confirm button reading **Save and Quit** for one and **Save** for the other.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move. Manuscript
   chapters group under act headers; `Character` chapters sit in a Characters
   section after the acts. Move only offers drop slots inside the mover's
@@ -126,16 +127,24 @@ DOM as HTML.
 All user-facing failures go to the terminal log (`log.ts` `reportError`) **and**
 the message panel (`onMessage`).
 
-### Startup and quit
+### Startup, sign-out and quit
 
 `mountShell` asks `GET /api/auth/config`, which always reports `login_required: true`,
 so the sign-in gate is always shown; the username comes from `/api/auth/me` and is
 shown in the menubar. The gate itself is `layout/signInFlow.ts`'s `ensureSignedIn`,
 which resolves the whole question in one place: an existing session if there is one,
 otherwise `signInGate.ts`'s username/password form, and then `changePasswordDialog.ts`
-if `/api/auth/me` reports a password change is owed. It resolves `null` when the user
-cancels or signs out, and `boot` stops there rather than issuing requests that would
-all be refused.
+if `/api/auth/me` reports a password change is owed.
+
+`boot` runs that as a loop rather than once. Each pass takes a session, starts the editor
+up on it, and waits for **File → Sign out**, which calls `POST /api/auth/logout`, clears the
+chapter list, the editor buffer and the menubar username, and sends the next pass back to the
+gate. Two things break the loop instead: `ensureSignedIn` resolving `null` — the user cancelled
+the gate, or signed out of the change dialog — stops `boot` entirely rather than issuing requests
+that would all be refused; and a logout that fails reports the error and leaves the session in
+place, because the server still holds it and a gate the next request walks straight back through
+would be a lie. The entry itself does nothing until a session exists, so a cancelled gate cannot
+be asked to sign out of something the editor was never in.
 
 The gate is **password-only** — there are no provider buttons (`README_auth.md` §7),
 so an account that exists only through OAuth needs `dockb users set-password` before

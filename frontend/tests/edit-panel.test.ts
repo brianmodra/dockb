@@ -234,6 +234,21 @@ describe("EditPanel dirty change reporting", () => {
     expect(onDirtyChange.mock.calls.map((call) => call[0])).toEqual([false, true, false]);
   });
 
+  it("reports clean when a dirty buffer is cleared", async () => {
+    const onDirtyChange = vi.fn();
+    const panel = new EditPanel({ api: fakeApi(), onDirtyChange });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+    await panel.setContent(" extra");
+    expect(panel.isDirty()).toBe(true);
+
+    panel.clear();
+
+    expect(panel.isDirty()).toBe(false);
+    expect(onDirtyChange.mock.calls.map((call) => call[0])).toEqual([false, true, false]);
+  });
+
   it("does not repeat an unchanged dirty state", async () => {
     const onDirtyChange = vi.fn();
     const panel = new EditPanel({ api: fakeApi(), onDirtyChange });

@@ -194,6 +194,11 @@ features (undecided).
   shown before any delete runs.
 - **Quit with changes** — when there are local (unsaved) changes: "Save chapter first?" with
   **Cancel / Discard / Save and Quit**.
+- **Sign out with changes** — the same question, asked before the session ends rather than before
+  the window closes: "Save chapter first?" with **Cancel / Discard / Save**. **Cancel** keeps the
+  session and closes the dialog, **Discard** ends the session without saving, **Save** saves first
+  and then ends it. A save that fails leaves the dialog's outcome unspent: the session survives and
+  the buffer stays dirty, so nothing typed is lost to a failed write.
 - **No last document on start** — a list to pick a document from, when app state has none.
 - **Open document** (File → Open) — a scrollable list of documents by title, fetched from
   `GET /api/documents`. Clicking a row selects it and enables the **Open** button (disabled
@@ -240,6 +245,11 @@ from app state. If there is one, it loads the chapter list (panel widths and mod
 same state). If there is none, it shows the **select a document** modal. The state is stored
 per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_state` table (see
 `README_auth.md`).
+
+Signing out returns here rather than closing anything: `File → Sign out` ends the session, clears
+the chapter list, the editor buffer, the unsaved badge and the username in the menubar, and start-up
+runs again from the sign-in gate. Cancelling that gate stops the editor instead — every request
+below needs a session, so booting on would fire a burst of guaranteed 401s.
 
 ## 10. Resolved questions
 
