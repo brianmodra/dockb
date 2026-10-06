@@ -47,6 +47,9 @@ def _make_chapter(ch_id: str, *paragraphs: Paragraph, title: str = "Old Title") 
     return chapter
 
 
+_OWNER = "acct-1"
+
+
 def _make_document(doc_id: str, *chapters: Chapter) -> Document:
     document = Document(id=doc_id, state=DataState.SYNC)
     for chapter in chapters:
@@ -94,7 +97,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert isinstance(summary, ChapterImportSummary)
         assert summary.created is True
@@ -104,7 +107,7 @@ class TestNewChapter:
 
         chapter, kwargs = _saved_chapter(uow)
         assert chapter.state is DataState.NEW
-        assert kwargs == {"document_id": "d1"}
+        assert kwargs == {"document_id": "d1", "owner": _OWNER}
         assert chapter.title == "Chapter 1"
         assert [p.sentences[0].get_text() for p in chapter.paragraphs] == [
             "Para one sentence.",
@@ -113,7 +116,7 @@ class TestNewChapter:
         paragraphs = [m for m, kw in _saved_paragraphs(uow)]
         assert len(paragraphs) == 2
         assert all(p.state is DataState.NEW for p in paragraphs)
-        assert all(kw == {"chapter_id": chapter.id} for _, kw in _saved_paragraphs(uow))
+        assert all(kw == {"chapter_id": chapter.id, "owner": _OWNER} for _, kw in _saved_paragraphs(uow))
         assert summary.chapter_id == chapter.id
         uow.commit.assert_called_once()
 
@@ -125,7 +128,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act I")
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act I", owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.act == "Act I"
@@ -139,7 +142,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act II")
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act II", owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.act == "Act II"
@@ -152,7 +155,7 @@ class TestNewChapter:
         chapter_repo, uow_factory = _setup(None)
         uow_factory.get_unit_of_work.return_value = MagicMock()
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert summary.title == "Chapter 1"
         assert summary.category == "Chapter"
@@ -164,7 +167,7 @@ class TestNewChapter:
         chapter_repo, uow_factory = _setup(None)
         uow_factory.get_unit_of_work.return_value = MagicMock()
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character", owner=_OWNER)
 
         assert summary.category == "Character"
 
@@ -176,7 +179,7 @@ class TestNewChapter:
         chapter_repo, uow_factory = _setup(_make_chapter("c1", _make_paragraph("p1", "Body.")))
         uow_factory.get_unit_of_work.return_value = MagicMock()
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert summary.category == "Chapter"
         assert summary.created is False
@@ -188,7 +191,7 @@ class TestNewChapter:
         chapter_repo, uow_factory = _setup(None)
 
         with pytest.raises(ChapterMismatchError, match="not a child of document"):
-            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         uow_factory.get_unit_of_work.assert_not_called()
 
@@ -200,7 +203,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.title == "Front Title"
@@ -213,7 +216,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.act == "Act I"
@@ -226,7 +229,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.category == "Chapter"
@@ -240,7 +243,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.category == "Character"
@@ -253,7 +256,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character", owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.category == "Character"
@@ -267,7 +270,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character", owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.category == "Character"
@@ -280,7 +283,7 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         rewritten = file.read_text()
         assert rewritten.startswith(f"---\nid: {summary.chapter_id}\ntitle: Chapter 2\n")
@@ -297,12 +300,12 @@ class TestNewChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert summary.created is True
         chapter, kwargs = _saved_chapter(uow)
         assert chapter.id == summary.chapter_id
-        assert kwargs == {"document_id": "d1"}
+        assert kwargs == {"document_id": "d1", "owner": _OWNER}
         assert file.read_text() == f"---\nid: {summary.chapter_id}\ntitle: Empty\n---\n"
 
     def test_empty_new_chapter_reimport_is_a_no_op(self, nlp, tmp_path):
@@ -312,13 +315,13 @@ class TestNewChapter:
         chapter_repo, uow_factory = _setup(None)
         uow_factory.get_unit_of_work.return_value = MagicMock()
 
-        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
         persisted = Chapter(id=first.chapter_id, title="Empty", state=DataState.SYNC)
         document.append_child(persisted)
         chapter_repo.load.return_value = persisted
         written = file.read_text()
 
-        second = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        second = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert second.created is False
         assert file.read_text() == written
@@ -333,7 +336,7 @@ class TestSingleNewlineParagraphs:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, single_newline_paragraphs=True)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, single_newline_paragraphs=True, owner=_OWNER)
 
         assert summary.created is True
         assert summary.added == 2
@@ -367,7 +370,7 @@ class TestSingleNewlineParagraphs:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, single_newline_paragraphs=True)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, single_newline_paragraphs=True, owner=_OWNER)
 
         assert summary.added == summary.changed == summary.deleted == 0
         uow.register.assert_not_called()
@@ -389,7 +392,7 @@ class TestExistingChapter:
         chapter_repo, uow_factory = _setup(_make_chapter("c1", _make_paragraph("p1", "Body.")))
 
         with pytest.raises(ChapterMismatchError, match="not a child of document"):
-            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         uow_factory.get_unit_of_work.assert_not_called()
 
@@ -403,7 +406,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act II")
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, act="Act II", owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.act == "Act II"
@@ -418,7 +421,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character")
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character", owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.category == "Character"
@@ -433,7 +436,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.category == "Chapter"
@@ -447,7 +450,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert summary.created is False
         assert summary.added == summary.changed == summary.deleted == 0
@@ -464,7 +467,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert chapter.title == "Old Title"
@@ -478,7 +481,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert summary.changed == 1
         assert file.read_text() == (
@@ -494,11 +497,11 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, kwargs = _saved_chapter(uow)
         assert chapter.state is DataState.CHANGED
-        assert kwargs == {"document_id": "d1"}
+        assert kwargs == {"document_id": "d1", "owner": _OWNER}
         paragraph = chapter.paragraphs[0]
         assert paragraph.id == "p1"
         assert [s.get_text() for s in paragraph.sentences] == ["New text."]
@@ -518,7 +521,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         chapter, _ = _saved_chapter(uow)
         assert [p.id for p in chapter.paragraphs] == ["p1"]
@@ -534,7 +537,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         sentences = [model for model, _ in _saved_sentences(uow)]
         assert len(sentences) == 3
@@ -553,7 +556,7 @@ class TestExistingChapter:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         sentences = [model for model, _ in _saved_sentences(uow)]
         assert len(sentences) == 1
@@ -582,7 +585,7 @@ class TestApplyChapterFileTiming:
         uow_factory.get_unit_of_work.return_value = uow
 
         with trace() as timings:
-            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert self._names(timings) == [
             "stage.parse_file",
@@ -600,13 +603,13 @@ class TestApplyChapterFileTiming:
         chapter_repo, uow_factory = _setup(None)
         uow_factory.get_unit_of_work.return_value = MagicMock()
 
-        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
         persisted = Chapter(id=first.chapter_id, title="Empty", state=DataState.SYNC)
         document.append_child(persisted)
         chapter_repo.load.return_value = persisted
 
         with trace() as timings:
-            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert self._names(timings) == ["stage.parse_file"]
 
@@ -621,7 +624,7 @@ class TestApplyChapterFileTiming:
         uow_factory.get_unit_of_work.return_value = uow
 
         with trace() as timings:
-            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+            apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         assert self._names(timings) == [
             "stage.parse_file",
@@ -647,7 +650,7 @@ class TestNewParagraphPlacement:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         saved, _ = _saved_chapter(uow)
         ids = [p.id for p in saved.paragraphs]
@@ -666,7 +669,7 @@ class TestNewParagraphPlacement:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         saved, _ = _saved_chapter(uow)
         assert [p.sentences[0].get_text() for p in saved.paragraphs] == ["Lead.", "A."]
@@ -679,7 +682,7 @@ class TestNewParagraphPlacement:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         saved, _ = _saved_chapter(uow)
         assert [p.sentences[0].get_text() for p in saved.paragraphs] == ["A.", "New1.", "B."]
@@ -692,7 +695,7 @@ class TestNewParagraphPlacement:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory)
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
 
         saved, _ = _saved_chapter(uow)
         assert [p.sentences[0].get_text() for p in saved.paragraphs] == ["Lead1.", "Lead2.", "A."]
@@ -741,10 +744,10 @@ class TestResolveDocument:
         repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
-        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert result is loaded
-        repo.load_shell.assert_called_once_with("d1", "")
+        repo.load_shell.assert_called_once_with("d1", _OWNER)
         uow_factory.get_unit_of_work.assert_not_called()
 
     def test_matches_title_case_insensitively(self):
@@ -753,7 +756,7 @@ class TestResolveDocument:
         repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
-        result = _resolve_document(Path("linchpin"), DocumentMetadata("LINCHPIN", "User"), repo, uow_factory)
+        result = _resolve_document(Path("linchpin"), DocumentMetadata("LINCHPIN", "User"), repo, uow_factory, owner=_OWNER)
 
         assert result is loaded
         uow_factory.get_unit_of_work.assert_not_called()
@@ -764,10 +767,10 @@ class TestResolveDocument:
         repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
-        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        result = _resolve_document(Path("Linchpin"), DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert result is loaded
-        repo.load_shell.assert_called_once_with("d1", "")
+        repo.load_shell.assert_called_once_with("d1", _OWNER)
 
     def test_created_document_writes_metadata_file(self, tmp_path):
         repo = self._repo_with([])
@@ -775,7 +778,7 @@ class TestResolveDocument:
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert (tmp_path / "document_metadata.yaml").read_text() == "title: Linchpin\nauthor: User\n"
 
@@ -785,7 +788,7 @@ class TestResolveDocument:
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, write_back=False)
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, write_back=False, owner=_OWNER)
 
         assert not (tmp_path / "document_metadata.yaml").exists()
         uow.commit.assert_called_once()
@@ -797,7 +800,7 @@ class TestResolveDocument:
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert (tmp_path / "document_metadata.yaml").read_text() == "isbn: 123\ntitle: Linchpin\nauthor: User\n"
 
@@ -809,7 +812,7 @@ class TestResolveDocument:
         repo.load_shell.return_value = loaded
         uow_factory = MagicMock()
 
-        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert metadata_file.read_text() == "title: Linchpin\nauthor: A\n"
 
@@ -819,7 +822,7 @@ class TestResolveDocument:
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        result = _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        result = _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert isinstance(result, Document)
         assert result.id != "d1"
@@ -836,7 +839,7 @@ class TestResolveDocument:
         uow_factory = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        result = _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory)
+        result = _resolve_document(tmp_path, DocumentMetadata("Linchpin", "User"), repo, uow_factory, owner=_OWNER)
 
         assert result.state is DataState.NEW
         assert result.title == "Linchpin"
@@ -879,7 +882,7 @@ class TestImportDocumentDirectory:
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
 
-        result = import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory)
+        result = import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory, owner="acct-1")
 
         assert result == summaries
         assert [Path(args[1]).name for args, _ in calls] == [
@@ -930,14 +933,14 @@ class TestImportDocumentDirectory:
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
 
-        import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory)
+        import_document_directory(tmp_path, "User", nlp, document_repo, chapter_repo, uow_factory, owner="acct-1")
 
         assert [Path(args[1]).name for args, _ in calls] == [
             "Opening 1.md",
             "Setup 2.md",
             "Setup 10.md",
         ]
-        chapter_repo.reorder.assert_called_once_with("d1", ["c1", "c2", "c10"])
+        chapter_repo.reorder.assert_called_once_with("d1", ["c1", "c2", "c10"], owner="acct-1")
 
     def test_act_none_directory_maps_to_empty_act(self, nlp, tmp_path, monkeypatch):
         act_none = tmp_path / "Act None"
@@ -955,7 +958,7 @@ class TestImportDocumentDirectory:
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
 
-        import_document_directory(tmp_path, "User", nlp, document_repo, MagicMock(), MagicMock())
+        import_document_directory(tmp_path, "User", nlp, document_repo, MagicMock(), MagicMock(), owner="acct-1")
 
         assert acts == [""]
 
@@ -970,7 +973,7 @@ class TestImportDocumentDirectory:
             lambda *a, **_k: (_ for _ in ()).throw(AssertionError("no chapter file expected")),
         )
 
-        result = import_document_directory(tmp_path, "User", nlp, None, None, None)
+        result = import_document_directory(tmp_path, "User", nlp, None, None, None, owner="acct-1")
 
         assert not result
 
@@ -991,14 +994,17 @@ class TestImportDocumentDirectory:
             lambda *args, **kwargs: seen.update(apply_kwargs=kwargs) or ChapterImportSummary(chapter_id="c1", created=False),
         )
 
-        import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock(), write_back=False)
+        import_document_directory(
+            tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock(), write_back=False, owner="acct-1"
+        )
 
-        assert seen["resolve_kwargs"] == {"write_back": False, "owner": ""}
+        assert seen["resolve_kwargs"] == {"write_back": False, "owner": "acct-1"}
         assert seen["apply_kwargs"] == {
             "act": "Act I",
             "category": "Chapter",
             "single_newline_paragraphs": False,
             "write_back": False,
+            "owner": "acct-1",
         }
 
     def test_characters_directory_imported_after_acts_as_character(self, nlp, tmp_path, monkeypatch):
@@ -1018,7 +1024,7 @@ class TestImportDocumentDirectory:
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
 
-        import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock())
+        import_document_directory(tmp_path, "User", nlp, MagicMock(), MagicMock(spec=ChapterRepository), MagicMock(), owner="acct-1")
 
         assert pairs == [("Act I", "Chapter"), ("", "Character")]
 
@@ -1042,7 +1048,7 @@ class TestImportDocumentDirectory:
             lambda document, file, nlp, chapter_repo, uow_factory, **_kwargs: ChapterImportSummary("c1", False),
         )
 
-        import_document_directory(tmp_path, "User", nlp, MagicMock(), chapter_repo, uow_factory)
+        import_document_directory(tmp_path, "User", nlp, MagicMock(), chapter_repo, uow_factory, owner="acct-1")
 
         assert resolved == [(tmp_path, DocumentMetadata("T", "User"))]
 
@@ -1055,13 +1061,13 @@ class TestImportDocumentDirectory:
             lambda *a: (_ for _ in ()).throw(AssertionError("no chapter file expected")),
         )
 
-        result = import_document_directory(tmp_path, "User", nlp, None, None, None)
+        result = import_document_directory(tmp_path, "User", nlp, None, None, None, owner="acct-1")
 
         assert not result
 
     def test_missing_directory_raises(self, nlp, tmp_path):
         with pytest.raises(DocumentFormatError, match="does not exist"):
-            import_document_directory(tmp_path / "nope", "User", nlp, None, None, None)
+            import_document_directory(tmp_path / "nope", "User", nlp, None, None, None, owner="acct-1")
 
 
 class TestWriteBackDisabled:
@@ -1073,7 +1079,7 @@ class TestWriteBackDisabled:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False, owner=_OWNER)
 
         assert summary.created is True
         assert summary.added == 2
@@ -1090,7 +1096,7 @@ class TestWriteBackDisabled:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False, owner=_OWNER)
 
         assert summary.changed == 1
         assert file.read_text() == f'{header}\n\n<span data-par-id="p1">New text.</span>'
@@ -1104,7 +1110,7 @@ class TestWriteBackDisabled:
         uow = MagicMock()
         uow_factory.get_unit_of_work.return_value = uow
 
-        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False, owner=_OWNER)
 
         assert summary.created is True
         _saved_chapter(uow)
@@ -1123,7 +1129,7 @@ class TestWriteBackDisabled:
         uow_factory.get_unit_of_work.return_value = uow
 
         with trace() as timings:
-            summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False)
+            summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, write_back=False, owner=_OWNER)
 
         assert summary.changed == 1
         assert [part.split(" ")[0] for part in timings.summary().split(", ")] == [
@@ -1190,6 +1196,6 @@ class TestWriteBackFrontMatter:
 
         monkeypatch.setattr(markdown_import, "apply_chapter_file", fake_apply)
 
-        import_document_directory(tmp_path, "User", nlp, None, MagicMock(spec=ChapterRepository), MagicMock())
+        import_document_directory(tmp_path, "User", nlp, None, MagicMock(spec=ChapterRepository), MagicMock(), owner="acct-1")
 
         assert new_file.read_text() == "fresh"

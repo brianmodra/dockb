@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from starlette.concurrency import run_in_threadpool
 
+from dockb.exceptions import DocumentOwnershipError
 from dockb.services.markdown_import import ChapterImportSummary, import_document_directory
 from dockb.uploads import (
     MAX_FILE_COUNT,
@@ -70,16 +71,31 @@ class ImportService:  # pylint: disable=too-few-public-methods
         self,
         parts: list[Any],
         user_name: str,
+        *,
+        owner: str,
         single_newline_paragraphs: bool = False,
     ) -> list[ChapterImportSummary]:
-        """Import *parts* as one document directory owned by *user_name*.
+        """Import *parts* as one document directory.
+
+        *owner* is the account id the document belongs to, and *user_name* is the
+        caller's username, which the document's own metadata records as its author.
+        They are kept apart because they answer different questions: ownership is what
+        every later read is scoped by, and a username is mutable provider data that a
+        reader sees.
 
         Every part's name is validated before a single byte is written, so a
         rejected upload never touches the disk. Each part is then streamed into
         a temporary directory, which is deleted whether the import succeeds or
         fails. Write-back is off: the uploaded bytes belong to the caller, and
         the canonical form is written by the editor, not by an upload.
+
+        Raises ``DocumentOwnershipError`` when there is no account to own the document:
+        a document created for nobody would be invisible to every account and
+        reachable only through the admin CLI that assigns it, which is not what an
+        upload asked for.
         """
+        if not owner.strip():
+            raise DocumentOwnershipError("an import needs the account the document belongs to")
         if len(parts) > MAX_FILE_COUNT:
             raise UploadTooLargeError(f"too many files: an upload is limited to {MAX_FILE_COUNT} files")
         names = [validate_part_path(part.filename) for part in parts]
@@ -113,6 +129,7 @@ class ImportService:  # pylint: disable=too-few-public-methods
                 self._uow_factory,
                 single_newline_paragraphs=single_newline_paragraphs,
                 write_back=False,
+                owner=owner,
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

@@ -22,9 +22,11 @@ from typing import TYPE_CHECKING, Literal
 from dockb.exceptions import (
     ChapterAfterNotFoundError,
     ChapterCategoryMismatchError,
+    ChapterNotFoundError,
     DocumentNotFoundError,
     DocumentOwnershipError,
     DuplicateTitleError,
+    ParagraphNotFoundError,
 )
 from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
@@ -93,15 +95,15 @@ class DocumentService:
             return None
         return self._document_store_factory.for_account(owner)
 
-    def list_all(self, owner: str) -> list[dict[str, str]]:
+    def list_all(self, *, owner: str) -> list[dict[str, str]]:
         """Return lightweight summaries for every document *owner* owns."""
         return self._document_repo.list_all(owner)
 
-    def get(self, document_id: str, owner: str) -> Document | None:
+    def get(self, document_id: str, *, owner: str) -> Document | None:
         """Load a full document hierarchy, or None when *owner* does not own it."""
         return self._document_repo.load(document_id, owner)
 
-    def open(self, document_id: str, owner: str) -> Document | None:
+    def open(self, document_id: str, *, owner: str) -> Document | None:
         """Load a document, materializing its owned file tree when absent.
 
         When a store is configured and the document's directory does not exist
@@ -197,7 +199,7 @@ class DocumentService:
             store.git_commit(title, f"update: document {document_id[:8]}")
         return doc
 
-    def delete(self, document_id: str, owner: str) -> bool:
+    def delete(self, document_id: str, *, owner: str) -> bool:
         """Delete a document: remove its owned store tree, then the graph subtree.
 
         The store directory (``git rm`` + commit) goes first so a failure leaves
@@ -317,15 +319,23 @@ class ChapterService:
         finally:
             self._save_release(chapter_id)
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
-        """Return chapter summaries (ordered by index) for a document."""
-        return self._chapter_repo.list_by_document(document_id)
+    def list_by_document(self, document_id: str, *, owner: str) -> list[dict[str, str | int]]:
+        """Return chapter summaries (ordered by index) for *owner*'s document.
 
-    def get(self, chapter_id: str) -> Chapter | None:
-        """Load a full chapter hierarchy, or None."""
-        return self._chapter_repo.load(chapter_id)
+        A document the caller does not own lists the same as one with no chapters:
+        an empty list. Both mean the same thing to the caller — nothing here.
+        """
+        return self._chapter_repo.list_by_document(document_id, owner)
 
-    def open(self, chapter_id: str, owner: str) -> Chapter | None:
+    def get(self, chapter_id: str, *, owner: str) -> Chapter | None:
+        """Load a full chapter hierarchy, or None.
+
+        None also covers a chapter of another account's document, so a chapter id
+        belonging to someone else is no more confirmable than one never created.
+        """
+        return self._chapter_repo.load(chapter_id, owner)
+
+    def open(self, chapter_id: str, *, owner: str) -> Chapter | None:
         """Load a chapter, materializing its owned markdown file when absent.
 
         When a store is configured, the chapter's owning document is resolved
@@ -337,13 +347,13 @@ class ChapterService:
         owning document is loaded scoped to that account, so a chapter belonging to
         someone else resolves to no document and nothing is written.
         """
-        ch = self._chapter_repo.load(chapter_id)
+        ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
         store = self._store(owner)
         if store is None or self._document_repo is None:
             return ch
-        document_id = self._chapter_repo.find_document_id(chapter_id)
+        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is None:
             return ch
         document = self._document_repo.load_shell(document_id, owner)
@@ -353,7 +363,7 @@ class ChapterService:
             self._materialize_chapter(store, document, ch)
         return ch
 
-    def save_document(self, chapter_id: str, content: str, owner: str) -> ChapterSaveResult | None:
+    def save_document(self, chapter_id: str, content: str, *, owner: str) -> ChapterSaveResult | None:
         """Save a chapter: write *content* to its owned file, rehydrate the graph, git-snap.
 
         The chapter's ``id``/``title`` (and its ``act``/``category`` when set)
@@ -367,10 +377,10 @@ class ChapterService:
         store = self._store(owner)
         if store is None or self._nlp is None or self._document_repo is None:
             return None
-        ch = self._chapter_repo.load(chapter_id)
+        ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
-        document_id = self._chapter_repo.find_document_id(chapter_id)
+        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is None:
             return None
         document = self._document_repo.load_shell(document_id, owner)
@@ -394,12 +404,13 @@ class ChapterService:
                 self._nlp,
                 self._chapter_repo,
                 self._uow_factory,
+                owner=owner,
             )
             store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
         canonical = store.read_chapter(document.title, ch.act, ch.title, ch.category)
         return ChapterSaveResult(content=canonical or "", summary=summary)
 
-    def open_document(self, chapter_id: str, owner: str) -> str | None:
+    def open_document(self, chapter_id: str, *, owner: str) -> str | None:
         """Read a chapter's owned file as canonical text, reconciling it first.
 
         Materializes ``chapter-{id}.md`` from the graph when it is missing,
@@ -412,11 +423,11 @@ class ChapterService:
         if store is None or self._nlp is None or self._document_repo is None:
             return None
         with measure("repo.chapter.load"):
-            ch = self._chapter_repo.load(chapter_id)
+            ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
         with measure("repo.chapter.find_document_id"):
-            document_id = self._chapter_repo.find_document_id(chapter_id)
+            document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is None:
             return None
         with measure("repo.document.load"):
@@ -435,6 +446,7 @@ class ChapterService:
                         self._nlp,
                         self._chapter_repo,
                         self._uow_factory,
+                        owner=owner,
                     )
                 with measure("stage.git_commit"):
                     store.git_commit(document.title, f"open: chapter {chapter_id[:8]}")
@@ -454,7 +466,8 @@ class ChapterService:
         document_id: str,
         after_chapter_id: str | None = None,
         category: Literal["Chapter", "Character"] = "Chapter",
-        owner: str = "",
+        *,
+        owner: str,
     ) -> Chapter:
         """Create a new empty chapter, placed after *after_chapter_id*, and commit it.
 
@@ -464,8 +477,10 @@ class ChapterService:
         belonging to someone else raises ``DocumentNotFoundError`` rather than
         attaching a chapter to it.
         """
-        index = self._resolve_index(document_id, after_chapter_id)
-        for row in self._chapter_repo.list_by_document(document_id):
+        if self._document_repo is None or self._document_repo.load_shell(document_id, owner) is None:
+            raise DocumentNotFoundError(document_id)
+        index = self._resolve_index(document_id, after_chapter_id, owner)
+        for row in self._chapter_repo.list_by_document(document_id, owner):
             if str(row.get("title") or "").lower() == title.lower():
                 raise DuplicateTitleError(title)
         document_repo = self._document_repo
@@ -473,7 +488,7 @@ class ChapterService:
             raise DocumentNotFoundError(document_id)
         ch = Chapter(id=chapter_id, title=title, category=category, state=DataState.NEW)
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id=document_id, index=str(index))
+        uow.register(ch, document_id=document_id, index=str(index), owner=owner)
         uow.commit()
         store = self._store(owner)
         if store is not None and self._document_repo is not None:
@@ -482,11 +497,11 @@ class ChapterService:
                 self._materialize_new_chapter(store, document, ch)
         return ch
 
-    def _resolve_index(self, document_id: str, after_chapter_id: str | None) -> int:
+    def _resolve_index(self, document_id: str, after_chapter_id: str | None, owner: str) -> int:
         """Return the index of a new chapter placed after *after_chapter_id*."""
         if after_chapter_id is None:
             return 0
-        for row in self._chapter_repo.list_by_document(document_id):
+        for row in self._chapter_repo.list_by_document(document_id, owner):
             if row["id"] == after_chapter_id:
                 return int(row["index"]) + 1
         raise ChapterAfterNotFoundError(after_chapter_id)
@@ -497,7 +512,7 @@ class ChapterService:
         store.write_chapter(document.title, ch.act, ch.title, content, ch.category)
         store.git_commit(document.title, f"create: chapter {ch.id[:8]}")
 
-    def move(self, chapter_id: str, after_chapter_id: str | None) -> Chapter | None:
+    def move(self, chapter_id: str, after_chapter_id: str | None, *, owner: str) -> Chapter | None:
         """Move *chapter_id* to follow *after_chapter_id*, or first when None.
 
         Returns None when the chapter does not exist or is orphaned, raises
@@ -513,13 +528,15 @@ class ChapterService:
         the mover's category — including moving first ahead of the other
         category — raises ``ChapterCategoryMismatchError`` and changes nothing.
         """
-        ch = self._chapter_repo.load(chapter_id)
-        if ch is None or chapter_id == after_chapter_id:
+        ch = self._chapter_repo.load(chapter_id, owner)
+        if ch is None:
+            return None
+        if chapter_id == after_chapter_id:
             return ch
-        document_id = self._chapter_repo.find_document_id(chapter_id)
+        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is None:
             return None
-        members = self._chapter_repo.list_by_document(document_id)
+        members = self._chapter_repo.list_by_document(document_id, owner)
         if after_chapter_id is not None and after_chapter_id not in {row["id"] for row in members}:
             raise ChapterAfterNotFoundError(after_chapter_id)
         if _crosses_category(members, ch, after_chapter_id):
@@ -539,16 +556,17 @@ class ChapterService:
                     ch.act = adopted_act
                     ch.state = DataState.CHANGED
                     uow = self._uow_factory.get_unit_of_work()
-                    uow.register(ch, document_id=document_id)
+                    uow.register(ch, document_id=document_id, owner=owner)
                     uow.commit()
-        self._chapter_repo.reorder(document_id, ordered_ids)
+        self._chapter_repo.reorder(document_id, ordered_ids, owner=owner)
         return ch
 
     def update(
         self,
         chapter_id: str,
         title: str,
-        owner: str = "",
+        *,
+        owner: str,
     ) -> Chapter | None:
         """Update the chapter title, renaming its owned file and refreshing the graph.
 
@@ -556,19 +574,19 @@ class ChapterService:
         then git mv's the markdown file and rewrites the front matter title to
         match. *owner* scopes which account's tree the rename happens in.
         """
-        ch = self._chapter_repo.load(chapter_id)
+        ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
-        document_id = self._chapter_repo.find_document_id(chapter_id)
+        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is not None:
-            for row in self._chapter_repo.list_by_document(document_id):
+            for row in self._chapter_repo.list_by_document(document_id, owner):
                 if row["id"] != chapter_id and str(row.get("title") or "").lower() == title.lower():
                     raise DuplicateTitleError(title)
         old_title = ch.title
         ch.title = title
         ch.state = DataState.CHANGED
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id=document_id or "")
+        uow.register(ch, document_id=document_id or "", owner=owner)
         uow.commit()
         store = self._store(owner)
         if store is not None and self._document_repo is not None and document_id is not None and title != old_title:
@@ -577,17 +595,17 @@ class ChapterService:
                 store.rename_chapter(document.title, ch.act, old_title, title, ch.category)
         return ch
 
-    def delete(self, chapter_id: str, owner: str = "") -> bool:
+    def delete(self, chapter_id: str, *, owner: str) -> bool:
         """Delete a chapter: remove its owned store file, then the graph subtree.
 
         The markdown file (``git rm`` + commit) goes first so a failure leaves
         the graph intact for a retry. The graph DELETED write cascades to the
         chapter's paragraphs, sentences, and tokens. Returns False if not found.
         """
-        ch = self._chapter_repo.load(chapter_id)
+        ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return False
-        document_id = self._chapter_repo.find_document_id(chapter_id)
+        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         store = self._store(owner)
         if store is not None and self._document_repo is not None and document_id is not None:
             document = self._document_repo.load_shell(document_id, owner)
@@ -595,7 +613,7 @@ class ChapterService:
                 store.remove_chapter(document.title, ch.act, ch.title, ch.category)
         ch.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id=document_id or "")
+        uow.register(ch, document_id=document_id or "", owner=owner)
         uow.commit()
         return True
 
@@ -618,30 +636,48 @@ class ParagraphService:
         self._paragraph_repo = paragraph_repo
         self._session_context = session_context
 
-    def list_by_chapter(self, chapter_id: str) -> list[dict[str, str]]:
-        """Return paragraph summaries for a chapter."""
-        return self._paragraph_repo.list_by_chapter(chapter_id)
+    def list_by_chapter(self, chapter_id: str, *, owner: str) -> list[dict[str, str]]:
+        """Return paragraph summaries for a chapter.
 
-    def get(self, paragraph_id: str) -> Paragraph | None:
-        """Load a full paragraph hierarchy, or None."""
-        return self._paragraph_repo.load(paragraph_id)
+        A chapter the caller does not own lists the same as one with no paragraphs:
+        an empty list.
+        """
+        return self._paragraph_repo.list_by_chapter(chapter_id, owner)
+
+    def get(self, paragraph_id: str, *, owner: str) -> Paragraph | None:
+        """Load a full paragraph hierarchy, or None.
+
+        None also covers a paragraph of another account's document, so a paragraph id
+        belonging to someone else is no more confirmable than one never created.
+        """
+        return self._paragraph_repo.load(paragraph_id, owner)
 
     def create(
         self,
         paragraph_id: str,
         content: list[Sentence],
         chapter_id: str,
+        *,
+        owner: str,
     ) -> Paragraph:
-        """Create a new paragraph with content and commit it."""
+        """Create a new paragraph with content and commit it.
+
+        The paragraph is written through its chapter, so the chapter has to be the
+        caller's: a write whose ``MATCH`` matches nothing writes nothing and reports no
+        error, which would answer 200 for a paragraph that does not exist. Raises
+        ``ChapterNotFoundError`` instead, which the route reports as 404.
+        """
+        if not self._paragraph_repo.owns_chapter(chapter_id, owner):
+            raise ChapterNotFoundError(chapter_id)
         para = Paragraph(id=paragraph_id, state=DataState.NEW)
         for sent in content:
             para.append_child(sent)
 
         if self._can_use_async():
-            self._enqueue_content_jobs(para, chapter_id=chapter_id)
+            self._enqueue_content_jobs(para, chapter_id=chapter_id, owner=owner)
         else:
             uow = self._uow_factory.get_unit_of_work()
-            uow.register(para, chapter_id=chapter_id)
+            uow.register(para, chapter_id=chapter_id, owner=owner)
             uow.commit()
         return para
 
@@ -650,12 +686,15 @@ class ParagraphService:
         paragraph_id: str,
         content: list[Sentence],
         chapter_id: str | None = None,
+        *,
+        owner: str,
     ) -> Paragraph | None:
         """Replace paragraph content.  Handles sentence gain/loss.
 
-        Returns None if paragraph not found.
+        Returns None if the paragraph is not there for *owner* — which is also what a
+        paragraph of another account's document returns.
         """
-        para = self._paragraph_repo.load(paragraph_id)
+        para = self._paragraph_repo.load(paragraph_id, owner)
         if para is None:
             return None
 
@@ -672,21 +711,25 @@ class ParagraphService:
         para.state = DataState.CHANGED
 
         if self._can_use_async():
-            self._enqueue_content_jobs(para, chapter_id=chapter_id or "")
+            self._enqueue_content_jobs(para, chapter_id=chapter_id or "", owner=owner)
         else:
             uow = self._uow_factory.get_unit_of_work()
-            uow.register(para, chapter_id=chapter_id or "")
+            uow.register(para, chapter_id=chapter_id or "", owner=owner)
             uow.commit()
         return para
 
-    def delete(self, paragraph_id: str) -> bool:
-        """Delete a paragraph and all children.  Returns False if not found."""
-        para = self._paragraph_repo.load(paragraph_id)
+    def delete(self, paragraph_id: str, *, owner: str) -> bool:
+        """Delete a paragraph and all children.
+
+        Returns False if the paragraph is not there for *owner*, which is also what a
+        paragraph of another account's document returns.
+        """
+        para = self._paragraph_repo.load(paragraph_id, owner)
         if para is None:
             return False
         para.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(para, chapter_id="")
+        uow.register(para, chapter_id="", owner=owner)
         uow.commit()
         return True
 
@@ -730,34 +773,51 @@ class SentenceService:
         self._sentence_repo = sentence_repo
         self._session_context = session_context
 
-    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
-        """Return sentence summaries for a paragraph."""
-        return self._sentence_repo.list_by_paragraph(paragraph_id)
+    def list_by_paragraph(self, paragraph_id: str, *, owner: str) -> list[dict[str, str]]:
+        """Return sentence summaries for a paragraph.
 
-    def get(self, sentence_id: str) -> Sentence | None:
-        """Load a full sentence with tokens, or None."""
-        return self._sentence_repo.load(sentence_id)
+        A paragraph the caller does not own lists the same as one with no sentences:
+        an empty list.
+        """
+        return self._sentence_repo.list_by_paragraph(paragraph_id, owner)
+
+    def get(self, sentence_id: str, *, owner: str) -> Sentence | None:
+        """Load a full sentence with tokens, or None.
+
+        None also covers a sentence of another account's document, so a sentence id
+        belonging to someone else is no more confirmable than one never created.
+        """
+        return self._sentence_repo.load(sentence_id, owner)
 
     def create(
         self,
         sentence_id: str,
         text: str,
         paragraph_id: str,
+        *,
+        owner: str,
     ) -> Sentence:
         """Create a new sentence with text and commit it.
+
+        The sentence is written through its paragraph, so the paragraph has to be the
+        caller's: a write whose ``MATCH`` matches nothing writes nothing and reports no
+        error, which would answer 200 for a sentence that does not exist. Raises
+        ``ParagraphNotFoundError`` instead, which the route reports as 404.
 
         The text is set on the sentence (marking it dirty).  Tokenisation
         happens asynchronously via the job queue when a session context is
         available, or synchronously via UoW commit otherwise.
         """
+        if not self._sentence_repo.owns_paragraph(paragraph_id, owner):
+            raise ParagraphNotFoundError(paragraph_id)
         sent = Sentence(id=sentence_id)
         sent.set_text(text)
 
         if self._can_use_async():
-            self._enqueue_content_jobs(sent, paragraph_id=paragraph_id)
+            self._enqueue_content_jobs(sent, paragraph_id=paragraph_id, owner=owner)
         else:
             uow = self._uow_factory.get_unit_of_work()
-            uow.register(sent, paragraph_id=paragraph_id)
+            uow.register(sent, paragraph_id=paragraph_id, owner=owner)
             uow.flush_pending()
         return sent
 
@@ -766,33 +826,40 @@ class SentenceService:
         sentence_id: str,
         text: str,
         paragraph_id: str | None = None,
+        *,
+        owner: str,
     ) -> Sentence | None:
         """Replace sentence text.
 
-        Returns None if sentence not found.
+        Returns None if the sentence is not there for *owner* — which is also what a
+        sentence of another account's document returns.
         """
-        sent = self._sentence_repo.load(sentence_id)
+        sent = self._sentence_repo.load(sentence_id, owner)
         if sent is None:
             return None
 
         sent.set_text(text)
 
         if self._can_use_async():
-            self._enqueue_content_jobs(sent, paragraph_id=paragraph_id or "")
+            self._enqueue_content_jobs(sent, paragraph_id=paragraph_id or "", owner=owner)
         else:
             uow = self._uow_factory.get_unit_of_work()
-            uow.register(sent, paragraph_id=paragraph_id or "")
+            uow.register(sent, paragraph_id=paragraph_id or "", owner=owner)
             uow.flush_pending()
         return sent
 
-    def delete(self, sentence_id: str) -> bool:
-        """Delete a sentence and all tokens.  Returns False if not found."""
-        sent = self._sentence_repo.load(sentence_id)
+    def delete(self, sentence_id: str, *, owner: str) -> bool:
+        """Delete a sentence and all tokens.
+
+        Returns False if the sentence is not there for *owner*, which is also what a
+        sentence of another account's document returns.
+        """
+        sent = self._sentence_repo.load(sentence_id, owner)
         if sent is None:
             return False
         sent.state = DataState.DELETED
         uow = self._uow_factory.get_unit_of_work()
-        uow.register(sent, paragraph_id="")
+        uow.register(sent, paragraph_id="", owner=owner)
         uow.commit()
         return True
 

@@ -210,11 +210,11 @@ def test_opening_a_document_materializes_only_its_owners_tree(services, neo4j_se
         alice_tree = factory.for_account(_ALICE)
         bob_tree = factory.for_account(_BOB)
 
-        assert service.open("d-bob", _ALICE) is None
+        assert service.open("d-bob", owner=_ALICE) is None
         assert alice_tree.document_dir("Opening").is_dir()
         assert not alice_tree.document_dir("Closing").exists()
 
-        assert service.open("d-bob", _BOB) is not None
+        assert service.open("d-bob", owner=_BOB) is not None
         assert bob_tree.document_dir("Closing").is_dir()
     finally:
         neo4j_session.run(_CLEANUP_CYPHER, {"ids": ["d-alice", "d-bob"]})

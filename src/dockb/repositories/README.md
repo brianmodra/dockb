@@ -29,6 +29,27 @@ it answers "who owns this" for the paths that must resolve an owner before they 
 scope themselves, and is not for serving a request. A document with no `owner`
 property predates ownership and belongs to nobody.
 
+## Child repositories scope through the document, not through the parent
+
+`ChapterRepository`, `ParagraphRepository` and `SentenceRepository` take the same
+account id as a required argument, and a chapter, paragraph or sentence id on its own
+identifies nothing. Ownership lives only on `Document`, so every one of their queries
+starts from `(:Document {owner: $owner})` and reaches the child through
+`PART_OF`: a chapter from its document, a paragraph from its document (not from the
+chapter it was handed), a sentence from its document. `owned_node_exists` answers the
+same question for a single child id — the owner-scoped equivalent of `EXISTS` — and is
+what decides whether a child id belongs to the account asking, before a write that has
+no other reason to touch the document.
+
+The consequence is that a valid child id belonging to another account is reported the
+same way a child id that never existed is reported: empty from a list, `None` from a
+load. The `owns_chapter` / `owns_paragraph` guards carry the account id for the same
+reason — a caller that can reach a parent by id alone can reach another account's work.
+
+`ChapterRepository.reorder` takes the account id as a required argument for the same
+reason as every other method here. Nothing in this layer defaults it, because a
+repository that defaulted to `""` would silently scope to nothing rather than fail.
+
 # Writing to the database
 
 This will mostly be a Sentence (and all its Tokens) at a time. Each model object has a unique ID,

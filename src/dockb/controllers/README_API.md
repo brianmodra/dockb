@@ -18,6 +18,37 @@ Tokens are **server-only** — computed by `SentenceTokenizer`/spaCy, stored in 
 
 ---
 
+## Ownership
+
+**Every manuscript route is scoped to the signed-in account.** The account is the
+session's user id, taken from the session and never from the request body, the URL, or
+a header the editor sets. `POST /api/import` is the one route where a *name* also
+travels with the request: the body's `user_name` and the part paths stay unchanged, but
+the document it creates is stamped with the account id.
+
+A resource belonging to another account is **absent, not forbidden**. Reading one gives
+the same answer as reading an id that never existed, so an id cannot be used to learn
+whether someone else's document is real:
+
+| Request | Another account's resource |
+|---|---|
+| list | `200` with `[]` |
+| read | `404` with that resource's own `*_not_found` code |
+| update | `404`, nothing written |
+| delete | `404`, nothing written |
+| restore a snapshot | `404` |
+| create inside another account's parent | `404` with the **parent's** `*_not_found` code |
+
+So the editor needs no 403 handling: a resource it may not touch is a resource it does
+not have, and re-authenticating as another account changes only what that account's ids
+can reach.
+
+A document with **no owner** — one imported before accounts existed — is visible to
+nobody. It is not claimed by whoever opens it; an administrator assigns it with
+`dockb users assign`.
+
+---
+
 ## Wire Format
 
 ### ProseMirror JSON (Chapter, Paragraph, Sentence)
@@ -579,6 +610,13 @@ The snapshot file is rewritten before every chapter edit; see
 [`src/dockb/infrastructure/history/README.md`](../infrastructure/history/README.md)
 for details.
 
+Both history routes are scoped to the signed-in account like every other manuscript
+route: a chapter of another account has no history to list (`200` with `[]`) and cannot
+be restored (`404`). Snapshots themselves are keyed by chapter id, not by account, so a
+restore re-attaches the rebuilt chapter to whichever document the account's graph says
+owns that chapter — the chapter id is not assumed to belong to the document the client
+last had open.
+
 Syntax of the response payload of a GET history list request:
 ```
 history: snapshot*
@@ -699,7 +737,10 @@ document.
 
 The server writes the parts to a temporary directory, walks it, and deletes it.
 Nothing is written back to the uploaded files, and the caller's own files are
-never touched. The owner is the session's user, never a value from the body.
+never touched. The document belongs to the session's account. The `user_name` the body
+carries is not an owner — it is the new document's `author`, the name a reader of the
+manuscript sees — and a username is mutable, so it is never used to decide who may open
+the document.
 
 Returns one summary per chapter file in the document, whether or not that file had
 changed (`created` and the three counts say which):
@@ -764,10 +805,10 @@ Following is a non-exhaustive illustrative list of error responses and HTTP code
 
 | Code | HTTP Status | Meaning |
 |---|---|---|
-| `document_not_found` | 404 | Document ID does not exist |
-| `sentence_not_found` | 404 | Sentence ID does not exist in this document |
-| `paragraph_not_found` | 404 | Paragraph ID does not exist in this document |
-| `chapter_not_found` | 404 | Chapter ID does not exist in this document |
+| `document_not_found` | 404 | Document ID does not exist, or belongs to another account |
+| `sentence_not_found` | 404 | Sentence ID does not exist in this document, or belongs to another account |
+| `paragraph_not_found` | 404 | Paragraph ID does not exist in this document, or belongs to another account |
+| `chapter_not_found` | 404 | Chapter ID does not exist in this document, or belongs to another account |
 | `invalid_payload` | 422 | JSON body does not match expected schema |
 | `processing_error` | 500 | spaCy/hydration/internal failure |
 | `conflict` | 409 | Document version mismatch (optimistic locking) |

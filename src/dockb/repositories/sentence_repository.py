@@ -7,6 +7,7 @@ from dockb.infrastructure.neo4j.base import BaseRepository
 from dockb.models.base import DataState
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
+from dockb.repositories.ownership import owned_node_exists
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _NEW_CYPHER = """
-MATCH (p:Paragraph {id: $paragraph_id})
+MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
 MERGE (s:Sentence {id: $sentence_id})
 MERGE (s)-[:PART_OF]->(p)
 WITH s
@@ -53,7 +54,7 @@ DETACH DELETE orphan
 """
 
 _DELETE_CYPHER = """
-MATCH (s:Sentence {id: $sentence_id})
+MATCH (s:Sentence {id: $sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
 DETACH DELETE s
 """
 
@@ -62,13 +63,14 @@ DETACH DELETE s
 # ---------------------------------------------------------------------------
 
 _LIST_BY_PARAGRAPH_CYPHER = """
-MATCH (s:Sentence)-[:PART_OF]->(p:Paragraph {id: $paragraph_id})
+MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
+MATCH (s:Sentence)-[:PART_OF]->(p)
 RETURN s.id AS id
 ORDER BY s.id
 """
 
 _LOAD_CYPHER = """
-MATCH (s:Sentence {id: $sentence_id})
+MATCH (s:Sentence {id: $sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   s.id AS sentence_id,
@@ -100,6 +102,7 @@ class SentenceRepository(BaseRepository[Sentence]):
     def _build_params(self, model: Sentence, **parent_ids: str) -> dict[str, Any]:
         return {
             "paragraph_id": parent_ids["paragraph_id"],
+            "owner": parent_ids["owner"],
             "sentence_id": model.id,
             "tokens": [self._token_to_dict(token, index) for index, token in enumerate(model.tokens)],
         }
@@ -120,18 +123,33 @@ class SentenceRepository(BaseRepository[Sentence]):
             "index": index,
         }
 
-    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
-        """Return ``[{id}]`` summaries for sentences belonging to *paragraph_id*."""
-        records = list(self._session.run(_LIST_BY_PARAGRAPH_CYPHER, {"paragraph_id": paragraph_id}))
+    def owns_paragraph(self, paragraph_id: str, owner: str) -> bool:
+        """Return whether *paragraph_id* — the parent this repository writes through — is *owner*'s.
+
+        Asked before a create, because the write's ``MATCH`` on the paragraph that matches
+        nothing writes nothing and reports no error: without this the route would answer
+        200 for a sentence that does not exist.
+        """
+        return owned_node_exists(self._session, "Paragraph", paragraph_id, owner)
+
+    def list_by_paragraph(self, paragraph_id: str, owner: str) -> list[dict[str, str]]:
+        """Return ``[{id}]`` summaries for sentences belonging to *paragraph_id*.
+
+        A paragraph *owner* does not own yields the same empty list as one with no
+        sentences, so its existence is not confirmable from here.
+        """
+        records = list(self._session.run(_LIST_BY_PARAGRAPH_CYPHER, {"paragraph_id": paragraph_id, "owner": owner}))
         return [{"id": r["id"]} for r in records]
 
-    def load(self, sentence_id: str) -> Sentence | None:
+    def load(self, sentence_id: str, owner: str) -> Sentence | None:
         """Load a Sentence and its Tokens from Neo4j.
 
-        Returns None when no sentence with *sentence_id* exists.
+        Returns None when no sentence with *sentence_id* hangs under a document *owner*
+        owns — the same answer as when no such sentence exists at all, so a sentence id
+        belonging to another account is not confirmable.
         """
         logger.debug("Load Sentence %s", sentence_id)
-        records = list(self._session.run(_LOAD_CYPHER, {"sentence_id": sentence_id}))
+        records = list(self._session.run(_LOAD_CYPHER, {"sentence_id": sentence_id, "owner": owner}))
         if not records:
             return None
 

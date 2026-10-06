@@ -564,7 +564,7 @@ class TestTimingMiddleware:
         from dockb.timing import measure
 
         class FakeChapterService:
-            def open_document(self, chapter_id: str) -> str | None:
+            def open_document(self, chapter_id: str, owner: str = "") -> str | None:
                 with measure("fake.slow_stage"):
                     time.sleep(0.005)
                 return "canonical text"
@@ -593,7 +593,7 @@ class TestTimingMiddleware:
         from dockb.controllers.chapters import set_ch_service
 
         class QuietService:
-            def open_document(self, chapter_id: str) -> str | None:
+            def open_document(self, chapter_id: str, owner: str = "") -> str | None:
                 return "text"
 
         set_ch_service(QuietService())

@@ -63,6 +63,8 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     act: str | None = None,
     category: Literal["Chapter", "Character"] | None = None,
     write_back: bool = True,
+    *,
+    owner: str,
 ) -> ChapterImportSummary:
     """Persist the changes a markdown chapter file makes to *document*.
 
@@ -84,6 +86,10 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     unchanged (no front matter, no canonical rewrite); the graph is still
     updated, and a later import has no front-matter id to match, so it assigns
     a fresh id to the file on every run.
+
+    *owner* is the account the chapter is being read for: the graph reads that name a
+    chapter id resolves under are scoped by it, so a file cannot name a chapter of
+    another account and rewrite it.
     """
     path = Path(file_path)
     with measure("stage.parse_file"):
@@ -93,7 +99,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
 
         def load_once(chapter_id: str) -> Chapter | None:
             if chapter_id not in cached:
-                cached[chapter_id] = chapter_repo.load(chapter_id)
+                cached[chapter_id] = chapter_repo.load(chapter_id, owner)
             return cached[chapter_id]
 
         diff = detect_changes(
@@ -118,7 +124,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
             if category is not None:
                 chapter.category = category
             with measure("stage.persist"):
-                _persist(uow_factory, document.id, chapter, [], [], nlp)
+                _persist(uow_factory, document.id, chapter, [], [], nlp, owner)
             if write_back:
                 _write_back_front_matter(
                     path,
@@ -150,7 +156,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
         added_paragraphs = _place_new_paragraphs(chapter, diff.new, nlp)
 
     with measure("stage.persist"):
-        _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp)
+        _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp, owner)
     if write_back:
         with measure("stage.render"):
             _write_back_chapter_file(path, chapter, nlp)
@@ -190,7 +196,8 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
     uow_factory: UnitOfWorkFactory,
     single_newline_paragraphs: bool = False,
     write_back: bool = True,
-    owner: str = "",
+    *,
+    owner: str,
 ) -> list[ChapterImportSummary]:
     """Import every chapter file under a document directory into its graph Document.
 
@@ -236,10 +243,11 @@ def import_document_directory(  # pylint: disable=too-many-arguments,too-many-po
             act=act,
             category=category,
             write_back=write_back,
+            owner=owner,
         )
         summaries.append(summary)
     if summaries:
-        chapter_repo.reorder(document.id, [s.chapter_id for s in summaries])
+        chapter_repo.reorder(document.id, [s.chapter_id for s in summaries], owner=owner)
     return summaries
 
 
@@ -454,7 +462,8 @@ def _resolve_document(  # pylint: disable=too-many-arguments,too-many-positional
     document_repo: DocumentRepository,
     uow_factory: UnitOfWorkFactory,
     write_back: bool = True,
-    owner: str = "",
+    *,
+    owner: str,
 ) -> Document:
     """Return the graph Document for a document directory, creating it if missing.
 
@@ -512,19 +521,25 @@ def _persist(  # pylint: disable=too-many-arguments,too-many-positional-argument
     changed_paragraphs: list[Paragraph],
     added_paragraphs: list[Paragraph],
     nlp: Language,
+    owner: str,
 ) -> None:
     """Register the rebuilt chapter, its content-bearing paragraphs, and every
-    sentence of those paragraphs (tokenized with *nlp*), then commit once."""
+    sentence of those paragraphs (tokenized with *nlp*), then commit once.
+
+    *owner* is the account the writes belong to: the repositories scope every
+    write to a document the account owns, so a chapter is never written under
+    another account's tree.
+    """
     tokenizer = SentenceTokenizer()
     doc_cache = DocCache(nlp)
     uow = uow_factory.get_unit_of_work()
-    uow.register(chapter, document_id=document_id)
+    uow.register(chapter, document_id=document_id, owner=owner)
     for paragraph in changed_paragraphs + added_paragraphs:
-        uow.register(paragraph, chapter_id=chapter.id)
+        uow.register(paragraph, chapter_id=chapter.id, owner=owner)
         for sentence in paragraph.sentences:
             sentence.tokens[:] = tokenizer.tokenize(sentence.text, doc_cache)
             sentence.state = DataState.NEW
-            uow.register(sentence, paragraph_id=paragraph.id)
+            uow.register(sentence, paragraph_id=paragraph.id, owner=owner)
     uow.commit()
 
 

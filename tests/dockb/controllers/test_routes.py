@@ -47,23 +47,23 @@ class MockDocumentService:
     def __init__(self) -> None:
         self._docs: dict[str, Document] = {}
 
-    def list_all(self) -> list[dict[str, str]]:
+    def list_all(self, owner: str = "") -> list[dict[str, str]]:
         return [{"id": d.id, "title": d.title, "author": d.author} for d in self._docs.values()]
 
-    def get(self, document_id: str) -> Document | None:
+    def get(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
-    def open(self, document_id: str) -> Document | None:
+    def open(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
-    def create(self, document_id: str, title: str, author: str) -> Document:
+    def create(self, document_id: str, title: str, author: str, owner: str = "") -> Document:
         if any(d.title == title for d in self._docs.values()):
             raise DuplicateTitleError(title)
         doc = _make_doc(document_id, title, author)
         self._docs[document_id] = doc
         return doc
 
-    def update(self, document_id: str, title: str, author: str) -> Document | None:
+    def update(self, document_id: str, title: str, author: str, owner: str = "") -> Document | None:
         doc = self._docs.get(document_id)
         if doc is None:
             return None
@@ -74,7 +74,7 @@ class MockDocumentService:
         doc.author = author
         return doc
 
-    def delete(self, document_id: str) -> bool:
+    def delete(self, document_id: str, owner: str = "") -> bool:
         return self._docs.pop(document_id, None) is not None
 
 
@@ -84,13 +84,13 @@ class MockChapterService:
         self._owners: dict[str, str] = {}
         self._documents: dict[str, str] = {}
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str]]:
+    def list_by_document(self, document_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": ch.id, "title": ch.title, "act": ch.act} for ch in self._chapters.values()]
 
-    def get(self, chapter_id: str) -> Chapter | None:
+    def get(self, chapter_id: str, owner: str = "") -> Chapter | None:
         return self._chapters.get(chapter_id)
 
-    def open(self, chapter_id: str) -> Chapter | None:
+    def open(self, chapter_id: str, owner: str = "") -> Chapter | None:
         return self._chapters.get(chapter_id)
 
     def create(
@@ -100,6 +100,7 @@ class MockChapterService:
         document_id: str,
         after_chapter_id: str | None = None,
         category: str = "Chapter",
+        owner: str = "",
     ) -> Chapter:
         for ch_id, ch in self._chapters.items():
             if self._owners.get(ch_id) == document_id and ch.title.lower() == title.lower():
@@ -109,7 +110,7 @@ class MockChapterService:
         self._owners[chapter_id] = document_id
         return ch
 
-    def update(self, chapter_id: str, title: str) -> Chapter | None:
+    def update(self, chapter_id: str, title: str, owner: str = "") -> Chapter | None:
         ch = self._chapters.get(chapter_id)
         if ch is None:
             return None
@@ -120,22 +121,22 @@ class MockChapterService:
         ch.title = title
         return ch
 
-    def delete(self, chapter_id: str) -> bool:
+    def delete(self, chapter_id: str, owner: str = "") -> bool:
         return self._chapters.pop(chapter_id, None) is not None
 
-    def move(self, chapter_id: str, after_chapter_id: str | None) -> Chapter | None:
+    def move(self, chapter_id: str, after_chapter_id: str | None, owner: str = "") -> Chapter | None:
         if chapter_id not in self._chapters:
             return None
         if after_chapter_id is not None and after_chapter_id not in self._chapters:
             raise ChapterAfterNotFoundError(after_chapter_id)
         return self._chapters[chapter_id]
 
-    def open_document(self, chapter_id: str) -> str | None:
+    def open_document(self, chapter_id: str, owner: str = "") -> str | None:
         if chapter_id not in self._chapters:
             return None
         return self._documents.setdefault(chapter_id, "# New\n")
 
-    def save_document(self, chapter_id: str, content: str) -> SimpleNamespace:
+    def save_document(self, chapter_id: str, content: str, owner: str = "") -> SimpleNamespace:
         if chapter_id not in self._chapters:
             return None
         self._documents[chapter_id] = content
@@ -149,20 +150,20 @@ class MockParagraphService:
     def __init__(self) -> None:
         self._paragraphs: dict[str, Paragraph] = {}
 
-    def list_by_chapter(self, chapter_id: str) -> list[dict[str, str]]:
+    def list_by_chapter(self, chapter_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": p.id} for p in self._paragraphs.values()]
 
-    def get(self, paragraph_id: str) -> Paragraph | None:
+    def get(self, paragraph_id: str, owner: str = "") -> Paragraph | None:
         return self._paragraphs.get(paragraph_id)
 
-    def create(self, paragraph_id: str, content: list[Sentence], chapter_id: str) -> Paragraph:
+    def create(self, paragraph_id: str, content: list[Sentence], chapter_id: str, owner: str = "") -> Paragraph:
         p = _make_paragraph(paragraph_id)
         for s in content:
             p.append_child(s)
         self._paragraphs[paragraph_id] = p
         return p
 
-    def update(self, paragraph_id: str, content: list[Sentence], chapter_id: str | None = None) -> Paragraph | None:
+    def update(self, paragraph_id: str, content: list[Sentence], chapter_id: str | None = None, owner: str = "") -> Paragraph | None:
         p = self._paragraphs.get(paragraph_id)
         if p is None:
             return None
@@ -170,7 +171,7 @@ class MockParagraphService:
             p.append_child(s)
         return p
 
-    def delete(self, paragraph_id: str) -> bool:
+    def delete(self, paragraph_id: str, owner: str = "") -> bool:
         return self._paragraphs.pop(paragraph_id, None) is not None
 
 
@@ -178,25 +179,25 @@ class MockSentenceService:
     def __init__(self) -> None:
         self._sentences: dict[str, Sentence] = {}
 
-    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
+    def list_by_paragraph(self, paragraph_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": s.id} for s in self._sentences.values()]
 
-    def get(self, sentence_id: str) -> Sentence | None:
+    def get(self, sentence_id: str, owner: str = "") -> Sentence | None:
         return self._sentences.get(sentence_id)
 
-    def create(self, sentence_id: str, text: str, paragraph_id: str) -> Sentence:
+    def create(self, sentence_id: str, text: str, paragraph_id: str, owner: str = "") -> Sentence:
         s = _make_sentence(sentence_id, text)
         self._sentences[sentence_id] = s
         return s
 
-    def update(self, sentence_id: str, text: str, paragraph_id: str | None = None) -> Sentence | None:
+    def update(self, sentence_id: str, text: str, paragraph_id: str | None = None, owner: str = "") -> Sentence | None:
         s = self._sentences.get(sentence_id)
         if s is None:
             return None
         s.set_text(text)
         return s
 
-    def delete(self, sentence_id: str) -> bool:
+    def delete(self, sentence_id: str, owner: str = "") -> bool:
         return self._sentences.pop(sentence_id, None) is not None
 
 
@@ -225,11 +226,14 @@ def _build_app(
     set_para_service(para_svc or MockParagraphService())
     set_sent_service(sent_svc or MockSentenceService())
 
+    from dockb.controllers.auth import get_current_user
+
     app = FastAPI()
     app.include_router(documents_router)
     app.include_router(chapters_router)
     app.include_router(paragraphs_router)
     app.include_router(sentences_router)
+    app.dependency_overrides[get_current_user] = lambda: "acct-1"
     return app
 
 
@@ -386,7 +390,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
         self.ch_svc.create("c1", "Intro", "d1")
         with patch.object(self.ch_svc, "open", wraps=self.ch_svc.open) as open_mock:
             self.client.get("/api/chapters/c1")
-            open_mock.assert_called_once_with("c1")
+            open_mock.assert_called_once_with("c1", owner="acct-1")
 
     def test_create_chapter(self) -> None:
         resp = self.client.post(
@@ -426,6 +430,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             document_id="d1",
             after_chapter_id="c1",
             category="Chapter",
+            owner="acct-1",
         )
 
     def test_create_chapter_after_not_found(self) -> None:
@@ -482,7 +487,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             )
         assert resp.status_code == 200
         assert resp.json()["status"]["code"] == "ok"
-        move_mock.assert_called_once_with(chapter_id="c3", after_chapter_id="c1")
+        move_mock.assert_called_once_with(chapter_id="c3", after_chapter_id="c1", owner="acct-1")
 
     def test_reorder_chapter_first(self) -> None:
         self.ch_svc.create("c1", "Ch1", "d1")
@@ -493,7 +498,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
                 json={"after_chapter_id": None},
             )
         assert resp.status_code == 200
-        move_mock.assert_called_once_with(chapter_id="c2", after_chapter_id=None)
+        move_mock.assert_called_once_with(chapter_id="c2", after_chapter_id=None, owner="acct-1")
 
     def test_reorder_chapter_not_found(self) -> None:
         resp = self.client.post(

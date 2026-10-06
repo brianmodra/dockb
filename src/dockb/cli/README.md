@@ -91,15 +91,16 @@ request — this process cannot evict an in-memory session it does not own. See
 
 ## Reconstruct a chapter
 
-`dockb reconstruct-chapter <chapter_id> [--owner <username>] [--out PATH]` renders the chapter with
+`dockb reconstruct-chapter <chapter_id> --owner <username> [--out PATH]` renders the chapter with
 `chapter_id` from the knowledge graph as markdown. Without `--out` the canonical chapter file is
 written into that account's tree — `<base>/<account id>/<document title>/<Act X>/<chapter title>.md`, or
 the `Characters` directory for a `Character` chapter — under
 `DOCKB_CHAPTERS_DIR` (defaulting to `cwd/dockb_chapters_dir`) — and git-committed in the account's own
 repository; the written path is printed. With `--out` it is written to the exact `PATH` instead,
-without touching the store tree, and `--owner` is then not needed. Without `--out` the command
-refuses to run rather than pick an account, since a chapter written under the wrong one would be a
-manuscript nobody sees. A chapter id the graph does not know — a chapter the named account does not
+without touching the store tree. `--owner` is required either way, and it is resolved through
+`startup.py::account_id_for` like every other command's: a chapter is read through the account that
+owns it, so a chapter id on its own would match no document and reconstruct nothing. A chapter id the
+graph does not know — a chapter the named account does not
 own, or a chapter with no owning document (so it cannot be placed) —
 prints the error message to stderr and exits non-zero. The serialization itself is the shared format
 owned by `../infrastructure/markdown/`.

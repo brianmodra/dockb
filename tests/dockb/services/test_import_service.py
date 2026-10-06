@@ -10,11 +10,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dockb.exceptions import DocumentFormatError
+from dockb.exceptions import DocumentFormatError, DocumentOwnershipError
 from dockb.services import import_service as import_service_module
 from dockb.services.import_service import ImportService
 from dockb.services.markdown_import import ChapterImportSummary
 from dockb.uploads import MAX_FILE_COUNT, MAX_TOTAL_BYTES, UploadRejectedError, UploadTooLargeError
+
+_OWNER = "acct-1"
+_USERNAME = "abby"
 
 
 class FakeUpload:
@@ -70,7 +73,7 @@ class TestImportParts:
         walker.tree = {"Act I/Opening 1.md": b"one", "document_metadata.yaml": b"title: X"}
         parts = [FakeUpload("Linchpin/Act I/Opening 1.md", b"one"), FakeUpload("Linchpin/document_metadata.yaml", b"title: X")]
 
-        result = await service.import_parts(parts, "abby")
+        result = await service.import_parts(parts, "abby", owner=_OWNER)
 
         assert [s.chapter_id for s in result] == ["c1"]
         assert walker.calls[0]["path"].name == "Linchpin"
@@ -85,22 +88,45 @@ class TestImportParts:
             return []
 
         monkeypatch.setattr(import_service_module, "import_document_directory", capture)
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
         assert seen == ["Linchpin"]
 
     @pytest.mark.asyncio
     async def test_never_writes_back_the_uploaded_bytes(self, service, walker):
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
         assert walker.calls[0]["write_back"] is False
 
     @pytest.mark.asyncio
-    async def test_passes_the_authenticated_user(self, service, walker):
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
-        assert walker.calls[0]["user_name"] == "abby"
+    async def test_names_the_uploader_in_the_document_metadata(self, service, walker):
+        """The username is what a reader of the document sees, so it goes in the metadata."""
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], _USERNAME, owner=_OWNER)
+        assert walker.calls[0]["user_name"] == _USERNAME
+
+    @pytest.mark.asyncio
+    async def test_stamps_the_document_with_the_account_not_the_username(self, service, walker):
+        """Ownership is the account id, because a username is mutable provider data.
+
+        The document is stored under the account's own directory and matched against
+        other documents of that same account, so an id is what every later read scopes
+        by; a username would change under the document the day it was renamed.
+        """
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], _USERNAME, owner=_OWNER)
+        assert walker.calls[0]["owner"] == _OWNER
+
+    @pytest.mark.asyncio
+    async def test_refuses_an_upload_with_no_account_to_own_it(self, service, walker):
+        """Otherwise the document is created in the graph belonging to nobody.
+
+        Such a document is invisible to every account and reachable only through the
+        admin CLI that assigns it, which is not what an upload asked for.
+        """
+        with pytest.raises(DocumentOwnershipError):
+            await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], _USERNAME, owner="   ")
+        assert walker.calls == []
 
     @pytest.mark.asyncio
     async def test_forwards_the_single_newline_flag(self, service, walker):
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", single_newline_paragraphs=True)
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER, single_newline_paragraphs=True)
         assert walker.calls[0]["single_newline_paragraphs"] is True
 
     @pytest.mark.asyncio
@@ -115,7 +141,7 @@ class TestImportParts:
             return []
 
         monkeypatch.setattr(import_service_module, "import_document_directory", capture)
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
         assert seen["thread"] != threading.get_ident()
 
     @pytest.mark.asyncio
@@ -130,7 +156,7 @@ class TestImportParts:
             return []
 
         monkeypatch.setattr(import_service_module, "import_document_directory", capture)
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md", body)], "abby")
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md", body)], "abby", owner=_OWNER)
         assert seen["Act I/1.md"] == body
 
 
@@ -142,7 +168,7 @@ class TestUploadRejection:
 
         monkeypatch.setattr(import_service_module, "import_document_directory", never_called)
         with pytest.raises(UploadRejectedError):
-            await service.import_parts([FakeUpload("../../etc/passwd")], "abby")
+            await service.import_parts([FakeUpload("../../etc/passwd")], "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_rejects_one_bad_part_among_good_ones(self, service, monkeypatch):
@@ -153,13 +179,13 @@ class TestUploadRejection:
         )
         parts = [FakeUpload("Linchpin/Act I/1.md"), FakeUpload("Linchpin/../escape.md")]
         with pytest.raises(UploadRejectedError):
-            await service.import_parts(parts, "abby")
+            await service.import_parts(parts, "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_rejects_an_upload_over_the_byte_cap(self, service, monkeypatch):
         monkeypatch.setattr(import_service_module, "MAX_TOTAL_BYTES", 4)
         with pytest.raises(UploadTooLargeError):
-            await service.import_parts([FakeUpload("Linchpin/Act I/1.md", b"far too many bytes")], "abby")
+            await service.import_parts([FakeUpload("Linchpin/Act I/1.md", b"far too many bytes")], "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_the_byte_cap_covers_the_whole_upload_not_one_part(self, service, monkeypatch):
@@ -168,14 +194,14 @@ class TestUploadRejection:
         monkeypatch.setattr(import_service_module, "import_document_directory", RecordingWalker())
         parts = [FakeUpload(f"Linchpin/Act I/{n}.md", b"12345") for n in range(4)]
         with pytest.raises(UploadTooLargeError):
-            await service.import_parts(parts, "abby")
+            await service.import_parts(parts, "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_rejects_an_upload_with_too_many_files(self, service, monkeypatch):
         monkeypatch.setattr(import_service_module, "MAX_FILE_COUNT", 2)
         parts = [FakeUpload(f"Linchpin/Act I/{n}.md") for n in range(3)]
         with pytest.raises(UploadTooLargeError):
-            await service.import_parts(parts, "abby")
+            await service.import_parts(parts, "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_rejects_a_file_named_like_another_parts_directory(self, service, monkeypatch):
@@ -192,7 +218,7 @@ class TestUploadRejection:
         )
         parts = [FakeUpload("Linchpin/Act I"), FakeUpload("Linchpin/Act I/1.md")]
         with pytest.raises(UploadRejectedError, match="Linchpin/Act I"):
-            await service.import_parts(parts, "abby")
+            await service.import_parts(parts, "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_rejects_a_directory_named_like_another_parts_file(self, service, monkeypatch):
@@ -204,13 +230,13 @@ class TestUploadRejection:
         )
         parts = [FakeUpload("Linchpin/Act I/1.md"), FakeUpload("Linchpin/Act I")]
         with pytest.raises(UploadRejectedError, match="Linchpin/Act I"):
-            await service.import_parts(parts, "abby")
+            await service.import_parts(parts, "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_a_path_collision_cleans_up_the_temporary_directory(self, service):
         before = set(Path(tempfile.gettempdir()).glob("dockb-import-*"))
         with pytest.raises(UploadRejectedError):
-            await service.import_parts([FakeUpload("Linchpin/Act I"), FakeUpload("Linchpin/Act I/1.md")], "abby")
+            await service.import_parts([FakeUpload("Linchpin/Act I"), FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
         assert set(Path(tempfile.gettempdir()).glob("dockb-import-*")) == before
 
     @pytest.mark.asyncio
@@ -218,7 +244,7 @@ class TestUploadRejection:
         """A full disk or a vanished temp dir is our fault, not the caller's upload."""
         monkeypatch.setattr(import_service_module.Path, "mkdir", MagicMock(side_effect=OSError(28, "No space left on device")))
         with pytest.raises(OSError):
-            await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
+            await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
 
     @pytest.mark.asyncio
     async def test_the_file_cap_is_the_documented_one(self):
@@ -232,14 +258,14 @@ class TestUploadRejection:
     @pytest.mark.asyncio
     async def test_rejects_an_empty_upload(self, service):
         with pytest.raises(UploadRejectedError, match="no files"):
-            await service.import_parts([], "abby")
+            await service.import_parts([], "abby", owner=_OWNER)
 
 
 class TestTemporaryDirectory:
     @pytest.mark.asyncio
     async def test_is_removed_after_a_successful_import(self, service, walker):
         before = set(Path(tempfile.gettempdir()).glob("dockb-import-*"))
-        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
+        await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
         assert set(Path(tempfile.gettempdir()).glob("dockb-import-*")) == before
 
     @pytest.mark.asyncio
@@ -251,5 +277,5 @@ class TestTemporaryDirectory:
         )
         before = set(Path(tempfile.gettempdir()).glob("dockb-import-*"))
         with pytest.raises(DocumentFormatError, match="not numbered"):
-            await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby")
+            await service.import_parts([FakeUpload("Linchpin/Act I/1.md")], "abby", owner=_OWNER)
         assert set(Path(tempfile.gettempdir()).glob("dockb-import-*")) == before

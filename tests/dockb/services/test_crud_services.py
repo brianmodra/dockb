@@ -15,8 +15,11 @@ import pytest
 from dockb.exceptions import (
     ChapterAfterNotFoundError,
     ChapterCategoryMismatchError,
+    ChapterNotFoundError,
+    DocumentNotFoundError,
     DocumentOwnershipError,
     DuplicateTitleError,
+    ParagraphNotFoundError,
 )
 from dockb.infrastructure.document_store import DocumentStore, DocumentStoreFactory
 from dockb.infrastructure.document_store.store import DocumentMetadata
@@ -106,7 +109,36 @@ class StubDocumentRepo(StubRepo):
         return model.owner if isinstance(model, Document) and model.owner else None
 
 
-class StubChapterRepo(StubRepo):
+class StubOwnedRepo(StubRepo):
+    """A child repository stub that honours the account each node belongs to.
+
+    Ownership is recorded per node with :meth:`own_as`, and a node nobody has claimed
+    reads as visible to any account — the tests that care claim their nodes. This keeps
+    a test which forgets to pass an owner from silently reading another account's text,
+    and every scoped call is recorded in ``owner_calls`` so a service cannot quietly
+    drop the account on its way to the repository.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._owner_of: dict[str, str] = {}
+        self.owner_calls: list[tuple[str, str]] = []
+
+    def own_as(self, model_id: str, owner: str) -> None:
+        """Record that *model_id* belongs to *owner*."""
+        self._owner_of[model_id] = owner
+
+    def _seen_by(self, model_id: str, owner: str) -> bool:
+        self.owner_calls.append((model_id, owner))
+        return self._owner_of.get(model_id, owner) == owner
+
+    def load(self, model_id: str, owner: str = "") -> Chapter | Paragraph | Sentence | None:  # type: ignore[override]  # pylint: disable=arguments-differ
+        if not self._seen_by(model_id, owner):
+            return None
+        return super().load(model_id)
+
+
+class StubChapterRepo(StubOwnedRepo):
     def __init__(self) -> None:
         super().__init__()
         self._document_of: dict[str, str] = {}
@@ -119,10 +151,12 @@ class StubChapterRepo(StubRepo):
     def set_index(self, chapter_id: str, index: int) -> None:
         self._index_of[chapter_id] = index
 
-    def find_document_id(self, chapter_id: str) -> str | None:
+    def find_document_id(self, chapter_id: str, owner: str = "") -> str | None:
+        if not self._seen_by(chapter_id, owner):
+            return None
         return self._document_of.get(chapter_id)
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
+    def list_by_document(self, document_id: str, owner: str = "") -> list[dict[str, str | int]]:
         rows = [
             {
                 "id": m.id,
@@ -132,32 +166,37 @@ class StubChapterRepo(StubRepo):
                 "index": self._index_of.get(m.id, 0),
             }
             for m in self._store.values()
-            if m.id not in self._document_of or self._document_of[m.id] == document_id
+            if (m.id not in self._document_of or self._document_of[m.id] == document_id) and self._seen_by(m.id, owner)
         ]
         rows.sort(key=lambda row: int(row["index"]))
         return rows
 
-    def reorder(self, document_id: str, ordered_ids: list[str]) -> None:
+    def reorder(self, document_id: str, ordered_ids: list[str], owner: str = "") -> None:  # pylint: disable=unused-argument
         self._reorders.append((document_id, list(ordered_ids)))
 
-    def load(self, model_id: str) -> Chapter | None:
-        return super().load(model_id)  # type: ignore[return-value]
+
+class StubParagraphRepo(StubOwnedRepo):
+    """The paragraph repository, and the chapter ids its writes go through.
+
+    :meth:`own_as` records the account for either a paragraph or the chapter above it,
+    which is the same claim the graph makes by walking to the document.
+    """
+
+    def owns_chapter(self, chapter_id: str, owner: str = "") -> bool:
+        return self._seen_by(chapter_id, owner)
+
+    def list_by_chapter(self, chapter_id: str, owner: str = "") -> list[dict[str, str]]:
+        return [row for row in super().list_by_parent(chapter_id) if self._seen_by(row["id"], owner)]
 
 
-class StubParagraphRepo(StubRepo):
-    def list_by_chapter(self, chapter_id: str) -> list[dict[str, str]]:
-        return super().list_by_parent(chapter_id)
+class StubSentenceRepo(StubOwnedRepo):
+    """The sentence repository, and the paragraph ids its writes go through."""
 
-    def load(self, model_id: str) -> Paragraph | None:
-        return super().load(model_id)  # type: ignore[return-value]
+    def owns_paragraph(self, paragraph_id: str, owner: str = "") -> bool:
+        return self._seen_by(paragraph_id, owner)
 
-
-class StubSentenceRepo(StubRepo):
-    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
-        return super().list_by_parent(paragraph_id)
-
-    def load(self, model_id: str) -> Sentence | None:
-        return super().load(model_id)  # type: ignore[return-value]
+    def list_by_paragraph(self, paragraph_id: str, owner: str = "") -> list[dict[str, str]]:
+        return [row for row in super().list_by_parent(paragraph_id) if self._seen_by(row["id"], owner)]
 
 
 class StubUnitOfWork:
@@ -238,21 +277,21 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         )
 
     def test_list_all_empty(self) -> None:
-        assert self.svc.list_all(self._OWNER) == []
+        assert self.svc.list_all(owner=self._OWNER) == []
 
     def test_list_all_returns_summaries(self) -> None:
         doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
         self.repo._store["d1"] = doc
-        result = self.svc.list_all(self._OWNER)
+        result = self.svc.list_all(owner=self._OWNER)
         assert result == [{"id": "d1", "title": "T", "author": "A"}]
 
     def test_get_returns_none_when_missing(self) -> None:
-        assert self.svc.get("nonexistent", self._OWNER) is None
+        assert self.svc.get("nonexistent", owner=self._OWNER) is None
 
     def test_get_returns_document(self) -> None:
         doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
         self.repo._store["d1"] = doc
-        result = self.svc.get("d1", self._OWNER)
+        result = self.svc.get("d1", owner=self._OWNER)
         assert result is doc
 
     def test_create_registers_new_document(self) -> None:
@@ -350,13 +389,13 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         doc = Document(owner="", id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d1"] = doc
 
-        assert self.svc.open("d1", self._OWNER) is None
+        assert self.svc.open("d1", owner=self._OWNER) is None
 
     def test_open_returns_none_for_another_accounts_document(self) -> None:
         doc = Document(owner="acct-2", id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d1"] = doc
 
-        assert self.svc.open("d1", self._OWNER) is None
+        assert self.svc.open("d1", owner=self._OWNER) is None
 
     def test_open_writes_nothing_for_another_accounts_document(self, tmp_path) -> None:
         doc = Document(owner="acct-2", id="d1", title="Faith", author="Paul", state=DataState.SYNC)
@@ -364,7 +403,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         store = self._store(tmp_path)
         svc = self._service_with_store(tmp_path)
 
-        assert svc.open("d1", self._OWNER) is None
+        assert svc.open("d1", owner=self._OWNER) is None
         assert not store.document_exists("Faith")
         assert not list(tmp_path.iterdir())
 
@@ -380,7 +419,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         doc = Document(owner="acct-2", id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d1"] = doc
 
-        assert self.svc.delete("d1", self._OWNER) is False
+        assert self.svc.delete("d1", owner=self._OWNER) is False
         assert doc.state == DataState.SYNC
         assert not self.uow.committed
 
@@ -391,7 +430,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         self.repo._store["d1"] = doc
         svc = self._service_with_store(tmp_path)
 
-        assert svc.delete("d1", self._OWNER) is False
+        assert svc.delete("d1", owner=self._OWNER) is False
         assert other.document_exists("Faith")
 
     def test_open_materializes_missing_tree(self, tmp_path, nlp) -> None:
@@ -412,7 +451,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         store = self._store(tmp_path)
         svc = self._service_with_store(tmp_path, nlp)
 
-        opened = svc.open("d1", self._OWNER)
+        opened = svc.open("d1", owner=self._OWNER)
 
         assert opened is doc
         assert store.read_metadata("Faith") == DocumentMetadata(title="Faith", author="Paul")
@@ -440,7 +479,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         existing.write_text("hand edit\n")
         svc = self._service_with_store(tmp_path, nlp)
 
-        svc.open("d1", self._OWNER)
+        svc.open("d1", owner=self._OWNER)
 
         assert store.read_chapter("Faith", "", "Intro") == "hand edit\n"
 
@@ -448,7 +487,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         doc = Document(owner=self._OWNER, id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d1"] = doc
         svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_store_factory=None, nlp=nlp)
-        assert svc.open("d1", self._OWNER) is doc
+        assert svc.open("d1", owner=self._OWNER) is doc
 
     def test_update_returns_none_when_missing(self) -> None:
         assert self.svc.update("nonexistent", "T", "A", self._OWNER) is None
@@ -528,16 +567,16 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         self.repo._store["d1"] = doc
         svc = self._service_with_store(tmp_path)
 
-        assert svc.open("d1", self._OWNER) is doc
+        assert svc.open("d1", owner=self._OWNER) is doc
         assert store.read_metadata("T") == DocumentMetadata(title="T", author="fresh")
 
     def test_delete_returns_false_when_missing(self) -> None:
-        assert self.svc.delete("nonexistent", self._OWNER) is False
+        assert self.svc.delete("nonexistent", owner=self._OWNER) is False
 
     def test_delete_sets_state(self) -> None:
         doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
         self.repo._store["d1"] = doc
-        assert self.svc.delete("d1", self._OWNER) is True
+        assert self.svc.delete("d1", owner=self._OWNER) is True
         assert doc.state == DataState.DELETED
         assert self.uow.committed
 
@@ -553,7 +592,7 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
         self.repo._store["d1"] = doc
         svc = self._service_with_store(tmp_path)
-        assert svc.delete("d1", self._OWNER) is True
+        assert svc.delete("d1", owner=self._OWNER) is True
         assert not store.document_exists("T")
         assert doc.state == DataState.DELETED
         assert self.uow.committed
@@ -606,25 +645,25 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert ch.title == "Intro"
         assert ch.state == DataState.NEW
         assert self.uow.committed
-        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0"}
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0", "owner": self._OWNER}
 
     def test_list_by_document_empty(self) -> None:
-        assert self.svc.list_by_document("doc1") == []
+        assert self.svc.list_by_document("doc1", owner=self._OWNER) == []
 
     def test_list_by_document_returns_summaries(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_index("c1", 2)
-        result = self.svc.list_by_document("doc1")
+        result = self.svc.list_by_document("doc1", owner=self._OWNER)
         assert result == [{"id": "c1", "title": "Ch1", "act": "", "category": "Chapter", "index": 2}]
 
     def test_get_returns_none_when_missing(self) -> None:
-        assert self.svc.get("nonexistent") is None
+        assert self.svc.get("nonexistent", owner=self._OWNER) is None
 
     def test_get_returns_chapter(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
-        assert self.svc.get("c1") is ch
+        assert self.svc.get("c1", owner=self._OWNER) is ch
 
     def test_create_defaults_category_chapter(self) -> None:
         self._own_document()
@@ -639,7 +678,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
     def test_create_without_after_places_first(self) -> None:
         self._own_document()
         self.svc.create("c1", title="Intro", document_id="d1", after_chapter_id=None, owner=self._OWNER)
-        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0"}
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "0", "owner": self._OWNER}
 
     def test_create_after_chapter_uses_next_index(self) -> None:
         self._own_document()
@@ -649,7 +688,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
         self.svc.create("c2", title="Ch2", document_id="d1", after_chapter_id="c1", owner=self._OWNER)
 
-        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "1"}
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "1", "owner": self._OWNER}
 
     def test_create_after_middle_chapter_uses_next_index(self) -> None:
         self._own_document()
@@ -660,7 +699,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
         self.svc.create("c2", title="Ch2", document_id="d1", after_chapter_id="c1", owner=self._OWNER)
 
-        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "2"}
+        assert self.uow.registered[0][1] == {"document_id": "d1", "index": "2", "owner": self._OWNER}
 
     def test_create_after_unknown_chapter_raises(self) -> None:
         self._own_document()
@@ -777,15 +816,15 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert result.title == "Intro"
 
     def test_update_returns_none_when_missing(self) -> None:
-        assert self.svc.update("nonexistent", "T", self._OWNER) is None
+        assert self.svc.update("nonexistent", "T", owner=self._OWNER) is None
 
     def test_delete_returns_false_when_missing(self) -> None:
-        assert self.svc.delete("nonexistent", self._OWNER) is False
+        assert self.svc.delete("nonexistent", owner=self._OWNER) is False
 
     def test_delete_sets_state(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
-        assert self.svc.delete("c1", self._OWNER) is True
+        assert self.svc.delete("c1", owner=self._OWNER) is True
         assert ch.state == DataState.DELETED
 
     def test_delete_removes_store_file_when_document_resolved(self, tmp_path) -> None:
@@ -809,7 +848,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             document_repo=doc_repo,
             document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
         )
-        svc.delete("c1", self._OWNER)
+        svc.delete("c1", owner=self._OWNER)
         assert not store.chapter_exists("T", "Act I", "Ch1")
         assert ch.state == DataState.DELETED
         assert self.uow.committed
@@ -819,7 +858,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.repo.set_document("c1", "d1")
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
-        self.svc.delete("c1", self._OWNER)
+        self.svc.delete("c1", owner=self._OWNER)
         assert ch.state == DataState.DELETED
 
     def _git_store(self, tmp_path) -> DocumentStore:
@@ -835,7 +874,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         store.write_chapter("Faith", "", "Intro", "hand edit\n")
         svc = self._service_with_store(tmp_path, nlp=nlp)
 
-        assert svc.open("c1", self._OWNER) is ch
+        assert svc.open("c1", owner=self._OWNER) is ch
 
     def test_open_document_uses_shell_load(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
@@ -849,7 +888,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n\n<span data-par-id="p1">\nEdited.\n</span>\n')
         svc = self._service_with_store(tmp_path, nlp=nlp, doc_repo=doc_repo)
 
-        content = svc.open_document("c1", self._OWNER)
+        content = svc.open_document("c1", owner=self._OWNER)
 
         assert content is not None
         assert "Edited." in content
@@ -866,7 +905,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n\n<span data-par-id="p1">\nEdited.\n</span>\n')
         svc = self._service_with_store(tmp_path, nlp=nlp, doc_repo=doc_repo)
 
-        result = svc.save_document("c1", '<span data-par-id="p1">\nSaved.\n</span>', self._OWNER)
+        result = svc.save_document("c1", '<span data-par-id="p1">\nSaved.\n</span>', owner=self._OWNER)
 
         assert result is not None
         assert "Saved." in result.content
@@ -915,21 +954,21 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
         )
 
-        svc.delete("c1", self._OWNER)
+        svc.delete("c1", owner=self._OWNER)
 
     def test_move_returns_none_when_missing(self) -> None:
-        assert self.svc.move("nonexistent", after_chapter_id=None) is None
+        assert self.svc.move("nonexistent", after_chapter_id=None, owner=self._OWNER) is None
 
     def test_move_returns_none_when_orphaned(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
-        assert self.svc.move("c1", after_chapter_id=None) is None
+        assert self.svc.move("c1", after_chapter_id=None, owner=self._OWNER) is None
 
     def test_move_after_itself_is_noop(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
-        result = self.svc.move("c1", after_chapter_id="c1")
+        result = self.svc.move("c1", after_chapter_id="c1", owner=self._OWNER)
         assert result is ch
         assert not self.repo._reorders
 
@@ -941,7 +980,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, list((c1, c2)).index(ch))
 
-        self.svc.move("c2", after_chapter_id=None)
+        self.svc.move("c2", after_chapter_id=None, owner=self._OWNER)
 
         assert self.repo._reorders == [("d1", ["c2", "c1"])]
 
@@ -954,7 +993,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, list((c1, c2, c3)).index(ch))
 
-        self.svc.move("c3", after_chapter_id="c1")
+        self.svc.move("c3", after_chapter_id="c1", owner=self._OWNER)
 
         assert self.repo._reorders == [("d1", ["c1", "c3", "c2"])]
 
@@ -963,7 +1002,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
         with pytest.raises(ChapterAfterNotFoundError):
-            self.svc.move("c1", after_chapter_id="ghost")
+            self.svc.move("c1", after_chapter_id="ghost", owner=self._OWNER)
         assert not self.repo._reorders
 
     def test_move_after_chapter_adopts_predecessor_act(self) -> None:
@@ -975,7 +1014,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, list((c1, c2, c3)).index(ch))
 
-        self.svc.move("c3", after_chapter_id="c1")
+        self.svc.move("c3", after_chapter_id="c1", owner=self._OWNER)
 
         assert c3.act == "Act I"
         assert c3.state == DataState.CHANGED
@@ -993,7 +1032,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, list((c1, c2)).index(ch))
 
-        self.svc.move("c2", after_chapter_id=None)
+        self.svc.move("c2", after_chapter_id=None, owner=self._OWNER)
 
         assert c2.act == "Act I"
         assert c1.act == "Act I"
@@ -1009,7 +1048,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.repo.set_index("c1", 1)
         self.repo.set_index("c2", 0)
 
-        self.svc.move("c2", after_chapter_id="c1")
+        self.svc.move("c2", after_chapter_id="c1", owner=self._OWNER)
 
         assert c2.act == ""
         assert self.uow.committed
@@ -1023,7 +1062,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, list((c1, c2)).index(ch))
 
-        self.svc.move("c1", after_chapter_id=None)
+        self.svc.move("c1", after_chapter_id=None, owner=self._OWNER)
 
         assert c1.act == "Act I"
         assert c2.act == ""
@@ -1040,7 +1079,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_index(ch.id, index)
 
         with pytest.raises(ChapterCategoryMismatchError):
-            self.svc.move("char", after_chapter_id="c1")
+            self.svc.move("char", after_chapter_id="c1", owner=self._OWNER)
 
         assert not self.repo._reorders
         assert character.act == ""
@@ -1055,7 +1094,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_index(ch.id, index)
 
         with pytest.raises(ChapterCategoryMismatchError):
-            self.svc.move("char", after_chapter_id=None)
+            self.svc.move("char", after_chapter_id=None, owner=self._OWNER)
 
         assert not self.repo._reorders
 
@@ -1067,7 +1106,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, index)
 
-        self.svc.move("b", after_chapter_id=None)
+        self.svc.move("b", after_chapter_id=None, owner=self._OWNER)
 
         assert self.repo._reorders == [("d1", ["b", "a"])]
 
@@ -1080,7 +1119,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             self.repo.set_document(ch.id, "d1")
             self.repo.set_index(ch.id, index)
 
-        self.svc.move("b", after_chapter_id="c1")
+        self.svc.move("b", after_chapter_id="c1", owner=self._OWNER)
 
         assert self.repo._reorders == [("d1", ["c1", "b", "a"])]
         assert second.act == ""
@@ -1088,13 +1127,13 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert not self.uow.committed
 
     def test_open_returns_none_when_missing(self) -> None:
-        assert self.svc.open("nonexistent", self._OWNER) is None
+        assert self.svc.open("nonexistent", owner=self._OWNER) is None
 
     def test_open_without_store_returns_chapter(self) -> None:
         ch = Chapter(id="c1", title="Ch1", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
-        assert self.svc.open("c1", self._OWNER) is ch
+        assert self.svc.open("c1", owner=self._OWNER) is ch
 
     def test_open_materializes_missing_chapter_file(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
@@ -1110,7 +1149,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        opened = svc.open("c1", self._OWNER)
+        opened = svc.open("c1", owner=self._OWNER)
 
         assert opened is ch
         content = store.read_chapter("Faith", "", "Intro")
@@ -1141,7 +1180,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        opened = svc.open("c1", self._OWNER)
+        opened = svc.open("c1", owner=self._OWNER)
 
         assert opened is ch
         content = store.read_chapter("Faith", "", "Dramatis", category="Character")
@@ -1162,7 +1201,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        opened = svc.open("c1", self._OWNER)
+        opened = svc.open("c1", owner=self._OWNER)
 
         assert opened is ch
         assert store.read_chapter("Faith", "", "Intro") == "hand edit\n"
@@ -1178,7 +1217,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        opened = svc.open("c1", self._OWNER)
+        opened = svc.open("c1", owner=self._OWNER)
 
         assert opened is ch
         assert store.read_chapter("Faith", "", "Intro") is None
@@ -1196,14 +1235,14 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         self.svc._save_release("c1")
 
     def test_save_document_returns_none_when_missing(self) -> None:
-        assert self.svc.save_document("nonexistent", "Hello", self._OWNER) is None
+        assert self.svc.save_document("nonexistent", "Hello", owner=self._OWNER) is None
 
     def test_save_document_returns_none_without_store(self, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
         svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo)
-        assert svc.save_document("c1", "Hello", self._OWNER) is None
+        assert svc.save_document("c1", "Hello", owner=self._OWNER) is None
 
     def test_save_document_returns_none_for_orphan(self, tmp_path, nlp) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
@@ -1215,7 +1254,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
             nlp=nlp,
         )
-        assert svc.save_document("c1", "Hello", self._OWNER) is None
+        assert svc.save_document("c1", "Hello", owner=self._OWNER) is None
 
     def test_save_document_writes_force_identity_applies_and_snaps(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
@@ -1233,7 +1272,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        result = svc.save_document("c1", "Hello there.\n\nSecond paragraph.", self._OWNER)
+        result = svc.save_document("c1", "Hello there.\n\nSecond paragraph.", owner=self._OWNER)
 
         assert result is not None
         assert result.summary.created is False
@@ -1270,7 +1309,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        svc.save_document("c1", "Body text.", self._OWNER)
+        svc.save_document("c1", "Body text.", owner=self._OWNER)
 
         content = read_file(store.chapter_file("Faith", "Act I", "Intro"))
         assert "act: Act I" in content
@@ -1291,7 +1330,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        svc.save_document("c1", "Body text.", self._OWNER)
+        svc.save_document("c1", "Body text.", owner=self._OWNER)
 
         content = read_file(store.chapter_file("Faith", "", "Intro"))
         assert "act" not in content
@@ -1315,7 +1354,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         result = svc.save_document(
             "c1",
             "---\nid: other-one\ntitle: Wrong\n---\nConflicting identity here.",
-            self._OWNER,
+            owner=self._OWNER,
         )
 
         assert result is not None
@@ -1349,21 +1388,21 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        result = svc.save_document("c1", '<span data-par-id="p1">\nNew text here.\n</span>', self._OWNER)
+        result = svc.save_document("c1", '<span data-par-id="p1">\nNew text here.\n</span>', owner=self._OWNER)
 
         assert result is not None
         assert result.summary.changed == 1
         assert "New text here." in result.content
 
     def test_open_document_returns_none_when_missing(self) -> None:
-        assert self.svc.open_document("nonexistent", self._OWNER) is None
+        assert self.svc.open_document("nonexistent", owner=self._OWNER) is None
 
     def test_open_document_returns_none_without_store(self, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
         self.repo._store["c1"] = ch
         self.repo.set_document("c1", "d1")
         svc = ChapterService(uow_factory=self.factory, chapter_repo=self.repo, document_repo=doc_repo)
-        assert svc.open_document("c1", self._OWNER) is None
+        assert svc.open_document("c1", owner=self._OWNER) is None
 
     def test_open_document_returns_none_for_orphan(self, tmp_path, nlp) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
@@ -1375,7 +1414,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
             nlp=nlp,
         )
-        assert svc.open_document("c1", self._OWNER) is None
+        assert svc.open_document("c1", owner=self._OWNER) is None
 
     def test_open_document_materializes_missing_file(self, tmp_path, nlp, doc_repo) -> None:
         from dockb.models.token import Token
@@ -1402,7 +1441,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        content = svc.open_document("c1", self._OWNER)
+        content = svc.open_document("c1", owner=self._OWNER)
 
         assert content is not None
         assert "Hello world." in content
@@ -1443,7 +1482,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             nlp=nlp,
         )
 
-        content = svc.open_document("c1", self._OWNER)
+        content = svc.open_document("c1", owner=self._OWNER)
 
         assert content is not None
         assert "Edited text." in content
@@ -1485,7 +1524,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         )
 
         with trace() as timings:
-            content = svc.open_document("c1", self._OWNER)
+            content = svc.open_document("c1", owner=self._OWNER)
 
         assert content is not None
         names = [part.split(" ")[0] for part in timings.summary().split(", ")]
@@ -1520,7 +1559,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         )
 
         with trace() as timings:
-            content = svc.open_document("c1", self._OWNER)
+            content = svc.open_document("c1", owner=self._OWNER)
 
         assert content is not None
         names = [part.split(" ")[0] for part in timings.summary().split(", ")]
@@ -1539,6 +1578,8 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
 
 class TestParagraphService:
+    _OWNER = "acct-1"
+
     def setup_method(self) -> None:
         self.repo = StubParagraphRepo()
         self.uow = StubUnitOfWork()
@@ -1546,29 +1587,29 @@ class TestParagraphService:
         self.svc = ParagraphService(uow_factory=self.factory, paragraph_repo=self.repo)
 
     def test_list_by_chapter_empty(self) -> None:
-        assert self.svc.list_by_chapter("ch1") == []
+        assert self.svc.list_by_chapter("ch1", owner=self._OWNER) == []
 
     def test_list_by_chapter_returns_summaries(self) -> None:
         p = Paragraph(id="p1", state=DataState.SYNC)
         self.repo._store["p1"] = p
-        result = self.svc.list_by_chapter("ch1")
+        result = self.svc.list_by_chapter("ch1", owner=self._OWNER)
         assert result == [{"id": "p1"}]
 
     def test_get_returns_none_when_missing(self) -> None:
-        assert self.svc.get("nonexistent") is None
+        assert self.svc.get("nonexistent", owner=self._OWNER) is None
 
     def test_get_returns_paragraph(self) -> None:
         p = Paragraph(id="p1", state=DataState.SYNC)
         self.repo._store["p1"] = p
-        assert self.svc.get("p1") is p
+        assert self.svc.get("p1", owner=self._OWNER) is p
 
     def test_create_with_sentences(self) -> None:
         s1 = Sentence(id="s1", state=DataState.SYNC)
-        p = self.svc.create("p1", content=[s1], chapter_id="ch1")
+        p = self.svc.create("p1", content=[s1], chapter_id="ch1", owner=self._OWNER)
         assert p.id == "p1"
         assert p.state == DataState.NEW
         assert len(p.sentences) == 1
-        assert self.uow.registered[0][1] == {"chapter_id": "ch1"}
+        assert self.uow.registered[0][1] == {"chapter_id": "ch1", "owner": self._OWNER}
 
     def test_update_replaces_sentences(self) -> None:
         s_old = Sentence(id="s_old", state=DataState.SYNC)
@@ -1577,7 +1618,7 @@ class TestParagraphService:
         self.repo._store["p1"] = p
 
         s_new = Sentence(id="s_new", state=DataState.NEW)
-        result = self.svc.update("p1", content=[s_new], chapter_id="ch1")
+        result = self.svc.update("p1", content=[s_new], chapter_id="ch1", owner=self._OWNER)
         assert result is p
         assert len(p.sentences) == 1
         assert p.sentences[0].id == "s_new"
@@ -1591,20 +1632,20 @@ class TestParagraphService:
 
         # Same sentence comes back
         s1_again = Sentence(id="s1", state=DataState.SYNC)
-        result = self.svc.update("p1", content=[s1_again], chapter_id="ch1")
+        result = self.svc.update("p1", content=[s1_again], chapter_id="ch1", owner=self._OWNER)
         assert result is p
         assert len(p.sentences) == 1
 
     def test_update_returns_none_when_missing(self) -> None:
-        assert self.svc.update("nonexistent", [], chapter_id="ch1") is None
+        assert self.svc.update("nonexistent", [], chapter_id="ch1", owner=self._OWNER) is None
 
     def test_delete_returns_false_when_missing(self) -> None:
-        self.svc.delete("nonexistent")
+        self.svc.delete("nonexistent", owner=self._OWNER)
 
     def test_delete_sets_state(self) -> None:
         p = Paragraph(id="p1", state=DataState.SYNC)
         self.repo._store["p1"] = p
-        self.svc.delete("p1")
+        self.svc.delete("p1", owner=self._OWNER)
         assert p.state == DataState.DELETED
 
 
@@ -1614,6 +1655,8 @@ class TestParagraphService:
 
 
 class TestSentenceService:
+    _OWNER = "acct-1"
+
     def setup_method(self) -> None:
         self.repo = StubSentenceRepo()
         self.uow = StubUnitOfWork()
@@ -1621,44 +1664,252 @@ class TestSentenceService:
         self.svc = SentenceService(uow_factory=self.factory, sentence_repo=self.repo)
 
     def test_list_by_paragraph_empty(self) -> None:
-        assert self.svc.list_by_paragraph("p1") == []
+        assert self.svc.list_by_paragraph("p1", owner=self._OWNER) == []
 
     def test_list_by_paragraph_returns_summaries(self) -> None:
         s = Sentence(id="s1", state=DataState.SYNC)
         self.repo._store["s1"] = s
-        result = self.svc.list_by_paragraph("p1")
+        result = self.svc.list_by_paragraph("p1", owner=self._OWNER)
         assert result == [{"id": "s1"}]
 
     def test_get_returns_none_when_missing(self) -> None:
-        assert self.svc.get("nonexistent") is None
+        assert self.svc.get("nonexistent", owner=self._OWNER) is None
 
     def test_get_returns_sentence(self) -> None:
         s = Sentence(id="s1", state=DataState.SYNC)
         self.repo._store["s1"] = s
-        assert self.svc.get("s1") is s
+        assert self.svc.get("s1", owner=self._OWNER) is s
 
     def test_create_with_text(self) -> None:
-        s = self.svc.create("s1", text="Hello", paragraph_id="p1")
+        s = self.svc.create("s1", text="Hello", paragraph_id="p1", owner=self._OWNER)
         assert s.id == "s1"
         assert s.dirty
-        assert self.uow.registered[0][1] == {"paragraph_id": "p1"}
+        assert self.uow.registered[0][1] == {"paragraph_id": "p1", "owner": self._OWNER}
 
     def test_update_replaces_text(self) -> None:
         s = Sentence(id="s1", state=DataState.SYNC)
         self.repo._store["s1"] = s
 
-        result = self.svc.update("s1", text="new", paragraph_id="p1")
+        result = self.svc.update("s1", text="new", paragraph_id="p1", owner=self._OWNER)
         assert result is s
         assert s.dirty
 
     def test_update_returns_none_when_missing(self) -> None:
-        assert self.svc.update("nonexistent", "", paragraph_id="p1") is None
+        assert self.svc.update("nonexistent", "", paragraph_id="p1", owner=self._OWNER) is None
 
     def test_delete_returns_false_when_missing(self) -> None:
-        self.svc.delete("nonexistent")
+        self.svc.delete("nonexistent", owner=self._OWNER)
 
     def test_delete_sets_state(self) -> None:
         s = Sentence(id="s1", state=DataState.SYNC)
         self.repo._store["s1"] = s
-        self.svc.delete("s1")
+        self.svc.delete("s1", owner=self._OWNER)
         assert s.state == DataState.DELETED
+
+
+# ---------------------------------------------------------------------------
+# Ownership
+# ---------------------------------------------------------------------------
+
+
+_OTHER = "acct-2"
+
+
+class TestChapterServiceOwnership:
+    """A chapter is only ever the caller's when the caller's account owns its document.
+
+    The graph is the only record of that, so every chapter path has to ask the
+    repository scoped to the caller. Getting this wrong is not a slow leak of another
+    account's prose — it is a write, because the repository's MERGE would attach a
+    chapter to a document the caller does not own and answer as if it had worked.
+    """
+
+    _OWNER = "acct-1"
+
+    def setup_method(self) -> None:
+        self.repo = StubChapterRepo()
+        self.doc_repo = StubDocumentRepo()
+        self.uow = StubUnitOfWork()
+        self.svc = ChapterService(uow_factory=StubUnitOfWorkFactory(self.uow), chapter_repo=self.repo, document_repo=self.doc_repo)
+        self.chapter = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = self.chapter
+        self.repo.set_document("c1", "d1")
+        self.doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+
+    def _steal(self) -> None:
+        """Make the chapter and its document belong to another account."""
+        self.repo.own_as("c1", _OTHER)
+        self.doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", owner=_OTHER, state=DataState.SYNC)
+
+    def test_get_hides_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.get("c1", owner=_OTHER) is self.chapter
+        assert self.svc.get("c1", owner=self._OWNER) is None
+
+    def test_list_by_document_hides_another_accounts_chapters(self) -> None:
+        self._steal()
+
+        assert self.svc.list_by_document("d1", owner=self._OWNER) == []
+        assert [row["id"] for row in self.svc.list_by_document("d1", owner=_OTHER)] == ["c1"]
+
+    def test_create_refuses_a_document_owned_by_someone_else(self) -> None:
+        self._steal()
+
+        with pytest.raises(DocumentNotFoundError):
+            self.svc.create("c2", title="Two", document_id="d1", owner=self._OWNER)
+
+        assert not self.uow.registered
+
+    def test_update_ignores_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.update("c1", title="Hijacked", owner=self._OWNER) is None
+        assert self.chapter.title == "Intro"
+        assert not self.uow.registered
+
+    def test_delete_ignores_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.delete("c1", owner=self._OWNER) is False
+        assert self.chapter.state == DataState.SYNC
+        assert not self.uow.registered
+
+    def test_move_ignores_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.move("c1", None, owner=self._OWNER) is None
+        assert not self.repo._reorders
+
+    def test_open_ignores_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.open("c1", owner=self._OWNER) is None
+
+    def test_open_document_ignores_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.open_document("c1", owner=self._OWNER) is None
+
+    def test_save_document_ignores_another_accounts_chapter(self) -> None:
+        self._steal()
+
+        assert self.svc.save_document("c1", "text", owner=self._OWNER) is None
+
+    def test_every_call_carries_the_calling_account(self) -> None:
+        self.svc.list_by_document("d1", owner=self._OWNER)
+        self.svc.get("c1", owner=self._OWNER)
+        self.svc.move("c1", None, owner=self._OWNER)
+        self.svc.update("c1", title="Renamed", owner=self._OWNER)
+
+        assert self.repo.owner_calls
+        assert {owner for _, owner in self.repo.owner_calls} == {self._OWNER}
+
+
+class TestParagraphServiceOwnership:
+    """A paragraph hangs under a chapter, and its chapter under a document, so the
+    same question is asked one hop further down."""
+
+    _OWNER = "acct-1"
+
+    def setup_method(self) -> None:
+        self.repo = StubParagraphRepo()
+        self.uow = StubUnitOfWork()
+        self.svc = ParagraphService(uow_factory=StubUnitOfWorkFactory(self.uow), paragraph_repo=self.repo)
+        self.para = Paragraph(id="p1", state=DataState.SYNC)
+        self.repo._store["p1"] = self.para
+        self.repo.own_as("ch1", self._OWNER)
+
+    def test_get_hides_another_accounts_paragraph(self) -> None:
+        self.repo.own_as("p1", _OTHER)
+
+        assert self.svc.get("p1", owner=self._OWNER) is None
+        assert self.svc.get("p1", owner=_OTHER) is self.para
+
+    def test_list_by_chapter_hides_another_accounts_paragraphs(self) -> None:
+        self.repo.own_as("p1", _OTHER)
+
+        assert self.svc.list_by_chapter("ch1", owner=self._OWNER) == []
+
+    def test_create_refuses_a_chapter_owned_by_someone_else(self) -> None:
+        self.repo.own_as("ch1", _OTHER)
+
+        with pytest.raises(ChapterNotFoundError):
+            self.svc.create("p2", content=[Sentence(id="s1", state=DataState.SYNC)], chapter_id="ch1", owner=self._OWNER)
+
+        assert not self.uow.registered
+
+    def test_update_ignores_another_accounts_paragraph(self) -> None:
+        self.repo.own_as("p1", _OTHER)
+
+        assert self.svc.update("p1", content=[], owner=self._OWNER) is None
+        assert not self.uow.registered
+
+    def test_delete_ignores_another_accounts_paragraph(self) -> None:
+        self.repo.own_as("p1", _OTHER)
+
+        assert self.svc.delete("p1", owner=self._OWNER) is False
+        assert self.para.state == DataState.SYNC
+        assert not self.uow.registered
+
+    def test_every_call_carries_the_calling_account(self) -> None:
+        self.svc.list_by_chapter("ch1", owner=self._OWNER)
+        self.svc.get("p1", owner=self._OWNER)
+        self.svc.delete("p1", owner=self._OWNER)
+
+        assert self.repo.owner_calls
+        assert {owner for _, owner in self.repo.owner_calls} == {self._OWNER}
+
+
+class TestSentenceServiceOwnership:
+    """A sentence is the deepest node below a document, so it is scoped the same way."""
+
+    _OWNER = "acct-1"
+
+    def setup_method(self) -> None:
+        self.repo = StubSentenceRepo()
+        self.uow = StubUnitOfWork()
+        self.svc = SentenceService(uow_factory=StubUnitOfWorkFactory(self.uow), sentence_repo=self.repo)
+        self.sent = Sentence(id="s1", state=DataState.SYNC)
+        self.repo._store["s1"] = self.sent
+        self.repo.own_as("p1", self._OWNER)
+
+    def test_get_hides_another_accounts_sentence(self) -> None:
+        self.repo.own_as("s1", _OTHER)
+
+        assert self.svc.get("s1", owner=self._OWNER) is None
+        assert self.svc.get("s1", owner=_OTHER) is self.sent
+
+    def test_list_by_paragraph_hides_another_accounts_sentences(self) -> None:
+        self.repo.own_as("s1", _OTHER)
+
+        assert self.svc.list_by_paragraph("p1", owner=self._OWNER) == []
+
+    def test_create_refuses_a_paragraph_owned_by_someone_else(self) -> None:
+        self.repo.own_as("p1", _OTHER)
+
+        with pytest.raises(ParagraphNotFoundError):
+            self.svc.create("s2", text="new text", paragraph_id="p1", owner=self._OWNER)
+
+        assert not self.uow.registered
+
+    def test_update_ignores_another_accounts_sentence(self) -> None:
+        self.repo.own_as("s1", _OTHER)
+
+        assert self.svc.update("s1", text="new", paragraph_id="p1", owner=self._OWNER) is None
+        assert not self.uow.registered
+
+    def test_delete_ignores_another_accounts_sentence(self) -> None:
+        self.repo.own_as("s1", _OTHER)
+
+        assert self.svc.delete("s1", owner=self._OWNER) is False
+        assert self.sent.state == DataState.SYNC
+        assert not self.uow.registered
+
+    def test_every_call_carries_the_calling_account(self) -> None:
+        self.svc.list_by_paragraph("p1", owner=self._OWNER)
+        self.svc.get("s1", owner=self._OWNER)
+        self.svc.delete("s1", owner=self._OWNER)
+
+        assert self.repo.owner_calls
+        assert {owner for _, owner in self.repo.owner_calls} == {self._OWNER}

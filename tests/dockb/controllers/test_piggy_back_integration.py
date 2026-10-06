@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from dockb.controllers.auth import get_current_user
 from dockb.controllers.chapters import router as chapters_router
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import router as documents_router
@@ -36,21 +37,21 @@ class _MockDocService:
     def __init__(self) -> None:
         self._docs: dict[str, Document] = {}
 
-    def list_all(self) -> list[dict[str, str]]:
+    def list_all(self, owner: str = "") -> list[dict[str, str]]:
         return [{"id": d.id, "title": d.title, "author": d.author} for d in self._docs.values()]
 
-    def get(self, document_id: str) -> Document | None:
+    def get(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
-    def open(self, document_id: str) -> Document | None:
+    def open(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
-    def create(self, document_id: str, title: str, author: str) -> Document:
+    def create(self, document_id: str, title: str, author: str, owner: str = "") -> Document:
         doc = Document(id=document_id, title=title, author=author, state=DataState.SYNC)
         self._docs[document_id] = doc
         return doc
 
-    def update(self, document_id: str, title: str, author: str) -> Document | None:
+    def update(self, document_id: str, title: str, author: str, owner: str = "") -> Document | None:
         doc = self._docs.get(document_id)
         if doc is None:
             return None
@@ -58,7 +59,7 @@ class _MockDocService:
         doc.author = author
         return doc
 
-    def delete(self, document_id: str) -> bool:
+    def delete(self, document_id: str, owner: str = "") -> bool:
         return self._docs.pop(document_id, None) is not None
 
 
@@ -66,13 +67,13 @@ class _MockChService:
     def __init__(self) -> None:
         self._chapters: dict[str, Chapter] = {}
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str]]:
+    def list_by_document(self, document_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": ch.id} for ch in self._chapters.values()]
 
-    def get(self, chapter_id: str) -> Chapter | None:
+    def get(self, chapter_id: str, owner: str = "") -> Chapter | None:
         return self._chapters.get(chapter_id)
 
-    def open(self, chapter_id: str) -> Chapter | None:
+    def open(self, chapter_id: str, owner: str = "") -> Chapter | None:
         return self._chapters.get(chapter_id)
 
     def create(
@@ -82,19 +83,20 @@ class _MockChService:
         document_id: str,
         after_chapter_id: str | None = None,
         category: str = "Chapter",
+        owner: str = "",
     ) -> Chapter:
         ch = Chapter(id=chapter_id, title=title, state=DataState.SYNC)
         self._chapters[chapter_id] = ch
         return ch
 
-    def update(self, chapter_id: str, title: str) -> Chapter | None:
+    def update(self, chapter_id: str, title: str, owner: str = "") -> Chapter | None:
         ch = self._chapters.get(chapter_id)
         if ch is None:
             return None
         ch.title = title
         return ch
 
-    def delete(self, chapter_id: str) -> bool:
+    def delete(self, chapter_id: str, owner: str = "") -> bool:
         return self._chapters.pop(chapter_id, None) is not None
 
 
@@ -102,20 +104,20 @@ class _MockParaService:
     def __init__(self) -> None:
         self._paras: dict[str, Paragraph] = {}
 
-    def list_by_chapter(self, chapter_id: str) -> list[dict[str, str]]:
+    def list_by_chapter(self, chapter_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": p.id} for p in self._paras.values()]
 
-    def get(self, paragraph_id: str) -> Paragraph | None:
+    def get(self, paragraph_id: str, owner: str = "") -> Paragraph | None:
         return self._paras.get(paragraph_id)
 
-    def create(self, paragraph_id: str, content: list[Sentence], chapter_id: str) -> Paragraph:
+    def create(self, paragraph_id: str, content: list[Sentence], chapter_id: str, owner: str = "") -> Paragraph:
         p = Paragraph(id=paragraph_id, state=DataState.SYNC)
         for s in content:
             p.append_child(s)
         self._paras[paragraph_id] = p
         return p
 
-    def update(self, paragraph_id: str, content: list[Sentence], chapter_id: str | None = None) -> Paragraph | None:
+    def update(self, paragraph_id: str, content: list[Sentence], chapter_id: str | None = None, owner: str = "") -> Paragraph | None:
         p = self._paras.get(paragraph_id)
         if p is None:
             return None
@@ -124,7 +126,7 @@ class _MockParaService:
             p.append_child(s)
         return p
 
-    def delete(self, paragraph_id: str) -> bool:
+    def delete(self, paragraph_id: str, owner: str = "") -> bool:
         return self._paras.pop(paragraph_id, None) is not None
 
 
@@ -132,26 +134,26 @@ class _MockSentService:
     def __init__(self) -> None:
         self._sentences: dict[str, Sentence] = {}
 
-    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
+    def list_by_paragraph(self, paragraph_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": s.id} for s in self._sentences.values()]
 
-    def get(self, sentence_id: str) -> Sentence | None:
+    def get(self, sentence_id: str, owner: str = "") -> Sentence | None:
         return self._sentences.get(sentence_id)
 
-    def create(self, sentence_id: str, text: str, paragraph_id: str) -> Sentence:
+    def create(self, sentence_id: str, text: str, paragraph_id: str, owner: str = "") -> Sentence:
         s = Sentence(id=sentence_id, state=DataState.SYNC)
         s.set_text(text)
         self._sentences[sentence_id] = s
         return s
 
-    def update(self, sentence_id: str, text: str, paragraph_id: str | None = None) -> Sentence | None:
+    def update(self, sentence_id: str, text: str, paragraph_id: str | None = None, owner: str = "") -> Sentence | None:
         s = self._sentences.get(sentence_id)
         if s is None:
             return None
         s.set_text(text)
         return s
 
-    def delete(self, sentence_id: str) -> bool:
+    def delete(self, sentence_id: str, owner: str = "") -> bool:
         return self._sentences.pop(sentence_id, None) is not None
 
 
@@ -172,6 +174,7 @@ def _build_app(session_context: SessionContext | None = None) -> FastAPI:
     app.include_router(chapters_router)
     app.include_router(paragraphs_router)
     app.include_router(sentences_router)
+    app.dependency_overrides[get_current_user] = lambda: "acct-1"
     return app
 
 

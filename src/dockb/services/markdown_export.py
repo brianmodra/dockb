@@ -13,23 +13,26 @@ from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
 
 
-def reconstruct_chapter_markdown(chapter_id: str, chapter_repo: ChapterRepository, nlp: Language) -> str:
+def reconstruct_chapter_markdown(chapter_id: str, chapter_repo: ChapterRepository, nlp: Language, *, owner: str) -> str:
     """Render the chapter with *chapter_id* from the graph to a complete chapter file.
 
-    Raises ChapterMismatchError when the graph has no such chapter.
+    *owner* is the account to read for; a chapter belonging to another account's
+    document reads as no chapter at all, so a chapter id cannot be used to export
+    someone else's work. Raises ChapterMismatchError when the graph has no such chapter.
     """
-    chapter = chapter_repo.load(chapter_id)
+    chapter = chapter_repo.load(chapter_id, owner)
     if chapter is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
     return writer.render_chapter_markdown(chapter, nlp)
 
 
-def reconstruct_chapter_file(chapter_id: str, chapter_repo: ChapterRepository, path: Path, nlp: Language) -> None:
+def reconstruct_chapter_file(chapter_id: str, chapter_repo: ChapterRepository, path: Path, nlp: Language, *, owner: str) -> None:
     """Reconstruct the chapter with *chapter_id* from the graph and write it to *path*.
 
+    *owner* is the account to read for, as in :func:`reconstruct_chapter_markdown`.
     Raises ChapterMismatchError when the graph has no such chapter.
     """
-    chapter = chapter_repo.load(chapter_id)
+    chapter = chapter_repo.load(chapter_id, owner)
     if chapter is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
     writer.write_chapter_markdown(chapter, path, nlp)
@@ -53,10 +56,10 @@ def reconstruct_chapter_to_store(
     has no owning document to place it under. The owning document is loaded
     as a shell (attrs and chapter ids) — only its title is needed.
     """
-    chapter = chapter_repo.load(chapter_id)
+    chapter = chapter_repo.load(chapter_id, store.account_id)
     if chapter is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
-    document_id = chapter_repo.find_document_id(chapter_id)
+    document_id = chapter_repo.find_document_id(chapter_id, store.account_id)
     document = document_repo.load_shell(document_id, store.account_id) if document_id is not None else None
     if document is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' has no owning document")

@@ -8,6 +8,8 @@ import pytest
 from dockb.models.base import DataState
 from dockb.models.token import POS, Token, Type
 
+_OWNER = "acct-1"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -77,7 +79,7 @@ class TestSaveNewSentence:
         sentence.state = DataState.NEW
         sentence.tokens.append(make_token("Hello"))
 
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "MATCH (p:Paragraph" in cypher
@@ -90,7 +92,7 @@ class TestSaveNewSentence:
 
     def test_passes_paragraph_and_sentence_ids(self, repo, neo4j_session, sentence):
         sentence.state = DataState.NEW
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         assert params["paragraph_id"] == "p1"
@@ -100,7 +102,7 @@ class TestSaveNewSentence:
         sentence.state = DataState.NEW
         sentence.tokens.append(make_token("Hello", pos=POS.PROPN, lemma="hello", is_alpha=True))
 
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         tokens = params["tokens"]
@@ -112,7 +114,7 @@ class TestSaveNewSentence:
         sentence.tokens.append(make_token("Hello", pos=POS.PROPN, lemma="hello", is_alpha=True))
         sentence.tokens.append(make_token("world", pos=POS.NOUN, lemma="world", is_alpha=True))
 
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         tokens = params["tokens"]
@@ -124,7 +126,7 @@ class TestSaveNewSentence:
         sentence.state = DataState.NEW
         sentence.tokens.append(make_token("Hello"))
 
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" not in cypher or "DETACH DELETE" not in cypher
@@ -137,7 +139,7 @@ class TestSaveChangedSentence:
         sentence.state = DataState.CHANGED
         sentence.tokens.append(make_token("Hello"))
 
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" in cypher
@@ -151,7 +153,7 @@ class TestSaveChangedSentence:
         sentence.tokens.append(token_b)
         sentence.delete_child(token_a.id)
 
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         tokens = params["tokens"]
@@ -164,7 +166,7 @@ class TestSaveDeletedSentence:  # pylint: disable=too-few-public-methods
 
     def test_detach_deletes_the_sentence(self, repo, neo4j_session, sentence):
         sentence.state = DataState.DELETED
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
 
         cypher, params = extract_call(neo4j_session)
         assert "DETACH DELETE" in cypher
@@ -177,7 +179,7 @@ class TestSaveSkipStates:  # pylint: disable=too-few-public-methods
     @pytest.mark.parametrize("state", [DataState.SYNC, DataState._])
     def test_skips_run(self, state, repo, neo4j_session, sentence):
         sentence.state = state
-        repo.save(sentence, paragraph_id="p1")
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
         neo4j_session.run.assert_not_called()
 
 
@@ -188,7 +190,7 @@ class TestSaveDirtySentence:  # pylint: disable=too-few-public-methods
         sentence.dirty = True
         sentence.state = DataState.CHANGED
         with pytest.raises(ValueError, match="(?i)dirty"):
-            repo.save(sentence, paragraph_id="p1")
+            repo.save(sentence, paragraph_id="p1", owner=_OWNER)
         neo4j_session.run.assert_not_called()
 
 
@@ -202,17 +204,17 @@ class TestListByParagraph:
 
     def test_returns_ids(self, repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "s-1"}, {"id": "s-2"}]
-        result = repo.list_by_paragraph("p-1")
+        result = repo.list_by_paragraph("p-1", _OWNER)
         assert result == [{"id": "s-1"}, {"id": "s-2"}]
 
     def test_returns_empty_list_when_no_sentences(self, repo, neo4j_session):
         neo4j_session.run.return_value = []
-        result = repo.list_by_paragraph("p-1")
+        result = repo.list_by_paragraph("p-1", _OWNER)
         assert result == []
 
     def test_passes_paragraph_id(self, repo, neo4j_session):
         neo4j_session.run.return_value = []
-        repo.list_by_paragraph("p-999")
+        repo.list_by_paragraph("p-999", _OWNER)
         _, params = extract_call(neo4j_session)
         assert params["paragraph_id"] == "p-999"
 
@@ -227,11 +229,11 @@ class TestLoadSentence:
 
     def test_returns_none_when_not_found(self, repo, neo4j_session):
         neo4j_session.run.return_value = []
-        assert repo.load("nonexistent") is None
+        assert repo.load("nonexistent", _OWNER) is None
 
     def test_returns_none_when_first_record_has_null_id(self, repo, neo4j_session):
         neo4j_session.run.return_value = [{"sentence_id": None}]
-        assert repo.load("s-1") is None
+        assert repo.load("s-1", _OWNER) is None
 
     def test_returns_sentence_with_tokens(self, repo, neo4j_session):
         neo4j_session.run.return_value = [
@@ -250,7 +252,7 @@ class TestLoadSentence:
                 "token_is_stop": False,
             }
         ]
-        s = repo.load("s-1")
+        s = repo.load("s-1", _OWNER)
         assert s is not None
         assert s.id == "s-1"
         assert len(s.tokens) == 1
@@ -259,5 +261,81 @@ class TestLoadSentence:
 
     def test_sets_state_to_sync(self, repo, neo4j_session):
         neo4j_session.run.return_value = [{"sentence_id": "s-1"}]
-        s = repo.load("s-1")
+        s = repo.load("s-1", _OWNER)
         assert s.state == DataState.SYNC
+
+
+# ---------------------------------------------------------------------------
+# Ownership
+# ---------------------------------------------------------------------------
+
+
+class TestOwnershipScoping:
+    """A sentence is reached only through its paragraph's document, so every query
+    carries the owner: without it, any caller naming any sentence id would be handed
+    another account's tokens."""
+
+    def test_new_matches_the_paragraph_through_an_owned_document(self, repo, neo4j_session, sentence):
+        sentence.state = DataState.NEW
+
+        repo.save(sentence, paragraph_id="p-1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_delete_joins_to_the_owning_document(self, repo, neo4j_session, sentence):
+        sentence.state = DataState.DELETED
+
+        repo.save(sentence, paragraph_id="p-1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert (
+            "MATCH (s:Sentence {id: $sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)"
+            "-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        )
+        assert params["owner"] == _OWNER
+
+    def test_load_joins_to_the_owning_document(self, repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        repo.load("s-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert (
+            "MATCH (s:Sentence {id: $sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)"
+            "-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        )
+        assert params["owner"] == _OWNER
+
+    def test_list_by_paragraph_matches_the_paragraph_through_an_owned_document(self, repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        repo.list_by_paragraph("p-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+
+class TestOwnsParagraph:
+    """``owns_paragraph`` answers whether the caller may write beneath this paragraph.
+
+    This is the question the create path asks before writing, because the write itself
+    cannot report its own failure.
+    """
+
+    def test_true_when_the_paragraph_hangs_under_an_owned_document(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [{"owned": 1}]
+
+        assert repo.owns_paragraph("p-1", _OWNER) is True
+
+        cypher, params = extract_call(neo4j_session)
+        assert "(n:Paragraph {id: $id})" in cypher
+        assert "(d:Document {owner: $owner})" in cypher
+        assert params == {"id": "p-1", "owner": _OWNER}
+
+    def test_false_when_no_such_paragraph_is_owned(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [{"owned": 0}]
+
+        assert repo.owns_paragraph("p-1", _OWNER) is False

@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_auth_service, get_current_user
 from dockb.controllers.imports import router, set_import_service
 from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.services.markdown_import import ChapterImportSummary
@@ -29,11 +29,25 @@ class StubImportService:
         self.raises = raises
         self.calls: list[dict[str, object]] = []
 
-    async def import_parts(self, parts, user_name, single_newline_paragraphs=False):
-        self.calls.append({"parts": parts, "user_name": user_name, "single_newline_paragraphs": single_newline_paragraphs})
+    async def import_parts(self, parts, user_name, *, owner, single_newline_paragraphs=False):
+        self.calls.append(
+            {
+                "parts": parts,
+                "user_name": user_name,
+                "owner": owner,
+                "single_newline_paragraphs": single_newline_paragraphs,
+            }
+        )
         if self.raises is not None:
             raise self.raises
         return self.summaries
+
+
+class StubAuthService:
+    """Stands in for the account store the route reads the username from."""
+
+    def get_user(self, owner: str) -> dict[str, str]:
+        return {"id": owner, "username": "abby"}
 
 
 def _unauthenticated() -> HTTPException:
@@ -50,7 +64,8 @@ def _isolated_import_service():
 def _app(svc: StubImportService | None = None, *, signed_in: bool = True) -> FastAPI:
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[get_current_user] = (lambda: "abby") if signed_in else (lambda: (_ for _ in ()).throw(_unauthenticated()))
+    app.dependency_overrides[get_current_user] = (lambda: "acct-1") if signed_in else (lambda: (_ for _ in ()).throw(_unauthenticated()))
+    app.dependency_overrides[get_auth_service] = StubAuthService
     set_import_service(svc or StubImportService())
     return app
 
@@ -83,6 +98,7 @@ class TestImportRoute:
         client = TestClient(_app(svc))
         client.post("/api/import", files=_files(**{"Linchpin/Act I/1.md": "a"}))
         assert svc.calls[0]["user_name"] == "abby"
+        assert svc.calls[0]["owner"] == "acct-1"
 
     def test_forwards_the_single_newline_flag(self):
         svc = StubImportService()

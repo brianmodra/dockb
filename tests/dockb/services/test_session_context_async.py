@@ -5,6 +5,8 @@ services use async job creation (DeleteJob + ReconstructJob + CommitJob) when
 content is provided.
 """
 
+# pylint: disable=unused-argument
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -80,29 +82,35 @@ class StubDocumentRepo(StubRepo):
 
 
 class StubChapterRepo(StubRepo):
-    def list_by_document(self, document_id: str) -> list[dict[str, str]]:
+    def list_by_document(self, document_id: str, owner: str = "") -> list[dict[str, str]]:
         return super().list_by_parent(document_id)
 
-    def find_document_id(self, _chapter_id: str) -> str | None:
+    def find_document_id(self, _chapter_id: str, owner: str = "") -> str | None:
         return None
 
-    def load(self, model_id: str) -> Chapter | None:
+    def load(self, model_id: str, owner: str = "") -> Chapter | None:
         return super().load(model_id)  # type: ignore[return-value]
 
 
 class StubParagraphRepo(StubRepo):
-    def list_by_chapter(self, chapter_id: str) -> list[dict[str, str]]:
+    def list_by_chapter(self, chapter_id: str, owner: str = "") -> list[dict[str, str]]:
         return super().list_by_parent(chapter_id)
 
-    def load(self, model_id: str) -> Paragraph | None:
+    def owns_chapter(self, chapter_id: str, owner: str = "") -> bool:
+        return True
+
+    def load(self, model_id: str, owner: str = "") -> Paragraph | None:
         return super().load(model_id)  # type: ignore[return-value]
 
 
 class StubSentenceRepo(StubRepo):
-    def list_by_paragraph(self, paragraph_id: str) -> list[dict[str, str]]:
+    def list_by_paragraph(self, paragraph_id: str, owner: str = "") -> list[dict[str, str]]:
         return super().list_by_parent(paragraph_id)
 
-    def load(self, model_id: str) -> Sentence | None:
+    def owns_paragraph(self, paragraph_id: str, owner: str = "") -> bool:
+        return True
+
+    def load(self, model_id: str, owner: str = "") -> Sentence | None:
         return super().load(model_id)  # type: ignore[return-value]
 
 
@@ -191,7 +199,7 @@ class TestDocumentServiceNoAsync:
 
     def test_delete_does_not_enqueue_jobs(self) -> None:
         self._own()
-        self.svc.delete("d1", self._OWNER)
+        self.svc.delete("d1", owner=self._OWNER)
         assert self.uow.committed
 
 
@@ -221,13 +229,13 @@ class TestChapterServiceNoAsync:
     def test_update_does_not_enqueue_jobs(self) -> None:
         ch = Chapter(id="c1", title="Old", state=DataState.SYNC)
         self.repo._store["c1"] = ch
-        self.svc.update("c1", title="New")
+        self.svc.update("c1", title="New", owner=self._OWNER)
         assert self.uow.committed
 
     def test_delete_does_not_enqueue_jobs(self) -> None:
         ch = Chapter(id="c1", title="T", state=DataState.SYNC)
         self.repo._store["c1"] = ch
-        self.svc.delete("c1")
+        self.svc.delete("c1", owner=self._OWNER)
         assert self.uow.committed
 
 
@@ -238,6 +246,8 @@ class TestChapterServiceNoAsync:
 
 class TestParagraphServiceAsync:
     """Paragraph create/update with content enqueue async jobs."""
+
+    _OWNER = "acct-1"
 
     def setup_method(self) -> None:
         self.repo = StubParagraphRepo()
@@ -254,13 +264,13 @@ class TestParagraphServiceAsync:
 
     def test_create_enqueues_commit_job(self) -> None:
         s1 = Sentence(id="s1", state=DataState.NEW)
-        self.svc.create("p1", content=[s1], chapter_id="ch1")
+        self.svc.create("p1", content=[s1], chapter_id="ch1", owner=self._OWNER)
         commit_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, CommitJob)]
         assert len(commit_jobs) == 1
 
     def test_create_enqueues_delete_and_reconstruct_jobs(self) -> None:
         s1 = Sentence(id="s1", state=DataState.NEW)
-        self.svc.create("p1", content=[s1], chapter_id="ch1")
+        self.svc.create("p1", content=[s1], chapter_id="ch1", owner=self._OWNER)
         delete_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, DeleteJob)]
         reconstruct_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, ReconstructJob)]
         assert len(delete_jobs) >= 1
@@ -268,7 +278,7 @@ class TestParagraphServiceAsync:
 
     def test_create_does_not_commit_uow_directly(self) -> None:
         s1 = Sentence(id="s1", state=DataState.NEW)
-        self.svc.create("p1", content=[s1], chapter_id="ch1")
+        self.svc.create("p1", content=[s1], chapter_id="ch1", owner=self._OWNER)
         assert not self.uow.committed
 
     def test_update_enqueues_jobs(self) -> None:
@@ -278,7 +288,7 @@ class TestParagraphServiceAsync:
         self.repo._store["p1"] = p
 
         s_new = Sentence(id="s_new", state=DataState.NEW)
-        self.svc.update("p1", content=[s_new], chapter_id="ch1")
+        self.svc.update("p1", content=[s_new], chapter_id="ch1", owner=self._OWNER)
         commit_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, CommitJob)]
         assert len(commit_jobs) == 1
 
@@ -286,7 +296,7 @@ class TestParagraphServiceAsync:
         """Delete does not need tokenization — direct UoW commit."""
         p = Paragraph(id="p1", state=DataState.SYNC)
         self.repo._store["p1"] = p
-        self.svc.delete("p1")
+        self.svc.delete("p1", owner=self._OWNER)
         assert self.uow.committed
         commit_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, CommitJob)]
         assert len(commit_jobs) == 0
@@ -299,6 +309,8 @@ class TestParagraphServiceAsync:
 
 class TestSentenceServiceAsync:
     """Sentence create/update with content enqueue async jobs."""
+
+    _OWNER = "acct-1"
 
     def setup_method(self) -> None:
         self.repo = StubSentenceRepo()
@@ -314,26 +326,26 @@ class TestSentenceServiceAsync:
         )
 
     def test_create_enqueues_commit_job(self) -> None:
-        self.svc.create("s1", text="Hello", paragraph_id="p1")
+        self.svc.create("s1", text="Hello", paragraph_id="p1", owner=self._OWNER)
         commit_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, CommitJob)]
         assert len(commit_jobs) == 1
 
     def test_create_enqueues_delete_and_reconstruct_jobs(self) -> None:
-        self.svc.create("s1", text="Hello", paragraph_id="p1")
+        self.svc.create("s1", text="Hello", paragraph_id="p1", owner=self._OWNER)
         delete_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, DeleteJob)]
         reconstruct_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, ReconstructJob)]
         assert len(delete_jobs) >= 1
         assert len(reconstruct_jobs) >= 1
 
     def test_create_does_not_commit_uow_directly(self) -> None:
-        self.svc.create("s1", text="Hello", paragraph_id="p1")
+        self.svc.create("s1", text="Hello", paragraph_id="p1", owner=self._OWNER)
         assert not self.uow.committed
 
     def test_update_enqueues_jobs(self) -> None:
         s = Sentence(id="s1", state=DataState.SYNC)
         self.repo._store["s1"] = s
 
-        self.svc.update("s1", text="new", paragraph_id="p1")
+        self.svc.update("s1", text="new", paragraph_id="p1", owner=self._OWNER)
         commit_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, CommitJob)]
         assert len(commit_jobs) == 1
 
@@ -341,7 +353,7 @@ class TestSentenceServiceAsync:
         """Delete does not need tokenization — direct UoW commit."""
         s = Sentence(id="s1", state=DataState.SYNC)
         self.repo._store["s1"] = s
-        self.svc.delete("s1")
+        self.svc.delete("s1", owner=self._OWNER)
         assert self.uow.committed
         commit_jobs = [j for j in self.spy_queue.enqueued if isinstance(j, CommitJob)]
         assert len(commit_jobs) == 0
@@ -355,6 +367,8 @@ class TestSentenceServiceAsync:
 class TestParagraphServiceSyncFallback:
     """When no SessionContext is provided, content changes use sync path."""
 
+    _OWNER = "acct-1"
+
     def setup_method(self) -> None:
         self.repo = StubParagraphRepo()
         self.uow = StubUnitOfWork()
@@ -366,5 +380,5 @@ class TestParagraphServiceSyncFallback:
 
     def test_create_without_context_commits_directly(self) -> None:
         s1 = Sentence(id="s1", state=DataState.NEW)
-        self.svc.create("p1", content=[s1], chapter_id="ch1")
+        self.svc.create("p1", content=[s1], chapter_id="ch1", owner=self._OWNER)
         assert self.uow.committed

@@ -93,7 +93,7 @@ def _wire_stub_services() -> None:
     class _Documents:
         """Lists empty. A 5xx here would mean the route ran but serialization failed."""
 
-        def list_all(self) -> list[dict[str, str]]:
+        def list_all(self, owner: str = "") -> list[dict[str, str]]:
             return []
 
         def __getattr__(self, _name: str):

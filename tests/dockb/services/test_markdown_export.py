@@ -76,32 +76,32 @@ def _git_store(tmp_path) -> DocumentStore:
 
 def test_reconstruct_chapter_markdown_renders_loaded_chapter(nlp):
     chapter = _make_chapter("c1", _make_paragraph("p1", "Hi there."))
-    rendered = reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
+    rendered = reconstruct_chapter_markdown("c1", _repo(chapter), nlp, owner=_ACCOUNT)
     assert rendered == "---\nid: c1\ntitle: Chapter 1\ncategory: Chapter\n---\n\n" '<span data-par-id="p1">\nHi there.\n</span>\n'
 
 
 def test_reconstruct_chapter_markdown_includes_title_and_category(nlp):
     chapter = _make_chapter("c2", title="Renamed")
-    rendered = reconstruct_chapter_markdown("c2", _repo(chapter), nlp)
+    rendered = reconstruct_chapter_markdown("c2", _repo(chapter), nlp, owner=_ACCOUNT)
     assert rendered.startswith("---\nid: c2\ntitle: Renamed\ncategory: Chapter\n---\n")
 
 
 def test_reconstruct_chapter_markdown_raises_for_unknown_chapter(nlp):
     with pytest.raises(ChapterMismatchError):
-        reconstruct_chapter_markdown("missing", _repo(None), nlp)
+        reconstruct_chapter_markdown("missing", _repo(None), nlp, owner=_ACCOUNT)
 
 
 def test_reconstruct_chapter_file_writes_rendered_content(nlp, tmp_path):
     chapter = _make_chapter("c1", _make_paragraph("p1", "Hi there."))
     target = tmp_path / "chapter.md"
-    reconstruct_chapter_file("c1", _repo(chapter), target, nlp)
-    assert target.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
+    reconstruct_chapter_file("c1", _repo(chapter), target, nlp, owner=_ACCOUNT)
+    assert target.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp, owner=_ACCOUNT)
 
 
 def test_reconstruct_chapter_file_raises_for_unknown_chapter(nlp, tmp_path):
     target = tmp_path / "chapter.md"
     with pytest.raises(ChapterMismatchError):
-        reconstruct_chapter_file("missing", _repo(None), target, nlp)
+        reconstruct_chapter_file("missing", _repo(None), target, nlp, owner=_ACCOUNT)
     assert not target.exists()
 
 
@@ -116,7 +116,7 @@ def test_reconstruct_to_store_writes_title_act_layout_and_commits(nlp, tmp_path)
     path = reconstruct_chapter_to_store("c1", chapter_repo, _doc_repo(document), store, nlp)
 
     assert path == store.chapter_file("Faith", "Act I", "Intro")
-    assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
+    assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp, owner=_ACCOUNT)
     log = subprocess.run(["git", "log", "--format=%H"], cwd=str(store.account_dir()), capture_output=True, text=True, check=False)
     assert log.returncode == 0
     assert log.stdout.strip()
@@ -147,7 +147,7 @@ def test_reconstruct_to_store_puts_character_chapter_under_characters_dir(nlp, t
 
     assert path == store.chapter_file("Faith", "", "Dramatis", category="Character")
     assert path.parent.name == "Characters"
-    assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp)
+    assert path.read_text() == reconstruct_chapter_markdown("c1", _repo(chapter), nlp, owner=_ACCOUNT)
 
 
 def test_reconstruct_to_store_uses_shell_load(nlp, tmp_path):

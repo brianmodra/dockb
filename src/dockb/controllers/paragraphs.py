@@ -8,10 +8,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from dockb.controllers.auth import get_current_user
 from dockb.controllers.desugar import desugar_sentences
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.paragraphs import CreateParagraphRequest, UpdateParagraphRequest
 from dockb.controllers.serializers import serialize_paragraph
+from dockb.exceptions import ChapterNotFoundError
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/paragraphs", tags=["paragraphs"])
@@ -32,8 +34,9 @@ def set_para_service(service: Any) -> None:
 def list_paragraphs(
     chapter: str,
     svc: Any = Depends(get_para_service),
+    owner: str = Depends(get_current_user),
 ) -> Any:
-    return svc.list_by_chapter(chapter)
+    return svc.list_by_chapter(chapter, owner=owner)
 
 
 @router.post("")
@@ -41,15 +44,22 @@ def create_paragraph(
     body: CreateParagraphRequest,
     svc: Any = Depends(get_para_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
     sentences = desugar_sentences(body.content)
-    svc.create(
-        paragraph_id=body.attrs.id,
-        content=sentences,
-        chapter_id=body.relations.chapter_id,
-    )
+    try:
+        svc.create(
+            paragraph_id=body.attrs.id,
+            content=sentences,
+            chapter_id=body.relations.chapter_id,
+            owner=owner,
+        )
+    except ChapterNotFoundError as exc:
+        # A chapter of another account's is reported as one that does not exist,
+        # which is what it is to this caller.
+        raise HTTPException(status_code=404, detail=f"chapter_not_found: {exc}") from exc
     return mutation_response(session_context).model_dump()
 
 
@@ -57,8 +67,9 @@ def create_paragraph(
 def get_paragraph(
     paragraph_id: str,
     svc: Any = Depends(get_para_service),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    para = svc.get(paragraph_id)
+    para = svc.get(paragraph_id, owner=owner)
     if para is None:
         raise HTTPException(status_code=404, detail=f"paragraph_not_found: {paragraph_id}")
     return serialize_paragraph(para).model_dump()
@@ -70,6 +81,7 @@ def update_paragraph(
     body: UpdateParagraphRequest,
     svc: Any = Depends(get_para_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     sentences = desugar_sentences(body.content)
     chapter_id = body.relations.chapter_id if body.relations else None
@@ -77,6 +89,7 @@ def update_paragraph(
         paragraph_id=paragraph_id,
         content=sentences,
         chapter_id=chapter_id,
+        owner=owner,
     )
     if para is None:
         raise HTTPException(status_code=404, detail=f"paragraph_not_found: {paragraph_id}")
@@ -88,8 +101,9 @@ def delete_paragraph(
     paragraph_id: str,
     svc: Any = Depends(get_para_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    deleted = svc.delete(paragraph_id)
+    deleted = svc.delete(paragraph_id, owner=owner)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"paragraph_not_found: {paragraph_id}")
     return mutation_response(session_context).model_dump()

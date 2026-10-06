@@ -8,6 +8,7 @@ import pytest
 
 from dockb.cli import reconstruct_chapter as cli
 from dockb.cli import startup
+from dockb.cli.startup import UnknownUserError
 from dockb.exceptions import ChapterMismatchError
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
@@ -61,11 +62,11 @@ class TestReconstructChapter:
         self.session_factory_maker.return_value.session.assert_called_once_with()
         self.session_factory_maker.return_value.close.assert_called_once_with()
 
-    def test_requires_an_owner_when_writing_to_the_store(self, _neo4j_env, capsys, monkeypatch):
-        """Without an account there is no directory to write into.
+    def test_requires_an_owner(self, _neo4j_env, capsys, monkeypatch):
+        """A chapter id names no account, so the read is refused rather than guessed.
 
-        Falling back to a shared tree would put two accounts' chapters under one
-        title, so the command refuses rather than guessing.
+        Every chapter query is scoped to an owner; without one there is no chapter to
+        read and no directory to write into, so the command refuses instead.
         """
         self._patch_dependencies(monkeypatch)
 
@@ -74,19 +75,34 @@ class TestReconstructChapter:
         assert exit_code == 1
         assert "--owner is required" in capsys.readouterr().err
 
+    def test_refuses_an_unknown_owner_before_opening_a_session(self, _neo4j_env, capsys, monkeypatch):
+        self._patch_dependencies(monkeypatch)
+        monkeypatch.setattr(cli, "account_id_for", MagicMock(side_effect=UnknownUserError("no such account: ghost")))
+
+        exit_code = cli.main(["c1", "--owner", "ghost"])
+
+        assert exit_code == 1
+        assert "no such account: ghost" in capsys.readouterr().err
+        self.session_factory_maker.assert_not_called()
+
     def test_writes_to_file_with_out(self, _neo4j_env, monkeypatch):
         self._patch_dependencies(monkeypatch)
         captured = []
-        monkeypatch.setattr(cli, "reconstruct_chapter_file", lambda cid, repo, path, nlp: captured.append((cid, repo, path, nlp)) or None)
+        monkeypatch.setattr(
+            cli,
+            "reconstruct_chapter_file",
+            lambda cid, repo, path, nlp, owner: captured.append((cid, repo, path, nlp, owner)) or None,
+        )
 
-        exit_code = cli.main(["c1", "--out", "out.md"])
+        exit_code = cli.main(["c1", "--owner", "alice", "--out", "out.md"])
 
         assert exit_code == 0
-        chapter_id, chapter_repo, path, nlp = captured[0]
+        chapter_id, chapter_repo, path, nlp, owner = captured[0]
         assert chapter_id == "c1"
         assert isinstance(chapter_repo, ChapterRepository)
         assert str(path) == "out.md"
         assert nlp is self.nlp
+        assert owner == _ACCOUNT_ID
 
     def test_missing_chapter_id_exits_with_usage(self, _neo4j_env, monkeypatch):
         self._patch_dependencies(monkeypatch)

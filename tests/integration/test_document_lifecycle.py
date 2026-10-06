@@ -128,17 +128,17 @@ def test_document_lifecycle_chain(services, neo4j_session):
         assert doc.id == document_id
         assert store.read_metadata("Lifecycle") == DocumentMetadata(title="Lifecycle", author="Test")
 
-        opened = doc_svc.open(document_id, ACCOUNT)
+        opened = doc_svc.open(document_id, owner=ACCOUNT)
         assert opened is not None and opened.id == document_id
 
         _add_chapters(ch_svc, document_id)
 
-        order = [row["id"] for row in ch_svc.list_by_document(document_id)]
+        order = [row["id"] for row in ch_svc.list_by_document(document_id, owner=ACCOUNT)]
         assert order == ["c1", "c2", "c3"]
 
         _assert_empty_chapter_materialized(store)
 
-        result = ch_svc.save_document("c2", "First paragraph sentence.\n\nSecond paragraph.", ACCOUNT)
+        result = ch_svc.save_document("c2", "First paragraph sentence.\n\nSecond paragraph.", owner=ACCOUNT)
         assert result is not None
         assert result.summary.added == 2
         assert result.summary.changed == 0
@@ -149,11 +149,11 @@ def test_document_lifecycle_chain(services, neo4j_session):
 
         hand_edit = canonical + "\n\nHand-written extra paragraph."
         store.chapter_file("Lifecycle", "", "Second").write_text(hand_edit, encoding="utf-8")
-        reopened = ch_svc.open_document("c2", ACCOUNT)
+        reopened = ch_svc.open_document("c2", owner=ACCOUNT)
         assert reopened is not None
         assert "Hand-written extra paragraph." in reopened
 
-        loaded = ch_svc.get("c2")
+        loaded = ch_svc.get("c2", owner=ACCOUNT)
         assert loaded is not None
         assert len(loaded.paragraphs) == 3
         assert "Hand-written extra paragraph." in loaded.get_text()
@@ -178,11 +178,11 @@ def test_delete_cascades_graph_and_removes_store_files(services, neo4j_session):
         doc = doc_svc.create(document_id, title="DeleteMe", author="Test", owner=ACCOUNT)
         assert doc.id == document_id
         _add_chapters(ch_svc, document_id)
-        assert ch_svc.save_document("c2", "First paragraph sentence.\n\nSecond paragraph.", ACCOUNT) is not None
+        assert ch_svc.save_document("c2", "First paragraph sentence.\n\nSecond paragraph.", owner=ACCOUNT) is not None
         assert _graph_children(neo4j_session, "c2", 3) >= 2
 
         # Chapter delete: graph subtree gone, own file git-rm'd, siblings intact.
-        assert ch_svc.delete("c2", ACCOUNT) is True
+        assert ch_svc.delete("c2", owner=ACCOUNT) is True
         assert not _graph_has(neo4j_session, "c2")
         assert _graph_children(neo4j_session, "c2", 3) == 0
         assert not store.chapter_exists("DeleteMe", "", "Second")
@@ -198,7 +198,7 @@ def test_delete_cascades_graph_and_removes_store_files(services, neo4j_session):
         assert _git(store, "status", "--porcelain").strip() == ""
 
         # Document delete: whole graph subtree and the whole store tree go.
-        assert doc_svc.delete(document_id, ACCOUNT) is True
+        assert doc_svc.delete(document_id, owner=ACCOUNT) is True
         assert not _graph_has(neo4j_session, document_id)
         assert _graph_children(neo4j_session, document_id, 2) == 0
         assert not store.document_exists("DeleteMe")
@@ -241,7 +241,7 @@ def test_rename_document_and_chapter_update_store_and_graph(services, neo4j_sess
         assert neo4j_session.run("MATCH (c:Chapter {id: 'c1'}) RETURN c.title AS t").single()["t"] == "Second"
 
         # Delete still removes the renamed tree end to end.
-        assert doc_svc.delete(document_id, ACCOUNT) is True
+        assert doc_svc.delete(document_id, owner=ACCOUNT) is True
         assert not store.document_exists("Renamed")
         assert not _graph_has(neo4j_session, document_id)
         assert _git(store, "status", "--porcelain").strip() == ""

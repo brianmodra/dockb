@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_auth_service, get_current_user
 from dockb.controllers.schemas.imports import ImportResponse, ImportSummaryWire
 from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.uploads import UploadRejectedError, UploadTooLargeError
@@ -39,14 +39,24 @@ async def import_document(
     files: list[UploadFile] = File(..., description="the document directory's files, named by their path"),
     single_newline_paragraphs: bool = Form(False),
     svc: Any = Depends(get_import_service),
-    user_name: str = Depends(get_current_user),
+    owner: str = Depends(get_current_user),
+    auth: Any = Depends(get_auth_service),
 ) -> dict[str, Any]:
     if svc is None:
         raise HTTPException(status_code=503, detail="import_service_unavailable")
+    # The account owns the imported document; the username is what the document's own
+    # metadata records as its author, and a username is mutable provider data that a
+    # reader of the manuscript sees. Keying ownership by it would move the document's
+    # directory the day the account was renamed.
+    account = auth.get_user(owner) if auth is not None else None
+    if account is None:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    user_name = str(account["username"])
     try:
         summaries = await svc.import_parts(
             files,
             user_name,
+            owner=owner,
             single_newline_paragraphs=single_newline_paragraphs,
         )
     except UploadTooLargeError as exc:

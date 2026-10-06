@@ -49,6 +49,19 @@ class DocumentOwnershipError(Exception):
     """
 
 
+class ChapterNotFoundError(Exception):
+    """No chapter with the given id exists, or *owner* does not own it.
+
+    Same reasoning as :class:`DocumentNotFoundError`, one level down: a create writes
+    through its parent, and a write whose parent belongs to somebody else must not be
+    reported as a write that worked.
+    """
+
+
+class ParagraphNotFoundError(Exception):
+    """No paragraph with the given id exists, or *owner* does not own it."""
+
+
 class DuplicateTitleError(Exception):
     """Raised when a document title already exists in the knowledge graph."""
 

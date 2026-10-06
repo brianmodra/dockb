@@ -25,16 +25,17 @@ class MockHistoryService:
         self._snapshots: list[dict[str, str]] = []
         self._chapters: dict[str, Chapter] = {}
 
-    def list_snapshots(self, chapter_id: str, limit: int = 20, offset: int = 0) -> list[dict[str, str]]:
+    def list_snapshots(self, chapter_id: str, owner: str = "", limit: int = 20, offset: int = 0) -> list[dict[str, str]]:
         return self._snapshots[offset : offset + limit]
 
-    def restore(self, chapter_id: str, commit_id: str) -> Chapter:
+    def restore(self, chapter_id: str, commit_id: str, owner: str = "") -> Chapter:
         if chapter_id not in self._chapters:
             raise SnapshotError(f"Snapshot not found for {chapter_id}")
         return self._chapters[chapter_id]
 
 
 def _build_app(svc: MockHistoryService | None = None) -> FastAPI:
+    from dockb.controllers.auth import get_current_user
     from dockb.controllers.history import router as history_router
     from dockb.controllers.history import set_history_service
 
@@ -42,6 +43,7 @@ def _build_app(svc: MockHistoryService | None = None) -> FastAPI:
 
     app = FastAPI()
     app.include_router(history_router)
+    app.dependency_overrides[get_current_user] = lambda: "acct-1"
     return app
 
 

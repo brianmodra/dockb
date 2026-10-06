@@ -25,7 +25,7 @@ SET r.index = p.index
 """
 
 _NEW_CYPHER = f"""
-MATCH (d:Document {{id: $document_id}})
+MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 MERGE (c)-[rc:PART_OF]->(d)
@@ -39,7 +39,7 @@ FOREACH (e IN later_rels | SET e.index = e.index + 1)
 """
 
 _CHANGED_CYPHER = f"""
-MATCH (d:Document {{id: $document_id}})
+MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 MERGE (c)-[:PART_OF]->(d)
@@ -51,7 +51,7 @@ DETACH DELETE orphan
 """
 
 _DELETE_CYPHER = """
-MATCH (c:Chapter {id: $chapter_id})
+MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})
 OPTIONAL MATCH (p:Paragraph)-[:PART_OF]->(c)
 OPTIONAL MATCH (s:Sentence)-[:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[:PART_OF]->(s)
@@ -60,7 +60,7 @@ DETACH DELETE t, s, p, c
 
 _REORDER_CYPHER = """
 UNWIND $entries AS entry
-MATCH (d:Document {id: $document_id})<-[r:PART_OF]-(c:Chapter {id: entry.id})
+MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
 SET r.index = entry.index
 """
 
@@ -69,18 +69,18 @@ SET r.index = entry.index
 # ---------------------------------------------------------------------------
 
 _LIST_BY_DOCUMENT_CYPHER = """
-MATCH (c:Chapter)-[r:PART_OF]->(d:Document {id: $document_id})
+MATCH (c:Chapter)-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
 RETURN c.id AS id, c.title AS title, c.act AS act, c.category AS category, r.index AS index
 ORDER BY r.index
 """
 
 _FIND_DOCUMENT_CYPHER = """
-MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document)
+MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
 RETURN d.id AS document_id
 """
 
 _LOAD_CYPHER = """
-MATCH (c:Chapter {id: $chapter_id})
+MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
 OPTIONAL MATCH (p:Paragraph)-[rp:PART_OF]->(c)
 OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
@@ -116,6 +116,7 @@ class ChapterRepository(BaseRepository[Chapter]):
     def _build_params(self, model: Chapter, **parent_ids: str) -> dict[str, Any]:
         return {
             "document_id": parent_ids["document_id"],
+            "owner": parent_ids["owner"],
             "chapter_id": model.id,
             "title": model.title,
             "act": model.act,
@@ -124,9 +125,13 @@ class ChapterRepository(BaseRepository[Chapter]):
             "paragraphs": [{"id": p.id, "index": i} for i, p in enumerate(model.paragraphs)],
         }
 
-    def list_by_document(self, document_id: str) -> list[dict[str, str | int]]:
-        """Return ``[{id, title, act, category, index}]`` summaries for chapters of *document_id*."""
-        records = list(self._session.run(_LIST_BY_DOCUMENT_CYPHER, {"document_id": document_id}))
+    def list_by_document(self, document_id: str, owner: str) -> list[dict[str, str | int]]:
+        """Return ``[{id, title, act, category, index}]`` summaries for chapters of *document_id*.
+
+        A document *owner* does not own yields the same empty list as one with no
+        chapters, so its existence is not confirmable from here.
+        """
+        records = list(self._session.run(_LIST_BY_DOCUMENT_CYPHER, {"document_id": document_id, "owner": owner}))
         return [
             {
                 "id": r["id"],
@@ -138,25 +143,32 @@ class ChapterRepository(BaseRepository[Chapter]):
             for r in records
         ]
 
-    def find_document_id(self, chapter_id: str) -> str | None:
-        """Return the id of the owning document, or None when the chapter is orphaned."""
-        records = list(self._session.run(_FIND_DOCUMENT_CYPHER, {"chapter_id": chapter_id}))
+    def find_document_id(self, chapter_id: str, owner: str) -> str | None:
+        """Return the owning document's id, or None when the chapter is orphaned or not owned.
+
+        Scoped like every other read here: a chapter belonging to another account
+        resolves to no document, which is what stops its file being written under the
+        wrong account's tree.
+        """
+        records = list(self._session.run(_FIND_DOCUMENT_CYPHER, {"chapter_id": chapter_id, "owner": owner}))
         if not records:
             return None
         return str(records[0].get("document_id")) if records[0].get("document_id") is not None else None
 
-    def reorder(self, document_id: str, ordered_ids: list[str]) -> None:
+    def reorder(self, document_id: str, ordered_ids: list[str], owner: str) -> None:
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
         entries = [{"id": chapter_id, "index": i} for i, chapter_id in enumerate(ordered_ids)]
-        self._session.run(_REORDER_CYPHER, {"document_id": document_id, "entries": entries})
+        self._session.run(_REORDER_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
 
-    def load(self, chapter_id: str) -> Chapter | None:  # pylint: disable=too-many-locals
+    def load(self, chapter_id: str, owner: str) -> Chapter | None:  # pylint: disable=too-many-locals
         """Load a Chapter and its full child hierarchy from Neo4j.
 
-        Returns None when no chapter with *chapter_id* exists.
+        Returns None when no chapter with *chapter_id* hangs under a document *owner*
+        owns — the same answer as when no such chapter exists at all, so a chapter id
+        belonging to another account is not confirmable.
         """
         logger.debug("Load Chapter %s", chapter_id)
-        records = list(self._session.run(_LOAD_CYPHER, {"chapter_id": chapter_id}))
+        records = list(self._session.run(_LOAD_CYPHER, {"chapter_id": chapter_id, "owner": owner}))
         if not records:
             return None
 

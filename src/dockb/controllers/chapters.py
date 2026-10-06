@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from dockb.controllers.auth import get_current_user
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.chapters import (
     ChapterDocumentRequest,
@@ -18,7 +19,12 @@ from dockb.controllers.schemas.chapters import (
     UpdateChapterRequest,
 )
 from dockb.controllers.serializers import serialize_chapter
-from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchError, DuplicateTitleError
+from dockb.exceptions import (
+    ChapterAfterNotFoundError,
+    ChapterCategoryMismatchError,
+    DocumentNotFoundError,
+    DuplicateTitleError,
+)
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/chapters", tags=["chapters"])
@@ -39,8 +45,9 @@ def set_ch_service(service: Any) -> None:
 def list_chapters(
     document: str,
     svc: Any = Depends(get_ch_service),
+    owner: str = Depends(get_current_user),
 ) -> Any:
-    return svc.list_by_document(document)
+    return svc.list_by_document(document, owner=owner)
 
 
 @router.post("")
@@ -48,6 +55,7 @@ def create_chapter(
     body: CreateChapterRequest,
     svc: Any = Depends(get_ch_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
@@ -58,9 +66,14 @@ def create_chapter(
             document_id=body.relations.document_id,
             after_chapter_id=body.relations.after_chapter_id,
             category=body.attrs.category,
+            owner=owner,
         )
     except ChapterAfterNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc
+    except DocumentNotFoundError as exc:
+        # A document of another account's is reported as one that does not exist,
+        # which is what it is to this caller.
+        raise HTTPException(status_code=404, detail=f"document_not_found: {exc}") from exc
     except DuplicateTitleError as exc:
         raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
     return mutation_response(session_context).model_dump()
@@ -70,8 +83,9 @@ def create_chapter(
 def get_chapter(
     chapter_id: str,
     svc: Any = Depends(get_ch_service),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    ch = svc.open(chapter_id)
+    ch = svc.open(chapter_id, owner=owner)
     if ch is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return serialize_chapter(ch).model_dump()
@@ -81,8 +95,9 @@ def get_chapter(
 def get_chapter_document(
     chapter_id: str,
     svc: Any = Depends(get_ch_service),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    content = svc.open_document(chapter_id)
+    content = svc.open_document(chapter_id, owner=owner)
     if content is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return ChapterDocumentResponse(content=content).model_dump()
@@ -93,8 +108,9 @@ def put_chapter_document(
     chapter_id: str,
     body: ChapterDocumentRequest,
     svc: Any = Depends(get_ch_service),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    result = svc.save_document(chapter_id, body.content)
+    result = svc.save_document(chapter_id, body.content, owner=owner)
     if result is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     summary = result.summary
@@ -115,9 +131,10 @@ def reorder_chapter(
     body: ReorderChapterRequest,
     svc: Any = Depends(get_ch_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     try:
-        ch = svc.move(chapter_id=chapter_id, after_chapter_id=body.after_chapter_id)
+        ch = svc.move(chapter_id=chapter_id, after_chapter_id=body.after_chapter_id, owner=owner)
     except ChapterAfterNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"after_chapter_not_found: {exc}") from exc
     except ChapterCategoryMismatchError as exc:
@@ -133,9 +150,10 @@ def update_chapter(
     body: UpdateChapterRequest,
     svc: Any = Depends(get_ch_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     try:
-        ch = svc.update(chapter_id=chapter_id, title=body.attrs.title)
+        ch = svc.update(chapter_id=chapter_id, title=body.attrs.title, owner=owner)
     except DuplicateTitleError as exc:
         raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
     if ch is None:
@@ -148,8 +166,9 @@ def delete_chapter(
     chapter_id: str,
     svc: Any = Depends(get_ch_service),
     session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    deleted = svc.delete(chapter_id)
+    deleted = svc.delete(chapter_id, owner=owner)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return mutation_response(session_context).model_dump()

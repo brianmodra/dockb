@@ -77,7 +77,12 @@ def _build_and_hydrate(nlp, owner: str) -> Document:
 
 
 def _save(neo4j_session, doc: Document) -> None:
-    """Persist a Document with full hierarchy through UnitOfWork."""
+    """Persist a Document with full hierarchy through UnitOfWork.
+
+    Every write carries the document's owner, because each repository scopes its
+    Cypher to the account that owns the document being written into.
+    """
+    owner = doc.owner
     repos = {
         Document: DocumentRepository(neo4j_session),
         Chapter: ChapterRepository(neo4j_session),
@@ -86,11 +91,11 @@ def _save(neo4j_session, doc: Document) -> None:
     }
     uow = UnitOfWork(repos=repos)
     uow.register(doc)
-    uow.register(doc.chapters[0], document_id=doc.id)
+    uow.register(doc.chapters[0], document_id=doc.id, owner=owner)
     for para in doc.chapters[0].paragraphs:
-        uow.register(para, chapter_id=doc.chapters[0].id)
+        uow.register(para, chapter_id=doc.chapters[0].id, owner=owner)
         for sent in para.sentences:
-            uow.register(sent, paragraph_id=para.id)
+            uow.register(sent, paragraph_id=para.id, owner=owner)
     uow.commit()
 
 

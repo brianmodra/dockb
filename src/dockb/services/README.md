@@ -46,6 +46,17 @@ ChapterController, ChapterService, ParagraphController, ParagraphService, Senten
 
 The API (FastAPI) will be responding to change requests which come from the FE.
 
+**Every service method names the account it acts for, as a required keyword
+argument `owner`.** There is one rule for reads, writes and deletes alike, and no
+default: an account is something a caller states, not something it can drop in as
+another positional argument and have a service guess. A service that could read for
+"nobody" would quietly answer "not found" for everything — a failure that looks like
+missing data — so the argument is required rather than optional.
+
+The account id comes from the session at the route, and the service passes it to the
+repository, which scopes the Cypher to `(:Document {owner: $owner})`. See
+`../repositories/README.md` for what that means for the query itself.
+
 ## Models
 
 At the point of writing this, the models (which all inherit from DockbModel), have a lot of

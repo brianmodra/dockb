@@ -8,6 +8,7 @@ from dockb.models.base import DataState
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
+from dockb.repositories.ownership import owned_node_exists
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _NEW_CYPHER = """
-MATCH (c:Chapter {id: $chapter_id})
+MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})
 MERGE (p:Paragraph {id: $paragraph_id})
 MERGE (p)-[:PART_OF]->(c)
 WITH p
@@ -34,7 +35,7 @@ DETACH DELETE orphan
 """
 
 _DELETE_CYPHER = """
-MATCH (p:Paragraph {id: $paragraph_id})
+MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
 DETACH DELETE p
 """
 
@@ -43,13 +44,14 @@ DETACH DELETE p
 # ---------------------------------------------------------------------------
 
 _LIST_BY_CHAPTER_CYPHER = """
-MATCH (p:Paragraph)-[:PART_OF]->(c:Chapter {id: $chapter_id})
+MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})
+MATCH (p:Paragraph)-[:PART_OF]->(c)
 RETURN p.id AS id
 ORDER BY p.id
 """
 
 _LOAD_CYPHER = """
-MATCH (p:Paragraph {id: $paragraph_id})
+MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
 OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
@@ -83,22 +85,38 @@ class ParagraphRepository(BaseRepository[Paragraph]):
     def _build_params(self, model: Paragraph, **parent_ids: str) -> dict[str, Any]:
         return {
             "chapter_id": parent_ids["chapter_id"],
+            "owner": parent_ids["owner"],
             "paragraph_id": model.id,
             "sentences": [{"id": s.id, "index": i} for i, s in enumerate(model.sentences)],
         }
 
-    def list_by_chapter(self, chapter_id: str) -> list[dict[str, str]]:
-        """Return ``[{id}]`` summaries for paragraphs belonging to *chapter_id*."""
-        records = list(self._session.run(_LIST_BY_CHAPTER_CYPHER, {"chapter_id": chapter_id}))
+    def owns_chapter(self, chapter_id: str, owner: str) -> bool:
+        """Return whether *chapter_id* — the parent this repository writes through — is *owner*'s.
+
+        Asked before a create, because the write's ``MATCH`` on the chapter that matches
+        nothing writes nothing and reports no error: without this the route would answer
+        200 for a paragraph that does not exist.
+        """
+        return owned_node_exists(self._session, "Chapter", chapter_id, owner)
+
+    def list_by_chapter(self, chapter_id: str, owner: str) -> list[dict[str, str]]:
+        """Return ``[{id}]`` summaries for paragraphs belonging to *chapter_id*.
+
+        A chapter *owner* does not own yields the same empty list as one with no
+        paragraphs, so its existence is not confirmable from here.
+        """
+        records = list(self._session.run(_LIST_BY_CHAPTER_CYPHER, {"chapter_id": chapter_id, "owner": owner}))
         return [{"id": r["id"]} for r in records]
 
-    def load(self, paragraph_id: str) -> Paragraph | None:  # pylint: disable=too-many-locals
+    def load(self, paragraph_id: str, owner: str) -> Paragraph | None:  # pylint: disable=too-many-locals
         """Load a Paragraph and its full child hierarchy from Neo4j.
 
-        Returns None when no paragraph with *paragraph_id* exists.
+        Returns None when no paragraph with *paragraph_id* hangs under a document *owner*
+        owns — the same answer as when no such paragraph exists at all, so a paragraph id
+        belonging to another account is not confirmable.
         """
         logger.debug("Load Paragraph %s", paragraph_id)
-        records = list(self._session.run(_LOAD_CYPHER, {"paragraph_id": paragraph_id}))
+        records = list(self._session.run(_LOAD_CYPHER, {"paragraph_id": paragraph_id, "owner": owner}))
         if not records:
             return None
 

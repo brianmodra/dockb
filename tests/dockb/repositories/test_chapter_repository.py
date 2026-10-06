@@ -8,6 +8,8 @@ import pytest
 from dockb.models.base import DataState
 from dockb.models.paragraph import Paragraph
 
+_OWNER = "acct-1"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -42,7 +44,7 @@ class TestSaveNewChapter:
         chapter.state = DataState.NEW
         chapter.paragraphs.append(Paragraph(text="First paragraph."))
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "MATCH (d:Document" in cypher
@@ -55,7 +57,7 @@ class TestSaveNewChapter:
 
     def test_passes_document_and_chapter_ids(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         assert params["document_id"] == "d1"
@@ -66,7 +68,7 @@ class TestSaveNewChapter:
         chapter.state = DataState.NEW
         chapter.act = "Act I"
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         assert params["act"] == "Act I"
@@ -75,7 +77,7 @@ class TestSaveNewChapter:
         chapter.state = DataState.NEW
         chapter.category = "Character"
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         assert params["category"] == "Character"
@@ -83,7 +85,7 @@ class TestSaveNewChapter:
     def test_sets_category_property(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "c.category = $category" in cypher
@@ -92,7 +94,7 @@ class TestSaveNewChapter:
         chapter.state = DataState.NEW
         chapter.title = "Intro"
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "c.title_key = toLower($title)" in cypher
@@ -103,7 +105,7 @@ class TestSaveNewChapter:
         para = Paragraph(text="First paragraph.")
         chapter.paragraphs.append(para)
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         paragraphs = params["paragraphs"]
@@ -118,7 +120,7 @@ class TestSaveNewChapter:
         chapter.paragraphs.append(para_a)
         chapter.paragraphs.append(para_b)
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         paragraphs = params["paragraphs"]
@@ -132,7 +134,7 @@ class TestSaveNewChapter:
         chapter.state = DataState.NEW
         chapter.paragraphs.append(Paragraph(text="Hello."))
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" not in cypher or "DETACH DELETE" not in cypher
@@ -140,7 +142,7 @@ class TestSaveNewChapter:
     def test_sets_chapter_document_edge_index(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
 
-        chapter_repo.save(chapter, document_id="d1", index=2)
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER, index=2)
 
         cypher, params = extract_call(neo4j_session)
         assert "MERGE (c)-[rc:PART_OF]->(d)" in cypher
@@ -150,7 +152,7 @@ class TestSaveNewChapter:
     def test_defaults_index_to_zero(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         assert params["index"] == 0
@@ -158,7 +160,7 @@ class TestSaveNewChapter:
     def test_reindexes_later_chapters(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
 
-        chapter_repo.save(chapter, document_id="d1", index=1)
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER, index=1)
 
         cypher, _ = extract_call(neo4j_session)
         assert "other.id <> c.id" in cypher
@@ -173,7 +175,7 @@ class TestSaveChangedChapter:
         chapter.state = DataState.CHANGED
         chapter.paragraphs.append(Paragraph(text="Hello."))
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" in cypher
@@ -183,7 +185,7 @@ class TestSaveChangedChapter:
         chapter.state = DataState.CHANGED
         chapter.title = "Intro"
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "c.title_key = toLower($title)" in cypher
@@ -193,7 +195,7 @@ class TestSaveChangedChapter:
         chapter.state = DataState.CHANGED
         chapter.category = "Character"
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, params = extract_call(neo4j_session)
         assert "c.category = $category" in cypher
@@ -207,7 +209,7 @@ class TestSaveChangedChapter:
         chapter.paragraphs.append(para_b)
         chapter.delete_child(para_a.id)
 
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         paragraphs = params["paragraphs"]
@@ -221,7 +223,7 @@ class TestSaveDeletedChapter:  # pylint: disable=too-few-public-methods
 
     def test_detach_deletes_the_chapter(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.DELETED
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
 
         cypher, params = extract_call(neo4j_session)
         assert "DETACH DELETE" in cypher
@@ -234,7 +236,7 @@ class TestSaveSkipStates:  # pylint: disable=too-few-public-methods
     @pytest.mark.parametrize("state", [DataState.SYNC, DataState._])
     def test_skips_run(self, state, chapter_repo, neo4j_session, chapter):
         chapter.state = state
-        chapter_repo.save(chapter, document_id="d1")
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
         neo4j_session.run.assert_not_called()
 
 
@@ -245,7 +247,7 @@ class TestSaveDirtyChapter:  # pylint: disable=too-few-public-methods
         chapter.dirty = True
         chapter.state = DataState.CHANGED
         with pytest.raises(ValueError, match="(?i)dirty"):
-            chapter_repo.save(chapter, document_id="d1")
+            chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
         neo4j_session.run.assert_not_called()
 
 
@@ -262,7 +264,7 @@ class TestListByDocument:
             {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0},
             {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1},
         ]
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == [
             {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0},
             {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1},
@@ -270,18 +272,18 @@ class TestListByDocument:
 
     def test_orders_by_relationship_index(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        chapter_repo.list_by_document("d-1")
+        chapter_repo.list_by_document("d-1", _OWNER)
         cypher, _ = extract_call(neo4j_session)
         assert "ORDER BY r.index" in cypher
 
     def test_returns_empty_list_when_no_chapters(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == []
 
     def test_passes_document_id(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        chapter_repo.list_by_document("d-999")
+        chapter_repo.list_by_document("d-999", _OWNER)
         _, params = extract_call(neo4j_session)
         assert params["document_id"] == "d-999"
 
@@ -290,7 +292,7 @@ class TestListByDocument:
             {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
             {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1},
         ]
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == [
             {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
             {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1},
@@ -301,7 +303,7 @@ class TestListByDocument:
             {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
             {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1},
         ]
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == [
             {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
             {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1},
@@ -309,17 +311,17 @@ class TestListByDocument:
 
     def test_defaults_missing_act_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "act": None, "index": 0}]
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result[0]["act"] == ""
 
     def test_defaults_missing_category_to_chapter(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "ch-1", "title": "C", "act": "", "index": 0}]
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result[0]["category"] == "Chapter"
 
     def test_defaults_missing_title_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "ch-1", "title": None, "index": 0}]
-        result = chapter_repo.list_by_document("d-1")
+        result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result[0]["title"] == ""
 
 
@@ -333,11 +335,11 @@ class TestLoadChapter:
 
     def test_returns_none_when_not_found(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        assert chapter_repo.load("nonexistent") is None
+        assert chapter_repo.load("nonexistent", _OWNER) is None
 
     def test_returns_none_when_first_record_has_null_id(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": None}]
-        assert chapter_repo.load("ch-1") is None
+        assert chapter_repo.load("ch-1", _OWNER) is None
 
     def test_returns_chapter_with_paragraphs_and_sentences(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
@@ -361,7 +363,7 @@ class TestLoadChapter:
                 "token_is_stop": False,
             }
         ]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.id == "ch-1"
         assert ch.title == "Intro"
@@ -394,14 +396,14 @@ class TestLoadChapter:
                 "token_is_stop": None,
             }
         ]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.title == ""
         assert len(ch.paragraphs) == 0
 
     def test_sets_state_to_sync(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_title": "X"}]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch.state == DataState.SYNC
 
     def test_loads_act_from_graph(self, chapter_repo, neo4j_session):
@@ -428,7 +430,7 @@ class TestLoadChapter:
                 "token_is_stop": None,
             }
         ]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.act == "Act I"
 
@@ -456,19 +458,19 @@ class TestLoadChapter:
                 "token_is_stop": None,
             }
         ]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.category == "Character"
 
     def test_defaults_null_category_to_chapter(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_act": None}]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.category == "Chapter"
 
     def test_defaults_null_act_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_act": None}]
-        ch = chapter_repo.load("ch-1")
+        ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.act == ""
 
@@ -478,21 +480,21 @@ class TestFindDocumentId:
 
     def test_returns_parent_document_id(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"document_id": "d-1"}]
-        assert chapter_repo.find_document_id("ch-1") == "d-1"
+        assert chapter_repo.find_document_id("ch-1", _OWNER) == "d-1"
 
     def test_calls_reverse_part_of_cypher(self, chapter_repo, neo4j_session):
-        chapter_repo.find_document_id("ch-1")
+        chapter_repo.find_document_id("ch-1", _OWNER)
         cypher, params = extract_call(neo4j_session)
         assert "-[:PART_OF]->" in cypher
-        assert params == {"chapter_id": "ch-1"}
+        assert params == {"chapter_id": "ch-1", "owner": _OWNER}
 
     def test_returns_none_when_orphan(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        assert chapter_repo.find_document_id("ch-1") is None
+        assert chapter_repo.find_document_id("ch-1", _OWNER) is None
 
     def test_returns_none_when_null_id(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"document_id": None}]
-        assert chapter_repo.find_document_id("ch-1") is None
+        assert chapter_repo.find_document_id("ch-1", _OWNER) is None
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +506,7 @@ class TestReorder:
     """Behaviour of ChapterRepository.reorder()."""
 
     def test_rewrites_indices_from_ordered_ids(self, chapter_repo, neo4j_session):
-        chapter_repo.reorder("d-1", ["ch-1", "ch-2", "ch-3"])
+        chapter_repo.reorder("d-1", owner=_OWNER, ordered_ids=["ch-1", "ch-2", "ch-3"])
 
         cypher, params = extract_call(neo4j_session)
         assert "MATCH (d:Document" in cypher
@@ -518,7 +520,82 @@ class TestReorder:
         ]
 
     def test_renumbers_a_single_chapter(self, chapter_repo, neo4j_session):
-        chapter_repo.reorder("d-1", ["ch-9"])
+        chapter_repo.reorder("d-1", owner=_OWNER, ordered_ids=["ch-9"])
 
         _, params = extract_call(neo4j_session)
         assert params["entries"] == [{"id": "ch-9", "index": 0}]
+
+
+# ---------------------------------------------------------------------------
+# Ownership
+# ---------------------------------------------------------------------------
+
+
+class TestOwnershipScoping:
+    """Every chapter query is scoped to the account that owns its document.
+
+    A chapter is reached only through its document, so each query either matches the
+    document on ``owner`` or joins to it. Without that, any caller naming any chapter
+    id would be handed another account's text — and a write would attach itself to a
+    document belonging to someone else.
+    """
+
+    def test_new_matches_the_document_owner(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "(d:Document {id: $document_id, owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_changed_matches_the_document_owner(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.CHANGED
+
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "(d:Document {id: $document_id, owner: $owner})" in cypher
+
+    def test_delete_joins_to_the_owning_document(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.DELETED
+
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_load_joins_to_the_owning_document(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        chapter_repo.load("ch-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_list_by_document_matches_the_document_owner(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        chapter_repo.list_by_document("d-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "(d:Document {id: $document_id, owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_find_document_id_matches_the_document_owner(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        chapter_repo.find_document_id("ch-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "(d:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_reorder_matches_the_document_owner(self, chapter_repo, neo4j_session):
+        chapter_repo.reorder("d-1", ["ch-1"], owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "(d:Document {id: $document_id, owner: $owner})" in cypher
+        assert params["owner"] == _OWNER

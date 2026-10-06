@@ -1,8 +1,10 @@
 """Reconstruct a chapter from the knowledge graph as markdown, from the shell.
 
-Run with ``python -m dockb.cli.reconstruct_chapter <chapter_id> [--out PATH]``.
+Run with ``python -m dockb.cli.reconstruct_chapter <chapter_id> --owner USERNAME [--out PATH]``.
+``--owner`` is a username and is required: a chapter is stored under the account that
+owns its document, so a chapter id on its own names no account and reconstructs nothing.
 Without ``--out`` the chapter is written into the server-owned markdown tree
-(``<base>/<document title>/<Act X>/<chapter title>.md`` under
+(``<base>/<account id>/<document title>/<Act X>/<chapter title>.md`` under
 ``DOCKB_CHAPTERS_DIR``, defaulting to ``cwd/dockb_chapters_dir``) and
 git-committed; ``--out`` writes the exact path given instead. The Neo4j
 connection comes from ``NEO4J_URL``, ``NEO4J_USER`` and ``NEO4J_PASSWORD``
@@ -43,18 +45,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--owner",
         default=None,
-        help="username owning the chapter's document (required unless --out is given)",
+        help="username owning the chapter's document; required, because a chapter id alone names no account",
     )
     args = parser.parse_args(argv)
 
-    if args.out is None and not args.owner:
-        print("error: --owner is required without --out: the store tree is per-account", file=sys.stderr)
+    if not args.owner:
+        print("error: --owner is required: a chapter is read through the account that owns it", file=sys.stderr)
         return 1
 
     load_dotenv()
     try:
         settings = neo4j_settings()
         nlp = load_spacy_model()
+        owner = account_id_for(args.owner)
+    except UnknownUserError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except MissingConfigurationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -69,14 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         document_repo = DocumentRepository(session)
         try:
             if args.out is not None:
-                reconstruct_chapter_file(args.chapter_id, chapter_repo, args.out, nlp)
+                reconstruct_chapter_file(args.chapter_id, chapter_repo, args.out, nlp, owner=owner)
                 return 0
-            store = DocumentStore(base_dir=resolve_document_base_dir(), account_id=account_id_for(args.owner or ""))
+            store = DocumentStore(base_dir=resolve_document_base_dir(), account_id=owner)
             path = reconstruct_chapter_to_store(args.chapter_id, chapter_repo, document_repo, store, nlp)
             print(path)
-        except UnknownUserError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
         except ChapterMismatchError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1

@@ -8,6 +8,8 @@ import pytest
 from dockb.models.base import DataState
 from dockb.models.sentence import Sentence
 
+_OWNER = "acct-1"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -42,7 +44,7 @@ class TestSaveNewParagraph:
         paragraph.state = DataState.NEW
         paragraph.sentences.append(Sentence(text="Hello world."))
 
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "MATCH (c:Chapter" in cypher
@@ -54,7 +56,7 @@ class TestSaveNewParagraph:
 
     def test_passes_chapter_and_paragraph_ids(self, paragraph_repo, neo4j_session, paragraph):
         paragraph.state = DataState.NEW
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         assert params["chapter_id"] == "ch1"
@@ -65,7 +67,7 @@ class TestSaveNewParagraph:
         sent = Sentence(text="Hello world.")
         paragraph.sentences.append(sent)
 
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         sentences = params["sentences"]
@@ -80,7 +82,7 @@ class TestSaveNewParagraph:
         paragraph.sentences.append(sent_a)
         paragraph.sentences.append(sent_b)
 
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         sentences = params["sentences"]
@@ -94,7 +96,7 @@ class TestSaveNewParagraph:
         paragraph.state = DataState.NEW
         paragraph.sentences.append(Sentence(text="Hello."))
 
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" not in cypher or "DETACH DELETE" not in cypher
@@ -107,7 +109,7 @@ class TestSaveChangedParagraph:
         paragraph.state = DataState.CHANGED
         paragraph.sentences.append(Sentence(text="Hello."))
 
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" in cypher
@@ -121,7 +123,7 @@ class TestSaveChangedParagraph:
         paragraph.sentences.append(sent_b)
         paragraph.delete_child(sent_a.id)
 
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         _, params = extract_call(neo4j_session)
         sentences = params["sentences"]
@@ -135,7 +137,7 @@ class TestSaveDeletedParagraph:  # pylint: disable=too-few-public-methods
 
     def test_detach_deletes_the_paragraph(self, paragraph_repo, neo4j_session, paragraph):
         paragraph.state = DataState.DELETED
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
 
         cypher, params = extract_call(neo4j_session)
         assert "DETACH DELETE" in cypher
@@ -148,7 +150,7 @@ class TestSaveSkipStates:  # pylint: disable=too-few-public-methods
     @pytest.mark.parametrize("state", [DataState.SYNC, DataState._])
     def test_skips_run(self, state, paragraph_repo, neo4j_session, paragraph):
         paragraph.state = state
-        paragraph_repo.save(paragraph, chapter_id="ch1")
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
         neo4j_session.run.assert_not_called()
 
 
@@ -159,7 +161,7 @@ class TestSaveDirtyParagraph:  # pylint: disable=too-few-public-methods
         paragraph.dirty = True
         paragraph.state = DataState.CHANGED
         with pytest.raises(ValueError, match="(?i)dirty"):
-            paragraph_repo.save(paragraph, chapter_id="ch1")
+            paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
         neo4j_session.run.assert_not_called()
 
 
@@ -173,17 +175,17 @@ class TestListByChapter:
 
     def test_returns_ids(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "p-1"}, {"id": "p-2"}]
-        result = paragraph_repo.list_by_chapter("ch-1")
+        result = paragraph_repo.list_by_chapter("ch-1", _OWNER)
         assert result == [{"id": "p-1"}, {"id": "p-2"}]
 
     def test_returns_empty_list_when_no_paragraphs(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        result = paragraph_repo.list_by_chapter("ch-1")
+        result = paragraph_repo.list_by_chapter("ch-1", _OWNER)
         assert result == []
 
     def test_passes_chapter_id(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        paragraph_repo.list_by_chapter("ch-999")
+        paragraph_repo.list_by_chapter("ch-999", _OWNER)
         _, params = extract_call(neo4j_session)
         assert params["chapter_id"] == "ch-999"
 
@@ -198,11 +200,11 @@ class TestLoadParagraph:
 
     def test_returns_none_when_not_found(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        assert paragraph_repo.load("nonexistent") is None
+        assert paragraph_repo.load("nonexistent", _OWNER) is None
 
     def test_returns_none_when_first_record_has_null_id(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = [{"paragraph_id": None}]
-        assert paragraph_repo.load("p-1") is None
+        assert paragraph_repo.load("p-1", _OWNER) is None
 
     def test_returns_paragraph_with_sentences(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = [
@@ -223,7 +225,7 @@ class TestLoadParagraph:
                 "token_is_stop": False,
             }
         ]
-        p = paragraph_repo.load("p-1")
+        p = paragraph_repo.load("p-1", _OWNER)
         assert p is not None
         assert p.id == "p-1"
         assert len(p.sentences) == 1
@@ -233,5 +235,75 @@ class TestLoadParagraph:
 
     def test_sets_state_to_sync(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = [{"paragraph_id": "p-1"}]
-        p = paragraph_repo.load("p-1")
+        p = paragraph_repo.load("p-1", _OWNER)
         assert p.state == DataState.SYNC
+
+
+# ---------------------------------------------------------------------------
+# Ownership
+# ---------------------------------------------------------------------------
+
+
+class TestOwnershipScoping:
+    """A paragraph is reached only through its chapter's document, so every query
+    carries the owner: without it, any caller naming any paragraph id would be handed
+    another account's sentences and tokens."""
+
+    def test_new_matches_the_chapter_through_an_owned_document(self, paragraph_repo, neo4j_session, paragraph):
+        paragraph.state = DataState.NEW
+
+        paragraph_repo.save(paragraph, chapter_id="ch-1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_delete_joins_to_the_owning_document(self, paragraph_repo, neo4j_session, paragraph):
+        paragraph.state = DataState.DELETED
+
+        paragraph_repo.save(paragraph, chapter_id="ch-1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_load_joins_to_the_owning_document(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        paragraph_repo.load("p-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+    def test_list_by_chapter_matches_the_chapter_through_an_owned_document(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        paragraph_repo.list_by_chapter("ch-1", _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})" in cypher
+        assert params["owner"] == _OWNER
+
+
+class TestOwnsChapter:
+    """``owns_chapter`` answers whether the caller may write beneath this chapter.
+
+    This is the question the create path asks before writing, because the write itself
+    cannot report its own failure.
+    """
+
+    def test_true_when_the_chapter_hangs_under_an_owned_document(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"owned": 1}]
+
+        assert paragraph_repo.owns_chapter("ch-1", _OWNER) is True
+
+        cypher, params = extract_call(neo4j_session)
+        assert "(n:Chapter {id: $id})" in cypher
+        assert "(d:Document {owner: $owner})" in cypher
+        assert params == {"id": "ch-1", "owner": _OWNER}
+
+    def test_false_when_no_such_chapter_is_owned(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"owned": 0}]
+
+        assert paragraph_repo.owns_chapter("ch-1", _OWNER) is False
