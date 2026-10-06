@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -329,6 +330,31 @@ def _porcelain(store) -> str:
     ).stdout.strip()
 
 
+def _log_subjects(store) -> list[str]:
+    """Return the account repository's commit subjects, oldest first."""
+    return subprocess.run(
+        ["git", "log", "--reverse", "--format=%s"],
+        cwd=str(store.account_dir()),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+
+
+def _other_document_tree(tmp_path, body: str) -> Path:
+    """Write a document's directory at the flat pre-ownership path, ``<base>/<title>``.
+
+    Not through a store, because that is the point: no account holds this directory, and
+    a ``DocumentStore`` cannot name a path with no account segment in it.
+    """
+    root = tmp_path / _SAFE_TITLE
+    chapter = root / "Act I" / f"{_SAFE_CHAPTER}.md"
+    chapter.parent.mkdir(parents=True, exist_ok=True)
+    chapter.write_text(body, encoding="utf-8")
+    (root / "document_metadata.yaml").write_text(f"title: {_SAFE_TITLE}\nauthor: Test\n", encoding="utf-8")
+    return root
+
+
 def test_remove_document_git_rms_committed_tree(git_store):
     git_store.write_metadata(_SAFE_TITLE, DocumentMetadata(title=_SAFE_TITLE, author="Test"))
     git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# body\n")
@@ -642,3 +668,89 @@ def test_factory_from_env_raises_when_unset(monkeypatch):
 def test_factory_refuses_an_empty_account_id(tmp_path):
     with pytest.raises(ValueError, match="account_id"):
         DocumentStoreFactory(base_dir=tmp_path).for_account("")
+
+
+def test_adopt_document_copies_the_directory_and_commits_it(git_store, tmp_path):
+    source = _other_document_tree(tmp_path, "# an imported chapter\n")
+
+    git_store.adopt_document(_SAFE_TITLE, source)
+
+    assert git_store.read_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER) == "# an imported chapter\n"
+    assert source.is_dir()
+    assert _porcelain(git_store) == ""
+    assert _log_subjects(git_store) == [f"adopt: {_SAFE_TITLE}"]
+
+
+def test_adopt_document_copies_every_file_in_the_tree(git_store, tmp_path):
+    """Not just the chapter files: the document's own metadata travels with them."""
+    source = _other_document_tree(tmp_path, "# one\n")
+    (source / "Characters").mkdir(parents=True, exist_ok=True)
+    (source / "Characters" / "Jael.md").write_text("# jael\n", encoding="utf-8")
+
+    git_store.adopt_document(_SAFE_TITLE, source)
+
+    assert git_store.chapter_exists(_SAFE_TITLE, "Characters", "Jael", category="Character")
+    assert git_store.read_metadata(_SAFE_TITLE) == DocumentMetadata(title=_SAFE_TITLE, author="Test")
+
+
+def test_adopt_document_refuses_to_write_over_an_existing_directory(git_store, tmp_path):
+    """Two documents' files under one directory is a manuscript neither account wrote."""
+    git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# the account's own\n")
+    source = _other_document_tree(tmp_path, "# someone else's\n")
+
+    with pytest.raises(SnapshotError, match="already exists"):
+        git_store.adopt_document(_SAFE_TITLE, source)
+
+    assert git_store.read_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER) == "# the account's own\n"
+
+
+def test_adopt_document_missing_source_is_a_noop(git_store, tmp_path):
+    """The graph holds the document's content regardless, so there is nothing to fail on."""
+    git_store.adopt_document(_SAFE_TITLE, tmp_path / "never-existed")
+
+    assert not git_store.document_exists(_SAFE_TITLE)
+
+
+def test_adopt_document_rejects_an_unsafe_title(git_store, tmp_path):
+    """The title is graph data, but it is still a title, and it still becomes a path."""
+    source = _other_document_tree(tmp_path, "# body\n")
+
+    with pytest.raises(ValueError, match="not a valid title"):
+        git_store.adopt_document("../escape", source)
+
+
+def test_adopt_document_commits_only_into_this_accounts_repository(git_store, other_store, tmp_path):
+    """The whole point of a repository per account: a commit cannot span two of them."""
+    source = _other_document_tree(tmp_path, "# adopted\n")
+
+    git_store.adopt_document(_SAFE_TITLE, source)
+    other_store.write_chapter("Theirs", "Act I", "Theirs One", "# theirs\n")
+    other_store.git_commit("Theirs", "materialize: theirs")
+
+    assert _log_subjects(git_store) == [f"adopt: {_SAFE_TITLE}"]
+    assert _log_subjects(other_store) == ["materialize: theirs"]
+
+
+def test_remove_legacy_document_deletes_the_flat_directory(tmp_path):
+    factory = DocumentStoreFactory(base_dir=tmp_path)
+    legacy = _other_document_tree(tmp_path, "# an imported chapter\n")
+    (tmp_path / "Not This One").mkdir()
+
+    factory.remove_legacy_document(_SAFE_TITLE)
+
+    assert not legacy.exists()
+    assert (tmp_path / "Not This One").is_dir()
+
+
+def test_remove_legacy_document_missing_directory_is_a_noop(tmp_path):
+    DocumentStoreFactory(base_dir=tmp_path).remove_legacy_document(_SAFE_TITLE)
+
+
+def test_legacy_document_dir_is_the_title_under_the_base(tmp_path):
+    assert DocumentStoreFactory(base_dir=tmp_path).legacy_document_dir(_SAFE_TITLE) == tmp_path / _SAFE_TITLE
+
+
+def test_legacy_document_dir_rejects_an_unsafe_title(tmp_path):
+    """A document's title is graph data; the path it becomes still has to stay inside the base."""
+    with pytest.raises(ValueError, match="not a valid title"):
+        DocumentStoreFactory(base_dir=tmp_path).legacy_document_dir("../escape")

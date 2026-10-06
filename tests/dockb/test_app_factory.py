@@ -121,6 +121,19 @@ class TestCreateApp:
         routes = {r.path for r in app.routes if hasattr(r, "path")}
         assert "/api/app/state" in routes
 
+    def test_no_route_transfers_ownership(self) -> None:
+        """Assignment is a command-line act, and this is what keeps it that way.
+
+        An ownership transfer over HTTP would need its own authorization question — who
+        may give away a manuscript — and there is no answer the editor should be trusted
+        with. ``dockb users assign`` is the whole of that surface, so a route appearing
+        here later is a decision that has been made by accident.
+        """
+        from dockb.app_factory import create_app
+
+        paths = [r.path.lower() for r in create_app().routes if hasattr(r, "path")]
+        assert not [path for path in paths if "assign" in path or "transfer" in path or "owner" in path]
+
     def test_all_http_methods_present(self) -> None:
         from dockb.app_factory import create_app
 

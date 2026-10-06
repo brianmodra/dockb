@@ -106,7 +106,8 @@ def test_a_document_with_no_owner_is_invisible_to_everyone(services, neo4j_sessi
         )
         assert legacy.owner == ""
 
-        assert repo.find_owner("d-legacy") is None
+        assert repo.find_summary("d-legacy")["owner"] is None
+        assert repo.find_summary("d-legacy")["title"] == "Legacy"
         assert repo.list_all(_ALICE) == []
         assert repo.load_shell("d-legacy", _ALICE) is None
     finally:
@@ -126,7 +127,7 @@ def test_creating_a_document_with_no_account_is_refused(services, neo4j_session)
         with pytest.raises(DocumentOwnershipError):
             service.create("d-orphan", title="Orphan", author="Nobody", owner="")
 
-        assert repo.find_owner("d-orphan") is None
+        assert repo.find_summary("d-orphan") is None
         assert repo.list_all(_ALICE) == []
         assert not list(base.iterdir())
     finally:
@@ -151,8 +152,9 @@ def test_two_legacy_documents_may_share_a_title(services, neo4j_session):
                 {"id": f"d-legacy-{suffix}"},
             )
 
-        assert repo.find_owner("d-legacy-one") is None
-        assert repo.find_owner("d-legacy-two") is None
+        # Subset, not equality: the database is shared across the integration suite, so an
+        # unowned document another test has not cleaned up yet is not this test's failure.
+        assert {"d-legacy-one", "d-legacy-two"} <= {row["id"] for row in repo.list_unowned()}
         assert repo.load_shell("d-legacy-one", _ALICE) is None
         assert repo.load_shell("d-legacy-two", _ALICE) is None
     finally:

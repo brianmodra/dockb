@@ -29,6 +29,16 @@ tree:
                 <chapter_title>.md
 ```
 
+Before trees were per-account, a document's directory sat at `<base>/<document_title>`
+with no account segment at all. `DocumentStore` is scoped to an account by construction
+and cannot name that path, so the two operations on the older layout live on the factory:
+`legacy_document_dir(document_title)` returns it (validating the title as a single path
+segment, since a hostile title must not be able to name a directory outside the base) and
+`remove_legacy_document(document_title)` deletes it. The removal is not committed: the
+repository that lived at the base directory is the one per-account repositories replaced,
+and nothing reads it any more. `dockb users assign` reads and writes both, which is how a
+manuscript imported before accounts owned documents arrives in an account's tree.
+
 - `<account_id>` is the internal account id (`users.id`), not a username. Usernames are
   mutable provider data — a rename or a merge would otherwise move or split a tree — and
   an id is minted once and never changes.
@@ -118,6 +128,17 @@ when the removal empties them, so `document_exists` stays accurate once the
 last chapter of a document is removed. The services call these before marking
 the graph node `DELETED`, so a store failure leaves the graph intact for a
 retry and the DELETE endpoint leaves no markdown files behind.
+
+`adopt_document(document_title, source)` copies a document's directory from
+`source` into this account's tree and commits it there. Copying rather than
+moving means a failure part way through leaves the original where it was, and
+committing here means the manuscript enters this account's history as its first
+commit — history does not travel between repositories, and stitching it across
+would buy a tree that only ever held one account's work. It refuses to write
+over an existing directory instead of merging into it, because two documents'
+files under one directory is a manuscript neither account wrote. A `source`
+that is not a directory is a no-op: the document's content is in the graph
+regardless, and the editor materializes a tree on first open.
 
 `rename_document(old, new)` and `rename_chapter(..., old, new)` are the mirror
 image: a title rename moves the owned directory or markdown file, so a rename

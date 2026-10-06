@@ -286,30 +286,81 @@ class TestDocumentOwnership:
         assert doc is not None
         assert doc.owner == "acct-1"
 
-    def test_find_owner_returns_the_account_id(self, document_repo, neo4j_session):
-        neo4j_session.run.return_value = [{"owner": "acct-1"}]
-        assert document_repo.find_owner("d-1") == "acct-1"
+    def test_find_summary_returns_the_document_and_its_owner(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "d-1", "title": "Faith", "owner": "acct-1"}]
+        assert document_repo.find_summary("d-1") == {"id": "d-1", "title": "Faith", "owner": "acct-1"}
 
-    def test_find_owner_is_none_for_an_unowned_document(self, document_repo, neo4j_session):
-        neo4j_session.run.return_value = [{"owner": None}]
-        assert document_repo.find_owner("d-1") is None
+    def test_find_summary_reports_an_unowned_document_as_ownerless(self, document_repo, neo4j_session):
+        """Ownership is the absence of the property, so it comes back as None.
 
-    def test_find_owner_is_none_for_a_missing_document(self, document_repo, neo4j_session):
+        Not ``""``: an empty string is a spelling of "nobody" that
+        ``neo4j/repair_empty_document_owners.cypher`` exists to clean up, and a caller
+        that treated it as an account id would be asking a graph for a document owned by
+        an account called "".
+        """
+        neo4j_session.run.return_value = [{"id": "d-1", "title": "Faith", "owner": None}]
+        assert document_repo.find_summary("d-1") == {"id": "d-1", "title": "Faith", "owner": None}
+
+    def test_find_summary_is_none_for_a_missing_document(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = []
-        assert document_repo.find_owner("ghost") is None
+        assert document_repo.find_summary("ghost") is None
 
-    def test_find_owner_does_not_filter_by_owner(self, document_repo, neo4j_session):
+    def test_find_summary_does_not_filter_by_owner(self, document_repo, neo4j_session):
         """It answers for a document the caller does not own — that is its one purpose.
 
-        Scoping this read would make it useless to the CLI paths that resolve an owner
-        before they can scope themselves, and would leave a soft-deleted user's
-        manuscripts unreachable even to the admin command meant to recover them.
+        Scoping this read would make it useless to the CLI paths that resolve a document
+        before they can scope themselves to an account, and would leave a soft-deleted
+        user's manuscripts unreachable even to the admin command meant to recover them.
         """
-        neo4j_session.run.return_value = [{"owner": "acct-1"}]
-        document_repo.find_owner("d-1")
+        neo4j_session.run.return_value = [{"id": "d-1", "title": "Faith", "owner": "acct-1"}]
+        document_repo.find_summary("d-1")
         cypher, params = extract_call(neo4j_session)
         assert "MATCH (d:Document {id: $document_id})" in cypher
+        assert "owner: $owner" not in cypher
         assert params == {"document_id": "d-1"}
+
+    def test_list_unowned_returns_the_documents_with_no_owner(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "d-1", "title": "Faith"},
+            {"id": "d-2", "title": None},
+        ]
+        assert document_repo.list_unowned() == [{"id": "d-1", "title": "Faith"}, {"id": "d-2", "title": ""}]
+
+    def test_list_unowned_matches_the_absence_of_the_property(self, document_repo, neo4j_session):
+        """Also the empty string, which is the older spelling of the same fact.
+
+        A document written by a build that defaulted ``owner`` to ``""`` belongs to
+        nobody as surely as one missing the property, and listing it here is what lets
+        an operator give it an account instead of leaving it unreachable forever.
+        """
+        document_repo.list_unowned()
+        cypher, _params = extract_call(neo4j_session)
+        assert "d.owner IS NULL OR d.owner = ''" in cypher
+
+    def test_assign_owner_gives_the_document_to_the_account(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"assigned": 1}]
+        assert document_repo.assign_owner("d-1", "acct-1") is True
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id})" in cypher
+        assert "SET d.owner = $owner" in cypher
+        assert params == {"document_id": "d-1", "owner": "acct-1"}
+
+    def test_assign_owner_reports_a_document_that_is_no_longer_there(self, document_repo, neo4j_session):
+        """So a caller can tell a stamp from a document deleted underneath it."""
+        neo4j_session.run.return_value = []
+        assert document_repo.assign_owner("d-1", "acct-1") is False
+
+    def test_assign_owner_does_not_filter_by_the_previous_owner(self, document_repo, neo4j_session):
+        """Moving ownership *is* the operation.
+
+        Scoping the write to the previous owner would make a transfer impossible, and
+        scoping it to the new one would only work for documents nobody owns, which is
+        half the reason this exists.
+        """
+        neo4j_session.run.return_value = [{"assigned": 1}]
+        document_repo.assign_owner("d-1", "acct-2")
+        cypher, _params = extract_call(neo4j_session)
+        assert "owner: $owner" not in cypher.split("SET")[0]
 
 
 # ---------------------------------------------------------------------------

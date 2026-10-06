@@ -4,7 +4,7 @@ DockB has three of them — importing a manuscript, writing a chapter back out, 
 administering accounts — and they were three separate modules reachable only by
 ``python -m``. Each already named itself ``dockb <command>`` in its usage text, which
 promised a command that did not exist. This is it: ``dockb <command> ...``, with
-``users`` nested because its six subcommands need namespacing and the other two are a
+``users`` nested because its eight subcommands need namespacing and the other two are a
 single verb each.
 
 Every command's own ``main(argv)`` still works, so ``python -m dockb.cli.users`` and

@@ -24,10 +24,29 @@ materializing a document's store tree.
 Every document read and write names the account that owns it: `load`, `load_shell`,
 `delete` and `list_all` all take the account id, and an id belonging to another
 account reads as absent rather than as an error, so a caller cannot confirm that a
-document it may not see exists. `find_owner(document_id)` is the one unscoped read —
-it answers "who owns this" for the paths that must resolve an owner before they can
-scope themselves, and is not for serving a request. A document with no `owner`
-property predates ownership and belongs to nobody.
+document it may not see exists.
+
+Three methods here are unscoped, and all three exist for `dockb users assign` and
+nothing else:
+
+- `find_summary(document_id)` returns `{id, title, owner}`, or None. The command needs
+  a document's title to find its markdown tree and its current owner to know which tree
+  to move, before it can ask a scoped question. `owner` is None when the property is
+  absent, which is how a pre-ownership document reads.
+- `list_unowned()` returns `{id, title}` for every document that belongs to no account,
+  matching `d.owner IS NULL OR d.owner = ''`. The empty-string clause is for documents
+  written by a build that defaulted the property to `""`;
+  `neo4j/repair_empty_document_owners.cypher` normalizes that spelling, and listing it
+  here is what lets an operator give those documents an account too.
+- `assign_owner(document_id, owner)` stamps a new owner, whoever held it before, and
+  returns whether a document matched. Scoping the write to the previous owner would make
+  a transfer impossible; scoping it to the new one would only work for documents nobody
+  owns. A False return means the document was deleted underneath the caller.
+
+None of the three is for serving a request: a request already knows who it is acting
+for, and an unscoped read is exactly the existence oracle every other method here
+refuses to be. `tests/dockb/test_app_factory.py` asserts no route carries a document's
+owner, so this surface stays command-line only.
 
 ## Child repositories scope through the document, not through the parent
 

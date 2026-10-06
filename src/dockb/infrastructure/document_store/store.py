@@ -230,6 +230,31 @@ class DocumentStore:
             return
         self._git("commit", "-m", message)
 
+    def adopt_document(self, document_title: str, source: Path) -> None:
+        """Copy a document's directory from *source* into this account's tree and commit it.
+
+        This is how a document that belonged to somebody else, or to nobody, arrives in
+        this account's tree: the files are copied rather than moved so a failure part way
+        through leaves the original where it was, and the copy is committed here so it is
+        this account's history from its first commit — history does not travel between
+        repositories, and stitching it across with ``format-patch`` would buy a tree that
+        only ever held one account's work.
+
+        Refuses to write over an existing directory rather than merging into it: two
+        documents' files under one directory is a manuscript neither account wrote, and
+        the graph would refuse the same assignment anyway. A *source* that is not a
+        directory is a no-op, because there is nothing to adopt and the document's content
+        is in the graph regardless — the editor materializes the tree on first open.
+        """
+        self._validate_title(document_title)
+        if not source.is_dir():
+            return
+        directory = self.document_dir(document_title)
+        if directory.exists():
+            raise SnapshotError(f"cannot adopt {document_title!r}: {directory} already exists")
+        shutil.copytree(source, directory)
+        self.git_commit(document_title, f"adopt: {document_title}")
+
     def remove_document(self, document_title: str) -> None:
         """Remove a document's owned directory from disk and git.
 

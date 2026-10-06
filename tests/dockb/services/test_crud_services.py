@@ -104,9 +104,11 @@ class StubDocumentRepo(StubRepo):
             if isinstance(m, Document) and m.owner == owner
         ]
 
-    def find_owner(self, model_id: str) -> str | None:
+    def find_summary(self, model_id: str) -> dict[str, str | None] | None:
         model = self._store.get(model_id)
-        return model.owner if isinstance(model, Document) and model.owner else None
+        if not isinstance(model, Document):
+            return None
+        return {"id": model.id, "title": model.title, "owner": model.owner or None}
 
 
 class StubOwnedRepo(StubRepo):

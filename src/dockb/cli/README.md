@@ -64,6 +64,8 @@ A missing or blank variable is reported as one `error:` line naming it, and the 
 | `block <username>` / `unblock <username>` | Refuse logins and end live sessions, or reverse it. |
 | `delete <username> --yes` | Soft delete: refuses logins, ends sessions, keeps the row. |
 | `undelete <username>` | Clears the soft delete, leaving the credentials alone. |
+| `assign <document-id> <username>` | Gives one document to an account, moving its markdown tree with it. |
+| `assign --all-to <username> --yes` | Gives every document that belongs to no account to one account. |
 
 Two conventions the commands hold to:
 
@@ -88,6 +90,33 @@ None of these commands reach into a running server. `block`, `delete`, `set-pass
 end a live session by stamping `credentials_changed_at`, which the server compares on its next
 request — this process cannot evict an in-memory session it does not own. See
 `../../../README_auth.md` §7 for the reasoning.
+
+## Give a document to an account
+
+`assign` is the only command that reaches the knowledge graph, so it is also the only
+subcommand that needs `NEO4J_URL`, `NEO4J_USER` and `NEO4J_PASSWORD`; a missing one is
+reported the way the chapter commands report it, before a session is opened.
+
+A document created before accounts owned manuscripts belongs to nobody, and one whose
+account was soft-deleted belongs to an account that cannot sign in. Neither is in any
+library the editor can show, while the manuscript itself is perfectly readable in the
+graph. `assign` is the way back, and it is deliberately command-line only: there is no
+transfer control in the editor, so there is no question of who a logged-in account may
+take a manuscript from.
+
+| Refusal | Why |
+| --- | --- |
+| `unknown user '<name>'` | No account holds that name. Nothing is opened. |
+| `user '<name>' is deleted; run 'dockb users undelete <name>' …` | A deleted account cannot sign in, so a manuscript given to it would be hidden again. A *blocked* account is fine — that is reversible. |
+| `error: <n> document(s) have no owner; re-run with --yes …` | `--all-to` needs `--yes`, because it moves a whole library on one command line. |
+| `document <id> has a title that cannot be stored: …` | The title is empty or holds a path separator, so there is no directory to move the tree into. Nothing is written. |
+| `'<title>' is already held by this account as <id>; …` | Nothing is written. `V003__titles_unique_per_owner.cypher` would refuse it anyway; rename or reassign the other document. |
+| `already belongs to this account` | Not a refusal: the document was already the account's, so nothing was written, and the command exits 0. |
+
+Each assignment prints what it did, including whether the markdown tree came with it.
+`--all-to` keeps going past a refusal so one title clash does not strand a whole library,
+and exits 1 at the end if anything was refused, which is what tells a script the run was
+not complete.
 
 ## Reconstruct a chapter
 

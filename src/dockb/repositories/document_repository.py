@@ -78,9 +78,27 @@ RETURN
   c.id AS chapter_id
 """
 
-_FIND_OWNER_CYPHER = """
+_FIND_SUMMARY_CYPHER = """
 MATCH (d:Document {id: $document_id})
-RETURN d.owner AS owner
+RETURN d.id AS id, d.title AS title, d.owner AS owner
+"""
+
+# A document is unowned by the *absence* of the property. `neo4j/repair_empty_document_owners.cypher`
+# exists to normalize the empty-string spelling of the same fact, and the second clause
+# here matches it too: a document written by an older build with a default owner of ""
+# belongs to nobody as surely as one missing the property, and listing it here is what
+# lets an operator give it an account instead of leaving it unreachable forever.
+_LIST_UNOWNED_CYPHER = """
+MATCH (d:Document)
+WHERE d.owner IS NULL OR d.owner = ''
+RETURN d.id AS id, d.title AS title
+ORDER BY d.id
+"""
+
+_ASSIGN_OWNER_CYPHER = """
+MATCH (d:Document {id: $document_id})
+SET d.owner = $owner
+RETURN count(d) AS assigned
 """
 
 
@@ -118,19 +136,57 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
         records = list(self._session.run(_LIST_ALL_CYPHER, {"owner": owner}))
         return [{"id": r["id"], "title": r["title"], "author": r["author"]} for r in records]
 
-    def find_owner(self, document_id: str) -> str | None:
-        """Return the account id that owns *document_id*, or None when unowned or absent.
+    def find_summary(self, document_id: str) -> dict[str, str | None] | None:
+        """Return ``{id, title, owner}`` for *document_id*, or None when it does not exist.
 
         The one read here that answers for a document the caller does not own, so it
-        exists for the CLI and admin paths that must resolve an owner before they can
-        scope themselves to one. Nothing serving a request may use it: a request already
-        knows who it is acting for.
+        exists for the CLI and admin paths that must resolve a document before they can
+        scope themselves to an account — ``dockb users assign`` reads a document's title
+        (to find its markdown tree) and its current owner (to know which tree to move)
+        before it can ask a scoped question. Nothing serving a request may use it: a
+        request already knows who it is acting for, and an unscoped read is exactly the
+        existence oracle every other method here refuses to be.
+
+        ``owner`` is None for a document with no owner property, which is how a
+        pre-ownership document reads: owned by nobody, not by an account called "".
         """
-        records = list(self._session.run(_FIND_OWNER_CYPHER, {"document_id": document_id}))
+        records = list(self._session.run(_FIND_SUMMARY_CYPHER, {"document_id": document_id}))
         if not records:
             return None
-        owner = records[0].get("owner")
-        return str(owner) if owner else None
+        record = records[0]
+        owner = record.get("owner")
+        return {
+            "id": str(record["id"]),
+            "title": str(record["title"] or ""),
+            "owner": str(owner) if owner else None,
+        }
+
+    def list_unowned(self) -> list[dict[str, str]]:
+        """Return ``{id, title}`` for every Document that belongs to no account.
+
+        These are the documents ``dockb users assign`` exists for: created before
+        accounts owned manuscripts, or imported before an import stamped an owner. No
+        account can list, open or delete one, so nothing but this command reaches them.
+        """
+        records = list(self._session.run(_LIST_UNOWNED_CYPHER, {}))
+        return [{"id": r["id"], "title": r["title"] or ""} for r in records]
+
+    def assign_owner(self, document_id: str, owner: str) -> bool:
+        """Give *document_id* to *owner*, whoever held it before, and report whether it matched.
+
+        Deliberately unscoped: moving ownership *is* the operation, so scoping the write
+        to the previous owner would make a transfer impossible and scoping it to the new
+        one would only work for documents nobody owns. Returns False when no document
+        carries *document_id*, so a caller can tell a stamp from a document that was
+        deleted underneath it.
+
+        Ownership transfer is an administrative act with no counterpart in the editor,
+        which is what keeps this write out of every request path.
+        """
+        records = list(self._session.run(_ASSIGN_OWNER_CYPHER, {"document_id": document_id, "owner": owner}))
+        if not records:
+            return False
+        return int(records[0].get("assigned") or 0) > 0
 
     def load_shell(self, id: str, owner: str) -> Document | None:  # pylint: disable=redefined-builtin
         """Load a Document's attrs and chapter ids from Neo4j — no paragraphs/sentences/tokens.

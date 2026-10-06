@@ -5,6 +5,14 @@ self-registration and no recovery flow over HTTP, so this command is the only
 route to a new account and the only route back into a lost one. That is a
 deliberate fit for a small, known user set; see ``README_auth.md`` §7.
 
+``assign`` is here for the same reason, and it is the only command in DockB that
+moves a document between accounts: a manuscript created before accounts owned
+documents, or one whose account was deleted, is in nobody's library and cannot be
+reached over HTTP at all. There is no transfer control in the editor, so this
+command is the whole of the ownership-transfer surface. It is also the only
+subcommand that reaches the knowledge graph, and so the only one that needs the
+Neo4j settings — the other seven need only ``DOCKB_SECRET_KEY``.
+
 Every command that generates a password prints it **once**, on stdout, and never
 logs it. No command accepts one as an argument, because an argument is recorded in
 the shell history and the process table.
@@ -25,7 +33,9 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from dockb.cli.startup import MissingConfigurationError, neo4j_settings
 from dockb.composition import resolve_document_base_dir
+from dockb.exceptions import DocumentFormatError, DocumentNotFoundError, DuplicateTitleError, SnapshotError
 from dockb.infrastructure.accounts.store import (
     AccountStore,
     EmailTakenError,
@@ -33,7 +43,11 @@ from dockb.infrastructure.accounts.store import (
     UsernameTakenError,
     normalize_username,
 )
+from dockb.infrastructure.document_store.factory import DocumentStoreFactory
+from dockb.infrastructure.neo4j.session_factory import SessionFactory
 from dockb.passwords import hash_password, pepper_from
+from dockb.repositories.document_repository import DocumentRepository
+from dockb.services.assignment_service import Assignment, DocumentAssignmentService
 
 # Enough entropy to be unguessable, and short enough to read aloud. The policy
 # minimum is deliberately not applied here: this value's strength comes from
@@ -43,6 +57,7 @@ _TEMPORARY_PASSWORD_BYTES = 18
 
 _EXIT_OK = 0
 _EXIT_ERROR = 1
+_EXIT_USAGE = 2
 
 
 # The handlers are plain functions rather than argparse actions, so what one needs
@@ -63,10 +78,6 @@ class _Admin:
     pepper: bytes
 
 
-class MissingConfigurationError(Exception):
-    """A required setting is absent, so the command cannot start."""
-
-
 def _fail(message: str) -> int:
     """Report *message* on stderr and return the failure exit code.
 
@@ -76,6 +87,16 @@ def _fail(message: str) -> int:
     """
     print(f"error: {message}", file=sys.stderr)
     return _EXIT_ERROR
+
+
+def _fail_usage(message: str) -> int:
+    """Report a malformed command line and exit 2, as argparse's own errors do.
+
+    Distinct from :func:`_fail` because a command that ran and declined is a different
+    thing from one that was never a valid command, and a script wants to tell them apart.
+    """
+    print(f"error: {message}", file=sys.stderr)
+    return _EXIT_USAGE
 
 
 def _temporary_password() -> str:
@@ -191,6 +212,109 @@ def _cmd_undelete(admin: _Admin, args: argparse.Namespace) -> int:
     return _EXIT_OK
 
 
+def _cmd_assign(admin: _Admin, args: argparse.Namespace) -> int:
+    # Not a refusal but a malformed command line, so it exits like argparse's own usage
+    # errors rather than like a command that ran and declined.
+    if args.all_to is None and args.username is None:
+        return _fail_usage(
+            "assign needs a username: " + "'dockb users assign <document-id> <username>' or 'dockb users assign --all-to <username>'"
+        )
+    username = args.all_to if args.all_to is not None else args.username
+    account_id = _destination_account(admin, username)
+    if account_id is None:
+        return _EXIT_ERROR
+    return _assign_documents(args, account_id)
+
+
+def _destination_account(admin: _Admin, username: str) -> str | None:
+    """Return the account id a document may be assigned to, or None after reporting why not.
+
+    Two refusals, both about the account rather than the document: a username nobody
+    holds, and one held by a soft-deleted account. The second is the point of the check —
+    a soft-deleted account cannot sign in, so a manuscript assigned to it would be
+    unreachable over HTTP again, which is the condition this command exists to end. A
+    *blocked* account is a valid destination: blocking is about logins and is reversible.
+    Reports through ``_fail`` and returns None so the caller has one exit path.
+    """
+    normalized = normalize_username(username)
+    row = admin.store.get_user(normalized)
+    if row is None:
+        _fail(f"unknown user {normalized!r}")
+        return None
+    if row.get("deleted_at"):
+        _fail(f"user {normalized!r} is deleted; run 'dockb users undelete {normalized}' before assigning a document to it")
+        return None
+    return str(row["id"])
+
+
+def _assign_documents(args: argparse.Namespace, account_id: str) -> int:
+    """Assign the named document, or every unowned one, to *account_id*.
+
+    ``--all-to`` reports each document it moved and keeps going past a refusal, so one
+    title clash does not strand the rest of a library; the exit code is 1 if anything was
+    refused, which is what tells a script the run was not complete.
+    """
+    try:
+        settings = neo4j_settings()
+    except MissingConfigurationError as exc:
+        return _fail(str(exc))
+    session_factory = SessionFactory(uri=settings["NEO4J_URL"], user=settings["NEO4J_USER"], password=settings["NEO4J_PASSWORD"])
+    try:
+        with session_factory.session() as session:
+            document_repo = DocumentRepository(session)
+            service = DocumentAssignmentService(document_repo, DocumentStoreFactory(resolve_document_base_dir()))
+            if args.all_to:
+                return _assign_unowned(service, document_repo, account_id, args.yes)
+            return _assign_one(service, args.document_id, account_id)
+    finally:
+        session_factory.close()
+
+
+def _assign_one(service: DocumentAssignmentService, document_id: str, account_id: str) -> int:
+    try:
+        assignment = service.assign(document_id, account_id)
+    except (DocumentFormatError, DocumentNotFoundError, DuplicateTitleError, SnapshotError) as exc:
+        return _fail(str(exc))
+    _report(assignment)
+    return _EXIT_OK
+
+
+def _assign_unowned(
+    service: DocumentAssignmentService,
+    document_repo: DocumentRepository,
+    account_id: str,
+    confirmed: bool,
+) -> int:
+    unowned = document_repo.list_unowned()
+    if not unowned:
+        print("every document already belongs to an account")
+        return _EXIT_OK
+    if not confirmed:
+        return _fail(f"{len(unowned)} document(s) have no owner; re-run with --yes to assign them all")
+    failures = 0
+    for row in unowned:
+        try:
+            assignment = service.assign(str(row["id"]), account_id)
+        except (DocumentFormatError, DocumentNotFoundError, DuplicateTitleError, SnapshotError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        _report(assignment)
+    if failures:
+        print(f"error: {failures} of {len(unowned)} document(s) were not assigned", file=sys.stderr)
+        return _EXIT_ERROR
+    return _EXIT_OK
+
+
+def _report(assignment: Assignment) -> None:
+    """Print what one assignment did."""
+    if assignment.already_owned:
+        print(f"{assignment.document_id} ({assignment.title}) already belongs to this account")
+        return
+    moved = "with its markdown tree" if assignment.tree_moved else "no markdown tree on disk"
+    print(f"assigned {assignment.document_id} ({assignment.title}) to this account, {moved}")
+
+
 _HANDLERS = {
     "create": _cmd_create,
     "list": _cmd_list,
@@ -199,6 +323,7 @@ _HANDLERS = {
     "unblock": _cmd_unblock,
     "delete": _cmd_delete,
     "undelete": _cmd_undelete,
+    "assign": _cmd_assign,
 }
 
 
@@ -213,6 +338,13 @@ def _build_parser() -> argparse.ArgumentParser:
     create.add_argument("--display-name", default=None, help="defaults to the username")
 
     commands.add_parser("list", help="every account and its state; never prints a password")
+
+    assign = commands.add_parser("assign", help="give a document, or every unowned document, to an account")
+    target = assign.add_mutually_exclusive_group(required=True)
+    target.add_argument("document_id", nargs="?", help="the document to give, by id")
+    target.add_argument("--all-to", metavar="username", default=None, help="give every document that belongs to no account")
+    assign.add_argument("username", nargs="?", help="the account receiving the document; not needed with --all-to")
+    assign.add_argument("--yes", action="store_true", help="confirm --all-to, which moves every unowned document at once")
 
     for name, help_text in (
         ("block", "refuse logins and end live sessions"),
