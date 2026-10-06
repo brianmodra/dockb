@@ -8,19 +8,20 @@ on first sign-in; they can also authenticate with Google or GitHub. In both case
 (not the editor) mints its own session cookie, and stores accounts, tokens, and per-user app state
 in a small SQLite database. Provider tokens never reach the editor. **There is no local mode:**
 every request requires a sign-in, and no configuration makes a gated route serve a caller who has
-not signed in (see §6).
+not signed in (see §6). Ending a session is equally simple: the change-password dialog's own
+**Sign out** button and the editor's **File → Sign out** both post `POST /api/auth/logout`, which
+drops the server-side session and deletes the cookie (§7–§8).
 
-Everything this document decides is now built: the password gate, the forced change-password dialog
-with a sign-out escape, the admin CLI, username normalization and soft delete, and per-account
-manuscript ownership. §6 and §7 keep the *reasoning*, and the code re-states the mechanics — the
+Everything this document decides is now built: the password gate, the forced change-password dialog,
+the admin CLI, username normalization and soft delete, per-account manuscript ownership, and the two
+ways out of a session. §6 and §7 keep the *reasoning*, and the code re-states the mechanics — the
 schema and store accessors live in `src/dockb/infrastructure/accounts/README.md`, the session
 cookie in `src/dockb/infrastructure/session/README.md`, the routes and the gate in
-`src/dockb/controllers/README_API.md`, and the commands in `src/dockb/cli/README.md`.
-
-The two open questions this document once held were decided by that work and are recorded in §10:
-manuscripts are keyed by the account that owns them, each in its own directory and git
-repository, and a document whose account was deleted is recovered with `dockb users assign`
-rather than shown to an administrator.
+`src/dockb/controllers/README_API.md`, and the commands in `src/dockb/cli/README.md`. The two open
+questions this document once held were decided by that work and are recorded in §10: manuscripts are
+keyed by the account that owns them, each in its own directory and git repository, and a document
+whose account was deleted is recovered with `dockb users assign` rather than shown to an
+administrator.
 
 ## 1. Context and constraints
 
@@ -418,12 +419,11 @@ buttons — so the sign-in screen is a username field, a password field, and **S
   gate, and a dialog with no way out of it is a trap.
 - **Sign in again** follows a successful change, with a message saying the password changed.
 
-**Ending a session** has two entrances, both posting `POST /api/auth/logout`: the change-password
-dialog's **Sign out** button above, and **File → Sign out** in the editor's menu for a writer who is
-simply finished for the day. The menu offers an unsaved buffer the same three choices Quit does, then
-clears what the session owned and runs the gate again rather than closing the window. The dialog's
-button exists for a narrower reason: somebody who signed in on another person's temporary password
-must have a way out of a screen that will not let them past it.
+**Ending a session** has two entrances, both posting `POST /api/auth/logout`: **File → Sign out** in
+the editor's menu, for a writer simply finished for the day, and the change-password dialog's
+**Sign out** button above, which exists for a narrower reason — somebody who signed in on another
+person's temporary password must have a way out of a screen that will not let them past it. What the
+menu does once the session ends is step 6 below.
 
 Both password fields are `type="password"`. The autocomplete hints are what matter rather than the
 masking: `autocomplete="username"`, `"current-password"`, and `"new-password"`. Paste is allowed,

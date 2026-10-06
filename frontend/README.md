@@ -2,9 +2,16 @@
 
 ## Executive Summary
 
-This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a document, edit a chapter, or import a whole document from a folder on disk. It never writes files itself — an import reads a directory the user picks and hands it to the server, which does the writing. The window does not even load its own interface from disk; the backend serves it, so the app and the API share an origin and the signed-in session reaches every route.
+This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a
+document, edit a chapter, or import a whole document from a folder on disk. It never writes files
+itself — an import reads a directory the user picks and hands it to the server, which does the
+writing. The window does not even load its own interface from disk; the backend serves it, so the
+app and the API share an origin and the signed-in session reaches every route.
 
-Read it to run the app, to find which file owns the chapter list, the editor, and login, and to see how a folder on disk becomes a document. How the window should look is in `../README_markdown_editor_ui.md`.
+Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
+back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in
+gate instead of closing the window — and to see how a folder on disk becomes a document. How the
+window should look is in `../README_markdown_editor_ui.md`.
 
 ## API client and session
 
@@ -106,9 +113,8 @@ Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
 - `menubar.ts` — File (Open, Import…, Save, Delete ▸ Document, Edit ▸ Document/Chapter,
   Sign out, Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on
-  outside click or Esc. **Sign out** and **Quit** both go through `state/quit.ts`'s
-  `confirmUnsaved`, so an unsaved buffer is offered the same three choices either way, with the
-  confirm button reading **Save and Quit** for one and **Save** for the other.
+  outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
+  `confirmUnsaved`, so they share one unsaved-buffer question rather than two.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move. Manuscript
   chapters group under act headers; `Character` chapters sit in a Characters
   section after the acts. Move only offers drop slots inside the mover's
@@ -120,7 +126,8 @@ DOM as HTML.
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
   scrollable spellcheck-language list with Cancel/Apply; the chosen code is
   applied via `EditPanel.setLanguage`.
-- `state/` — app-state persistence, start-up restore, quit-with-save.
+- `state/` — app-state persistence, start-up restore, and the one unsaved-buffer prompt shared by
+  quit and sign-out.
 
 ### Error reporting
 
@@ -136,15 +143,12 @@ which resolves the whole question in one place: an existing session if there is 
 otherwise `signInGate.ts`'s username/password form, and then `changePasswordDialog.ts`
 if `/api/auth/me` reports a password change is owed.
 
-`boot` runs that as a loop rather than once. Each pass takes a session, starts the editor
-up on it, and waits for **File → Sign out**, which calls `POST /api/auth/logout`, clears the
-chapter list, the editor buffer and the menubar username, and sends the next pass back to the
-gate. Two things break the loop instead: `ensureSignedIn` resolving `null` — the user cancelled
-the gate, or signed out of the change dialog — stops `boot` entirely rather than issuing requests
-that would all be refused; and a logout that fails reports the error and leaves the session in
-place, because the server still holds it and a gate the next request walks straight back through
-would be a lie. The entry itself does nothing until a session exists, so a cancelled gate cannot
-be asked to sign out of something the editor was never in.
+`boot` runs that as a loop rather than once: each pass takes a session, starts the editor
+up on it, and waits for **File → Sign out** to end it. Two things break the loop instead — a gate
+the user cancels, and a logout the server refuses — and neither hands control back to a gate that
+the next request would walk straight back through. The entry itself does nothing until a session
+exists, so it cannot be asked to sign out of something the editor was never in. What sign-out
+clears, and the prompt it asks first, are specified in `../README_markdown_editor_ui.md` §8–§9.
 
 The gate is **password-only** — there are no provider buttons (`README_auth.md` §7),
 so an account that exists only through OAuth needs `dockb users set-password` before

@@ -2,9 +2,13 @@
 
 ## Executive Summary
 
-This is the design of DockB's writing window. It explains the menus, the chapter list, the editor, and the dialogs, so someone new can see what the writer sees and why each click does what it does.
+This is the design of DockB's writing window. It explains the menus, the chapter list, the editor
+and the dialogs, so someone new can see what the writer sees and why each click does what it does —
+including how a writer signs out: the File menu offers to save unsaved work first, then ends the
+session and brings the sign-in screen back rather than closing the window.
 
-The window only sends text to the server and gets text back. It never touches files. How the files and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
+The window only sends text to the server and gets text back. It never touches files. How the files
+and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
 
 ## 1. Context and constraints
 
@@ -247,9 +251,9 @@ per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_stat
 `README_auth.md`).
 
 Signing out returns here rather than closing anything: `File → Sign out` ends the session, clears
-the chapter list, the editor buffer, the unsaved badge and the username in the menubar, and start-up
-runs again from the sign-in gate. Cancelling that gate stops the editor instead — every request
-below needs a session, so booting on would fire a burst of guaranteed 401s.
+the chapter list, the editor buffer, the unsaved badge and the username in the menubar, and the next
+pass begins again at the sign-in gate above. Cancelling that gate stops the editor instead — with no
+session left, every request that pass would make is a guaranteed 401.
 
 ## 10. Resolved questions
 
