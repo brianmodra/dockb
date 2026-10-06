@@ -9,16 +9,14 @@ editor cannot: sentence splits, parts of speech, and a version history of every
 chapter, plus an install command, the API contract, and per-layer backend
 documentation pointed to from here.
 
-The desktop editor (`frontend/`) is a thin API client. Writers edit canonical
-markdown in WYSIWYG or raw view; the editor never writes files or git, and an
-import only reads the directory a writer picks and hands it to the server. A
-manuscript can arrive either way: `File > Import…` in the editor, or
-`dockb import-document` on the command line, both running the same
-directory walker. Hand
-edits to the owned markdown files are absorbed the next time a chapter is
-opened. The backend is observable as well as structured: every HTTP request
-logs its total time and a per-stage breakdown, so a slow open shows exactly
-where the time went.
+The desktop editor (`frontend/`) is a thin API client that never writes files or git: writers edit
+canonical markdown in WYSIWYG or raw view, and an import only reads the directory a writer picks and
+hands it to the server. Every manuscript belongs to an account. That account decides which
+documents the writer can see, which directory the markdown lives in, and which git history it has —
+so an editor session reads and writes only its own account's work, and a manuscript whose account
+was deleted is handed to another with `dockb users assign` rather than lost. The backend is
+observable as well as structured: every HTTP request logs its total time and a per-stage breakdown,
+so a slow open shows exactly where the time went.
 
 ## Summary
 
@@ -55,9 +53,8 @@ Every HTTP request also logs one INFO line (`src/dockb/timing.py`) with the tota
 - Auth: [`README_auth.md`](README_auth.md) (user sign-in, accounts), [`README_mcp_auth.md`](README_mcp_auth.md) (MCP server authentication, the per-prompt token, the process and listener boundary).
 - Backend: [`src/dockb/controllers/README_API.md`](src/dockb/controllers/README_API.md) (API design), [`src/dockb/services/README.md`](src/dockb/services/README.md) (hydrators, reconstructors, jobs), [`src/dockb/services/semantics/README.md`](src/dockb/services/semantics/README.md), [`src/dockb/infrastructure/history/README.md`](src/dockb/infrastructure/history/README.md), [`src/dockb/models/README.md`](src/dockb/models/README.md), [`src/dockb/repositories/README.md`](src/dockb/repositories/README.md), [`src/dockb/cli/README.md`](src/dockb/cli/README.md) (command-line tools).
 - Frontend: [`frontend/README.md`](frontend/README.md).
-- Deferred work: [`README_todo.md`](README_todo.md) — a log of known-but-not-yet-done tasks
-  discovered while building (e.g. the import HTTP endpoint), with pointers to the design docs
-  for each.
+- Deferred work: [`README_todo.md`](README_todo.md) — the log of known-but-not-yet-done tasks,
+  with pointers to the design docs for each.
 - Development workflow: [`AGENTS.md`](AGENTS.md).
 
 ## Install
@@ -95,13 +92,23 @@ command line:
 dockb users create --username abby --email abby@example.com
 ```
 
-That prints a temporary password once; signing in asks for a new one. The same command
-lists, resets, blocks, and deletes accounts, and deleting a user deletes the files they
-own. Every document belongs to an account, and each account's markdown lives in its own
-directory and its own git repository, so the account a document belongs to decides where
-its files are kept. The command reference is in
-[`src/dockb/cli/README.md`](src/dockb/cli/README.md); the reasoning is in
-[`README_auth.md`](README_auth.md) §7.
+That prints a temporary password once; signing in asks for a new one. The other `dockb users`
+subcommands list accounts, reset passwords, block and unblock, and delete and undelete.
+
+Deleting an account is a **soft** delete: it refuses logins and keeps the row, its state and its
+manuscripts, because a deleted account cannot sign in and would otherwise take its work with it.
+Every document belongs to an account, and each account's markdown lives in its own directory and
+its own git repository, so the account a document belongs to decides where its files are kept —
+and nobody can read another's. A manuscript whose account was deleted is handed to another account
+with `dockb users assign`, which moves the markdown tree with it:
+
+```
+dockb users assign d-1 abby                       # one document, by id
+dockb users assign --all-to abby --yes            # every document that belongs to no account
+```
+
+The command reference is in [`src/dockb/cli/README.md`](src/dockb/cli/README.md); the reasoning is in
+[`README_auth.md`](README_auth.md) §7 and §10.
 
 ## Run the dev servers
 

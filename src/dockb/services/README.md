@@ -4,7 +4,7 @@
 
 This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It is for someone changing those editing services, not the files on disk.
 
-Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
+Every service method names the account it acts for as a required keyword argument, and no service may default it: an account is something the caller states, so a service cannot be handed a document id and quietly guess whose work it is. Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
 
 ### Publishing
 

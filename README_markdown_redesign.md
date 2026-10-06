@@ -2,9 +2,18 @@
 
 ## Executive Summary
 
-This note explains why DockB treats a markdown file as the real text of a chapter, and why the server — not the editor — owns those files and their history. It is the record of the decisions that shaped the product, including the ones that were rejected.
+This note explains why DockB treats a markdown file as the real text of a chapter, and why the
+server — not the editor — owns those files and their history. It is the record of the decisions
+that shaped the product, including the ones that were rejected. Among them: markdown is canonical
+rather than a projection, save-and-rehydrate is synchronous rather than a background loop, act
+chapters are numbered by their file names while character chapters are not, and each account's
+manuscript lives in its own directory and its own git repository, so no commit can ever span two
+writers.
 
-Read it when you need the reason, not the current function names. The live behavior is in the code and the shorter notes next to it; among those decisions, act chapters are numbered by their file names while character chapters are not.
+Read it when you need the reason, not the current function names. The live behavior is in the code
+and the shorter notes next to it — `src/dockb/infrastructure/document_store/README.md` for the
+per-account layout, `src/dockb/repositories/README.md` for what ownership means to a query, and
+`src/dockb/cli/README.md` for the commands that hand a manuscript from one account to another.
 
 ## 1. The problem we were trying to solve
 

@@ -3,36 +3,30 @@
 ## Executive Summary
 
 `README_todo.md` is the running list of DockB work that is known but not done yet, so nothing
-discovered while building is forgotten. Each entry says what is missing, why it matters, and
-points at the design document that already settles how it should be built; an entry is deleted
-when the work lands, and the design document is expected to absorb it.
+discovered while building is forgotten. Each entry says what is missing, why it matters, and points
+at the design document that already settles how it should be built; an entry is deleted when the
+work lands, and the design document is expected to absorb it.
 
-It currently holds two entries. The last one the editor had — no way to send a document
-directory to the import endpoint — is done: the editor imports a chosen directory from
-`File > Import…` and shows the per-chapter summaries the endpoint returns.
+Two entries remain. One is small and felt: a signed-in writer has no **Sign out** in the editor's
+File menu, so the only way to end your own session is the change-password dialog, and an account
+that is signed in on a shared machine stays signed in. The other is the whole MCP server — a second
+listener, an endpoint, the tools, and a per-prompt token — which is specified at
+`README_mcp_auth.md` and waiting on three decisions before any of it is written.
 
-The auth work in particular is specified at the root (`README_auth.md`, `README_mcp_auth.md`)
-rather than in the packages that will own it, because the decisions had to be made before the
-code had a home. As that work is implemented, `README_auth.md` should get **smaller**, not
-bigger: the decisions and their rationale stay, and the implementation detail moves down into
-the package that owns it — `src/dockb/infrastructure/accounts/README.md` (the user, token, and
-admin-CLI schema), `src/dockb/infrastructure/session/README.md` (the session cookie), and
-`src/dockb/controllers/README_API.md` (the manuscript auth gate and the editor shell it
-serves). This mirrors the project convention that the relevant `README*.md` files for a piece
-of code are those in its own directory and every parent up to the root.
+Everything else this file used to list has landed and been deleted: the admin CLI, password sign-in,
+the editor's change-password dialog, and mandatory sign-in with no local mode. Their decisions and
+reasoning live in `README_auth.md`, and their mechanics in the package that owns them —
+`src/dockb/infrastructure/accounts/README.md` (the user, token and admin-CLI schema),
+`src/dockb/infrastructure/session/README.md` (the session cookie), and
+`src/dockb/controllers/README_API.md` (the manuscript auth gate and the editor shell it serves).
 
 ## Entries
 
-- **Admin CLI for accounts** — `README_auth.md` §7. Done: `python -m dockb.cli.users` creates,
-  lists, resets, blocks, unblocks, deletes and undeletes accounts, generating every password
-  itself. See `src/dockb/cli/README.md`.
-- **Password sign-in in the editor** — `README_auth.md` §7. Done: a password-only gate, a forced
-  change-password dialog with a sign-out escape, and `ensureSignedIn` to sequence them.
-- **Signing out from the editor** — the change dialog can sign out, but the menubar has no
-  **Sign out** item, so a signed-in user cannot end their own session without the CLI. Worth adding.
-- **Every user signs in** — `README_auth.md` §6. Done: `requires_login` is unconditionally true,
-  there is no `DOCKB_LOCAL_MODE`, and the OS-user fall-through is gone.
-  Land this before any MCP listener work.
+- **Signing out from the editor** — the change-password dialog can sign out, but the File menu
+  (`frontend/src/renderer/layout/menubar.ts`) has no **Sign out** item, so a signed-in user cannot
+  end their own session without that dialog. `POST /api/auth/logout` exists and works; this is the
+  menu entry that calls it. Worth adding: signing out is what someone reaches for on a shared
+  machine, and today the route is only reachable from the one screen that is about to disappear.
 
 - **MCP server and its per-prompt token** — `README_mcp_auth.md` §1–§5. Nothing exists yet: no
   second ASGI listener, no MCP endpoint, no tool handlers, no token. The design as decided needs

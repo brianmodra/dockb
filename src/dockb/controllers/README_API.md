@@ -2,11 +2,11 @@
 
 ## Executive Summary
 
-This note is the contract between DockB's editor and the server. It lists the requests the editor may send, the shape of each reply, and what the server refuses. Grammar details stay on the server and are not part of this contract.
+This note is the contract between DockB's editor and the server. It lists the requests the editor may send, the shape of each reply, and what the server refuses. Grammar details stay on the server and are not part of this contract. Every manuscript route is gated on a session and scoped to the account that signed in, so a request never carries an owner and one account's ids mean nothing to another; the few endpoints that answer without a session are listed as such, and are the login flow itself.
 
 It also describes the two ways a document gets into the graph. `POST /api/documents` and the chapter/paragraph/sentence routes carry ordinary editor edits. `POST /api/import` instead takes a whole document directory as a multipart upload and runs the same directory walker the command line uses, so a manuscript can be brought in without naming a path on the server. Because an upload is untrusted, that route has its own path and size rules, and it is where a document's owner comes from the session rather than the request.
 
-Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff.
+Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff, and it is also served the editor shell itself from `/editor/`, which is why the window and the API share an origin and one session cookie.
 
 ## Core Principle
 
@@ -164,15 +164,27 @@ its own routes because each needs the resolved username.
 
 | Endpoint | Auth |
 | --- | --- |
-| `GET /api/auth/login` | none — this is how a session is obtained |
 | `GET /api/auth/config` | none — the editor reads it to decide whether to show a login gate |
-| `GET /api/auth/me` | session |
+| `POST /api/auth/login/password` | none — this is how a password session is obtained |
+| `GET /api/auth/login` | none — this is how an OAuth session is started |
 | `GET /callback` | none — the provider redirects here with the code |
+| `GET /api/auth/me` | session |
+| `POST /api/auth/change-password` | session |
+| `POST /api/auth/logout` | session |
 | everything else under `/api` | session |
 
 A request with no valid session cookie gets `401` with `{"detail": "not_authenticated"}`.
 The check runs before the handler, so an unauthenticated caller cannot tell a
 valid route from an invalid one, and cannot reach a service.
+
+**The password flow.** `POST /api/auth/login/password` takes a username and password, verifies the
+hash off the event loop, starts the session and sets the cookie; it answers `401` with
+`invalid_username_or_password` for a wrong password, an unknown username and a blocked or deleted
+account alike, so the route is not an account-status oracle, and `429` while the throttle is in
+force. `POST /api/auth/change-password` proves the current password, stamps
+`credentials_changed_at` — which ends every session that predates it, including the one that asked —
+and answers `{"signed_out": true}`, so the editor presents the gate again rather than signing in
+with a password it would have to hold in memory. `POST /api/auth/logout` ends the session.
 
 **There is no local mode.** Every request needs a session cookie, whatever the
 deployment looks like. Having no OAuth provider configured is a password-only

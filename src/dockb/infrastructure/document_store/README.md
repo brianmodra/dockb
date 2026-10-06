@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-This note describes the folder where DockB keeps each account's markdown. The server writes those files. The editor never does. Every account has its own directory and its own git repository below one shared base directory, so a document's files live under the account that owns it and a commit can never span two accounts.
+This note describes the folder where DockB keeps each account's markdown. The server writes those files; the editor never does. Every account has its own directory and its own git repository below one shared base directory, so a document's files live under the account that owns it and a commit can never span two accounts. A store is scoped to one account by construction and names that account by its internal id rather than a username, so nothing a user can rename can move a tree.
 
-Read it to see where a chapter file lands, including supporting character chapters, which account's tree it is written to, and how a rename or delete stays in git. A failed file change leaves the graph recoverable.
+Read it to see where a chapter file lands, including supporting character chapters, why a document title becomes a path segment and what makes one unsafe, and how a rename, delete or adoption stays in git. It also names the two operations on the older, owner-less layout that only the backfill command uses, and why a manuscript that belonged to no account had no tree at all.
 
 ## Layout
 
@@ -35,9 +35,10 @@ and cannot name that path, so the two operations on the older layout live on the
 `legacy_document_dir(document_title)` returns it (validating the title as a single path
 segment, since a hostile title must not be able to name a directory outside the base) and
 `remove_legacy_document(document_title)` deletes it. The removal is not committed: the
-repository that lived at the base directory is the one per-account repositories replaced,
-and nothing reads it any more. `dockb users assign` reads and writes both, which is how a
-manuscript imported before accounts owned documents arrives in an account's tree.
+repository that once lived at the base directory is the one the per-account repositories
+replaced, nothing reads it any more, and an account's own repository is never asked to
+record a path outside it. `dockb users assign` reads and writes both layouts, which is how
+a manuscript imported before accounts owned documents arrives in an account's tree.
 
 - `<account_id>` is the internal account id (`users.id`), not a username. Usernames are
   mutable provider data — a rename or a merge would otherwise move or split a tree — and
@@ -50,7 +51,6 @@ manuscript imported before accounts owned documents arrives in an account's tree
 - A document with no `owner` in the graph — one imported before accounts owned documents —
   has no tree and no account to serve it. `dockb users assign` gives it one; nothing that
   serves a request can reach it.
-
 - `document_title`, `act`, and `chapter_title` come from the graph and are used
   verbatim as path segments. An empty act maps to the reserved `Act None`
   directory; an act already prefixed `Act ` is used as-is, otherwise the prefix is

@@ -2,9 +2,20 @@
 
 ## Executive Summary
 
-These are DockB's three shell commands, all reached through one ``dockb`` command. Two work on chapter files: one walks a folder of markdown and updates the knowledge graph (act chapters line up by the number in their file name, while character chapters need no number), the other writes one chapter back out as markdown, either into the server's folder or to a path you name. The third, `users`, administers accounts — and because there is no self-registration and no password recovery over HTTP, it is the only way to create an account or to get someone back into a lost one.
+These are DockB's three shell commands, all reached through one `dockb` command. Two work on
+chapter files: one walks a folder of markdown and updates the knowledge graph (act chapters line up
+by the number in their file name, while character chapters need no number), the other writes one
+chapter back out as markdown, either into the server's folder or to a path you name. The third,
+`users`, administers accounts — and because there is no self-registration and no password recovery
+over HTTP, it is the only way to create an account or to get someone back into a lost one.
 
-Use the chapter commands when you need to load an existing manuscript, or rebuild a chapter file, without opening the editor. Both name the account the work belongs to with `--owner <username>`, because a document is stored under the account that owns it and the tree is keyed by an internal account id rather than a name. Use `users` to create, reset, block, or delete an account. All three read the same database settings as the API server.
+Use them without opening the editor. Every chapter command names the account the work belongs to
+with `--owner <username>`, because a document is stored under the account that owns it and the
+tree is keyed by an internal account id rather than a name; `users assign` is the way a manuscript
+is handed from one account to another, which is how a document created before accounts existed — or
+one whose account was deleted — becomes visible in an editor again. `users` also creates, resets,
+blocks and deletes accounts. All three read the same database settings as the API server, report a
+refusal as one `error:` line, and never raise a traceback.
 
 ## Missing settings
 

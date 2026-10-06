@@ -2,35 +2,25 @@
 
 ## Executive Summary
 
-This document explains how DockB users sign in and where their accounts live.
-Users have their own accounts, created by an admin CLI that issues a temporary
-password which the user must change on first sign-in; they can also authenticate
-with Google or GitHub. In both cases the backend (not the editor) mints its own
-session cookie, and stores accounts, tokens, and per-user app state in a small
-SQLite database. Provider tokens never reach the editor. **There is no local mode:**
-every request requires a sign-in, and `get_current_user` falls through to the OS user
-when no provider is configured (see §6).
+This document explains how DockB users sign in and where their accounts live. Users have their
+own accounts, created by an admin CLI that issues a temporary password which the user must change
+on first sign-in; they can also authenticate with Google or GitHub. In both cases the backend
+(not the editor) mints its own session cookie, and stores accounts, tokens, and per-user app state
+in a small SQLite database. Provider tokens never reach the editor. **There is no local mode:**
+every request requires a sign-in, and no configuration makes a gated route serve a caller who has
+not signed in (see §6).
 
-The routes, session gate, and app-state endpoints are implemented. On first run
-the editor shows a Sign-in button, then restores the last document or asks the
-user to pick one. Read this for the login flow, storage, and security choices.
+Everything this document decides is now built: the password gate, the forced change-password dialog
+with a sign-out escape, the admin CLI, username normalization and soft delete, and per-account
+manuscript ownership. §6 and §7 keep the *reasoning*, and the code re-states the mechanics — the
+schema and store accessors live in `src/dockb/infrastructure/accounts/README.md`, the session
+cookie in `src/dockb/infrastructure/session/README.md`, the routes and the gate in
+`src/dockb/controllers/README_API.md`, and the commands in `src/dockb/cli/README.md`.
 
-**Part of this document is a specification, not a description.** §6 and §7 record decisions that
-have *not* been implemented; the code still behaves as this document previously described. The
-table below is the baseline, verified against the code, so a build can start from it.
-
-| Decision | The code today | The target | Done when |
-| --- | --- | --- | --- |
-| §6 every user signs in | `requires_login` is `bool(self._providers)` (`services/auth_service.py`), so with no provider configured `get_current_user` falls through to the OS user and the gated routes are open to any caller today. `DOCKB_LOCAL_MODE` exists nowhere in `src/`. | `requires_login` is unconditionally true. No `DOCKB_LOCAL_MODE`, no OS-user fall-through, and `local_username`/`ensure_local_user`/`get_or_create_local_user` are removed. `DOCKB_SECRET_KEY` becomes required rather than optionally replaced by an ephemeral key. | With no provider configured and no session cookie, a gated route answers 401 instead of serving the request. No deployment setting can make it serve an unauthenticated caller. |
-| §7 account lifecycle is admin-CLI only | No admin CLI exists: `src/dockb/cli/` holds only `import_document.py` and `reconstruct_chapter.py`. There is no password column on `users`. | A CLI that creates accounts and sets or resets a password. No HTTP registration or recovery route. | An account can be created with a password and then sign in. No route accepts a registration or reset request. |
-| §7 password login (in build) | Not implemented. No password-hashing library is installed — `pyproject.toml` has `cryptography` and stdlib `hashlib` only. | Argon2id, verified off the event loop, constant-time on the not-found path, rate limited. | A wrong password and an unknown username cost the same and both fail; a correct password mints a session cookie. |
-| §7 username normalization, `email` uniqueness, soft delete | `username` is `UNIQUE` but unnormalized, so SQLite's case-sensitive comparison admits `Brian` and `brian` as two accounts. `email` carries no constraint. `get_or_create_local_user` inserts an *empty string* email, which would collide under a unique constraint. No `deleted_at`. | Usernames lowercased and stripped; `email` nullable but `UNIQUE`, with every passwordless row storing `NULL` rather than `''`; `deleted_at` for a soft delete that keeps `app_state` and OAuth links. | The CLI cannot create two accounts differing only by case, a local-mode and a federated row coexist, and a deleted account keeps its manuscripts attributable. |
-| `/api/auth/config` response | Returns `{"login_required", "providers"}` (`controllers/auth.py`); the editor branches on `login_required` at `frontend/src/renderer/main.ts`. | `login_required` becomes constant `true`, and the editor renders a username/password form whenever it is true. No new field: password login is always available, so there is no state left for a flag to distinguish. | With no provider configured the editor still shows a usable password form rather than an empty gate. |
-
-As this work lands, this document should get smaller. The decisions and their rationale stay here;
-the implementation detail moves down into the package that owns it — `infrastructure/accounts/`
-(the user and token schema and the admin CLI), `infrastructure/session/`, and
-`controllers/README_API.md`. See `README_todo.md`.
+The two open questions this document once held were decided by that work and are recorded in §10:
+manuscripts are keyed by the account that owns them, each in its own directory and git
+repository, and a document whose account was deleted is recovered with `dockb users assign`
+rather than shown to an administrator.
 
 ## 1. Context and constraints
 
@@ -67,8 +57,8 @@ Consequences:
 
 - The provider's access/refresh tokens exist only inside the backend.
 - FastAPI needs the loopback callback path; the editor only needs to open a URL.
-- `SessionManager` keeps per-account `SessionContext`s in memory (as today), so token validation
-  happens at login, not per request.
+- `SessionManager` keeps per-account `SessionContext`s in memory, so token validation happens at
+  login, not per request.
 
 ## 3. Decision: accounts and state live in SQLite (decided)
 
@@ -157,7 +147,7 @@ The consequences, all deliberate:
   removal rather than being decided alongside it: with no local mode, the secret signs
   session cookies, encrypts refresh tokens *and* peppers password hashes, so a key
   generated per process would invalidate sessions, tokens and every password on every
-  restart. `wire()` substitutes an ephemeral key today; that substitution is removed.
+  restart. The server refuses to start without it, rather than substituting one.
 - **Nobody can sign in until an account exists**, so the first account comes from the CLI,
   under the same admin-only rule as every other account (§7). A fresh install therefore
   presents a sign-in that no one can pass until an administrator runs `dockb users create`
@@ -170,7 +160,7 @@ The consequences, all deliberate:
   the `null` origin a `file://` page sends, with credentials, let any local file read the
   API as the signed-in user. The Vite dev server needs none either, because its `/api`
   proxy is same-origin to the browser. See
-  `src/dockb/controllers/README_API.md` § The editor shell and `editor_shell.py`.
+  `src/dockb/controllers/README_API.md` § The editor shell and `src/dockb/editor_shell.py`.
 
 This also removes the precondition on `README_mcp_auth.md`: its public listener needed
 login to be unconditionally required before it opened, and that is now true of the
@@ -193,15 +183,10 @@ require a hosted registration and recovery flow, and this decision would be revi
 
 ### The admin CLI
 
-| Command | Effect |
-| --- | --- |
-| `dockb users create --username <name> --email <address>` | Generates a temporary password, prints it once, sets `must_change_password`. |
-| `dockb users list` | Every account with its state, including soft-deleted ones. Never prints a password or a hash. |
-| `dockb users block <username>` | Refuses logins and ends live sessions, on the next request. Reversible. |
-| `dockb users unblock <username>` | Reverses the above. |
-| `dockb users delete <username> --yes` | Soft delete: sets `deleted_at`, refuses logins, ends sessions. |
-| `dockb users undelete <username>` | Clears `deleted_at`. Restores the account without touching its credentials. |
-| `dockb users set-password <username>` | Re-issues a temporary password and re-arms `must_change_password`. |
+`dockb users <command>` creates, lists, blocks, unblocks, deletes, undeletes, resets a password,
+and assigns a manuscript to an account. The command table and each command's refusals live in
+`src/dockb/cli/README.md`, which is where that contract is maintained; what follows is why the
+lifecycle is a CLI at all and what the commands have in common.
 
 `set-password` is also the only way to give an **OAuth-only account** a usable password. The editor's
 sign-in gate is password-only (see §7, *First use must change the password*), and a provider account's
@@ -216,8 +201,9 @@ account still refuses a login *after* its password is verified, so the CLI's ans
 route's answer cannot be used to learn whether an account exists.
 
 `delete` is a **soft** delete, so the row, its `app_state`, and its OAuth links survive. Nothing is
-lost when an account is removed, and manuscripts stay attributable to the account that wrote them
-once documents are owned. A soft-deleted username stays taken, since the row holding it is still
+lost when an account is removed, and manuscripts stay attributable to the account that wrote them —
+a deleted account's documents are recovered with `dockb users assign`, not destroyed with it (§10). A
+soft-deleted username stays taken, since the row holding it is still
 present — which is why `undelete` exists, and why `list` shows deleted rows rather than hiding them:
 an account that is deleted and one that never existed are different states, and hiding the first would
 make the second look like it.
@@ -247,8 +233,8 @@ A username is a name, not an address, and it is the identity key for sessions, c
 (§3). It is stored lowercased with surrounding whitespace stripped, and is `UNIQUE`.
 
 Normalizing is not cosmetic. SQLite compares `TEXT` case-sensitively, so without it `Brian` and
-`brian` would be two accounts — and since the normalized value becomes the document owner, a case
-variant would split one person's documents across two owners. The CLI rejects a username that differs
+`brian` would be two accounts — and since documents are owned by an account id resolved from the
+username, a case variant would split one person's manuscripts across two owners. The CLI rejects a username that differs
 from an existing one only by case or surrounding whitespace.
 
 `email` is a separate, admin-supplied property that is **not verified** and is not an identity. It is
@@ -306,8 +292,7 @@ supplied is unverified and therefore not an identity.
   asyncio is cooperative and single-threaded: a blocking call in an `async def` route stalls
   every concurrent request for its full duration, whether or not it releases the GIL. The login
   route is therefore `async def` and offloads verification with
-  `fastapi.concurrency.run_in_threadpool`, leaving the rest of `AuthService` synchronous as it is
-  today.
+  `fastapi.concurrency.run_in_threadpool`, leaving the rest of `AuthService` synchronous.
 - The offload belongs at that route and nowhere else, because the other caller has no event loop
   to stall: the CLI generates, hashes and resets passwords in a plain synchronous process. So
   `passwords.py` is a synchronous module throughout, and `run_in_threadpool` is applied where the
@@ -482,8 +467,8 @@ Multi-factor authentication, recovery of a forgotten password over HTTP, and ema
 all out of scope. `dockb users set-password` is the only recovery path, which is sufficient while the
 user set is small and known, and would not be for untrusted users.
 
-The column-by-column schema and the store's accessors move down to
-`src/dockb/infrastructure/accounts/README.md` as the code lands.
+The column-by-column schema and the store's accessors are in
+`src/dockb/infrastructure/accounts/README.md`.
 
 ## 8. Flow in full (reference)
 
@@ -509,15 +494,9 @@ The column-by-column schema and the store's accessors move down to
 
 ## 9. Open questions
 
-- **The store layout for per-user document ownership** — when documents become owned by their user
-  (§ next cycle), the markdown tree is keyed by title in a shared git repository, so two users
-  cannot both hold a document called "Book One". Per-user trees are the decision; whether that means
-  one git repository per user, or one repository with per-user subdirectories whose commits and
-  history span users, is not yet decided.
-- **Documents belonging to a soft-deleted account** — `deleted_at` keeps the row so manuscripts stay
-  attributable, but ownership raises what *visible* means. Whether such a document is reassigned,
-  shown to an administrator only, or hidden from everyone needs deciding when ownership lands, since
-  the answer changes the delete command's contract.
+None. The two this document held — the store layout for per-user ownership, and what a
+document belonging to a soft-deleted account should mean — were settled by the ownership work and
+are recorded in §10.
 
 ## 10. Resolved questions
 
@@ -542,6 +521,22 @@ Settled while the design was implemented, or decided since:
   later signs in with a federated provider under that same address, a naive merge hands them the
   attacker's account. Doing no linking means the vector does not exist; the cost is that one person
   using two providers has two accounts.
+- **The store layout for per-user document ownership** — one directory *and* one git repository
+  per account, below one shared base directory, so a document's markdown lives under the account
+  that owns it and no commit can ever span two accounts. The alternative — one repository with
+  per-user subdirectories — would put every account's files in one history, and a commit there
+  could stage another account's work. Each account therefore has its own repository, and history
+  does not travel between them: a document adopted by `dockb users assign` enters its new
+  account's history as its first commit rather than by stitching commits across.
+- **Documents belonging to a soft-deleted account** — reassigned, by an administrator, with
+  `dockb users assign`. They are not shown to an administrator-only view and not hidden from
+  everyone: a soft delete keeps the row and the manuscripts stay attributable to the account that
+  wrote them, but a deleted account cannot sign in, so its documents are in nobody's library and
+  no HTTP route can reach them. Assignment *from* a deleted account is therefore allowed, and it
+  is the recovery path; assignment *to* one is refused, because a manuscript handed to an account
+  that cannot authenticate would be hidden again. The command is command-line only and has no
+  counterpart in the editor, so there is no question of which signed-in account may take a
+  manuscript from another.
 - **Machine-to-machine credentials are separate from user accounts** — the MCP server's service
   credential is not a user account and never appears in `users`. It is a per-prompt bearer token
   held in memory, and is documented in `README_mcp_auth.md`.

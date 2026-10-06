@@ -104,8 +104,10 @@ its 10px floor.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
-- `menubar.ts` — File (Open, Save, Delete ▸ Document, Edit ▸ Document/Chapter, Quit), Mode,
-  Settings (Language… dialog); dropdowns and nested submenus dismiss on outside click or Esc.
+- `menubar.ts` — File (Open, Import…, Save, Delete ▸ Document, Edit ▸ Document/Chapter,
+  Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on outside click
+  or Esc. There is no **Sign out** item: the only route to `POST /api/auth/logout` is the
+  change-password dialog's own button. See `../README_todo.md`.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move. Manuscript
   chapters group under act headers; `Character` chapters sit in a Characters
   section after the acts. Move only offers drop slots inside the mover's
