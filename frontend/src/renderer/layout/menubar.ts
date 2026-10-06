@@ -11,6 +11,7 @@ export interface MenubarOptions {
   onDeleteDocument?: () => void;
   onEditDocument?: () => void;
   onEditChapter?: () => void;
+  onSignOut?: () => void;
 }
 
 interface MenuSpec {
@@ -42,6 +43,7 @@ const MENUS: MenuSpec[] = [
           { key: "edit-chapter", label: "Chapter" },
         ],
       },
+      { key: "sign-out", label: "Sign out" },
       { key: "quit", label: "Quit" },
     ],
   },
@@ -193,6 +195,8 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
     options.onEditDocument?.();
   } else if (menu.key === "File" && item.key === "edit-chapter") {
     options.onEditChapter?.();
+  } else if (menu.key === "File" && item.key === "sign-out") {
+    options.onSignOut?.();
   } else if (menu.key === "Settings" && item.key === "language") {
     options.onOpenLanguageSettings?.();
   }

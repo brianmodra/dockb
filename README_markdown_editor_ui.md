@@ -80,12 +80,15 @@ message console at 24px minimum height), and the right panel starts at its 10px 
 
 ## 3. Menus (decided)
 
-- **File ▾** — **Open** (the select-document modal, §8), **Save** (current chapter;
+- **File ▾** — **Open** (the select-document modal, §8), **Import…** (pick a document directory
+  and send it to `POST /api/import`), **Save** (current chapter;
   `PUT /api/chapters/{id}/document`), **Delete ▸ Document** (delete a whole document:
   pick it, confirm, then `DELETE /api/documents/{id}`; if it was the open document the
   editor and chapter list clear), **Edit ▸ Document / Chapter** (edit a document's
   title/author or a chapter's title, saving through `PUT /api/documents/{id}` /
-  `PUT /api/chapters/{id}`) and **Quit**.
+  `PUT /api/chapters/{id}`), **Sign out** (offer to save an unsaved buffer, end the session
+  with `POST /api/auth/logout`, clear what the session owned, and show the gate again) and
+  **Quit**.
 - **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". One item, **Language…**: opens
   a dialog listing spellcheck languages (scrollable, current one marked, Cancel/Apply); choosing

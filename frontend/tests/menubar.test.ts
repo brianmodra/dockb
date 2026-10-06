@@ -23,14 +23,14 @@ describe("menubar", () => {
     expect(bar.element.querySelector('[data-testid="menu-Settings"]')?.textContent).toBe("⚙");
   });
 
-  it("opens File with Open, Save, Delete, Edit and Quit", () => {
+  it("opens File with Open, Import, Save, Delete, Edit, Sign out and Quit", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
     const itemLabels = Array.from(dropdown(bar, "File").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(itemLabels).toEqual(["Open", "Import…", "Save", "Delete", "Edit", "Quit"]);
+    expect(itemLabels).toEqual(["Open", "Import…", "Save", "Delete", "Edit", "Sign out", "Quit"]);
   });
 
   it("safely handles File clicks (Open/Save/Quit wire later)", () => {
@@ -62,6 +62,28 @@ describe("menubar", () => {
     openMenu(bar, "File");
     bar.element.querySelector('[data-testid="menu-item-quit"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onQuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports File → Sign out to onSignOut", () => {
+    const onSignOut = vi.fn();
+    const bar = buildMenubar({ onSignOut });
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    bar.element
+      .querySelector('[data-testid="menu-item-sign-out"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores File → Sign out when no handler is given", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    expect(() =>
+      bar.element
+        .querySelector('[data-testid="menu-item-sign-out"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    ).not.toThrow();
   });
 
   it("reports File → Save to onSave", () => {
