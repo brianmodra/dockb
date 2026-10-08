@@ -4,18 +4,19 @@
 
 This document explains how the MCP server authenticates the OpenAI model that
 calls it. When Brian's code builds a Responses API request it attaches the MCP
-server as a tool and passes a bearer token in that tool's `authorization`
-field; OpenAI's infrastructure then calls the MCP server carrying that token.
-The token is generated for that one prompt, kept in a live-token map in memory, and expires after
-a short, configurable window, so a stolen token is dead within minutes and there is no
-credential anywhere on disk.
+server as a tool and passes a per-prompt bearer token in that tool's
+`authorization` field; OpenAI's infrastructure then presents the token on every
+call. The token is minted from a fresh in-memory secret just before the prompt,
+kept in a live-token map keyed by its expiry, and dies with its entry — no
+credential store, no signing key, no admin CLI — so a stolen token is useless
+within a short, configurable window and nothing secret lives on disk.
 
 The MCP server runs **in the same process** as DockB's backend, mounted on its
 own listener so the public tunnel cannot reach the manuscript API. That is one
 process and two ports rather than two processes, and it is what lets the token
-be a plain in-memory value with nothing to provision and no CLI to administer.
-Read this for the token design, why there is no authorization server, and why
-the two listeners stay separate even though they share a process.
+be a plain in-memory value with nothing to provision. Read this for the token
+design, why there is no authorization server, and why the two listeners stay
+separate even though they share a process.
 
 **Status.** This is the decided design, superseding the earlier two-process and
 `issued_tokens` draft. The MCP server and its per-prompt token are not yet
@@ -98,28 +99,17 @@ not have.
 There is no credential store. The token for a prompt is minted immediately
 before the request that carries it, from a fresh random secret put in a
 module-level map of live tokens keyed by expiry, and dropped when its entry
-expires. A process restart invalidates every token it held.
+expires. A process restart invalidates every token it held. The pair that does
+this is `PromptTokenIssuer` in `src/dockb/infrastructure/mcp/prompt_tokens.py`;
+its package `README.md` carries the token format and the exact mint and verify
+steps, and this section keeps the reasons behind them.
 
-Preparing a prompt:
-
-1. Generate a new secret (`secrets.token_bytes`) and put it in the live-token
-   map under the expiry set in step 2, pruning any entries whose expiry has
-   already passed. The key is the expiry as an integer count of microseconds, so
-   the field is dot-free and two mints — which happen one after the other in
-   this process — cannot share a key.
-2. Set the token's expiry at *now* plus the TTL from `DOCKB_MCP_TOKEN_TTL_SECONDS`
-   (default `300`), and stamp the token with this prompt's identity.
-3. Put the token in the MCP tool's `authorization` field.
-
-Verifying a request:
-
-1. Parse the expiry and prompt identity. If the expiry has passed, or no live
-   entry is keyed by it, reject.
-2. Recompute the MAC over both with the secret from that entry.
-3. Compare in constant time. A mismatch means the token is not the one minted
-   for that expiry.
-4. Log the prompt identity, so a token seen out of place traces to one request
-   (§4).
+Preparing a prompt mints a token with a per-prompt secret keyed by a
+microsecond-resolution expiry, and puts it in the MCP tool's `authorization`
+field. Verifying parses the expiry and prompt identity, rejects an expired or
+unknown token, recomputes the MAC with the entry's secret, compares in constant
+time, and logs the prompt identity so a token seen out of place traces to one
+request (§4).
 
 The token is `expiry.prompt_id.mac(expiry + "." + prompt_id)`, where `mac` is an
 HMAC-SHA256 under the secret in that expiry's live-map entry and `prompt_id` is

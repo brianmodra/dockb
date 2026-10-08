@@ -2,13 +2,18 @@
 
 ## Executive Summary
 
-This package holds the mint-and-verify pair for the per-prompt bearer token
-that authenticates OpenAI's infrastructure when it calls the MCP server. There
-is no credential store, no signing key and no admin CLI: each prompt's secret
-is born in memory, sits in a map keyed by the token's expiry, and dies with its
-entry. Read this for what the token looks like and what makes one valid; the
-threat model, the two-listener split and why this is a MAC rather than a
-signature live in `README_mcp_auth.md` at the repository root.
+This package holds the mint-and-verify pair for the per-prompt bearer token that
+authenticates OpenAI's infrastructure when it calls the MCP server. There is no
+credential store, no signing key and no admin CLI: each prompt's secret is born
+in memory, sits in a map keyed by the token's expiry, and dies with its entry,
+so a leaked token is useless once that window passes and nothing secret is left
+on disk.
+
+`PromptTokenIssuer` is the whole of it — `mint` makes a token for one prompt and
+`verify` says which prompt a presented token belongs to, or rejects it. Read
+this for what the token looks like and what makes one valid; the threat model,
+the two-listener split and why this is a MAC rather than a signature are in
+`README_mcp_auth.md` at the repository root.
 
 ## Package Structure
 

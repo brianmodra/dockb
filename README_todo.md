@@ -8,14 +8,14 @@ at the design document that already settles how it should be built; an entry is 
 work lands, and the design document is expected to absorb it.
 
 One entry remains: the whole MCP server — a second listener, an endpoint, the tools, and a
-per-prompt token — specified at `README_mcp_auth.md`, with all three design decisions now settled
-(§8) so nothing blocks the build. Everything else this file used to list has landed and been
-deleted: the admin CLI, password sign-in, the editor's change-password dialog, mandatory sign-in
-with no local mode, and **Sign out** in the File menu. Their reasoning lives in `README_auth.md`,
-and their mechanics in the
-place that owns them: `src/dockb/infrastructure/accounts/README.md`,
-`src/dockb/infrastructure/session/README.md`, `src/dockb/controllers/README_API.md`, and
-`frontend/README.md` for the editor's gate, sign-out loop and menu.
+per-prompt token — specified at `README_mcp_auth.md`, with the token's mint-and-verify pair now
+built and all three design decisions settled so nothing blocks the rest. Everything else this file
+used to list has landed and been deleted: the admin CLI, password sign-in, the editor's
+change-password dialog, mandatory sign-in with no local mode, and **Sign out** in the File menu.
+Their reasoning lives in `README_auth.md`, and their mechanics in the place that owns them:
+`src/dockb/infrastructure/accounts/README.md`, `src/dockb/infrastructure/session/README.md`,
+`src/dockb/controllers/README_API.md`, and `frontend/README.md` for the editor's gate, sign-out
+loop and menu.
 
 ## Entries
 
