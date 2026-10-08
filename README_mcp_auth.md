@@ -6,8 +6,8 @@ This document explains how the MCP server authenticates the OpenAI model that
 calls it. When Brian's code builds a Responses API request it attaches the MCP
 server as a tool and passes a bearer token in that tool's `authorization`
 field; OpenAI's infrastructure then calls the MCP server carrying that token.
-The token is generated for that one prompt, kept in memory, and expires after a
-short window, so a stolen token is dead almost immediately and there is no
+The token is generated for that one prompt, kept in a live-token map in memory, and expires after
+a short, configurable window, so a stolen token is dead within minutes and there is no
 credential anywhere on disk.
 
 The MCP server runs **in the same process** as DockB's backend, mounted on its
@@ -93,36 +93,41 @@ A spec-complete authorization server would otherwise be a large amount of
 unexercisable code: every feature of it exists to solve a problem this flow does
 not have.
 
-## 3. Decision: a per-prompt secret held in memory (decided)
+## 3. Decision: per-prompt secrets held in memory (decided)
 
 There is no credential store. The token for a prompt is minted immediately
-before the request that carries it, from a fresh random secret kept in module
-state, and forgotten by being overwritten at the next prompt. A process restart
-invalidates every token it held.
+before the request that carries it, from a fresh random secret put in a
+module-level map of live tokens keyed by expiry, and dropped when its entry
+expires. A process restart invalidates every token it held.
 
 Preparing a prompt:
 
-1. Generate a new secret (`secrets.token_bytes`) and replace the one in memory.
-2. Set the token's expiry at *now* plus the configured TTL, and stamp the token
-   with this prompt's identity.
+1. Generate a new secret (`secrets.token_bytes`) and put it in the live-token
+   map under the expiry set in step 2, pruning any entries whose expiry has
+   already passed. The key is the expiry as an integer count of microseconds, so
+   the field is dot-free and two mints — which happen one after the other in
+   this process — cannot share a key.
+2. Set the token's expiry at *now* plus the TTL from `DOCKB_MCP_TOKEN_TTL_SECONDS`
+   (default `300`), and stamp the token with this prompt's identity.
 3. Put the token in the MCP tool's `authorization` field.
 
 Verifying a request:
 
-1. Parse the expiry and prompt identity. If the expiry has passed, reject.
-2. Recompute the MAC over both with the **current** in-memory secret.
-3. Compare in constant time. A mismatch means the secret has been rotated and
-   the token is dead.
+1. Parse the expiry and prompt identity. If the expiry has passed, or no live
+   entry is keyed by it, reject.
+2. Recompute the MAC over both with the secret from that entry.
+3. Compare in constant time. A mismatch means the token is not the one minted
+   for that expiry.
 4. Log the prompt identity, so a token seen out of place traces to one request
    (§4).
 
 The token is `expiry.prompt_id.mac(expiry + "." + prompt_id)`, where `mac` is an
-HMAC-SHA256 under the current secret and `prompt_id` is an opaque per-prompt
-handle. Both fields travel in the clear; neither is a secret, and the MAC covers
-both so neither can be altered without invalidating the token. Binding the
-identity into the MAC rather than merely appending it is what makes it
-attributive — a prompt id that could be swapped would let one request borrow
-another's attribution.
+HMAC-SHA256 under the secret in that expiry's live-map entry and `prompt_id` is
+an opaque per-prompt handle. Both fields travel in the clear; neither is a
+secret, and the MAC covers both so neither can be altered without invalidating
+the token. Binding the identity into the MAC rather than merely appending it is
+what makes it attributive — a prompt id that could be swapped would let one
+request borrow another's attribution.
 
 **A MAC, not a signature.** An earlier draft signed with a private key so a
 verifier could check a token with only a public key. That bought offline
@@ -135,18 +140,18 @@ smaller. No keypair means nothing to generate, store, rotate, or lose.
 **What this buys.** There is no long-lived secret anywhere: not in an
 environment variable, not in a table, not a key on disk. A secret lifted off the
 machine is useless after the current TTL, and a token lifted off the wire is
-useless after either the TTL or the next prompt, whichever comes first. Nothing
-has to be provisioned by hand, so there is no admin CLI, no `keygen`, no
-provisioning step, and no secret to rotate out of band.
+useless after that TTL. Nothing has to be provisioned by hand, so there is no
+admin CLI, no `keygen`, no provisioning step, and no secret to rotate out of
+band.
 
-**Two sharp edges, both deliberate.**
+**Concurrency, and one deliberate sharp edge.**
 
-- **One prompt at a time.** Because preparing the next prompt replaces the
-  secret, a token minted for an earlier prompt stops verifying the moment
-  another prompt is prepared. Two concurrent agent sessions would invalidate each
-  other. Accepting this is the price of having no store; if concurrent prompts
-  are ever needed, the secret becomes a short-lived map of live tokens keyed by
-  expiry, which is a small change and keeps every property above.
+- **Concurrent prompts each get their own entry, pruned by expiry.** Because the
+  map is keyed by expiry, two overlapping agent sessions do not invalidate each
+  other: each prompt mints its own secret and its own entry, and expired entries
+  are pruned as new ones are added. The cost is that the map, not the act of
+  preparing the next prompt, is what bounds a token — so the TTL is the only
+  time bound left (§4).
 - **The TTL must cover model latency, not just tool duration.** The clock starts
   when the prompt is prepared, but the token is not presented until the model
   decides to call a tool — which may be a long way off for a reasoning model —
@@ -154,8 +159,8 @@ provisioning step, and no secret to rotate out of band.
   first tool call + longest tool call + retries*. Verification happens on
   request entry and not again during streaming, so a call that outruns its TTL
   still completes; what must not expire is the window before the call arrives.
-  The default is 60s, which should be treated as a placeholder until that bound
-  has been measured (see §8).
+  The default is 300s, set from `DOCKB_MCP_TOKEN_TTL_SECONDS` (§8), and should be
+  raised without a code change if the measured bound requires it.
 
 ## 4. Decision: what bounds a token now (decided)
 
@@ -166,13 +171,12 @@ That reasoning holds. What changes is the mechanism, because a grant has to live
 on the token, and the token is a MAC over an expiry and a prompt id with no room
 for a scope set that a verifier would have to resolve.
 
-Three bounds replace it, in increasing order of cost:
+Two bounds replace it, in increasing order of cost:
 
-- **The TTL.** This is the main one, and it is why §3 insists the window is
-  measured rather than guessed. A leaked token is a leak for the length of that
-  window and no longer, without anyone having to notice and act.
-- **Single use.** A token dies at the next prompt, so a leak has a natural
-  expiry even if the TTL is generous.
+- **The TTL.** This is the main one, and it is why §3 sets it from
+  `DOCKB_MCP_TOKEN_TTL_SECONDS` rather than hard-coding it. A leaked token is a
+  leak for the length of that window and no longer, without anyone having to
+  notice and act.
 - **What one call can return.** Unchanged and still required: a token that can
   read chapters can read *unbounded* chapters, so the MCP tools cap the size of a
   single response. A leaked token with minutes to live should still not be able
@@ -236,7 +240,7 @@ API already runs document processing on request.
 **What one process buys.** The spaCy document cache and the job queue are shared
 rather than duplicated, so the MCP server reads the cache the editor warmed
 instead of re-analysing over HTTP. And it is what makes §3's design possible at
-all: the per-prompt secret is a local variable instead of something that has to
+all: the live-token map is module state instead of something that has to
 be carried across a process boundary to a listener that must not itself be
 reachable.
 
@@ -263,37 +267,42 @@ mean reintroducing the credential of §1's deleted third row.
 ## 7. Revocation is automatic
 
 There is no revocation command, because there is nothing to revoke. A token stops
-verifying when any of three things happens:
+verifying when either of two things happens:
 
-- **Its TTL passes.** Bounded by the window measured in §3.
-- **Another prompt is prepared.** The secret is replaced, so the MAC no longer
-  recomputes and the token is rejected.
+- **Its TTL passes.** The entry expires and is pruned from the live-token map.
 - **The process restarts.** Nothing is in memory to survive it.
 
-The last two are immediate and unconditional, which is a stronger property than
-the earlier JWT design had. That design was stateless, so revoking meant either
-consulting a store or letting a short TTL lapse — the earlier draft settled on
-"a CLI kill-switch plus a short TTL is sufficient". There is no kill-switch to
-forget to pull, because the mechanism *is* the kill-switch.
+Both are automatic, which is a stronger property than the earlier JWT design
+had. That design was stateless, so revoking meant either consulting a store or
+letting a short TTL lapse — the earlier draft settled on "a CLI kill-switch plus
+a short TTL is sufficient". There is no kill-switch to forget to pull, because
+the mechanism *is* the kill-switch.
 
-The one thing this does not give is revoking a single token while leaving others
-alone, because there is only ever one live token. If that is ever needed, it
-means going back to a set of tokens (§3's sharp edge) and the same rule applies
-per token.
+Concurrent prompts no longer revoke each other (§3), so this is no longer a
+blanket "the next prompt kills everything" property. Revoking *one* live token
+while leaving the others alone is now possible — drop its entry from the map —
+but nothing in the design needs it, so no command exposes it.
 
-## 8. Open questions
+## 8. Decision: TTL, concurrency and public URL (decided)
 
-1. **The TTL bound.** 60s is a placeholder. It has to cover worst-case time to
-   first tool call plus the longest tool call plus retries (§3), which is a
-   measurement, not a preference.
-2. **Concurrent prompts.** One live secret means one prompt at a time (§3). If
-   two agent sessions ever need to overlap, the secret becomes a map of live
-   tokens. Worth deciding before it is discovered.
-3. **A stable public URL.** The MCP listener needs an ngrok reserved domain or a
-   real hostname rather than a per-restart tunnel URL, so that whatever
-   identifies the server does not change under a reconnecting client. There is
-   no OAuth `issuer` to stabilise any more, but the tunnel URL still appears in
-   logs and in the client's configuration.
+The three questions this revision had open are settled:
+
+1. **The TTL is configurable, defaulting to 300s.** It is read from
+   `DOCKB_MCP_TOKEN_TTL_SECONDS` and covers worst-case time to first tool call
+   plus the longest tool call plus retries (§3). The default is deliberately
+   generous so the window comfortably spans model latency; it can be raised
+   without a code change if the measured bound demands it.
+2. **Concurrent prompts are supported.** The single in-memory secret is a map of
+   live tokens keyed by expiry (§3), so overlapping agent sessions mint
+   independent entries that do not invalidate each other, and expired entries are
+   pruned as new ones are added.
+3. **The public URL comes from an environment variable.**
+   `DOCKB_MCP_PUBLIC_URL` holds the full base URL of the MCP listener (scheme and
+   host, e.g. `https://mcp.example.com`) — an ngrok reserved domain or real
+   hostname rather than a per-restart tunnel URL — and it is what our code passes
+   to the LLM when it attaches the MCP server as a tool, so the address in the
+   client's configuration does not change under a reconnecting client. The domain
+   itself is provisioned outside this codebase.
 
 ## 9. Resolved questions
 
@@ -307,12 +316,15 @@ Settled while designing, or by this revision:
   no `keygen` and nothing to provision by hand (§3).
 - **A MAC, not a signature** — the verifier shares a process with the minter, so
   there is no third party needing a public key, and no keypair to manage (§3).
-- **What bounds a token** — the TTL, single use, and a cap on what one call
-  returns; scopes had nowhere to live on the token (§4).
+- **What bounds a token** — the TTL and a cap on what one call returns; scopes
+  had nowhere to live on the token (§4).
 - **One process, two listeners** — shared state and no HTTP between the tool
   handlers and the services, with the public port unable to reach a manuscript
   route (§5). This supersedes the two-process decision.
 - **Python** — settled by being the same process, not chosen between options
   (§6).
-- **Revocation is automatic** — TTL, rotation and restart, with no command to
-  forget to run (§7).
+- **Revocation is automatic** — TTL and restart, with no command to forget to
+  run (§7).
+- **TTL, concurrency and public URL** — `DOCKB_MCP_TOKEN_TTL_SECONDS` defaulting
+  to 300s, a live-token map so prompts overlap, and `DOCKB_MCP_PUBLIC_URL` for
+  the address handed to the LLM (§8).
