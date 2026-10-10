@@ -238,6 +238,20 @@ reachable.
 or public. The loopback listener is not, and the MCP application must not mount
 any manuscript router.
 
+**The public listener's shape (decided).** It serves one route and nothing else:
+the MCP endpoint at `/mcp`. It carries no manuscript router and no editor shell,
+so a request the tunnel forwards cannot reach the API by any path. Every request
+must present the per-prompt bearer token in `Authorization`; one that does not,
+or whose token does not verify, is answered `401` with a bare
+`WWW-Authenticate: Bearer` before anything is parsed (§2), and no handler runs.
+The check is a plain bearer-token middleware in front of the endpoint — not the
+transport's OAuth provider — which is why no discovery document and no issuer
+exist (§2). The transport only answers requests addressed to a host it was told
+to serve, so the listener carries a host allowlist: `DOCKB_MCP_ALLOWED_HOSTS`
+when set, otherwise the host in `DOCKB_MCP_PUBLIC_URL` plus `localhost` and
+`127.0.0.1` (§8.5). It binds `DOCKB_MCP_PORT` (default 8001, §8.4) and runs on
+the loopback application's single event loop, so there is genuinely one process.
+
 ## 6. Decision: the MCP server is Python, because it is the same process (decided)
 
 The earlier draft left this open between Python and TypeScript, because it
@@ -273,9 +287,9 @@ blanket "the next prompt kills everything" property. Revoking *one* live token
 while leaving the others alone is now possible — drop its entry from the map —
 but nothing in the design needs it, so no command exposes it.
 
-## 8. Decision: TTL, concurrency and public URL (decided)
+## 8. Decision: TTL, concurrency and the listener's environment (decided)
 
-The three questions this revision had open are settled:
+The questions this revision had open, and the listener's own configuration, are settled:
 
 1. **The TTL is configurable, defaulting to 300s.** It is read from
    `DOCKB_MCP_TOKEN_TTL_SECONDS` and covers worst-case time to first tool call
@@ -293,6 +307,16 @@ The three questions this revision had open are settled:
    to the LLM when it attaches the MCP server as a tool, so the address in the
    client's configuration does not change under a reconnecting client. The domain
    itself is provisioned outside this codebase.
+4. **The public listener's port is configurable, defaulting to 8001.** `DOCKB_MCP_PORT`
+   selects it; the loopback listener keeps `8000`. Both listeners are served by the one
+   process on the one event loop (§5).
+5. **The public listener accepts a host allowlist, defaulting to the public URL and
+   localhost.** `DOCKB_MCP_ALLOWED_HOSTS` is a comma-separated override; when unset the
+   listener allows the host in `DOCKB_MCP_PUBLIC_URL` together with `localhost` and
+   `127.0.0.1`. The allowlist is required because the MCP transport refuses a request whose
+   `Host` it was not told to serve — a deployed hostname must be named or every request is
+   rejected before any handler runs. The caller is not a browser and sends no `Origin`, so the
+   origin half of the same protection does not gate the real caller.
 
 ## 9. Resolved questions
 
@@ -315,6 +339,10 @@ Settled while designing, or by this revision:
   (§6).
 - **Revocation is automatic** — TTL and restart, with no command to forget to
   run (§7).
-- **TTL, concurrency and public URL** — `DOCKB_MCP_TOKEN_TTL_SECONDS` defaulting
-  to 300s, a live-token map so prompts overlap, and `DOCKB_MCP_PUBLIC_URL` for
+- **TTL, concurrency and the listener's environment** — `DOCKB_MCP_TOKEN_TTL_SECONDS`
+  defaulting to 300s, a live-token map so prompts overlap, and `DOCKB_MCP_PUBLIC_URL` for
   the address handed to the LLM (§8).
+- **The public listener's shape** — one route at `/mcp`, a bearer-token middleware in front
+  of it, and no SDK OAuth provider or discovery document (§2, §5).
+- **Listener port and host allowlist** — `DOCKB_MCP_PORT` defaulting to 8001 and
+  `DOCKB_MCP_ALLOWED_HOSTS` defaulting to the public URL host plus localhost (§8).

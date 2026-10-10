@@ -9,19 +9,23 @@ in memory, sits in a map keyed by the token's expiry, and dies with its entry,
 so a leaked token is useless once that window passes and nothing secret is left
 on disk.
 
-`PromptTokenIssuer` is the whole of it — `mint` makes a token for one prompt and
-`verify` says which prompt a presented token belongs to, or rejects it. Read
-this for what the token looks like and what makes one valid; the threat model,
-the two-listener split and why this is a MAC rather than a signature are in
-`README_mcp_auth.md` at the repository root.
+`PromptTokenIssuer` mints the token and says which prompt a presented one
+belongs to, or rejects it; `BearerAuthMiddleware` and `create_mcp_app` put that
+verification in front of the MCP endpoint on a listener that mounts nothing
+else. Read this for what the token looks like, what makes one valid, and the
+shape of the public application; the threat model, the two-listener split and
+why this is a MAC rather than a signature are in `README_mcp_auth.md` at the
+repository root.
 
 ## Package Structure
 
 ```
 infrastructure/mcp/
 ├── README.md           # This file
-├── __init__.py         # Re-exports PromptTokenIssuer
-└── prompt_tokens.py    # PromptTokenIssuer — mint() and verify()
+├── __init__.py         # Re-exports PromptTokenIssuer and create_mcp_app
+├── prompt_tokens.py    # PromptTokenIssuer — mint() and verify()
+├── auth.py             # BearerAuthMiddleware — the Authorization check
+└── app.py              # create_mcp_app() — the MCP-only public ASGI app
 ```
 
 ## Components
@@ -49,6 +53,27 @@ key — and an entry is a `prompt_id → secret` mapping so two prompts whose ex
 collides to the same string still do not invalidate each other. Expiry and MAC
 travel in the clear; neither is a secret, and the MAC covers both, so neither
 can be altered without invalidating the token.
+
+### `BearerAuthMiddleware`
+
+A pure-ASGI middleware placed in front of the MCP endpoint. For an HTTP request
+it reads `Authorization: Bearer <token>`, calls the issuer's `verify`, and either
+records the prompt identity on the request and passes it through, or answers
+`401` with a bare `WWW-Authenticate: Bearer` and a JSON error — before anything
+is parsed, so an unauthenticated request never reaches a handler. Non-HTTP scopes
+(the lifespan) pass through untouched. It is plain ASGI rather than
+`BaseHTTPMiddleware` so it does not disturb the transport's streaming responses.
+
+### `create_mcp_app`
+
+`create_mcp_app(issuer, *, allowed_hosts)` returns the application the public
+listener serves: an MCP server with **no tools**, mounted so its endpoint is the
+one route at `/mcp`, with the middleware above in front of it and a lifespan that
+starts the MCP session manager. It mounts no manuscript router and serves no
+editor shell, so nothing the tunnel forwards can reach the manuscript API. The
+host allowlist it is given is the list of `Host` values the transport will
+answer; a request to any other host is refused before any handler runs
+(`README_mcp_auth.md` §5, §8.5).
 
 What this deliberately does **not** have: a table of issued tokens, a keypair, a
 revocation command, or a credential that outlives the process. Revocation is the
