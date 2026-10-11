@@ -19,8 +19,9 @@ design, why there is no authorization server, and why the two listeners stay
 separate even though they share a process.
 
 **Status.** This is the decided design, superseding the earlier two-process and
-`issued_tokens` draft. The MCP server and its per-prompt token are not yet
-implemented; the account and session code that exists today is described in
+`issued_tokens` draft. The token, the bearer gate and the public listener are
+implemented; the MCP tools and the prompt-building that mints a token per prompt
+are not yet. The account and session code that exists today is described in
 `README_auth.md`, and the no-local-mode change that prerequisite depended on has
 since landed.
 
@@ -47,8 +48,10 @@ One Python process serves two listeners:
 - **Loopback listener** (`127.0.0.1:8000`) — the manuscript API (documents,
   chapters, paragraphs, sentences, history), the user-login routes, and the
   editor shell. Never tunnelled.
-- **Public listener** (its own port, later reached by an ngrok tunnel) — the MCP
-  endpoint and nothing else. This is the only thing ever exposed.
+- **Public listener** (`127.0.0.1:8001`, configurable via `DOCKB_MCP_PORT`) — the
+  MCP endpoint and nothing else. This is the only thing ever exposed: it is
+  reached only by the ngrok tunnel, which dials localhost, so the port is never
+  directly reachable on the network.
 
 Both are the same process, so the MCP tool handlers call the same service
 methods the HTTP API calls, with no HTTP call between them, and the per-prompt
@@ -214,9 +217,13 @@ the OS user. Every content route now needs a session cookie that
 gone and **the two-listener split is now this work's design, not a workaround for
 a bug.**
 
-What remains is the part that has never been built: the public listener itself.
-`app_factory.py` mounts one router set on one app, so there is no second listener
-to speak MCP on yet. That is the next build step, not this section's blocker.
+What remains is the part that speaks MCP to the caller: the tools themselves and
+the prompt-building that mints a token for each one. The public listener and its
+runner now exist — `dockb/mcp_server.py` wires the services once and serves both
+listeners (the loopback API and the bearer-gated MCP app) on one event loop
+(§5) — but the MCP server still exposes an empty `tools/list`, so there is
+nothing for a caller to invoke yet. That is the next build step, not this
+section's blocker.
 
 **What one process costs.** spaCy is CPU-bound and holds the GIL, so a long
 MCP-triggered analysis competes with the editor rather than being isolated from
@@ -249,8 +256,10 @@ transport's OAuth provider — which is why no discovery document and no issuer
 exist (§2). The transport only answers requests addressed to a host it was told
 to serve, so the listener carries a host allowlist: `DOCKB_MCP_ALLOWED_HOSTS`
 when set, otherwise the host in `DOCKB_MCP_PUBLIC_URL` plus `localhost` and
-`127.0.0.1` (§8.5). It binds `DOCKB_MCP_PORT` (default 8001, §8.4) and runs on
-the loopback application's single event loop, so there is genuinely one process.
+`127.0.0.1` (§8.5), each also accepted in a `host:*` port-wildcard form. It
+binds `127.0.0.1:DOCKB_MCP_PORT` (default 8001, §8.4) and runs on the loopback
+application's single event loop, so there is genuinely one process. Wiring
+happens once, before either listener starts, via the shared runner.
 
 ## 6. Decision: the MCP server is Python, because it is the same process (decided)
 
@@ -308,8 +317,9 @@ The questions this revision had open, and the listener's own configuration, are 
    client's configuration does not change under a reconnecting client. The domain
    itself is provisioned outside this codebase.
 4. **The public listener's port is configurable, defaulting to 8001.** `DOCKB_MCP_PORT`
-   selects it; the loopback listener keeps `8000`. Both listeners are served by the one
-   process on the one event loop (§5).
+   selects it; the loopback listener keeps `8000`. Both listeners bind `127.0.0.1` — the
+   public one is reached only through the tunnel, which dials localhost — and both are
+   served by the one process on the one event loop (§5).
 5. **The public listener accepts a host allowlist, defaulting to the public URL and
    localhost.** `DOCKB_MCP_ALLOWED_HOSTS` is a comma-separated override; when unset the
    listener allows the host in `DOCKB_MCP_PUBLIC_URL` together with `localhost` and
@@ -346,3 +356,8 @@ Settled while designing, or by this revision:
   of it, and no SDK OAuth provider or discovery document (§2, §5).
 - **Listener port and host allowlist** — `DOCKB_MCP_PORT` defaulting to 8001 and
   `DOCKB_MCP_ALLOWED_HOSTS` defaulting to the public URL host plus localhost (§8).
+- **Both listeners bind `127.0.0.1`** — the MCP port is reached only through the
+  tunnel (which dials localhost), never directly on the network (§1, §5).
+- **One shared runner** — a single `serve()` wires once and runs both listeners
+  on the one loop; the loopback app additionally keeps its own startup wiring so
+  `uvicorn main:app` works standalone (§5).

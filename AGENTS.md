@@ -13,7 +13,7 @@
 - Install dev deps from repo root: `source .venv/bin/activate && pip install -e '.[dev]'`.
 - Backend checks: `source .venv/bin/activate && make` — it runs ruff (import sort + lint), mypy, pylint, black, pycycle, and pytest.
 - When editing Python code, autofix/format and check via `make`; do not call black or ruff directly.
-- Backend dev server: from `src/`, `source ../.venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000 --reload`. Requires the `NEO4J_URL`, `NEO4J_USER`, and `NEO4J_PASSWORD` environment variables (`.env` in the repo root, or exported).
+- Backend dev server: from `src/`, `source ../.venv/bin/activate && python main.py` runs both listeners in one process — the manuscript API on `127.0.0.1:8000` and the MCP endpoint on `127.0.0.1:8001`. To run the API alone with auto-reload, `uvicorn main:app --host 127.0.0.1 --port 8000 --reload` still works via the app's own startup wiring. Requires the `NEO4J_URL`, `NEO4J_USER`, and `NEO4J_PASSWORD` environment variables (`.env` in the repo root, or exported).
 - Focused tests: e.g. `pytest tests/dockb/models/test_document.py`.
 
 ## Frontend Commands

@@ -7,9 +7,11 @@ discovered while building is forgotten. Each entry says what is missing, why it 
 at the design document that already settles how it should be built; an entry is deleted when the
 work lands, and the design document is expected to absorb it.
 
-One entry remains: the whole MCP server — a second listener, an endpoint, the tools, and a
-per-prompt token — specified at `README_mcp_auth.md`, with the token's mint-and-verify pair now
-built and all three design decisions settled so nothing blocks the rest. Everything else this file
+One entry remains: the MCP server's *tools and prompt-building* — the tool handlers and the
+per-prompt token minted for each prompt — specified at `README_mcp_auth.md`. The token's
+mint-and-verify pair, the bearer-gated public listener and its two-listener runner are now
+built, so the remaining work is the tools themselves and the code that mints a token for each
+prompt. Everything else this file
 used to list has landed and been deleted: the admin CLI, password sign-in, the editor's
 change-password dialog, mandatory sign-in with no local mode, and **Sign out** in the File menu.
 Their reasoning lives in `README_auth.md`, and their mechanics in the place that owns them:
@@ -19,10 +21,10 @@ loop and menu.
 
 ## Entries
 
-- **MCP server and its per-prompt token** — `README_mcp_auth.md` §1–§8. Nothing exists yet: no
-  second ASGI listener, no MCP endpoint, no tool handlers, no token. The design as decided needs
-  no credential store, no admin CLI and no signing key, so the work is the token mint-and-verify
-  pair over a live-token map, the public application that mounts only the MCP router, and the
-  tools themselves. The three decisions §8 used to hold are settled: TTL from
-  `DOCKB_MCP_TOKEN_TTL_SECONDS` (default 300s), concurrent prompts via the map, and
-  `DOCKB_MCP_PUBLIC_URL` for the address handed to the LLM.
+- **MCP tools and prompt-building** — `README_mcp_auth.md` §1–§8. The token mint-and-verify
+  pair (`src/dockb/infrastructure/mcp/`), the bearer-gated public listener and its two-listener
+  runner (`src/dockb/mcp_server.py`, `src/main.py`) are built; the MCP server still exposes an
+  empty `tools/list`. What remains is the tool handlers themselves and the prompt-building that
+  mints a token per prompt and hands the caller `DOCKB_MCP_PUBLIC_URL`. The design as decided
+  needs no credential store, no admin CLI and no signing key, so the remaining work is the tools
+  over the already-wired services.

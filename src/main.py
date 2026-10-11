@@ -2,16 +2,17 @@
 
 # pylint: disable=invalid-name
 
+import asyncio
 import logging
 import os
 from pathlib import Path
 
-import uvicorn
 from dotenv import load_dotenv
 
 from dockb.app_factory import create_app
 from dockb.composition import resolve_document_base_dir, unwire, wire
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
+from dockb.mcp_server import serve
 
 # uvicorn's default logging config attaches handlers only to its own loggers
 # (uvicorn, uvicorn.error, uvicorn.access), leaving the root logger without a
@@ -53,4 +54,4 @@ async def shutdown() -> None:
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    asyncio.run(serve())

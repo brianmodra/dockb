@@ -26,6 +26,7 @@ from dockb.controllers.sentences import set_sent_service
 from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.document_store import DocumentStoreFactory
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
+from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.infrastructure.oauth.factory import providers_from_env
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
@@ -48,7 +49,26 @@ from dockb.services.session_context import SessionContext
 
 _stack: ExitStack | None = None
 
+_ctx: SessionContext | None = None
+
+_wired_factory: Any | None = None
+
+_mcp_issuer: PromptTokenIssuer | None = None
+
 _DOCUMENTS_DIR_NAME = "dockb_chapters_dir"
+
+
+def set_mcp_issuer(issuer: PromptTokenIssuer | None) -> None:
+    """Set the shared MCP prompt-token issuer DI global."""
+    global _mcp_issuer  # noqa: PLW0603
+    _mcp_issuer = issuer
+
+
+def get_mcp_issuer() -> PromptTokenIssuer:
+    """Return the shared MCP prompt-token issuer, or raise when unset."""
+    if _mcp_issuer is None:
+        raise RuntimeError("MCP prompt-token issuer is not wired")
+    return _mcp_issuer
 
 
 def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
@@ -119,10 +139,18 @@ def wire(  # pylint: disable=too-many-locals
     """Wire repositories, services, and session context to route DI globals.
 
     Returns the created SessionContext for use by the caller (e.g. startup
-    needs it to pass to the JobQueue / DocCache wiring later).
+    needs it to pass to the JobQueue / DocCache wiring later). Calling ``wire``
+    again with the *same* session factory while already wired is a no-op that
+    returns the existing context, so a second caller in the same process cannot
+    duplicate the session stack or the shared issuer. A different factory
+    re-wires (the previous wiring is replaced, as before this guard existed);
+    ``unwire`` returns the module to the unwired state.
     """
-    global _stack  # noqa: PLW0603
+    global _ctx, _stack, _wired_factory  # noqa: PLW0603
+    if _stack is not None and _ctx is not None and session_factory is _wired_factory:
+        return _ctx
     _stack = ExitStack()
+    _wired_factory = session_factory
     session = _stack.enter_context(session_factory.session())
 
     repos: dict[type, Any] = {
@@ -166,12 +194,14 @@ def wire(  # pylint: disable=too-many-locals
         )
 
     ctx = SessionContext()
+    _ctx = ctx
 
     set_doc_service(doc_svc)
     set_ch_service(ch_svc)
     set_para_service(para_svc)
     set_sent_service(sent_svc)
     set_session_context(ctx)
+    set_mcp_issuer(PromptTokenIssuer())
 
     if snapshot_base_dir is not None:
         assert nlp is not None
@@ -188,7 +218,7 @@ def wire(  # pylint: disable=too-many-locals
 
 def unwire() -> None:
     """Clear all route-level DI globals and release resources."""
-    global _stack  # noqa: PLW0603
+    global _ctx, _stack, _wired_factory  # noqa: PLW0603
     set_auth_service(None)
     set_doc_service(None)
     set_ch_service(None)
@@ -197,6 +227,9 @@ def unwire() -> None:
     set_session_context(None)
     set_history_service(None)
     set_import_service(None)
+    set_mcp_issuer(None)
     if _stack is not None:
         _stack.close()
         _stack = None
+    _ctx = None
+    _wired_factory = None

@@ -22,11 +22,17 @@ repository root.
 ```
 infrastructure/mcp/
 ├── README.md           # This file
-├── __init__.py         # Re-exports PromptTokenIssuer and create_mcp_app
+├── __init__.py         # Re-exports the token pair, the middleware and the app
 ├── prompt_tokens.py    # PromptTokenIssuer — mint() and verify()
 ├── auth.py             # BearerAuthMiddleware — the Authorization check
 └── app.py              # create_mcp_app() — the MCP-only public ASGI app
 ```
+
+The runner that puts this package on a port lives one level up, at
+`src/dockb/mcp_server.py`: `composition.wire()` builds a single
+`PromptTokenIssuer` and installs it as the shared DI global, `build_mcp_app()`
+reads it back to build the public application, and `serve()` runs the loopback
+and public listeners on one event loop.
 
 ## Components
 

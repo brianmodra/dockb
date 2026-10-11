@@ -492,6 +492,77 @@ class TestWireServices:
             unwire()
 
 
+class TestWireMcpIssuer:
+    """wire() builds the shared MCP prompt-token issuer; unwire() clears it."""
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_sets_a_live_shared_issuer(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+    ) -> None:
+        from dockb.composition import get_mcp_issuer, unwire, wire
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        try:
+            wire(mock_sf)
+            issuer = get_mcp_issuer()
+            token = issuer.mint("prompt-composition")
+            assert issuer.verify(token) == "prompt-composition"
+        finally:
+            unwire()
+
+    def test_get_mcp_issuer_raises_when_unwired(self) -> None:
+        from dockb.composition import get_mcp_issuer, unwire
+
+        unwire()
+        with pytest.raises(RuntimeError):
+            get_mcp_issuer()
+
+    def test_unwire_clears_the_shared_issuer(self) -> None:
+        from dockb.composition import get_mcp_issuer, set_mcp_issuer, unwire
+
+        set_mcp_issuer(MagicMock())
+        unwire()
+        with pytest.raises(RuntimeError):
+            get_mcp_issuer()
+
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_a_second_wire_returns_the_first_context(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+    ) -> None:
+        from dockb.composition import unwire, wire
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        try:
+            first = wire(mock_sf)
+            second = wire(mock_sf)
+            assert second is first
+            mock_sf.session.assert_called_once()
+        finally:
+            unwire()
+
+
 class TestResolveDocumentBaseDir:
     """resolve_document_base_dir provisions the server-owned markdown tree."""
 
