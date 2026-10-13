@@ -9,12 +9,13 @@ in memory, sits in a map keyed by the token's expiry, and dies with its entry,
 so a leaked token is useless once that window passes and nothing secret is left
 on disk.
 
-`PromptTokenIssuer` mints the token and says which prompt a presented one
-belongs to, or rejects it; `BearerAuthMiddleware` and `create_mcp_app` put that
-verification in front of the MCP endpoint on a listener that mounts nothing
-else. Read this for what the token looks like, what makes one valid, and the
-shape of the public application; the threat model, the two-listener split and
-why this is a MAC rather than a signature are in `README_mcp_auth.md` at the
+`PromptTokenIssuer` mints the token and resolves a presented one to its prompt or
+rejects it; `BearerAuthMiddleware` and `create_mcp_app` put that verification in
+front of an MCP endpoint that mounts nothing else, and the runner one level up
+(`src/dockb/mcp_server.py`) serves that application alongside the manuscript API
+on one event loop. Read this for what the token looks like, what makes one valid,
+and the shape of the public application; the threat model, the two-listener split
+and why this is a MAC rather than a signature are in `README_mcp_auth.md` at the
 repository root.
 
 ## Package Structure

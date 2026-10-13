@@ -3,20 +3,22 @@
 ## Executive Summary
 
 This document explains how the MCP server authenticates the OpenAI model that
-calls it. When Brian's code builds a Responses API request it attaches the MCP
-server as a tool and passes a per-prompt bearer token in that tool's
-`authorization` field; OpenAI's infrastructure then presents the token on every
-call. The token is minted from a fresh in-memory secret just before the prompt,
-kept in a live-token map keyed by its expiry, and dies with its entry — no
-credential store, no signing key, no admin CLI — so a stolen token is useless
-within a short, configurable window and nothing secret lives on disk.
+calls it, and why the MCP server runs in the same process as DockB's backend
+rather than as a separate one. When Brian's code builds a Responses API request
+it attaches the MCP server as a tool and passes a per-prompt bearer token in that
+tool's `authorization` field, which OpenAI's infrastructure then presents on
+every call. The token is minted from a fresh in-memory secret just before the
+prompt, kept in a live-token map keyed by its expiry, and dies with its entry —
+no credential store, no signing key, no admin CLI — so a stolen token is useless
+within a short, configurable window and nothing secret is written to disk.
 
-The MCP server runs **in the same process** as DockB's backend, mounted on its
-own listener so the public tunnel cannot reach the manuscript API. That is one
-process and two ports rather than two processes, and it is what lets the token
-be a plain in-memory value with nothing to provision. Read this for the token
-design, why there is no authorization server, and why the two listeners stay
-separate even though they share a process.
+One process serves two listeners: the loopback one carries the manuscript API and
+the editor shell, and the public one carries only the MCP endpoint, so the public
+tunnel can never reach a manuscript route. The token, the bearer gate, the public
+listener and the runner that serves both are built; the MCP tools and the
+prompt-building that mints a token per prompt are still to come. Read this for the
+token design, why there is no authorization server, and why the two listeners
+stay separate even though they share a process.
 
 **Status.** This is the decided design, superseding the earlier two-process and
 `issued_tokens` draft. The token, the bearer gate and the public listener are
@@ -106,13 +108,6 @@ expires. A process restart invalidates every token it held. The pair that does
 this is `PromptTokenIssuer` in `src/dockb/infrastructure/mcp/prompt_tokens.py`;
 its package `README.md` carries the token format and the exact mint and verify
 steps, and this section keeps the reasons behind them.
-
-Preparing a prompt mints a token with a per-prompt secret keyed by a
-microsecond-resolution expiry, and puts it in the MCP tool's `authorization`
-field. Verifying parses the expiry and prompt identity, rejects an expired or
-unknown token, recomputes the MAC with the entry's secret, compares in constant
-time, and logs the prompt identity so a token seen out of place traces to one
-request (§4).
 
 The token is `expiry.prompt_id.mac(expiry + "." + prompt_id)`, where `mac` is an
 HMAC-SHA256 under the secret in that expiry's live-map entry and `prompt_id` is
