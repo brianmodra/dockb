@@ -112,6 +112,11 @@ The command reference is in [`src/dockb/cli/README.md`](src/dockb/cli/README.md)
 
 ## Run the dev servers
 
+You'll also need to have Neo4j running. on Ubuntu, I do this:
+```bash
+sudo systemctl start neo4j
+```
+
 Backend (from the repo root):
 
 ```bash

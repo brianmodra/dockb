@@ -57,6 +57,10 @@ def _run(argv) -> int:
 class TestMissingConfiguration:
 
     def test_without_a_secret_it_says_so_and_exits_nonzero(self, capsys, monkeypatch):
+        # ``load_dotenv`` is neutralized rather than the variable unset: the command loads
+        # a ``.env`` file itself, so deleting the variable would only let the developer's
+        # own file put it back.
+        monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
         monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
         assert cli.main(["list"]) == 1
         assert "DOCKB_SECRET_KEY" in capsys.readouterr().err

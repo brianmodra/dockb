@@ -14,11 +14,17 @@ from dockb.composition import resolve_document_base_dir, unwire, wire
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
 from dockb.mcp_server import serve
 
+# Load environment from repo root .env regardless of cwd
+_repo_root = Path(__file__).resolve().parent.parent
+load_dotenv(_repo_root / ".env")
+load_dotenv()
+
 # uvicorn's default logging config attaches handlers only to its own loggers
 # (uvicorn, uvicorn.error, uvicorn.access), leaving the root logger without a
 # handler; application logs such as dockb.timing's INFO request timings would
 # otherwise be silently dropped. Give the root logger an INFO stderr handler.
 logging.basicConfig(level=logging.INFO)
+print(f"DEBUG_SERVER_SECRET={os.environ.get('DOCKB_SECRET_KEY')}", flush=True)
 
 app = create_app()
 
@@ -41,7 +47,7 @@ async def startup() -> None:
     wire(
         _session_factory,
         document_base_dir=document_base_dir,
-        accounts_base_dir=document_base_dir.parent,
+        accounts_base_dir=document_base_dir,
     )
 
 

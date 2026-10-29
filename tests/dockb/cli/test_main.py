@@ -15,12 +15,18 @@ from dockb.cli import users
 
 
 class TestDispatch:
-    def test_it_reaches_the_users_command(self, capsys):
+    def test_it_reaches_the_users_command(self, capsys, monkeypatch):
         """`dockb users` and `python -m dockb.cli.users` must be one program.
 
         Asserted on what only the users command does — the account store's own
         configuration error — so this fails if the dispatcher stops reaching it.
+        ``load_dotenv`` is neutralized rather than the variable unset: the dispatcher
+        and the command each load a ``.env`` file themselves, so deleting the variable
+        would only let the developer's own file put it back.
         """
+        monkeypatch.setattr(dispatcher, "load_dotenv", lambda *a, **k: None)
+        monkeypatch.setattr(users, "load_dotenv", lambda *a, **k: None)
+        monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
         assert dispatcher.main(["users", "list"]) == 1
         assert "DOCKB_SECRET_KEY" in capsys.readouterr().err
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import spacy
+from dotenv import load_dotenv
 
 from dockb.controllers.auth import set_auth_service
 from dockb.controllers.chapters import set_ch_service
@@ -107,6 +108,9 @@ def _build_auth_service(document_base_dir: Path) -> AuthService:
     nobody in, so there were no sessions or hashes to invalidate. There is no local mode
     now, so there is no deployment in which nothing is signed.
     """
+    repo_root = Path(__file__).resolve().parents[2]
+    load_dotenv(repo_root / ".env")
+    load_dotenv()
     secret = os.environ.get("DOCKB_SECRET_KEY")
     # Stripped, not merely tested for truth: a whitespace secret is truthy, and would be a
     # weak Fernet key as well as an HMAC key that behaves like an empty one.

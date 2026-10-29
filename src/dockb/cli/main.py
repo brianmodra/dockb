@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from dockb.cli import import_document, reconstruct_chapter, users
 
@@ -47,6 +50,10 @@ def main(argv: list[str] | None = None) -> int:
     for a malformed command line: ``dockb typo`` is argparse's kind of error, not a
     command that ran and declined.
     """
+    # Load environment from repo root .env so all CLI commands see it regardless of cwd
+    repo_root = Path(__file__).resolve().parents[3]
+    load_dotenv(repo_root / ".env")
+    load_dotenv()  # also try cwd as fallback
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] in _COMMANDS:
         return _COMMANDS[arguments[0]](arguments[1:])

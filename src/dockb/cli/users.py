@@ -30,6 +30,7 @@ import os
 import secrets
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -112,6 +113,10 @@ def _resolve() -> _Admin:
     ``DOCKB_SECRET_KEY`` is required for the same reason it is on the server: it
     peppers the password hash, and one keyed differently would not verify.
     """
+    # Ensure .env is loaded regardless of cwd
+    repo_root = Path(__file__).resolve().parents[3]
+    load_dotenv(repo_root / ".env")
+    load_dotenv()
     secret = os.environ.get("DOCKB_SECRET_KEY", "")
     # Stripped, not merely tested for truth: a whitespace secret is truthy, and would
     # be a weak key for every credential it touches.

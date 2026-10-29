@@ -108,8 +108,10 @@ async def serve(loopback_app: ASGIApp | None = None) -> None:
     so the Neo4j pool is closed on shutdown. *loopback_app* overrides the
     manuscript API application (used by tests); when omitted it is built here.
     """
+    repo_root = Path(__file__).resolve().parents[2]
+    load_dotenv(repo_root / ".env")
     load_dotenv()
-    os.chdir(Path(__file__).resolve().parents[2] / "run")
+    os.chdir(repo_root / "run")
     session_factory = SessionFactory(
         uri=os.environ["NEO4J_URL"],
         user=os.environ["NEO4J_USER"],
@@ -119,7 +121,7 @@ async def serve(loopback_app: ASGIApp | None = None) -> None:
     wire(
         session_factory,
         document_base_dir=document_base_dir,
-        accounts_base_dir=document_base_dir.parent,
+        accounts_base_dir=document_base_dir,
     )
     try:
         application = loopback_app if loopback_app is not None else create_app()

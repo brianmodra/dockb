@@ -1,15 +1,16 @@
-"""Fixtures for integration tests that require a real Neo4j database."""
+"""Fixtures for integration tests that require a real Neo4j database.
+
+The connection comes from the environment (`NEO4J_URL`, `NEO4J_USER`,
+`NEO4J_PASSWORD`, `NEO4J_DATABASE`), which the caller provides — a test loads
+no `.env` of its own.
+"""
 
 import logging
 import os
 import sys
-from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 from neo4j import GraphDatabase
-
-load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 
 def pytest_configure(config):

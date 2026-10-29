@@ -29,10 +29,11 @@ def _as_a_signed_in_user():
     from fastapi.testclient import TestClient
 
     from dockb.app_factory import create_app
-    from dockb.controllers.auth import get_current_user
+    from dockb.controllers.auth import get_current_user, get_owner
 
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: "abby"
+    app.dependency_overrides[get_owner] = lambda: "acct-1"
     with TestClient(app) as client:
         yield client
 
@@ -374,9 +375,15 @@ class TestWireServices:
         tmp_path,
         monkeypatch,
     ) -> None:
-        """No ephemeral substitute: it would invalidate cookies, tokens and hashes on restart."""
+        """No ephemeral substitute: it would invalidate cookies, tokens and hashes on restart.
+
+        ``load_dotenv`` is neutralized rather than the variable unset: ``wire`` loads a
+        ``.env`` file itself, so deleting the variable would only let the developer's
+        own file put it back.
+        """
         from dockb.composition import wire
 
+        monkeypatch.setattr("dockb.composition.load_dotenv", lambda *a, **k: None)
         monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
         monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
         monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
@@ -698,7 +705,7 @@ class TestTimingMiddleware:
         from fastapi.testclient import TestClient
 
         from dockb.app_factory import create_app
-        from dockb.controllers.auth import get_current_user
+        from dockb.controllers.auth import get_current_user, get_owner
         from dockb.controllers.chapters import set_ch_service
 
         class FailingService:
@@ -710,6 +717,7 @@ class TestTimingMiddleware:
             caplog.set_level(logging.INFO, logger="dockb.timing")
             app = create_app()
             app.dependency_overrides[get_current_user] = lambda: "abby"
+            app.dependency_overrides[get_owner] = lambda: "acct-1"
             client = TestClient(app, raise_server_exceptions=False)
             response = client.get("/api/chapters/c1/document")
             assert response.status_code == 500

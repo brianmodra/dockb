@@ -9,6 +9,7 @@ per failure, so a shell command reports a missing setting instead of a traceback
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import spacy
 from dotenv import load_dotenv
@@ -68,6 +69,8 @@ def account_id_for(username: str) -> str:
     not configured or readable, and :class:`UnknownUserError` when there is no such
     user.
     """
+    repo_root = Path(__file__).resolve().parents[3]
+    load_dotenv(repo_root / ".env")
     load_dotenv()
     secret = os.environ.get("DOCKB_SECRET_KEY", "")
     if not secret.strip():
