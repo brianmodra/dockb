@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_owner
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.documents import CreateDocumentRequest, UpdateDocumentRequest
 from dockb.controllers.serializers import serialize_document
@@ -32,7 +32,7 @@ def set_doc_service(service: Any) -> None:
 @router.get("")
 def list_documents(
     svc: Any = Depends(get_doc_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> Any:
     summaries = svc.list_all(owner=owner)
     return [
@@ -49,7 +49,7 @@ def create_document(
     body: CreateDocumentRequest,
     svc: Any = Depends(get_doc_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
@@ -74,7 +74,7 @@ def create_document(
 def get_document(
     document_id: str,
     svc: Any = Depends(get_doc_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     doc = svc.open(document_id, owner=owner)
     if doc is None:
@@ -88,7 +88,7 @@ def update_document(
     body: UpdateDocumentRequest,
     svc: Any = Depends(get_doc_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     try:
         doc = svc.update(
@@ -109,7 +109,7 @@ def delete_document(
     document_id: str,
     svc: Any = Depends(get_doc_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     deleted = svc.delete(document_id, owner=owner)
     if not deleted:

@@ -187,6 +187,25 @@ def get_current_user(
     return user_id
 
 
+def get_owner(
+    user: str = Depends(get_current_user),
+    svc: Any = Depends(get_auth_service),
+) -> str:
+    """Resolve the signed-in account to the id that owns documents in the graph.
+
+    The session carries the username, because that is the identity the sessions,
+    cookies and app state key on — but a username is mutable provider data, and the
+    graph and the document tree are keyed by the account id, which never moves. A
+    document scoped by username would read as absent the day the account was
+    renamed, so every route that reads or writes a manuscript scopes itself through
+    this dependency rather than through the session identity directly.
+    """
+    account = svc.get_user(user) if svc is not None else None
+    if account is None:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    return str(account["id"])
+
+
 def get_current_session_context(
     user_id: str = Depends(get_current_user),
     svc: Any = Depends(get_auth_service),

@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_owner
 from dockb.controllers.desugar import desugar_sentences
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.paragraphs import CreateParagraphRequest, UpdateParagraphRequest
@@ -34,7 +34,7 @@ def set_para_service(service: Any) -> None:
 def list_paragraphs(
     chapter: str,
     svc: Any = Depends(get_para_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> Any:
     return svc.list_by_chapter(chapter, owner=owner)
 
@@ -44,7 +44,7 @@ def create_paragraph(
     body: CreateParagraphRequest,
     svc: Any = Depends(get_para_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
@@ -67,7 +67,7 @@ def create_paragraph(
 def get_paragraph(
     paragraph_id: str,
     svc: Any = Depends(get_para_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     para = svc.get(paragraph_id, owner=owner)
     if para is None:
@@ -81,7 +81,7 @@ def update_paragraph(
     body: UpdateParagraphRequest,
     svc: Any = Depends(get_para_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     sentences = desugar_sentences(body.content)
     chapter_id = body.relations.chapter_id if body.relations else None
@@ -101,7 +101,7 @@ def delete_paragraph(
     paragraph_id: str,
     svc: Any = Depends(get_para_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     deleted = svc.delete(paragraph_id, owner=owner)
     if not deleted:

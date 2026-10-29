@@ -35,7 +35,7 @@ class MockHistoryService:
 
 
 def _build_app(svc: MockHistoryService | None = None) -> FastAPI:
-    from dockb.controllers.auth import get_current_user
+    from dockb.controllers.auth import get_current_user, get_owner
     from dockb.controllers.history import router as history_router
     from dockb.controllers.history import set_history_service
 
@@ -44,6 +44,7 @@ def _build_app(svc: MockHistoryService | None = None) -> FastAPI:
     app = FastAPI()
     app.include_router(history_router)
     app.dependency_overrides[get_current_user] = lambda: "acct-1"
+    app.dependency_overrides[get_owner] = lambda: "acct-1"
     return app
 
 

@@ -4,9 +4,12 @@ These tests drive each route through a service stub that behaves as the graph do
 the named resource belongs to somebody else: it reports the resource as absent. Two
 things are being held at once, and both matter:
 
-* the route passes the signed-in account to the service — the service is the only thing
-  that can scope a query, and a route that forgets hands the service no account to scope
-  by, which is worse than failing loudly;
+* the route resolves the signed-in session to the account id the graph keys documents
+  by, and passes that id to the service — the session carries a username, which is
+  mutable provider data, so a route that scopes a query with it instead of the id
+  reads the wrong library (the service is the only thing that can scope a query, and
+  a route that forgets hands it no account to scope by, which is worse than failing
+  loudly);
 * a resource the caller does not own answers exactly as one that never existed (404, or
   an empty list), so a caller cannot use the API to discover that another account's
   chapter exists.
@@ -32,6 +35,10 @@ from dockb.controllers.auth import get_auth_service, get_current_user
 from dockb.exceptions import ChapterNotFoundError, DocumentNotFoundError, ParagraphNotFoundError
 from dockb.services.markdown_import import ChapterImportSummary
 
+# The session carries the username; the graph and the document tree are keyed by the
+# internal account id. They are deliberately different here, so a route that scopes a
+# service with the username instead of the resolved id fails these tests.
+_USER = "abby"
 _OWNER = "acct-1"
 
 
@@ -156,13 +163,13 @@ class StubImportService(_Recording):
 
 
 class StubAuthService:
-    """The account store, which knows the caller's username for document metadata."""
+    """The account store, which maps the session's username to the account id."""
 
     @staticmethod
     def get_user(user_id: str) -> dict[str, object] | None:
-        if user_id != _OWNER:
+        if user_id != _USER:
             return None
-        return {"id": _OWNER, "username": "abby"}
+        return {"id": _OWNER, "username": _USER}
 
 
 @dataclass
@@ -218,7 +225,7 @@ def _app(services: dict[str, Any]) -> FastAPI:
     app = FastAPI()
     for module in (documents, chapters, paragraphs, sentences, history, imports):
         app.include_router(module.router)
-    app.dependency_overrides[get_current_user] = lambda: _OWNER
+    app.dependency_overrides[get_current_user] = lambda: _USER
     app.dependency_overrides[get_auth_service] = StubAuthService
     documents.set_doc_service(services["documents"])
     chapters.set_ch_service(services["chapters"])
@@ -301,7 +308,21 @@ def test_import_names_the_caller_by_username_and_owns_the_document_by_account(cl
 
     call = services["imports"].calls[0]
     assert call["owner"] == _OWNER
-    assert call["user_name"] == "abby"
+    assert call["user_name"] == _USER
+
+
+def test_a_session_whose_account_has_vanished_is_refused(services):
+    """A session naming an account the store no longer holds is a 401, not an empty list.
+
+    An empty list is the answer for an account that owns no documents; refusing to
+    resolve the account is a different failure and must not read as an empty library.
+    """
+    app = _app(services)
+    app.dependency_overrides[get_current_user] = lambda: "ghost"
+    response = TestClient(app).get("/api/documents")
+
+    assert response.status_code == 401
+    assert not services["documents"].calls
 
 
 def _files(route: Route) -> dict[str, Any]:

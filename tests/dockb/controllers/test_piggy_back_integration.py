@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_current_user, get_owner
 from dockb.controllers.chapters import router as chapters_router
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import router as documents_router
@@ -175,6 +175,7 @@ def _build_app(session_context: SessionContext | None = None) -> FastAPI:
     app.include_router(paragraphs_router)
     app.include_router(sentences_router)
     app.dependency_overrides[get_current_user] = lambda: "acct-1"
+    app.dependency_overrides[get_owner] = lambda: "acct-1"
     return app
 
 

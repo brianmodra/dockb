@@ -22,7 +22,11 @@ Tokens are **server-only** — computed by `SentenceTokenizer`/spaCy, stored in 
 
 **Every manuscript route is scoped to the signed-in account.** The account is the
 session's user id, taken from the session and never from the request body, the URL, or
-a header the editor sets. `POST /api/import` is the one route where a *name* also
+a header the editor sets. The session carries the username, because that is the identity
+the sessions, cookies and app state key on; a manuscript route resolves it to the
+account id through the auth service before any owner-scoped call, because the graph and
+the document tree are keyed by the account id and a username is mutable provider data.
+`POST /api/import` is the one route where a *name* also
 travels with the request: the body's `user_name` and the part paths stay unchanged, but
 the document it creates is stamped with the account id.
 

@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from dockb.controllers.auth import get_auth_service, get_current_user
+from dockb.controllers.auth import get_auth_service, get_current_user, get_owner
 from dockb.controllers.schemas.imports import ImportResponse, ImportSummaryWire
 from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.uploads import UploadRejectedError, UploadTooLargeError
@@ -35,20 +35,21 @@ def set_import_service(service: Any) -> None:
 
 
 @router.post("/import")
-async def import_document(
+async def import_document(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     files: list[UploadFile] = File(..., description="the document directory's files, named by their path"),
     single_newline_paragraphs: bool = Form(False),
     svc: Any = Depends(get_import_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
+    user: str = Depends(get_current_user),
     auth: Any = Depends(get_auth_service),
 ) -> dict[str, Any]:
     if svc is None:
         raise HTTPException(status_code=503, detail="import_service_unavailable")
-    # The account owns the imported document; the username is what the document's own
-    # metadata records as its author, and a username is mutable provider data that a
-    # reader of the manuscript sees. Keying ownership by it would move the document's
-    # directory the day the account was renamed.
-    account = auth.get_user(owner) if auth is not None else None
+    # The account id owns the imported document — it is what every later read is
+    # scoped by, and it does not move when the account is renamed. The username is
+    # what the document's own metadata records as its author, which a reader of the
+    # manuscript sees.
+    account = auth.get_user(user) if auth is not None else None
     if account is None:
         raise HTTPException(status_code=401, detail="not_authenticated")
     user_name = str(account["username"])

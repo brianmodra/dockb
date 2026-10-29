@@ -226,7 +226,7 @@ def _build_app(
     set_para_service(para_svc or MockParagraphService())
     set_sent_service(sent_svc or MockSentenceService())
 
-    from dockb.controllers.auth import get_current_user
+    from dockb.controllers.auth import get_current_user, get_owner
 
     app = FastAPI()
     app.include_router(documents_router)
@@ -234,6 +234,7 @@ def _build_app(
     app.include_router(paragraphs_router)
     app.include_router(sentences_router)
     app.dependency_overrides[get_current_user] = lambda: "acct-1"
+    app.dependency_overrides[get_owner] = lambda: "acct-1"
     return app
 
 

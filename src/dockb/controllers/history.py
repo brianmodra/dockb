@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_owner
 from dockb.controllers.schemas.history import HistoryResponse, RestoreRequest, Snapshot
 from dockb.controllers.serializers import serialize_chapter
 
@@ -32,7 +32,7 @@ def list_history(
     limit: int = 20,
     offset: int = 0,
     svc: Any = Depends(get_history_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     snapshots = svc.list_snapshots(chapter_id, owner=owner, limit=limit, offset=offset)
     return HistoryResponse(snapshots=[Snapshot(**s) for s in snapshots]).model_dump()
@@ -43,7 +43,7 @@ def restore_chapter(
     chapter_id: str,
     body: RestoreRequest,
     svc: Any = Depends(get_history_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     try:
         chapter = svc.restore(chapter_id, body.commit_id, owner=owner)

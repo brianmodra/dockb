@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dockb.controllers.auth import get_current_user
+from dockb.controllers.auth import get_owner
 from dockb.controllers.desugar import extract_text_from_nodes
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.sentences import CreateSentenceRequest, UpdateSentenceRequest
@@ -34,7 +34,7 @@ def set_sent_service(service: Any) -> None:
 def list_sentences(
     paragraph: str,
     svc: Any = Depends(get_sent_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> Any:
     return svc.list_by_paragraph(paragraph, owner=owner)
 
@@ -44,7 +44,7 @@ def create_sentence(
     body: CreateSentenceRequest,
     svc: Any = Depends(get_sent_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
@@ -67,7 +67,7 @@ def create_sentence(
 def get_sentence(
     sentence_id: str,
     svc: Any = Depends(get_sent_service),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     sent = svc.get(sentence_id, owner=owner)
     if sent is None:
@@ -81,7 +81,7 @@ def update_sentence(
     body: UpdateSentenceRequest,
     svc: Any = Depends(get_sent_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     text = extract_text_from_nodes(body.content)
     paragraph_id = body.relations.paragraph_id if body.relations else None
@@ -101,7 +101,7 @@ def delete_sentence(
     sentence_id: str,
     svc: Any = Depends(get_sent_service),
     session_context: SessionContext | None = Depends(get_session_context),
-    owner: str = Depends(get_current_user),
+    owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     deleted = svc.delete(sentence_id, owner=owner)
     if not deleted:
