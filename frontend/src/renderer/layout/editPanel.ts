@@ -1,4 +1,4 @@
-import { EditorState } from "@codemirror/state";
+import { EditorState, Compartment, type Extension } from "@codemirror/state";
 import { EditorView, lineNumbers, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
@@ -31,6 +31,8 @@ export class EditPanel {
   private chapterId: string | null = null;
   private lastCanonicalText: string | null = null;
   private lastDirty: boolean | null = null;
+  private readonly readOnlyCompartment = new Compartment();
+  private busy = false;
 
   constructor(options: EditPanelOptions) {
     this.api = options.api;
@@ -56,6 +58,7 @@ export class EditPanel {
         indentOnInput(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         markdown(),
+        this.readOnlyCompartment.of(this.editableExtensions()),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             this.notifyDirty();
@@ -95,18 +98,6 @@ export class EditPanel {
       }
     }
     await this.load(chapterId);
-  }
-
-  async load(chapterId: string): Promise<void> {
-    try {
-      const response = await this.api.getChapterDocument(chapterId);
-      this.chapterId = chapterId;
-      this.lastCanonicalText = response.content;
-      this.replaceDoc(response.content);
-      this.notifyDirty();
-    } catch (error) {
-      reportError("Load chapter", error, this.onMessage);
-    }
   }
 
   setContent(text: string): void {
@@ -154,10 +145,57 @@ export class EditPanel {
     this.onDirtyChange?.(dirty);
   }
 
+  /**
+   * The facets that decide whether the raw editor takes input.
+   *
+   * `EditorState.readOnly` stops user edits changing the document;
+   * `EditorView.editable` takes the contenteditable attribute with it, so the
+   * panel reads as frozen rather than merely swallowing keys.
+   */
+  private editableExtensions(): Extension[] {
+    return [EditorState.readOnly.of(this.busy), EditorView.editable.of(!this.busy)];
+  }
+
+  /**
+   * Freeze or release the whole panel while a save or load is in flight.
+   *
+   * The class greys the panel and turns clicks away; the editors' editable
+   * facets stop typing; the focus leaves whatever the writer was typing into,
+   * so a keystroke held over the change cannot land once the save completes.
+   */
+  private setBusy(next: boolean): void {
+    if (next === this.busy) {
+      return;
+    }
+    this.busy = next;
+    this.element.classList.toggle("is-busy", next);
+    this.view.dispatch({ effects: this.readOnlyCompartment.reconfigure(this.editableExtensions()) });
+    this.wysiwyg.setEditable(!next);
+    if (next) {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
+  }
+
+  async load(chapterId: string): Promise<void> {
+    this.setBusy(true);
+    try {
+      const response = await this.api.getChapterDocument(chapterId);
+      this.chapterId = chapterId;
+      this.lastCanonicalText = response.content;
+      this.replaceDoc(response.content);
+      this.notifyDirty();
+    } catch (error) {
+      reportError("Load chapter", error, this.onMessage);
+    } finally {
+      this.setBusy(false);
+    }
+  }
+
   async save(): Promise<DocumentContentResponse | null> {
     if (this.chapterId === null) {
       return null;
     }
+    this.setBusy(true);
     try {
       const response = await this.api.saveChapterDocument(this.chapterId, this.content());
       this.lastCanonicalText = response.content;
@@ -168,6 +206,8 @@ export class EditPanel {
     } catch (error) {
       reportError("Save chapter", error, this.onMessage);
       return null;
+    } finally {
+      this.setBusy(false);
     }
   }
 

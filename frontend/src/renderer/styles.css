@@ -384,6 +384,11 @@ body {
   height: 100%;
 }
 
+.edit-panel.is-busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .edit-panel .cm-editor {
   height: 100%;
 }

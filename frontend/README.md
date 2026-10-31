@@ -91,7 +91,10 @@ its 10px floor.
 - `layout.ts` — window chrome, panel seams, mode, dirty badge, menubar username
   label, message sink.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
-  of the same canonical buffer; dirty = buffer vs last canonical. The raw view
+  of the same canonical buffer; dirty = buffer vs last canonical. While a save
+  or load is in flight the panel is greyed (`is-busy`) and frozen: clicks turn
+  away, both editors read contenteditable=false, and focus leaves the buffer,
+  until the operation completes or fails. The raw view
   shows the canonical file as stored (YAML front matter and `<span>` markup
   intact); the WYSIWYG view derives its display from `chapterBody` (front
   matter and span tags removed, entities unescaped), so it never shows markup

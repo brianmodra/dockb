@@ -297,6 +297,11 @@ export class WysiwygView {
     this.innerView?.dom.setAttribute("lang", lang);
   }
 
+  /** Take the editable away (or give it back) while the panel is busy. */
+  setEditable(enabled: boolean): void {
+    this.innerView?.setProps({ editable: () => enabled });
+  }
+
   setContent(buffer: string): void {
     const ids = extractSpanIds(buffer);
     const display = chapterBody(buffer);

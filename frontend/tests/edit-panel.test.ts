@@ -35,6 +35,56 @@ describe("EditPanel", () => {
     expect(panel.isDirty()).toBe(false);
   });
 
+  it("greys out and blocks input while a load is in flight", async () => {
+    let release!: (value: DocumentContentResponse) => void;
+    const api = fakeApi({
+      getChapterDocument: vi
+        .fn(() => new Promise<DocumentContentResponse>((resolve) => (release = resolve)))
+        .mockImplementationOnce(async (): Promise<DocumentContentResponse> => doc("First")),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    const pending = panel.load("c2");
+
+    expect(panel.element.classList.contains("is-busy")).toBe(true);
+    expect(panel.element.querySelector(".cm-content")!.getAttribute("contenteditable")).toBe("false");
+    expect(panel.element.querySelector(".ProseMirror")!.getAttribute("contenteditable")).toBe("false");
+
+    release(doc("# Later\n"));
+    await pending;
+
+    expect(panel.element.classList.contains("is-busy")).toBe(false);
+    expect(panel.element.querySelector(".cm-content")!.getAttribute("contenteditable")).not.toBe("false");
+    expect(panel.element.querySelector(".ProseMirror")!.getAttribute("contenteditable")).not.toBe("false");
+  });
+
+  it("greys out and blocks input while a save is in flight", async () => {
+    let release!: (value: DocumentContentResponse) => void;
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("First")),
+      saveChapterDocument: vi.fn(
+        () => new Promise<DocumentContentResponse>((resolve) => (release = resolve)),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    panel.setContent("# Edited\n");
+
+    const pending = panel.save();
+
+    expect(panel.element.classList.contains("is-busy")).toBe(true);
+    expect(panel.element.querySelector(".ProseMirror")!.getAttribute("contenteditable")).toBe("false");
+
+    release(doc("# Edited\n"));
+    await pending;
+
+    expect(panel.element.classList.contains("is-busy")).toBe(false);
+    expect(panel.element.querySelector(".ProseMirror")!.getAttribute("contenteditable")).not.toBe("false");
+  });
+
   it("open saves the dirty buffer before loading another chapter", async () => {
     const api = fakeApi({
       getChapterDocument: vi.fn(async () => doc("Second")),
