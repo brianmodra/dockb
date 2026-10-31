@@ -166,6 +166,18 @@ describe("ApiClient chapters and lifecycle", () => {
     expect(calls[1].init.body).toContain('"after_chapter_id":null');
   });
 
+  it("renumbers a document's chapters and returns what changed", async () => {
+    const renames = [{ id: "ch-1", old_title: "Opening 2", new_title: "Opening 1" }];
+    mockFetch(200, { status: { code: "ok", message: "success" }, renames });
+    const client = new ApiClient();
+    const result = await client.renumberChapters("d1");
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/chapters/renumber");
+    expect(call.init.method).toBe("POST");
+    expect(call.init.body).toContain('"document_id":"d1"');
+    expect(result.renames).toEqual(renames);
+  });
+
   it("renames a chapter via update", async () => {
     mockFetch(200, { status: { code: "ok", message: "success" } });
     const client = new ApiClient();

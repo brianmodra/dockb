@@ -9,6 +9,7 @@ function fakeApi(overrides: Partial<LeftPanelApi> = {}): LeftPanelApi {
     updateChapter: vi.fn(async () => ok),
     deleteChapter: vi.fn(async () => ok),
     reorderChapter: vi.fn(async () => ok),
+    renumberChapters: vi.fn(async () => ({ status: { code: "ok", message: "ok" }, renames: [] })),
     ...overrides,
   };
 }
@@ -247,6 +248,122 @@ describe("LeftPanel", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(document.querySelector("[data-testid='move-bar']")).toBeNull();
     expect(reorderChapter).not.toHaveBeenCalled();
+  });
+
+  it("renumbers the document from the context menu after confirming", async () => {
+    const renumberChapters = vi.fn(async () => ({
+      status: { code: "ok", message: "ok" },
+      renames: [
+        { id: "a", old_title: "Opening 2", new_title: "Opening 1" },
+        { id: "b", old_title: "Setup 5b", new_title: "Setup 2" },
+      ],
+    }));
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "Opening 1", "I"], ["b", "Setup 2", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "Opening 2", "I"], ["b", "Setup 5b", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "Opening 1", "I"], ["b", "Setup 2", "I"])),
+      renumberChapters,
+    });
+    const onMessage = vi.fn();
+    const panel = new LeftPanel({ api, onMessage });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const renumberItem = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"),
+    ).find((n) => n.textContent === "Renumber")!;
+    renumberItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const confirm = document.querySelector("[data-testid='modal']");
+    expect(confirm).not.toBeNull();
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    await vi.waitFor(() => expect(renumberChapters).toHaveBeenCalledWith("d1"));
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith("Renumbered 2 chapters."));
+    await vi.waitFor(() =>
+      expect(
+        Array.from(listRows()).map((row) => row.textContent),
+      ).toEqual(["Opening 1", "Setup 2"]),
+    );
+  });
+
+  it("renumbers nothing without a confirmation", async () => {
+    const renumberChapters = vi.fn(async () => ({
+      status: { code: "ok", message: "ok" },
+      renames: [],
+    }));
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      renumberChapters,
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const renumberItem = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"),
+    ).find((n) => n.textContent === "Renumber")!;
+    renumberItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[0].dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    await vi.waitFor(() => expect(renumberChapters).not.toHaveBeenCalled());
+  });
+
+  it("says so when nothing needed renumbering", async () => {
+    const renumberChapters = vi.fn(async () => ({
+      status: { code: "ok", message: "ok" },
+      renames: [],
+    }));
+    const onMessage = vi.fn();
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      renumberChapters,
+    });
+    const panel = new LeftPanel({ api, onMessage });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const renumberItem = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"),
+    ).find((n) => n.textContent === "Renumber")!;
+    renumberItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith("No chapters needed renumbering."));
+  });
+
+  it("routes a renumber failure into the message panel", async () => {
+    const onMessage = vi.fn();
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      renumberChapters: vi.fn(async () => {
+        throw new Error("chapter_title_conflict");
+      }),
+    });
+    const panel = new LeftPanel({ api, onMessage });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const renumberItem = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"),
+    ).find((n) => n.textContent === "Renumber")!;
+    renumberItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("chapter_title_conflict")));
   });
 
   it("exposes the loaded document id and clears it with the list", async () => {

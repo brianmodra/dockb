@@ -123,6 +123,18 @@ export interface ImportResponse {
   imports: ImportSummaryWire[];
 }
 
+/** One chapter whose title a renumber changed. */
+export interface ChapterRename {
+  id: string;
+  old_title: string;
+  new_title: string;
+}
+
+export interface RenumberResponse {
+  status: Status;
+  renames: ChapterRename[];
+}
+
 export interface DocumentContentResponse {
   content: string;
   summary: ChapterImportSummaryWire | null;

@@ -8,7 +8,7 @@ import type { ApiClient } from "../api/client";
 
 export type LeftPanelApi = Pick<
   ApiClient,
-  "listChapters" | "updateChapter" | "deleteChapter" | "reorderChapter"
+  "listChapters" | "updateChapter" | "deleteChapter" | "reorderChapter" | "renumberChapters"
 >;
 
 export interface LeftPanelOptions {
@@ -92,6 +92,7 @@ export class LeftPanel {
       { label: "Edit", onSelect: () => this.onEdit?.(chapterId) },
       { label: "Rename", onSelect: () => void this.rename(chapterId, chapter.title) },
       { label: "Move", onSelect: () => this.startMove(chapterId) },
+      { label: "Renumber", onSelect: () => void this.renumberAll() },
       { label: "Delete", onSelect: () => void this.delete(chapterId, chapter.title) },
     ]);
   }
@@ -128,6 +129,30 @@ export class LeftPanel {
       await this.load(this.documentId);
     } catch (error) {
       reportError("Delete chapter", error, this.onMessage);
+    }
+  }
+
+  private async renumberAll(): Promise<void> {
+    if (!this.documentId) {
+      return;
+    }
+    const confirmed = await confirmModal({
+      title: "Renumber chapters",
+      message: "Renumber all chapters from 1 in their current order?",
+      confirmLabel: "Renumber",
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      const response = await this.api.renumberChapters(this.documentId);
+      const count = response.renames.length;
+      this.onMessage?.(
+        count === 0 ? "No chapters needed renumbering." : `Renumbered ${count} chapter${count === 1 ? "" : "s"}.`,
+      );
+      await this.load(this.documentId);
+    } catch (error) {
+      reportError("Renumber", error, this.onMessage);
     }
   }
 

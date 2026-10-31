@@ -11,6 +11,7 @@ import type {
   DocumentWire,
   ImportResponse,
   MutationResponse,
+  RenumberResponse,
   Session,
   UserProfile,
 } from "./types";
@@ -150,6 +151,19 @@ export class ApiClient {
         body: JSON.stringify({ after_chapter_id: afterChapterId }),
       },
     );
+  }
+
+  /**
+   * Renumber every act chapter of a document, globally 1..N in display order.
+   *
+   * Returns one entry per chapter whose title changed, so the caller can say
+   * what happened; an empty list means the numbering was already right.
+   */
+  async renumberChapters(documentId: string): Promise<RenumberResponse> {
+    return request<RenumberResponse>(this.url("/chapters/renumber"), {
+      method: "POST",
+      body: JSON.stringify({ document_id: documentId }),
+    });
   }
 
   async updateChapter(chapterId: string, attrs: UpdateChapterData): Promise<MutationResponse> {
