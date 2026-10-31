@@ -17,6 +17,22 @@ Chapter-level paths (open, save, create, rename, delete, and the store export) l
 document through `DocumentRepository.load_shell` — attrs and chapter ids only — because they read
 the title, never the hierarchy. The full load is reserved for document-level paths.
 
+### Renumbering chapters
+
+`ChapterService.renumber(document_id, owner)` renumbers every act chapter of one
+document, globally 1..N in the display order (`PART_OF.index`) — the order the editor
+lists, which drifts out of step with the title numbers once chapters are moved.
+`Character` chapters carry no number and are untouched, but their titles count when the
+new titles are checked: a case-insensitive duplicate raises `DuplicateTitleError` before
+anything is written, so a renumber can never walk over a character. The new number is
+rewritten in place in the title, by the same rule the import walker uses to order files
+(`dockb/chapter_numbers.py`); the letter suffix goes, and a title with no number gains
+one at the end. The plan is computed before anything is written; the graph titles then
+change in one query (`ChapterRepository.retitle`, the same bulk shape as `reorder`), and
+the files move through the store's `renumber_chapters` and its single git commit. The
+route is `POST /api/chapters/renumber` with the document id, answering the
+`{id, old_title, new_title}` list of what changed.
+
 ## Context
 
 JobQueue and DocCache objects are specific to a user's OAuth logged in session.

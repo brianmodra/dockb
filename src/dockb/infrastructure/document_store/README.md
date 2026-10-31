@@ -143,3 +143,14 @@ regardless, and the editor materializes a tree on first open.
 `rename_document(old, new)` and `rename_chapter(..., old, new)` are the mirror
 image: a title rename moves the owned directory or markdown file, so a rename
 never leaves a stale title-keyed tree behind.
+
+`renumber_chapters(document_title, moves)` is the bulk form of a chapter rename.
+Every file `git mv`s to its renumbered title with the front matter title
+rewritten, and the whole renumber is one `renumber: chapters` commit, so the
+history reads as the one operation the user asked for. The moves run in two
+passes — every file first to a private temp name, then to its final title — so
+renumbering through each other (`Opening 5` → `Opening 2` while
+`Opening 2` → `Opening 3`) cannot collide. The plan is checked before anything
+moves: a target that is not itself a file of this renumber raises rather than
+overwriting, an entry whose file is not on disk is a no-op, and nothing to move
+commits nothing.

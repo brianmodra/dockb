@@ -217,6 +217,16 @@ When a chapter is inserted or moved, the server renumbers chapters so `index` re
 and the listing (`GET /api/chapters?document=...`, ordered by `index`) matches the assigned
 sequence.
 
+**Title renumbering.** Moving a chapter orders it but leaves the number in its title alone,
+so the listing can read out of numeric order. `POST /api/chapters/renumber` (document id in
+the body) rewrites every act chapter's number, from 1, in the current `index` order — the
+number is replaced in place, the letter suffix goes, and an unnumbered title gains one at
+the end, by the same token the import walker orders files by (`dockb/chapter_numbers.py`).
+`Character` chapters are untouched but count for duplicate-title checking, which is
+case-insensitive and rejects the whole renumber before anything is written. The graph
+titles change in one query and the markdown files move under one `renumber: chapters`
+commit.
+
 **Acts.** Acts are not a separate model entity: they are the `act` front-matter attribute persisted
 on each chapter (and stored in the graph like the chapter's other attrs). The chapter listing
 (`GET /api/chapters?document=...`) carries `act` and `category` so the editor can group manuscript

@@ -116,12 +116,15 @@ DOM as HTML.
   Sign out, Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on
   outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
   `confirmUnsaved`, so they share one unsaved-buffer question rather than two.
-- `leftPanel.ts` — chapter list, context menu, rename/delete/move. Manuscript
-  chapters group under act headers; `Character` chapters sit in a Characters
-  section after the acts. Move only offers drop slots inside the mover's
-  category. Clicking a chapter selects it **and** loads its text into the editor
-  (via `onEdit` → the `.../document` GET). Exposes the selected chapter and a
-  reload that keeps the selection.
+- `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber.
+  Manuscript chapters group under act headers; `Character` chapters sit in a
+  Characters section after the acts. Move only offers drop slots inside the
+  mover's category. **Renumber** asks once, then renumbers every act chapter of
+  the document from 1 in their current order (`POST /api/chapters/renumber`) —
+  the title's number is rewritten in place and the list reloads. Clicking a
+  chapter selects it **and** loads its text into the editor (via `onEdit` → the
+  `.../document` GET). Exposes the selected chapter and a reload that keeps the
+  selection.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
