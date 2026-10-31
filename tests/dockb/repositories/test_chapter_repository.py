@@ -527,6 +527,36 @@ class TestReorder:
 
 
 # ---------------------------------------------------------------------------
+# retitle
+# ---------------------------------------------------------------------------
+
+
+class TestRetitle:
+    """Behaviour of ChapterRepository.retitle()."""
+
+    def test_rewrites_titles_from_entries(self, chapter_repo, neo4j_session):
+        chapter_repo.retitle("d-1", owner=_OWNER, entries=[{"id": "ch-1", "title": "Opening 1"}])
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document" in cypher
+        assert "<-[r:PART_OF]-(c:Chapter" in cypher
+        assert "SET c.title = entry.title" in cypher
+        assert "c.title_key = toLower(entry.title)" in cypher
+        assert params["document_id"] == "d-1"
+        assert params["entries"] == [{"id": "ch-1", "title": "Opening 1"}]
+
+    def test_retitles_several_chapters_in_one_query(self, chapter_repo, neo4j_session):
+        chapter_repo.retitle(
+            "d-1",
+            owner=_OWNER,
+            entries=[{"id": "ch-1", "title": "Opening 1"}, {"id": "ch-2", "title": "Setup 2"}],
+        )
+
+        _, params = extract_call(neo4j_session)
+        assert params["entries"] == [{"id": "ch-1", "title": "Opening 1"}, {"id": "ch-2", "title": "Setup 2"}]
+
+
+# ---------------------------------------------------------------------------
 # Ownership
 # ---------------------------------------------------------------------------
 

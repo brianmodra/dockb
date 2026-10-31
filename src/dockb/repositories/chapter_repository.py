@@ -64,6 +64,12 @@ MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id
 SET r.index = entry.index
 """
 
+_RETITLE_CYPHER = """
+UNWIND $entries AS entry
+MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
+SET c.title = entry.title, c.title_key = toLower(entry.title)
+"""
+
 # ---------------------------------------------------------------------------
 # Read Cypher
 # ---------------------------------------------------------------------------
@@ -159,6 +165,10 @@ class ChapterRepository(BaseRepository[Chapter]):
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
         entries = [{"id": chapter_id, "index": i} for i, chapter_id in enumerate(ordered_ids)]
         self._session.run(_REORDER_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
+
+    def retitle(self, document_id: str, entries: list[dict[str, str]], owner: str) -> None:
+        """Rewrite the chapters' `title`/`title_key` to their entry's title."""
+        self._session.run(_RETITLE_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
 
     def load(self, chapter_id: str, owner: str) -> Chapter | None:  # pylint: disable=too-many-locals
         """Load a Chapter and its full child hierarchy from Neo4j.

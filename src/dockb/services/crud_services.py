@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from dockb.chapter_numbers import renumber_title
 from dockb.exceptions import (
     ChapterAfterNotFoundError,
     ChapterCategoryMismatchError,
@@ -28,7 +29,7 @@ from dockb.exceptions import (
     DuplicateTitleError,
     ParagraphNotFoundError,
 )
-from dockb.infrastructure.document_store.store import DocumentMetadata
+from dockb.infrastructure.document_store.store import ChapterRename, DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
@@ -228,6 +229,47 @@ class DocumentService:
 def _row_category(row: dict[str, str | int]) -> str:
     """Return a list-row's category, defaulting old rows to ``Chapter``."""
     return str(row.get("category") or "Chapter")
+
+
+def _plan_renumber(rows: list[dict[str, str | int]]) -> tuple[list[dict[str, str]], list[dict[str, str]], list[ChapterRename]]:
+    """Plan a document's renumber from its chapter rows in display order.
+
+    Act chapters (category ``Chapter``) take their position as the new number;
+    ``Character`` rows are untouched. A case-insensitive duplicate among the
+    final titles — new act titles beside unchanged character titles — raises
+    ``DuplicateTitleError`` before anything is written. Returns the graph
+    retitle entries, the ``{id, old_title, new_title}`` reports, and the store
+    moves, all covering only the chapters whose title changes.
+    """
+    numbered = [row for row in rows if _row_category(row) != "Character"]
+    characters = [row for row in rows if _row_category(row) == "Character"]
+    new_titles = {str(row["id"]): renumber_title(str(row["title"]), position) for position, row in enumerate(numbered, start=1)}
+    final_titles = [new_titles[str(row["id"])] for row in numbered] + [str(row["title"]) for row in characters]
+    seen: set[str] = set()
+    for title in final_titles:
+        if title.lower() in seen:
+            raise DuplicateTitleError(title)
+        seen.add(title.lower())
+    entries: list[dict[str, str]] = []
+    renames: list[dict[str, str]] = []
+    moves: list[ChapterRename] = []
+    for row in numbered:
+        chapter_id = str(row["id"])
+        old_title = str(row["title"])
+        new_title = new_titles[chapter_id]
+        if new_title == old_title:
+            continue
+        entries.append({"id": chapter_id, "title": new_title})
+        renames.append({"id": chapter_id, "old_title": old_title, "new_title": new_title})
+        moves.append(
+            ChapterRename(
+                act=str(row.get("act") or ""),
+                category=_row_category(row),
+                old_title=old_title,
+                new_title=new_title,
+            )
+        )
+    return entries, renames, moves
 
 
 def _crosses_category(members: list[dict[str, str | int]], mover: Chapter, after_chapter_id: str | None) -> bool:
@@ -560,6 +602,38 @@ class ChapterService:
                     uow.commit()
         self._chapter_repo.reorder(document_id, ordered_ids, owner=owner)
         return ch
+
+    def renumber(self, document_id: str, *, owner: str) -> list[dict[str, str]] | None:
+        """Renumber every act chapter of *document_id*, globally 1..N in display order.
+
+        Chapters of category ``Chapter`` take their position in the document's
+        chapter order (what the editor lists, ``PART_OF.index``) as their new
+        number: the number in the title is rewritten in place, any letter suffix
+        goes, and a title with no number gains one at the end (see
+        :mod:`dockb.chapter_numbers`). ``Character`` chapters are untouched — they
+        carry no number — but their titles still count when the new titles are
+        checked for duplicates, so a renumber cannot quietly walk over one. The
+        whole renumber is planned before anything is written: a case-insensitive
+        duplicate raises ``DuplicateTitleError`` and nothing changes. The graph
+        titles are rewritten first (one query, like ``reorder``), then the
+        markdown files move through the store's own git commit; a document with
+        no store still has its graph retitled.
+
+        Returns one ``{id, old_title, new_title}`` per chapter whose title
+        changed, ``[]`` when nothing needed changing, and ``None`` when *owner*
+        does not own such a document.
+        """
+        document = self._document_repo.load_shell(document_id, owner) if self._document_repo is not None else None
+        if document is None:
+            return None
+        entries, renames, moves = _plan_renumber(self._chapter_repo.list_by_document(document_id, owner))
+        if not entries:
+            return []
+        self._chapter_repo.retitle(document_id, entries, owner)
+        store = self._store(owner)
+        if store is not None:
+            store.renumber_chapters(document.title, moves)
+        return renames
 
     def update(
         self,

@@ -146,6 +146,7 @@ class StubChapterRepo(StubOwnedRepo):
         self._document_of: dict[str, str] = {}
         self._index_of: dict[str, int] = {}
         self._reorders: list[tuple[str, list[str]]] = []
+        self._retitles: list[tuple[str, list[dict[str, str]]]] = []
 
     def set_document(self, chapter_id: str, document_id: str) -> None:
         self._document_of[chapter_id] = document_id
@@ -175,6 +176,9 @@ class StubChapterRepo(StubOwnedRepo):
 
     def reorder(self, document_id: str, ordered_ids: list[str], owner: str = "") -> None:  # pylint: disable=unused-argument
         self._reorders.append((document_id, list(ordered_ids)))
+
+    def retitle(self, document_id: str, entries: list[dict[str, str]], owner: str = "") -> None:  # pylint: disable=unused-argument
+        self._retitles.append((document_id, list(entries)))
 
 
 class StubParagraphRepo(StubOwnedRepo):
@@ -816,6 +820,118 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         result = self.svc.update("c2", title="Intro", owner=self._OWNER)
         assert result is not None
         assert result.title == "Intro"
+
+    # -- renumber -----------------------------------------------------------
+
+    def _seed_numbered(self, *rows: tuple[str, str, str, int]) -> None:
+        """Seed chapters as (id, title, act, index), all category Chapter."""
+        for chapter_id, title, act, index in rows:
+            self.repo._store[chapter_id] = Chapter(id=chapter_id, title=title, act=act, state=DataState.SYNC)
+            self.repo.set_index(chapter_id, index)
+
+    def test_renumber_numbers_every_act_chapter_globally_in_index_order(self) -> None:
+        self._own_document()
+        self._seed_numbered(
+            ("c1", "Prologue 0", "Act I", 0),
+            ("c2", "Setup 5b", "Act I", 1),
+            ("c3", "Debate 16", "Act II", 2),
+        )
+
+        result = self.svc.renumber("d1", owner=self._OWNER)
+
+        assert result == [
+            {"id": "c1", "old_title": "Prologue 0", "new_title": "Prologue 1"},
+            {"id": "c2", "old_title": "Setup 5b", "new_title": "Setup 2"},
+            {"id": "c3", "old_title": "Debate 16", "new_title": "Debate 3"},
+        ]
+        assert self.repo._retitles == [
+            (
+                "d1",
+                [
+                    {"id": "c1", "title": "Prologue 1"},
+                    {"id": "c2", "title": "Setup 2"},
+                    {"id": "c3", "title": "Debate 3"},
+                ],
+            )
+        ]
+
+    def test_renumber_leaves_characters_alone_and_does_not_count_them(self) -> None:
+        self._own_document()
+        self._seed_numbered(("c1", "Opening 1", "Act I", 0))
+        self.repo._store["k1"] = Chapter(id="k1", title="Veronica", category="Character", state=DataState.SYNC)
+        self.repo.set_index("k1", 1)
+
+        result = self.svc.renumber("d1", owner=self._OWNER)
+
+        assert result == []
+        assert not self.repo._retitles
+        assert self.repo._store["k1"].title == "Veronica"
+
+    def test_renumber_appends_a_number_to_an_unnumbered_title(self) -> None:
+        self._own_document()
+        self._seed_numbered(("c1", "Prologue", "Act I", 0))
+
+        result = self.svc.renumber("d1", owner=self._OWNER)
+
+        assert result == [{"id": "c1", "old_title": "Prologue", "new_title": "Prologue 1"}]
+
+    def test_renumber_skips_chapters_whose_title_is_already_right(self) -> None:
+        self._own_document()
+        self._seed_numbered(("c1", "Prologue 1", "Act I", 0))
+
+        assert self.svc.renumber("d1", owner=self._OWNER) == []
+        assert not self.repo._retitles
+
+    def test_renumber_refuses_a_duplicate_of_a_character_title(self) -> None:
+        self._own_document()
+        self._seed_numbered(("c1", "Debate 16", "Act I", 0))
+        self.repo._store["k1"] = Chapter(id="k1", title="DEBATE 1", category="Character", state=DataState.SYNC)
+        self.repo.set_index("k1", 1)
+
+        with pytest.raises(DuplicateTitleError):
+            self.svc.renumber("d1", owner=self._OWNER)
+        assert not self.repo._retitles
+
+    def test_renumber_unknown_document_is_none(self) -> None:
+        assert self.svc.renumber("nope", owner=self._OWNER) is None
+
+    def test_renumber_document_without_chapters_is_empty(self) -> None:
+        self._own_document()
+
+        assert self.svc.renumber("d1", owner=self._OWNER) == []
+
+    def test_renumber_renames_files_through_the_store(self, tmp_path) -> None:
+        ch1 = Chapter(id="c1", title="Prologue 0", act="Act I", state=DataState.SYNC)
+        ch2 = Chapter(id="c2", title="Setup 5b", act="Act I", state=DataState.SYNC)
+        self.repo._store["c1"] = ch1
+        self.repo._store["c2"] = ch2
+        self.repo.set_index("c1", 0)
+        self.repo.set_index("c2", 1)
+        doc_repo = StubDocumentRepo()
+        doc_repo._store["d1"] = Document(id="d1", title="T", author="A", owner=self._OWNER, state=DataState.SYNC)
+        store = DocumentStore(base_dir=tmp_path, account_id=self._OWNER)
+        store.write_chapter("T", "Act I", "Prologue 0", "---\ntitle: Prologue 0\n---\n\n# body\n")
+        store.write_chapter("T", "Act I", "Setup 5b", "---\ntitle: Setup 5b\n---\n\n# body\n")
+        store.git_commit("T", "materialize: doc")
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+        )
+
+        result = svc.renumber("d1", owner=self._OWNER)
+
+        assert result == [
+            {"id": "c1", "old_title": "Prologue 0", "new_title": "Prologue 1"},
+            {"id": "c2", "old_title": "Setup 5b", "new_title": "Setup 2"},
+        ]
+        assert not store.chapter_exists("T", "Act I", "Prologue 0")
+        assert not store.chapter_exists("T", "Act I", "Setup 5b")
+        first = store.read_chapter("T", "Act I", "Prologue 1")
+        second = store.read_chapter("T", "Act I", "Setup 2")
+        assert first is not None and "title: Prologue 1" in first
+        assert second is not None and "title: Setup 2" in second
 
     def test_update_returns_none_when_missing(self) -> None:
         assert self.svc.update("nonexistent", "T", owner=self._OWNER) is None
