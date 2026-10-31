@@ -15,6 +15,7 @@ from dockb.controllers.schemas.chapters import (
     ChapterDocumentResponse,
     ChapterImportSummaryWire,
     CreateChapterRequest,
+    RenumberChaptersRequest,
     ReorderChapterRequest,
     UpdateChapterRequest,
 )
@@ -77,6 +78,25 @@ def create_chapter(
     except DuplicateTitleError as exc:
         raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
     return mutation_response(session_context).model_dump()
+
+
+@router.post("/renumber")
+def renumber_chapters(
+    body: RenumberChaptersRequest,
+    svc: Any = Depends(get_ch_service),
+    session_context: SessionContext | None = Depends(get_session_context),
+    owner: str = Depends(get_owner),
+) -> dict[str, Any]:
+    """Renumber every act chapter of the document, globally 1..N in display order."""
+    try:
+        renames = svc.renumber(body.document_id, owner=owner)
+    except DuplicateTitleError as exc:
+        raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
+    if renames is None:
+        raise HTTPException(status_code=404, detail=f"document_not_found: {body.document_id}")
+    response = mutation_response(session_context).model_dump()
+    response["renames"] = renames
+    return response
 
 
 @router.get("/{chapter_id}")

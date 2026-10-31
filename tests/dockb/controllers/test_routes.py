@@ -131,6 +131,9 @@ class MockChapterService:
             raise ChapterAfterNotFoundError(after_chapter_id)
         return self._chapters[chapter_id]
 
+    def renumber(self, document_id: str, owner: str = "") -> list[dict[str, str]] | None:  # pylint: disable=unused-argument
+        return []
+
     def open_document(self, chapter_id: str, owner: str = "") -> str | None:
         if chapter_id not in self._chapters:
             return None
@@ -521,6 +524,34 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             resp = self.client.post(
                 "/api/chapters/c1/reorder",
                 json={"after_chapter_id": None},
+            )
+        assert resp.status_code == 409
+
+    def test_renumber_chapters(self) -> None:
+        renames = [{"id": "c1", "old_title": "Ch 2", "new_title": "Ch 1"}]
+        with patch.object(self.ch_svc, "renumber", wraps=self.ch_svc.renumber) as renumber_mock:
+            renumber_mock.return_value = renames
+            resp = self.client.post(
+                "/api/chapters/renumber",
+                json={"document_id": "d1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["renames"] == renames
+        renumber_mock.assert_called_once_with("d1", owner="acct-1")
+
+    def test_renumber_document_not_found(self) -> None:
+        with patch.object(self.ch_svc, "renumber", return_value=None):
+            resp = self.client.post(
+                "/api/chapters/renumber",
+                json={"document_id": "ghost"},
+            )
+        assert resp.status_code == 404
+
+    def test_renumber_rejects_duplicate_title(self) -> None:
+        with patch.object(self.ch_svc, "renumber", side_effect=DuplicateTitleError("Ch 1")):
+            resp = self.client.post(
+                "/api/chapters/renumber",
+                json={"document_id": "d1"},
             )
         assert resp.status_code == 409
 

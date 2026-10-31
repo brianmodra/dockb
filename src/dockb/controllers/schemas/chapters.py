@@ -33,6 +33,12 @@ class ReorderChapterRequest(BaseModel):
     after_chapter_id: str | None = None
 
 
+class RenumberChaptersRequest(BaseModel):
+    """POST /api/chapters/renumber request body."""
+
+    document_id: str
+
+
 class ChapterImportSummaryWire(BaseModel):
     """What a save imported into the graph (omitted on read-only GETs)."""
 

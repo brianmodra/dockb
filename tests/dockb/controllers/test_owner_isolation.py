@@ -99,6 +99,10 @@ class StubChapterService(_Recording):
     def move(self, chapter_id: str, after_chapter_id: str | None, owner: str = "") -> None:
         self._record("move", owner=owner, chapter_id=chapter_id)
 
+    def renumber(self, document_id: str, owner: str = "") -> list[dict[str, str]] | None:
+        # A document the account does not own reads as absent: the route's 404.
+        self._record("renumber", owner=owner, document_id=document_id)
+
     def update(self, chapter_id: str, title: str, owner: str = "") -> None:
         self._record("update", owner=owner, chapter_id=chapter_id)
 
@@ -204,6 +208,7 @@ ROUTES = [
     Route("GET", "/api/chapters/c1/document"),
     Route("PUT", "/api/chapters/c1/document", json={"content": "text"}),
     Route("POST", "/api/chapters/c1/reorder", json={"after_chapter_id": None}),
+    Route("POST", "/api/chapters/renumber", json={"document_id": "d1"}),
     Route("PUT", "/api/chapters/c1", json={"attrs": {"title": "Renamed"}}),
     Route("DELETE", "/api/chapters/c1"),
     Route("GET", "/api/paragraphs", params={"chapter": "ch1"}, expect=200, expect_json=[]),
