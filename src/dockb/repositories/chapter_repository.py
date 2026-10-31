@@ -70,6 +70,12 @@ MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id
 SET c.title = entry.title, c.title_key = toLower(entry.title)
 """
 
+_CLEAR_TITLE_KEYS_CYPHER = """
+UNWIND $entries AS entry
+MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
+SET c.title_key = c.id
+"""
+
 # ---------------------------------------------------------------------------
 # Read Cypher
 # ---------------------------------------------------------------------------
@@ -167,8 +173,21 @@ class ChapterRepository(BaseRepository[Chapter]):
         self._session.run(_REORDER_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
 
     def retitle(self, document_id: str, entries: list[dict[str, str]], owner: str) -> None:
-        """Rewrite the chapters' `title`/`title_key` to their entry's title."""
-        self._session.run(_RETITLE_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
+        """Rewrite the chapters' `title`/`title_key` to their entry's title, in one transaction.
+
+        The renumbered chapters' `title_key` is first cleared to their id — unique
+        per chapter — before the final titles land, because the
+        (``document_id``, ``title_key``) uniqueness constraint is checked the
+        moment a row lands: renumbering through each other (``Opening 5`` →
+        ``Opening 2`` while ``Opening 2`` → ``Opening 3``) would otherwise
+        transiently collide with the chapter that has not moved yet. Both
+        statements run in one transaction, so a failure leaves every title as
+        it was.
+        """
+        params = {"document_id": document_id, "owner": owner, "entries": entries}
+        with self._session.begin_transaction() as tx:
+            tx.run(_CLEAR_TITLE_KEYS_CYPHER, params)
+            tx.run(_RETITLE_CYPHER, params)
 
     def load(self, chapter_id: str, owner: str) -> Chapter | None:  # pylint: disable=too-many-locals
         """Load a Chapter and its full child hierarchy from Neo4j.

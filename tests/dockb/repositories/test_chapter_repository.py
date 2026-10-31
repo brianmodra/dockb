@@ -537,23 +537,32 @@ class TestRetitle:
     def test_rewrites_titles_from_entries(self, chapter_repo, neo4j_session):
         chapter_repo.retitle("d-1", owner=_OWNER, entries=[{"id": "ch-1", "title": "Opening 1"}])
 
-        cypher, params = extract_call(neo4j_session)
-        assert "MATCH (d:Document" in cypher
-        assert "<-[r:PART_OF]-(c:Chapter" in cypher
-        assert "SET c.title = entry.title" in cypher
-        assert "c.title_key = toLower(entry.title)" in cypher
-        assert params["document_id"] == "d-1"
-        assert params["entries"] == [{"id": "ch-1", "title": "Opening 1"}]
+        tx = neo4j_session.begin_transaction.return_value.__enter__.return_value
+        clear_cypher, clear_params = tx.run.call_args_list[0].args
+        assert "MATCH (d:Document" in clear_cypher
+        assert "<-[r:PART_OF]-(c:Chapter" in clear_cypher
+        assert "SET c.title_key = c.id" in clear_cypher
+        assert clear_params["document_id"] == "d-1"
+        assert clear_params["owner"] == _OWNER
+        assert clear_params["entries"] == [{"id": "ch-1", "title": "Opening 1"}]
 
-    def test_retitles_several_chapters_in_one_query(self, chapter_repo, neo4j_session):
-        chapter_repo.retitle(
-            "d-1",
-            owner=_OWNER,
-            entries=[{"id": "ch-1", "title": "Opening 1"}, {"id": "ch-2", "title": "Setup 2"}],
-        )
+    def test_sets_the_final_titles_after_clearing(self, chapter_repo, neo4j_session):
+        entries = [{"id": "ch-1", "title": "Opening 1"}, {"id": "ch-2", "title": "Setup 2"}]
+        chapter_repo.retitle("d-1", owner=_OWNER, entries=entries)
 
-        _, params = extract_call(neo4j_session)
-        assert params["entries"] == [{"id": "ch-1", "title": "Opening 1"}, {"id": "ch-2", "title": "Setup 2"}]
+        tx = neo4j_session.begin_transaction.return_value.__enter__.return_value
+        final_cypher, final_params = tx.run.call_args_list[1].args
+        assert "SET c.title = entry.title" in final_cypher
+        assert "c.title_key = toLower(entry.title)" in final_cypher
+        assert final_params["document_id"] == "d-1"
+        assert final_params["entries"] == entries
+
+    def test_clearing_and_finals_share_one_transaction(self, chapter_repo, neo4j_session):
+        chapter_repo.retitle("d-1", owner=_OWNER, entries=[{"id": "ch-1", "title": "Opening 1"}])
+
+        neo4j_session.begin_transaction.assert_called_once_with()
+        tx = neo4j_session.begin_transaction.return_value.__enter__.return_value
+        assert tx.run.call_count == 2
 
 
 # ---------------------------------------------------------------------------

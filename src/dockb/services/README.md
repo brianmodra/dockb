@@ -28,7 +28,9 @@ anything is written, so a renumber can never walk over a character. The new numb
 rewritten in place in the title, by the same rule the import walker uses to order files
 (`dockb/chapter_numbers.py`); the letter suffix goes, and a title with no number gains
 one at the end. The plan is computed before anything is written; the graph titles then
-change in one query (`ChapterRepository.retitle`, the same bulk shape as `reorder`), and
+change in one transaction (`ChapterRepository.retitle`) — the renumbered chapters' title
+keys clear to their ids first, so renumbering through each other cannot trip the
+(`document_id`, `title_key`) uniqueness constraint — and
 the files move through the store's `renumber_chapters` and its single git commit. The
 route is `POST /api/chapters/renumber` with the document id, answering the
 `{id, old_title, new_title}` list of what changed.
