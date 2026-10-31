@@ -69,36 +69,36 @@ afterEach(() => {
 
 describe("deriveDirectoryName", () => {
   it("recovers the picked directory's name from a nested file", () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const name = deriveDirectoryName([file], () => "/home/x/Linchpin/Act I/Opening 1.md");
     expect(name).toBe("Linchpin");
   });
 
   it("recovers the name for a file at the picked directory's root", () => {
-    const file = picked("document_metadata.yaml");
+    const file = picked("Linchpin/document_metadata.yaml");
     const name = deriveDirectoryName([file], () => "/home/x/Linchpin/document_metadata.yaml");
     expect(name).toBe("Linchpin");
   });
 
   it("recovers the name for a deeply nested file", () => {
-    const file = picked("Act I/Scene 2/Opening 1.md");
+    const file = picked("Linchpin/Act I/Scene 2/Opening 1.md");
     const name = deriveDirectoryName([file], () => "/home/x/Linchpin/Act I/Scene 2/Opening 1.md");
     expect(name).toBe("Linchpin");
   });
 
   it("handles a Windows path, whose separators differ from the relative path's", () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const name = deriveDirectoryName([file], () => "C:\\docs\\Linchpin\\Act I\\Opening 1.md");
     expect(name).toBe("Linchpin");
   });
 
   it("refuses when the bridge is absent", () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     expect(() => deriveDirectoryName([file], undefined)).toThrow(/Electron/);
   });
 
   it("refuses when the bridge returns an empty path", () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     expect(() => deriveDirectoryName([file], () => "")).toThrow(/path/);
   });
 
@@ -111,9 +111,14 @@ describe("deriveDirectoryName", () => {
     expect(() => deriveDirectoryName([file], () => "/home/x/Linchpin/stray.md")).toThrow(/relative path/);
   });
 
+  it("refuses a relative path that does not name the picked directory", () => {
+    const file = picked("Opening 1.md");
+    expect(() => deriveDirectoryName([file], () => "/home/x/Linchpin/Opening 1.md")).toThrow(/directory/);
+  });
+
   it("refuses when the path does not end with the relative path", () => {
-    const file = picked("Act I/Opening 1.md");
-    expect(() => deriveDirectoryName([file], () => "/home/x/Other/Opening 1.md")).toThrow(/does not match/);
+    const file = picked("Linchpin/Act I/Opening 1.md");
+    expect(() => deriveDirectoryName([file], () => "/home/x/Other/Act I/Opening 1.md")).toThrow(/does not match/);
   });
 });
 
@@ -229,7 +234,7 @@ describe("showImportSummaries", () => {
 });
 
 describe("openImportDialog", () => {
-  const file = picked("Act I/Opening 1.md");
+  const file = picked("Linchpin/Act I/Opening 1.md");
 
   it("shows a directory input marked as a directory picker", async () => {
     const bridge = bridgeFor(new Map([[file, "/home/x/Linchpin/Act I/Opening 1.md"]]));
@@ -317,7 +322,7 @@ describe("summary rows are not buttons", () => {
 
 describe("import text is never treated as markup", () => {
   it("shows a directory name containing markup as literal text", async () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const hostile = "<img src=x onerror=alert(1)>";
     const pending = confirmImport(hostile, [file]);
     const name = byId("import-dialog-name");

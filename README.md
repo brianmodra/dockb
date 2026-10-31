@@ -135,6 +135,10 @@ Frontend (from `frontend/`):
 npm install
 npm run dev    # Vite on :3000, proxying /api to :8000
 ```
+Or on port 4000:
+```
+npm run dev -- --port 4000
+```
 
 Or as an Electron app:
 ```bash

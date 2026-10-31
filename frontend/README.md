@@ -51,9 +51,10 @@ the user picks — the user reviewed and accepted that.
 `POST /api/import`; `layout/importDialog.ts` and `ApiClient.importDocument` own the
 steps. Three things worth knowing that the code cannot say for itself:
 
-- The picked directory's own name is **not** in `webkitRelativePath`, and the server
-  needs it — it is the shared first segment every part sits under, and it becomes
-  the document's title. That is why the renderer reads a path at all.
+- `webkitRelativePath` carries the picked directory's own name as its first
+  segment, and the server needs that name — it is the shared first segment every
+  part sits under, and it becomes the document's title. The renderer takes the name
+  from that segment and checks it against the file's on-disk path.
 - A directory whose path cannot be read is reported **before** the confirm dialog,
   so the user is never asked to confirm a form that was never going to send.
 - The import does **not** open the imported document. The response carries

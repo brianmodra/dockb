@@ -31,11 +31,13 @@ export interface CreateDocumentData {
  * The multipart filename for one picked file: the document directory, then the
  * file's path within it.
  *
- * A picked file's relative path is renderer-supplied, and this is what becomes the
- * name the server stages the file under, so a path that is empty, absolute, or
- * climbing out of the document is refused here rather than sent for the server to
- * refuse. The server checks the same thing independently; this is the earlier of
- * the two.
+ * webkitRelativePath already starts with the picked directory's name, so a path
+ * that carries it is sent as-is instead of repeating it; a bare path inside the
+ * directory gets the name prepended. A picked file's relative path is
+ * renderer-supplied, and this is what becomes the name the server stages the file
+ * under, so a path that is empty, absolute, or climbing out of the document is
+ * refused here rather than sent for the server to refuse. The server checks the
+ * same thing independently; this is the earlier of the two.
  */
 function partName(directoryName: string, relativePath: string): string {
   const name = directoryName.trim();
@@ -56,6 +58,9 @@ function partName(directoryName: string, relativePath: string): string {
     if (segment === "" || segment === "." || segment === "..") {
       throw new Error(badPath(path));
     }
+  }
+  if (path === name || path.startsWith(`${name}/`)) {
+    return path;
   }
   return `${name}/${path}`;
 }
@@ -205,10 +210,11 @@ export class ApiClient {
   /**
    * Import a document directory as multipart parts.
    *
-   * `directoryName` is the picked directory's own name, which webkitRelativePath
-   * omits. The server requires every part to sit under one shared first segment and
-   * takes that segment as the document's title, so it is prepended to each file's
-   * relative path here and nowhere else.
+   * `directoryName` is the picked directory's own name, which is the first segment
+   * of each file's webkitRelativePath. The server requires every part to sit under
+   * one shared first segment and takes that segment as the document's title, so a
+   * relative path that already carries the name is sent unchanged and a bare one
+   * has the name prepended.
    */
   async importDocument(
     directoryName: string,

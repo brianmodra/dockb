@@ -91,7 +91,7 @@ afterEach(() => {
 
 describe("the shell import flow", () => {
   it("sends the picked directory and then shows the summaries", async () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const importDocument = vi.fn(async () => ({ imports: [summary] }));
     const root = document.createElement("div");
     document.body.append(root);
@@ -110,7 +110,7 @@ describe("the shell import flow", () => {
   });
 
   it("passes the ticked paragraphs option through", async () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const importDocument = vi.fn(async () => ({ imports: [summary] }));
     const root = document.createElement("div");
     document.body.append(root);
@@ -127,7 +127,7 @@ describe("the shell import flow", () => {
   });
 
   it("sends nothing when the import is cancelled", async () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const importDocument = vi.fn(async () => ({ imports: [] }));
     const root = document.createElement("div");
     document.body.append(root);
@@ -146,7 +146,7 @@ describe("the shell import flow", () => {
     const importDocument = vi.fn(async () => ({ imports: [] }));
     const root = document.createElement("div");
     document.body.append(root);
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     mountShell(root, { api: apiWith(importDocument), bridge: bridgeFor(file, "/home/x/Linchpin/Act I/Opening 1.md") });
 
     await clickImportMenuItem();
@@ -157,7 +157,7 @@ describe("the shell import flow", () => {
   });
 
   it("reports a failed upload instead of showing summaries", async () => {
-    const file = picked("Act I/Opening 1.md");
+    const file = picked("Linchpin/Act I/Opening 1.md");
     const importDocument = vi.fn(async () => {
       throw new Error("upload exceeds 64.0 MiB");
     });
@@ -181,7 +181,7 @@ describe("the shell import flow", () => {
     mountShell(root, { api: apiWith(importDocument) });
 
     await clickImportMenuItem();
-    handPick(byId<HTMLInputElement>("import-directory-input"), [picked("Act I/Opening 1.md")]);
+    handPick(byId<HTMLInputElement>("import-directory-input"), [picked("Linchpin/Act I/Opening 1.md")]);
     await new Promise((resolve) => setTimeout(resolve, 5));
 
     expect(importDocument).not.toHaveBeenCalled();

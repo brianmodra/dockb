@@ -20,7 +20,7 @@ export function bootRenderer(root: HTMLElement | null): void {
   if (!root) {
     return;
   }
-  mountShell(root, { api: new ApiClient(apiBase()) });
+  mountShell(root, { api: new ApiClient(apiBase()), bridge: window.dockb });
 }
 
 bootRenderer(document.getElementById("app"));

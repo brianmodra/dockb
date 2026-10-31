@@ -16,12 +16,13 @@ export interface ImportDialogOptions {
 const UNITS = ["bytes", "KB", "MB", "GB"];
 
 /**
- * The picked directory's own name, which webkitRelativePath does not carry.
+ * The picked directory's own name, the first segment of a picked file's relative path.
  *
- * A picked file knows where it sits inside the chosen directory, and the preload
- * can say where it sits on disk, so stripping one from the other leaves the
- * directory. The server needs that name: it is the shared first segment every part
- * must sit under, and it becomes the document's title.
+ * webkitRelativePath carries the chosen directory's name ahead of the file's path
+ * inside it (``Linchpin/Act I/Opening 1.md``), so the name is read from there. The
+ * preload's on-disk path is checked to agree, which keeps the name tied to a file
+ * the user really picked. The server needs that name: it is the shared first
+ * segment every part must sit under, and it becomes the document's title.
  */
 export function deriveDirectoryName(
   files: File[],
@@ -48,16 +49,13 @@ export function deriveDirectoryName(
   }
   const onDisk = absolute.replace(/\\/g, "/");
   const inside = relative.replace(/\\/g, "/");
-  if (!onDisk.endsWith(inside)) {
+  if (!onDisk.endsWith(`/${inside}`)) {
     throw new Error(`Import path mismatch: "${absolute}" does not match "${relative}"`);
   }
-  const segments = onDisk
-    .slice(0, onDisk.length - inside.length)
-    .split("/")
-    .filter((segment) => segment !== "");
-  const name = segments[segments.length - 1];
-  if (name === undefined || name === "") {
-    throw new Error(`Import could not work out which directory holds "${relative}"`);
+  const segments = inside.split("/");
+  const name = segments[0];
+  if (segments.length < 2 || name === "") {
+    throw new Error(`Import needs a file inside the picked directory, but "${relative}" does not name one`);
   }
   return name;
 }

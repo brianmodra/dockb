@@ -418,15 +418,13 @@ describe("ApiClient import part naming", () => {
     expect(fetchCalls()).toHaveLength(0);
   });
 
-  it("prepends without normalising, so the layout rule has one implementation", async () => {
+  it("does not repeat the directory a picked path already carries", async () => {
     mockFetch(200, { imports: [] });
     const client = new ApiClient();
     await client.importDocument("Linchpin", [pickedFile("Linchpin/Act I/Opening 1.md")]);
-    // webkitRelativePath never repeats the picked directory, so this input does not
-    // occur. The doubled segment pins the decision: the client prepends and leaves
-    // the caller's path alone rather than also knowing how to strip, which would put
-    // the layout rule in two places.
-    expect(partFilenames(sentForm(), "files")).toEqual(["Linchpin/Linchpin/Act I/Opening 1.md"]);
+    // webkitRelativePath carries the picked directory's own name, so the part is
+    // sent as-is rather than staged one level too deep.
+    expect(partFilenames(sentForm(), "files")).toEqual(["Linchpin/Act I/Opening 1.md"]);
   });
 
   it("rejects a relative path that climbs out of the document directory", async () => {
