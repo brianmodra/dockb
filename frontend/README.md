@@ -8,7 +8,7 @@ itself — an import reads a directory the user picks and hands it to the server
 writing. The window does not even load its own interface from disk; the backend serves it, so the
 app and the API share an origin and the signed-in session reaches every route. Besides editing,
 the chapter list's right-click menu renames, moves, and renumbers chapters — renumbering rewrites
-every act chapter's number, from 1, in the current order, on the server.
+every act chapter's number, from 1 or 0, in the current order, on the server.
 
 Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
 back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in
@@ -122,7 +122,8 @@ DOM as HTML.
   Manuscript chapters group under act headers; `Character` chapters sit in a
   Characters section after the acts. Move only offers drop slots inside the
   mover's category. **Renumber** asks once, then renumbers every act chapter of
-  the document from 1 in their current order (`POST /api/chapters/renumber`) —
+  the document in their current order (`POST /api/chapters/renumber`), counting
+  from 1 or from 0 when the dialog's box is ticked —
   the title's number is rewritten in place and the list reloads. Clicking a
   chapter selects it **and** loads its text into the editor (via `onEdit` → the
   `.../document` GET). Exposes the selected chapter and a reload that keeps the

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { confirmModal, editDocumentModal, openModal, promptModal } from "../src/renderer/layout/modals";
+import { confirmCheckboxModal, confirmModal, editDocumentModal, openModal, promptModal } from "../src/renderer/layout/modals";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -46,6 +46,36 @@ describe("modals", () => {
     const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
     buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(await promise).toBe(false);
+  });
+
+  it("confirmCheckboxModal reports the confirmation and the box's state", async () => {
+    const promise = confirmCheckboxModal({
+      title: "Renumber",
+      message: "Renumber all chapters?",
+      checkboxLabel: " Start from 0",
+      checkboxTestId: "renumber-start-zero",
+      confirmLabel: "Renumber",
+    });
+    const box = modal()!.querySelector<HTMLInputElement>("[data-testid='renumber-start-zero']")!;
+    expect(box).not.toBeNull();
+    box.checked = true;
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toEqual({ confirmed: true, checked: true });
+    expect(modal()).toBeNull();
+  });
+
+  it("confirmCheckboxModal reports an unticked box on cancel", async () => {
+    const promise = confirmCheckboxModal({
+      title: "Renumber",
+      message: "Renumber all chapters?",
+      checkboxLabel: " Start from 0",
+      checkboxTestId: "renumber-start-zero",
+      confirmLabel: "Renumber",
+    });
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toEqual({ confirmed: false, checked: false });
   });
 
   it("promptModal pre-fills the input and returns typed text on confirm", async () => {

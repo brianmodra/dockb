@@ -875,6 +875,26 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
         assert result == [{"id": "c1", "old_title": "Prologue", "new_title": "Prologue 1"}]
 
+    def test_renumber_can_start_from_zero(self) -> None:
+        self._own_document()
+        self._seed_numbered(
+            ("c1", "Opening 1", "Act I", 0),
+            ("c2", "Setup 2", "Act I", 1),
+        )
+
+        result = self.svc.renumber("d1", owner=self._OWNER, start=0)
+
+        assert result == [
+            {"id": "c1", "old_title": "Opening 1", "new_title": "Opening 0"},
+            {"id": "c2", "old_title": "Setup 2", "new_title": "Setup 1"},
+        ]
+        assert self.repo._retitles == [
+            (
+                "d1",
+                [{"id": "c1", "title": "Opening 0"}, {"id": "c2", "title": "Setup 1"}],
+            )
+        ]
+
     def test_renumber_skips_chapters_whose_title_is_already_right(self) -> None:
         self._own_document()
         self._seed_numbered(("c1", "Prologue 1", "Act I", 0))

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It also covers the whole-document chapter operations that live beside them — renumbering a document's chapters from 1 in their current reading order after moves have shuffled the title numbers, which is planned in full before anything is written and lands as one graph query plus one git commit. It is for someone changing those editing services, not the files on disk.
+This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It also covers the whole-document chapter operations that live beside them — renumbering a document's chapters in their current reading order (from 1, or 0) after moves have shuffled the title numbers, which is planned in full before anything is written and lands as one graph query plus one git commit. It is for someone changing those editing services, not the files on disk.
 
 Every service method names the account it acts for as a required keyword argument, and no service may default it: an account is something the caller states, so a service cannot be handed a document id and quietly guess whose work it is. Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
 
@@ -20,7 +20,8 @@ the title, never the hierarchy. The full load is reserved for document-level pat
 ### Renumbering chapters
 
 `ChapterService.renumber(document_id, owner)` renumbers every act chapter of one
-document, globally 1..N in the display order (`PART_OF.index`) — the order the editor
+document, from a requested start (1 by default, 0 on request), in the display order
+(`PART_OF.index`) — the order the editor
 lists, which drifts out of step with the title numbers once chapters are moved.
 `Character` chapters carry no number and are untouched, but their titles count when the
 new titles are checked: a case-insensitive duplicate raises `DuplicateTitleError` before

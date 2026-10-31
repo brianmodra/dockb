@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dockb.controllers.schemas.nodes import ChapterAttrs
 
@@ -34,9 +34,14 @@ class ReorderChapterRequest(BaseModel):
 
 
 class RenumberChaptersRequest(BaseModel):
-    """POST /api/chapters/renumber request body."""
+    """POST /api/chapters/renumber request body.
+
+    ``start`` is the number the first chapter takes: 1 by default, 0 when the
+    writer counts from zero.
+    """
 
     document_id: str
+    start: int = Field(default=1, ge=0)
 
 
 class ChapterImportSummaryWire(BaseModel):

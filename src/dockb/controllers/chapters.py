@@ -87,9 +87,9 @@ def renumber_chapters(
     session_context: SessionContext | None = Depends(get_session_context),
     owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
-    """Renumber every act chapter of the document, globally 1..N in display order."""
+    """Renumber every act chapter of the document, from *start*, in display order."""
     try:
-        renames = svc.renumber(body.document_id, owner=owner)
+        renames = svc.renumber(body.document_id, owner=owner, start=body.start)
     except DuplicateTitleError as exc:
         raise HTTPException(status_code=409, detail=f"chapter_title_conflict: {exc}") from exc
     if renames is None:

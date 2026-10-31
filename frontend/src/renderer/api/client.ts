@@ -154,15 +154,16 @@ export class ApiClient {
   }
 
   /**
-   * Renumber every act chapter of a document, globally 1..N in display order.
+   * Renumber every act chapter of a document, from `start` (1 unless told
+   * otherwise), in display order.
    *
    * Returns one entry per chapter whose title changed, so the caller can say
    * what happened; an empty list means the numbering was already right.
    */
-  async renumberChapters(documentId: string): Promise<RenumberResponse> {
+  async renumberChapters(documentId: string, options: { start?: number } = {}): Promise<RenumberResponse> {
     return request<RenumberResponse>(this.url("/chapters/renumber"), {
       method: "POST",
-      body: JSON.stringify({ document_id: documentId }),
+      body: JSON.stringify({ document_id: documentId, start: options.start ?? 1 }),
     });
   }
 

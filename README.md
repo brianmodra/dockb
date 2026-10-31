@@ -7,7 +7,7 @@ DockB is a writing tool that stores each book as a knowledge graph
 backend and spaCy for language analysis. Writers get structure a plain text
 editor cannot: sentence splits, parts of speech, and a version history of every
 chapter. Moving chapters can leave the numbers in their titles out of step with
-the reading order, so the editor can renumber every chapter from 1 in one
+the reading order, so the editor can renumber every chapter in one
 command. This file is the front door: the install command, how to run the dev
 servers, how to import an existing set of markdown files, and pointers to the
 per-layer documentation.
@@ -86,7 +86,8 @@ Note that the directory structure under Linchpin must be a set of subdirectories
 In each "Act..." dubdirectory, a set of markdown files, each with a consecutive number after the chapter title name. E.g. "Opening 1".
 And also supported in a subdirectory called "Characters", which will hold the markdown files (one per character) to describe the characters.
 Moving chapters can put the title numbers out of step with the reading order; the chapter
-context menu's "Renumber" rewrites every act chapter's number, from 1, in the current order.
+context menu's "Renumber" rewrites every act chapter's number in the current order,
+counting from 1, or from 0 when "Start from 0" is ticked.
 
 ## Create the first account
 

@@ -1,7 +1,7 @@
 import type { ChapterListRow } from "../api/types";
 import { ChapterList, orderedForDisplay } from "./chapterList";
 import { openContextMenu } from "./contextMenu";
-import { confirmModal, promptModal } from "./modals";
+import { confirmCheckboxModal, confirmModal, promptModal } from "./modals";
 import { MoveMode } from "./moveMode";
 import { reportError } from "../log";
 import type { ApiClient } from "../api/client";
@@ -136,16 +136,18 @@ export class LeftPanel {
     if (!this.documentId) {
       return;
     }
-    const confirmed = await confirmModal({
+    const { confirmed, checked } = await confirmCheckboxModal({
       title: "Renumber chapters",
-      message: "Renumber all chapters from 1 in their current order?",
+      message: "Renumber all chapters in their current order?",
+      checkboxLabel: " Start from 0",
+      checkboxTestId: "renumber-start-zero",
       confirmLabel: "Renumber",
     });
     if (!confirmed) {
       return;
     }
     try {
-      const response = await this.api.renumberChapters(this.documentId);
+      const response = await this.api.renumberChapters(this.documentId, { start: checked ? 0 : 1 });
       const count = response.renames.length;
       this.onMessage?.(
         count === 0 ? "No chapters needed renumbering." : `Renumbered ${count} chapter${count === 1 ? "" : "s"}.`,

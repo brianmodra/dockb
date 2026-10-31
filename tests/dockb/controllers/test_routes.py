@@ -537,7 +537,24 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             )
         assert resp.status_code == 200
         assert resp.json()["renames"] == renames
-        renumber_mock.assert_called_once_with("d1", owner="acct-1")
+        renumber_mock.assert_called_once_with("d1", owner="acct-1", start=1)
+
+    def test_renumber_chapters_from_zero(self) -> None:
+        with patch.object(self.ch_svc, "renumber", wraps=self.ch_svc.renumber) as renumber_mock:
+            renumber_mock.return_value = []
+            resp = self.client.post(
+                "/api/chapters/renumber",
+                json={"document_id": "d1", "start": 0},
+            )
+        assert resp.status_code == 200
+        renumber_mock.assert_called_once_with("d1", owner="acct-1", start=0)
+
+    def test_renumber_rejects_a_negative_start(self) -> None:
+        resp = self.client.post(
+            "/api/chapters/renumber",
+            json={"document_id": "d1", "start": -1},
+        )
+        assert resp.status_code == 422
 
     def test_renumber_document_not_found(self) -> None:
         with patch.object(self.ch_svc, "renumber", return_value=None):

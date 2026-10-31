@@ -99,7 +99,7 @@ class StubChapterService(_Recording):
     def move(self, chapter_id: str, after_chapter_id: str | None, owner: str = "") -> None:
         self._record("move", owner=owner, chapter_id=chapter_id)
 
-    def renumber(self, document_id: str, owner: str = "") -> list[dict[str, str]] | None:
+    def renumber(self, document_id: str, owner: str = "", start: int = 1) -> list[dict[str, str]] | None:
         # A document the account does not own reads as absent: the route's 404.
         self._record("renumber", owner=owner, document_id=document_id)
 

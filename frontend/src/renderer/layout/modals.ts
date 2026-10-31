@@ -89,6 +89,43 @@ export function confirmModal(options: {
   }).then((value) => value === "confirm");
 }
 
+export interface ConfirmCheckboxResult {
+  confirmed: boolean;
+  checked: boolean;
+}
+
+/**
+ * A confirm whose message carries one checkbox.
+ *
+ * The checkbox is read when a button is clicked, so the answer carries both
+ * whether the user confirmed and what they had ticked at that moment.
+ */
+export function confirmCheckboxModal(options: {
+  title: string;
+  message: string;
+  checkboxLabel: string;
+  checkboxTestId: string;
+  confirmLabel: string;
+}): Promise<ConfirmCheckboxResult> {
+  const body = document.createElement("div");
+  body.append(document.createTextNode(options.message));
+  const label = document.createElement("label");
+  label.className = "modal-field-label";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.dataset.testid = options.checkboxTestId;
+  label.append(checkbox, document.createTextNode(options.checkboxLabel));
+  body.append(label);
+  return openModal({
+    title: options.title,
+    body,
+    buttons: [
+      { label: "Cancel", value: "cancel" },
+      { label: options.confirmLabel, value: "confirm", primary: true },
+    ],
+  }).then((value) => ({ confirmed: value === "confirm", checked: checkbox.checked }));
+}
+
 export interface EditDocumentResult {
   title: string;
   author: string;

@@ -7,7 +7,7 @@ server — not the editor — owns those files and their history. It is the reco
 that shaped the product, including the ones that were rejected. Among them: markdown is canonical
 rather than a projection, save-and-rehydrate is synchronous rather than a background loop, act
 chapters are numbered by their file names while character chapters are not — and can be
-renumbered from 1 in reading order once moves shuffle them — and each account's
+renumbered in reading order (from 1, or 0) once moves shuffle them — and each account's
 manuscript lives in its own directory and its own git repository, so no commit can ever span two
 writers.
 
@@ -220,7 +220,8 @@ sequence.
 
 **Title renumbering.** Moving a chapter orders it but leaves the number in its title alone,
 so the listing can read out of numeric order. `POST /api/chapters/renumber` (document id in
-the body) rewrites every act chapter's number, from 1, in the current `index` order — the
+the body) rewrites every act chapter's number, counting from the requested start
+(1 by default, 0 on request), in the current `index` order — the
 number is replaced in place, the letter suffix goes, and an unnumbered title gains one at
 the end, by the same token the import walker orders files by (`dockb/chapter_numbers.py`).
 `Character` chapters are untouched but count for duplicate-title checking, which is

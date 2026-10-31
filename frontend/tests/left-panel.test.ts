@@ -282,13 +282,42 @@ describe("LeftPanel", () => {
       new MouseEvent("click", { bubbles: true }),
     );
 
-    await vi.waitFor(() => expect(renumberChapters).toHaveBeenCalledWith("d1"));
+    await vi.waitFor(() => expect(renumberChapters).toHaveBeenCalledWith("d1", { start: 1 }));
     await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith("Renumbered 2 chapters."));
     await vi.waitFor(() =>
       expect(
         Array.from(listRows()).map((row) => row.textContent),
       ).toEqual(["Opening 1", "Setup 2"]),
     );
+  });
+
+  it("renumbers from zero when the dialog's box is ticked", async () => {
+    const renumberChapters = vi.fn(async () => ({
+      status: { code: "ok", message: "ok" },
+      renames: [],
+    }));
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      renumberChapters,
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const renumberItem = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"),
+    ).find((n) => n.textContent === "Renumber")!;
+    renumberItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const checkbox = document.querySelector<HTMLInputElement>("[data-testid='renumber-start-zero']");
+    expect(checkbox).not.toBeNull();
+    checkbox!.checked = true;
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    await vi.waitFor(() => expect(renumberChapters).toHaveBeenCalledWith("d1", { start: 0 }));
   });
 
   it("renumbers nothing without a confirmation", async () => {
