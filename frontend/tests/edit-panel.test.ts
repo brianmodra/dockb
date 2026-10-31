@@ -35,6 +35,61 @@ describe("EditPanel", () => {
     expect(panel.isDirty()).toBe(false);
   });
 
+  it("open saves the dirty buffer before loading another chapter", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("Second")),
+      saveChapterDocument: vi.fn(async (_id: string, content: string) => doc(content)),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    panel.setContent("# Edited\n");
+
+    await panel.open("c2");
+
+    const saveOrder = vi.mocked(api.saveChapterDocument).mock.invocationCallOrder[0];
+    const loadOrders = vi.mocked(api.getChapterDocument).mock.invocationCallOrder;
+    expect(saveOrder).toBeLessThan(loadOrders[loadOrders.length - 1]);
+    expect(api.saveChapterDocument).toHaveBeenCalledWith("c1", "# Edited\n");
+    expect(api.getChapterDocument).toHaveBeenLastCalledWith("c2");
+    expect(panel.isDirty()).toBe(false);
+  });
+
+  it("open keeps the editor on the chapter when the save fails", async () => {
+    const onMessage = vi.fn();
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("First")),
+      saveChapterDocument: vi.fn(async () => {
+        throw new Error("backend down");
+      }),
+    });
+    const panel = new EditPanel({ api });
+    panel.onMessage = onMessage;
+    document.body.append(panel.element);
+    await panel.load("c1");
+    panel.setContent("# Edited\n");
+
+    await panel.open("c2");
+
+    expect(api.getChapterDocument).toHaveBeenCalledTimes(1);
+    expect(panel.isDirty()).toBe(true);
+    expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("backend down"));
+  });
+
+  it("open loads straight away when the buffer is clean", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("Second")),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    await panel.open("c2");
+
+    expect(api.saveChapterDocument).not.toHaveBeenCalled();
+    expect(api.getChapterDocument).toHaveBeenLastCalledWith("c2");
+  });
+
   it("delegates setLanguage and getLanguage to the WYSIWYG editable", async () => {
     const api = fakeApi();
     const panel = new EditPanel({ api });

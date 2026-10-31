@@ -104,7 +104,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     const panel = new LeftPanel({
       api: options.api,
       onEdit: (chapterId) => {
-        void editPanel.load(chapterId);
+        void editPanel.open(chapterId);
       },
       onMessage: (text) => layout.pushMessage(text),
     });

@@ -125,8 +125,10 @@ DOM as HTML.
   the document in their current order (`POST /api/chapters/renumber`), counting
   from 1 or from 0 when the dialog's box is ticked —
   the title's number is rewritten in place and the list reloads. Clicking a
-  chapter selects it **and** loads its text into the editor (via `onEdit` → the
-  `.../document` GET). Exposes the selected chapter and a reload that keeps the
+  chapter selects it **and** loads its text into the editor (via `onEdit` →
+  `editPanel.open` → the `.../document` GET); a dirty buffer is saved first, and
+  a failed save keeps the editor on the open chapter rather than losing the
+  text. Exposes the selected chapter and a reload that keeps the
   selection.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).

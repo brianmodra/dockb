@@ -79,6 +79,24 @@ export class EditPanel {
     this.replaceDoc(text);
   }
 
+  /**
+   * Open a chapter, saving the open buffer first when it is dirty.
+   *
+   * A failed save keeps the editor on the open chapter: the click that would
+   * leave it must not lose the writer's text. The failure is already reported
+   * by save() to the message panel; the writer can retry the click once the
+   * backend answers again.
+   */
+  async open(chapterId: string): Promise<void> {
+    if (this.isDirty()) {
+      const saved = await this.save();
+      if (saved === null) {
+        return;
+      }
+    }
+    await this.load(chapterId);
+  }
+
   async load(chapterId: string): Promise<void> {
     try {
       const response = await this.api.getChapterDocument(chapterId);
