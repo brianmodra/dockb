@@ -4,10 +4,13 @@
 
 DockB is a writing tool that stores each book as a knowledge graph
 (Document → Chapter → Paragraph → Sentence → Token) in Neo4j, with a FastAPI
-backend and spaCy for language analysis. Authors get structure a plain text
+backend and spaCy for language analysis. Writers get structure a plain text
 editor cannot: sentence splits, parts of speech, and a version history of every
-chapter, plus an install command, the API contract, and per-layer backend
-documentation pointed to from here.
+chapter. Moving chapters can leave the numbers in their titles out of step with
+the reading order, so the editor can renumber every chapter from 1 in one
+command. This file is the front door: the install command, how to run the dev
+servers, how to import an existing set of markdown files, and pointers to the
+per-layer documentation.
 
 The desktop editor (`frontend/`) is a thin API client that never writes files or git: writers edit
 canonical markdown in WYSIWYG or raw view, and an import only reads the directory a writer picks and

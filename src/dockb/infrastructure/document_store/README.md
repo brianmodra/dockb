@@ -4,7 +4,7 @@
 
 This note describes the folder where DockB keeps each account's markdown. The server writes those files; the editor never does. Every account has its own directory and its own git repository below one shared base directory, so a document's files live under the account that owns it and a commit can never span two accounts. A store is scoped to one account by construction and names that account by its internal id rather than a username, so nothing a user can rename can move a tree.
 
-Read it to see where a chapter file lands, including supporting character chapters, why a document title becomes a path segment and what makes one unsafe, and how a rename, delete or adoption stays in git. It also names the two operations on the older, owner-less layout that only the backfill command uses, and why a manuscript that belonged to no account had no tree at all.
+Read it to see where a chapter file lands, including supporting character chapters, why a document title becomes a path segment and what makes one unsafe, and how a rename, delete, renumber or adoption stays in git. It also names the two operations on the older, owner-less layout that only the backfill command uses, and why a manuscript that belonged to no account had no tree at all.
 
 ## Layout
 
@@ -150,7 +150,5 @@ rewritten, and the whole renumber is one `renumber: chapters` commit, so the
 history reads as the one operation the user asked for. The moves run in two
 passes — every file first to a private temp name, then to its final title — so
 renumbering through each other (`Opening 5` → `Opening 2` while
-`Opening 2` → `Opening 3`) cannot collide. The plan is checked before anything
-moves: a target that is not itself a file of this renumber raises rather than
-overwriting, an entry whose file is not on disk is a no-op, and nothing to move
-commits nothing.
+`Opening 2` → `Opening 3`) cannot collide, and the plan is checked before
+anything moves.

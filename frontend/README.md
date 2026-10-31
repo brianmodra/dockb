@@ -6,7 +6,9 @@ This is DockB's desktop editor. It is a window that talks only to the server: si
 document, edit a chapter, or import a whole document from a folder on disk. It never writes files
 itself — an import reads a directory the user picks and hands it to the server, which does the
 writing. The window does not even load its own interface from disk; the backend serves it, so the
-app and the API share an origin and the signed-in session reaches every route.
+app and the API share an origin and the signed-in session reaches every route. Besides editing,
+the chapter list's right-click menu renames, moves, and renumbers chapters — renumbering rewrites
+every act chapter's number, from 1, in the current order, on the server.
 
 Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
 back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in

@@ -6,7 +6,8 @@ This note explains why DockB treats a markdown file as the real text of a chapte
 server — not the editor — owns those files and their history. It is the record of the decisions
 that shaped the product, including the ones that were rejected. Among them: markdown is canonical
 rather than a projection, save-and-rehydrate is synchronous rather than a background loop, act
-chapters are numbered by their file names while character chapters are not, and each account's
+chapters are numbered by their file names while character chapters are not — and can be
+renumbered from 1 in reading order once moves shuffle them — and each account's
 manuscript lives in its own directory and its own git repository, so no commit can ever span two
 writers.
 
