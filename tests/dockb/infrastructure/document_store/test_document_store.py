@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from dockb.controllers.schemas.documents import DocumentAttrs
 from dockb.exceptions import SnapshotError
 from dockb.infrastructure.document_store.factory import DocumentStoreFactory
-from dockb.infrastructure.document_store.store import DocumentMetadata, DocumentStore
+from dockb.infrastructure.document_store.store import ChapterRename, DocumentMetadata, DocumentStore
 
 _SAFE_TITLE = "Linchpin"
 _SAFE_CHAPTER = "Opening 1"
@@ -500,6 +500,143 @@ def test_rename_chapter_git_mvs_file_and_rewrites_front_matter(git_store):
 def test_rename_chapter_missing_file_is_noop(git_store):
     git_store.rename_chapter(_SAFE_TITLE, "Act I", "Nope", "Nowhere")
     assert not git_store.chapter_exists(_SAFE_TITLE, "Act I", "Nowhere")
+
+
+# ---------------------------------------------------------------------------
+# Renumbering many chapters
+# ---------------------------------------------------------------------------
+
+
+def _commit_count(store) -> int:
+    log = subprocess.run(
+        ["git", "rev-list", "--count", "HEAD"],
+        cwd=str(store.account_dir()),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return int(log.stdout.strip() or "0")
+
+
+def test_renumber_swaps_titles_that_would_collide(git_store):
+    for title in ("Opening 2", "Opening 5"):
+        git_store.write_chapter(_SAFE_TITLE, "Act I", title, f"---\ntitle: {title}\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.renumber_chapters(
+        _SAFE_TITLE,
+        [
+            ChapterRename("Act I", "Chapter", "Opening 5", "Opening 2"),
+            ChapterRename("Act I", "Chapter", "Opening 2", "Opening 3"),
+        ],
+    )
+
+    assert not git_store.chapter_exists(_SAFE_TITLE, "Act I", "Opening 5")
+    was_five = git_store.read_chapter(_SAFE_TITLE, "Act I", "Opening 2")
+    was_two = git_store.read_chapter(_SAFE_TITLE, "Act I", "Opening 3")
+    assert was_five is not None and "title: Opening 2" in was_five and "# body" in was_five
+    assert was_two is not None and "title: Opening 3" in was_two
+    assert _porcelain(git_store) == ""
+
+
+def test_renumber_moves_two_act_directories_and_commits_once(git_store):
+    for title in ("Opening 1", "Debate 2"):
+        git_store.write_chapter(_SAFE_TITLE, "Act I", title, f"---\ntitle: {title}\n---\n\n# body\n")
+    git_store.write_chapter(_SAFE_TITLE, "Act II", "Catalyst 3", "---\ntitle: Catalyst 3\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+    before = _commit_count(git_store)
+
+    git_store.renumber_chapters(
+        _SAFE_TITLE,
+        [
+            ChapterRename("Act I", "Chapter", "Opening 1", "Opening 2"),
+            ChapterRename("Act I", "Chapter", "Debate 2", "Debate 3"),
+            ChapterRename("Act II", "Chapter", "Catalyst 3", "Catalyst 4"),
+        ],
+    )
+
+    assert git_store.chapter_exists(_SAFE_TITLE, "Act I", "Opening 2")
+    assert git_store.chapter_exists(_SAFE_TITLE, "Act II", "Catalyst 4")
+    assert _commit_count(git_store) == before + 1
+    assert _porcelain(git_store) == ""
+
+
+def test_renumber_rewrites_front_matter_title_per_file(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Setup 5b", "---\ntitle: Setup 5b\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.renumber_chapters(_SAFE_TITLE, [ChapterRename("Act I", "Chapter", "Setup 5b", "Setup 3")])
+
+    content = git_store.read_chapter(_SAFE_TITLE, "Act I", "Setup 3")
+    assert content is not None and "title: Setup 3" in content and "Setup 5b" not in content
+
+
+def test_renumber_keeps_other_front_matter_keys(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Opening 1", "---\ntitle: Opening 1\nact: Act I\nid: ch-1\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.renumber_chapters(_SAFE_TITLE, [ChapterRename("Act I", "Chapter", "Opening 1", "Opening 4")])
+
+    content = git_store.read_chapter(_SAFE_TITLE, "Act I", "Opening 4")
+    assert content is not None and "id: ch-1" in content and "act: Act I" in content
+
+
+def test_renumber_missing_file_is_noop_for_that_entry_only(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Opening 1", "---\ntitle: Opening 1\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+    before = _commit_count(git_store)
+
+    git_store.renumber_chapters(
+        _SAFE_TITLE,
+        [
+            ChapterRename("Act I", "Chapter", "Ghost 9", "Ghost 10"),
+            ChapterRename("Act I", "Chapter", "Opening 1", "Opening 2"),
+        ],
+    )
+
+    assert git_store.chapter_exists(_SAFE_TITLE, "Act I", "Opening 2")
+    assert not git_store.chapter_exists(_SAFE_TITLE, "Act I", "Ghost 10")
+    assert _commit_count(git_store) == before + 1
+
+
+def test_renumber_onto_an_unrelated_existing_file_raises_and_changes_nothing(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Opening 1", "---\ntitle: Opening 1\n---\n\n# body\n")
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Stray 2", "---\ntitle: Stray 2\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+    before = _commit_count(git_store)
+
+    with pytest.raises(SnapshotError):
+        git_store.renumber_chapters(_SAFE_TITLE, [ChapterRename("Act I", "Chapter", "Opening 1", "Stray 2")])
+
+    assert git_store.chapter_exists(_SAFE_TITLE, "Act I", "Opening 1")
+    assert _porcelain(git_store) == ""
+    assert _commit_count(git_store) == before
+
+
+def test_renumber_without_changes_is_a_noop(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "Act I", "Opening 1", "---\ntitle: Opening 1\n---\n\n# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+    before = _commit_count(git_store)
+    git_store.renumber_chapters(_SAFE_TITLE, [])
+    git_store.renumber_chapters(_SAFE_TITLE, [ChapterRename("Act I", "Chapter", "Same", "Same")])
+    assert _commit_count(git_store) == before
+
+
+def test_renumber_a_document_with_no_directory_is_a_noop(store):
+    store.renumber_chapters("No Such Document", [ChapterRename("Act I", "Chapter", "A 1", "A 2")])
+    assert not (store.account_dir() / ".git").exists()
+
+
+def test_renumber_moves_a_character_within_the_characters_dir(git_store):
+    git_store.write_chapter(_SAFE_TITLE, "", "Liz 1", "---\ntitle: Liz 1\n---\n\n# body\n", category="Character")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.renumber_chapters(_SAFE_TITLE, [ChapterRename("", "Character", "Liz 1", "Liz")])
+
+    assert not git_store.chapter_exists(_SAFE_TITLE, "", "Liz 1", category="Character")
+    assert git_store.chapter_exists(_SAFE_TITLE, "", "Liz", category="Character")
+    content = git_store.read_chapter(_SAFE_TITLE, "", "Liz", category="Character")
+    assert content is not None and "title: Liz" in content
 
 
 # ---------------------------------------------------------------------------

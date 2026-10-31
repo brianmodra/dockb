@@ -52,6 +52,16 @@ _ENV_BASE_DIR = "DOCKB_CHAPTERS_DIR"
 
 
 @dataclass
+class ChapterRename:
+    """One chapter file a renumber moves: its location and its old and new titles."""
+
+    act: str
+    category: str
+    old_title: str
+    new_title: str
+
+
+@dataclass
 class DocumentMetadata:
     """A document's on-disk title and author."""
 
@@ -59,7 +69,7 @@ class DocumentMetadata:
     author: str
 
 
-class DocumentStore:
+class DocumentStore:  # pylint: disable=too-many-public-methods
     """Resolve and read/write one account's markdown tree under a base dir.
 
     Scoped to a single account: there is no way to build a store that spans accounts,
@@ -361,6 +371,54 @@ class DocumentStore:
         if content is not None:
             self.write_chapter(document_title, act, new_title, front_matter.merge(content, {"title": new_title}), category)
         self.git_commit(document_title, f"rename: chapter {old_title} -> {new_title}")
+
+    def renumber_chapters(self, document_title: str, renames: list[ChapterRename]) -> None:
+        """git mv many chapter files to their renumbered titles and commit once.
+
+        The renumber is planned before anything moves: a target that exists and is
+        not itself a file this renumber is moving away would leave two chapters'
+        content under one title, so it raises and nothing is touched. The moves run
+        in two passes — every file first to a private temp name, then to its final
+        title — so renumbering through each other (``Opening 5`` → ``Opening 2``
+        while ``Opening 2`` → ``Opening 3``) cannot collide. Front matter titles are
+        rewritten in the moved files, and the whole renumber is one commit, so the
+        git history reads as the one operation the user asked for. An entry whose
+        file is not on disk is a no-op, like a single rename; with no file moved at
+        all there is nothing to commit.
+        """
+        moves = [
+            (
+                self.chapter_file(document_title, r.act, r.old_title, r.category),
+                self.chapter_file(document_title, r.act, r.new_title, r.category),
+                r,
+            )
+            for r in renames
+        ]
+        moves = [(old, new, rename) for old, new, rename in moves if old != new and old.is_file()]
+        if not moves:
+            return
+        finals = {new for _, new, _ in moves}
+        sources = {old for old, _, _ in moves}
+        for _, new, rename in moves:
+            if new in finals and new not in sources and new.exists():
+                raise SnapshotError(f"cannot renumber chapter: {rename.new_title!r} already exists")
+        self._ensure_repo()
+        temps: list[tuple[Path, Path]] = []
+        try:
+            for index, (old, _, _) in enumerate(moves):
+                temp = old.with_name(f".renumber-{index}-{old.name}")
+                self._git("mv", "--", str(old.relative_to(self.account_dir())), str(temp.relative_to(self.account_dir())))
+                temps.append((temp, old))
+            for (temp, _), (_, new, rename) in zip(temps, moves, strict=True):
+                self._git("mv", "--", str(temp.relative_to(self.account_dir())), str(new.relative_to(self.account_dir())))
+                content = new.read_text(encoding="utf-8")
+                new.write_text(front_matter.merge(content, {"title": rename.new_title}), encoding="utf-8")
+        except Exception:
+            for temp, old in temps:
+                if temp.is_file() and not old.exists():
+                    self._git("mv", "--", str(temp.relative_to(self.account_dir())), str(old.relative_to(self.account_dir())))
+            raise
+        self.git_commit(document_title, "renumber: chapters")
 
     def _ensure_repo(self) -> None:
         """Make sure the account directory exists and is a git repository.
