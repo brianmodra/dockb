@@ -376,4 +376,63 @@ describe("WysiwygView canonical round trip", () => {
     const doc = bufferToDocWithIds("X.\n\nY.", ["dup", "dup"]);
     expect(docToCanonical(doc)).toBe('<span data-par-id="dup">\nX.\n</span>\n\nY.');
   });
+
+  it("carries the span's data-quote-type into the paragraph's quoteType attribute", () => {
+    const doc = bufferToDocWithIds(
+      "Quoted.\n\nPlain.",
+      ["p1", "p2"],
+      ["reading", null],
+    );
+    const [quoted, plain] = doc.children;
+    expect(quoted.attrs.quoteType).toBe("reading");
+    expect(plain.attrs.quoteType).toBe("");
+  });
+
+  it("emits data-quote-type on the span of a quoted paragraph", () => {
+    const doc = bufferToDocWithIds("Quoted.\n\nPlain.", ["p1", "p2"], ["writing", null]);
+    expect(docToCanonical(doc)).toBe(
+      '<span data-par-id="p1" data-quote-type="writing">\nQuoted.\n</span>\n\n<span data-par-id="p2">\nPlain.\n</span>',
+    );
+  });
+
+  it("omits the attribute on an unquoted paragraph", () => {
+    const doc = bufferToDocWithIds("Plain.", ["p1"], [null]);
+    expect(docToCanonical(doc)).toBe('<span data-par-id="p1">\nPlain.\n</span>');
+  });
+});
+
+describe("WysiwygView quoted paragraphs", () => {
+  it("renders quoted paragraphs indented and unquoted ones untouched", () => {
+    const view = new WysiwygView();
+    view.setContent(
+      '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\n<span data-par-id="p-2">\nPlain.\n</span>',
+    );
+
+    const quoted = view.element.querySelector("p.quoted[data-quote-type='reading']");
+    expect(quoted).not.toBeNull();
+    expect(quoted!.textContent).toBe("Quoted.");
+    const paragraphs = view.element.querySelectorAll("p");
+    expect(paragraphs.length).toBe(2);
+    expect(paragraphs[1].classList.contains("quoted")).toBe(false);
+  });
+
+  it("round-trips the quote type through content()", () => {
+    const view = new WysiwygView();
+    view.setContent('<span data-par-id="p-1" data-quote-type="writing">\nQuoted.\n</span>');
+
+    expect(view.content()).toBe('<span data-par-id="p-1" data-quote-type="writing">\nQuoted.\n</span>');
+  });
+
+  it("keeps the quote type when the paragraph's text is edited", () => {
+    const view = new WysiwygView();
+    view.setContent('<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>');
+
+    const paragraph = view.element.querySelector("p.quoted")!;
+    // type into the paragraph: replace its text content
+    const viewAny = view as unknown as { view: { dispatch: (tr: unknown) => void; state: { tr: { insertText: (t: string, from: number, to: number) => unknown } } } };
+    viewAny.view.dispatch(viewAny.view.state.tr.insertText(" Also.", 8, 8));
+
+    expect(view.content()).toContain('data-quote-type="reading"');
+    void paragraph;
+  });
 });

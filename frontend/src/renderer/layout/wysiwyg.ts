@@ -22,8 +22,11 @@ const schema = new Schema({
     doc: { content: "paragraph+" },
     paragraph: {
       content: "inline*",
-      attrs: { blanksBefore: { default: 0 }, id: { default: null } },
-      toDOM: () => ["p", 0],
+      attrs: { blanksBefore: { default: 0 }, id: { default: null }, quoteType: { default: "" } },
+      toDOM: (node) =>
+        node.attrs.quoteType
+          ? ["p", { class: "quoted", "data-quote-type": node.attrs.quoteType }, 0]
+          : ["p", 0],
     },
     text: { group: "inline" },
     hardBreak: { inline: true, group: "inline", selectable: false, toDOM: () => ["br"] },
@@ -61,18 +64,30 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-function extractSpanIds(buffer: string): Array<string | null> {
+interface SpanAttrs {
+  ids: Array<string | null>;
+  quoteTypes: Array<string | null>;
+}
+
+function extractSpanAttrs(buffer: string): SpanAttrs {
   const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
   const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
   const body = hadFrontMatter ? withoutFrontMatter.replace(/^\n/, "") : withoutFrontMatter;
-  return body.split("\n\n").map((block) => {
+  const ids: Array<string | null> = [];
+  const quoteTypes: Array<string | null> = [];
+  body.split("\n\n").forEach((block) => {
     const open = block.match(/<span\b([^>]*)>/);
     if (!open) {
-      return null;
+      ids.push(null);
+      quoteTypes.push(null);
+      return;
     }
     const attr = open[1].match(/\bdata-par-id="([^"]*)"/);
-    return attr ? unescapeHtml(attr[1]) : null;
+    ids.push(attr ? unescapeHtml(attr[1]) : null);
+    const quote = open[1].match(/\bdata-quote-type="([^"]*)"/);
+    quoteTypes.push(quote ? unescapeHtml(quote[1]) : null);
   });
+  return { ids, quoteTypes };
 }
 
 export function chapterBody(buffer: string): string {
@@ -145,18 +160,18 @@ export function bufferToDoc(body: string) {
   return bufferToDocWithIds(body, []);
 }
 
-export function bufferToDocWithIds(body: string, ids: Array<string | null>) {
+export function bufferToDocWithIds(body: string, ids: Array<string | null>, quoteTypes: Array<string | null> = []) {
   const blocks = parseBodyBlocks(body);
   const paragraphs =
     blocks.length > 0
       ? blocks.map((block, index) =>
           schema.node(
             "paragraph",
-            { blanksBefore: block.blanksBefore, id: ids[index] ?? null },
+            { blanksBefore: block.blanksBefore, id: ids[index] ?? null, quoteType: quoteTypes[index] ?? "" },
             paragraphContent(block),
           ),
         )
-      : [schema.node("paragraph", { blanksBefore: 0, id: null })];
+      : [schema.node("paragraph", { blanksBefore: 0, id: null, quoteType: "" })];
   return schema.node("doc", {}, paragraphs);
 }
 
@@ -208,9 +223,10 @@ export function docToCanonical(doc: Node): string {
       }
     }
     const lines = serializeParagraph(paragraph);
+    const quote = paragraph.attrs.quoteType ? ` data-quote-type="${escapeHtml(paragraph.attrs.quoteType)}"` : "";
     const body =
       id !== null
-        ? `<span data-par-id="${escapeHtml(id)}">\n${escapeHtml(lines)}\n</span>`
+        ? `<span data-par-id="${escapeHtml(id)}"${quote}>\n${escapeHtml(lines)}\n</span>`
         : lines;
     parts.push("\n".repeat(separator) + body);
     isFirst = false;
@@ -303,13 +319,13 @@ export class WysiwygView {
   }
 
   setContent(buffer: string): void {
-    const ids = extractSpanIds(buffer);
+    const { ids, quoteTypes } = extractSpanAttrs(buffer);
     const display = chapterBody(buffer);
     this.lastFrontMatter = buffer.match(FRONT_MATTER_RE)?.[0] ?? null;
     if (!this.innerView) {
       const state = EditorState.create({
         schema,
-        doc: bufferToDocWithIds(display, ids),
+        doc: bufferToDocWithIds(display, ids, quoteTypes),
         plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
       });
       this.innerView = new EditorView(this.element, {
@@ -328,7 +344,7 @@ export class WysiwygView {
     this.innerView.updateState(
       EditorState.create({
         schema,
-        doc: bufferToDocWithIds(display, ids),
+        doc: bufferToDocWithIds(display, ids, quoteTypes),
         plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
       }),
     );

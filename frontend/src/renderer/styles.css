@@ -407,6 +407,10 @@ body {
   margin: 0 0 1.5em;
 }
 
+.edit-panel .ProseMirror p.quoted {
+  margin-left: 4ch;
+}
+
 .edit-panel .ProseMirror p:last-child {
   margin-bottom: 0;
 }
