@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note explains how a saved chapter file is compared with the knowledge graph and written back. It is for someone changing import or change detection.
+This note explains how a saved chapter file is compared with the knowledge graph and written back. It is for someone changing import or change detection. Alongside the text, each paragraph's quote type (`data-quote-type` on its span) is part of the comparison: a quote-only change still updates the graph.
 
 A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need no numbers. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were. A folder reaches this package either as a path — from the shell command or the API's upload route, which stages the files in a temporary directory first — or one file at a time.
 

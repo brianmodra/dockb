@@ -8,7 +8,9 @@ itself — an import reads a directory the user picks and hands it to the server
 writing. The window does not even load its own interface from disk; the backend serves it, so the
 app and the API share an origin and the signed-in session reaches every route. Besides editing,
 the chapter list's right-click menu renames, moves, and renumbers chapters — renumbering rewrites
-every act chapter's number, from 1 or 0, in the current order, on the server.
+every act chapter's number, from 1 or 0, in the current order, on the server — and inside the
+text a paragraph's right-click marks it as a quote (Reading or Writing), which renders indented
+and saves through the same chapter save.
 
 Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
 back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in

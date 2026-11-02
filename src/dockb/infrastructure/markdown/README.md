@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart.
+This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart. The body wraps every paragraph in an identity span; a paragraph may also carry a quote type on its span (`data-quote-type`), which reads and writes exactly like the id — an attribute, never text.
 
 It does not talk to the database. Whoever calls it loads the chapter first, then asks this package to read or write the text.
 
