@@ -84,21 +84,21 @@ export class EditPanel {
     const setQuote = (quoteType: string): void => {
       this.wysiwyg.setQuoteTypeAtDom(event.target as Element, quoteType);
     };
-    openContextMenu(event.clientX, event.clientY, [
-      {
-        label: "Edit",
-        children: [
-          {
-            label: "Quote",
-            children: [
-              { label: "None", checked: current === "", onSelect: () => setQuote("") },
-              { label: "Reading", checked: current === "reading", onSelect: () => setQuote("reading") },
-              { label: "Writing", checked: current === "writing", onSelect: () => setQuote("writing") },
-            ],
-          },
-        ],
-      },
-    ]);
+    openContextMenu(
+      event.clientX,
+      event.clientY,
+      [
+        {
+          label: "Quote",
+          children: [
+            { label: "None", checked: current === "", onSelect: () => setQuote("") },
+            { label: "Reading", checked: current === "reading", onSelect: () => setQuote("reading") },
+            { label: "Writing", checked: current === "writing", onSelect: () => setQuote("writing") },
+          ],
+        },
+      ],
+      { title: "Edit" },
+    );
   }
 
   setMode(mode: Mode): void {

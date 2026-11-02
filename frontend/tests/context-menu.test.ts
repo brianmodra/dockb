@@ -57,6 +57,18 @@ describe("context menu", () => {
     expect(handle.element.isConnected).toBe(false);
   });
 
+  it("renders a title above the items that is not a button", () => {
+    const handle = openContextMenu(10, 20, [{ label: "Quote", onSelect: vi.fn() }], {
+      title: "Edit",
+    });
+
+    const title = handle.element.querySelector<HTMLElement>(".context-title")!;
+    expect(title.textContent).toBe("Edit");
+    expect(title.tagName).not.toBe("BUTTON");
+    const labels = Array.from(handle.element.querySelectorAll(".context-item")).map((n) => n.textContent);
+    expect(labels).toEqual(["Quote"]);
+  });
+
   it("opens a nested pulldown and highlights the current choice", () => {
     const onReading = vi.fn();
     const handle = openContextMenu(10, 20, [

@@ -96,10 +96,10 @@ describe("EditPanel", () => {
 
     const menu = document.querySelector("[data-testid='context-menu']");
     expect(menu).not.toBeNull();
-    const editItem = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
-      (n) => n.textContent === "Edit",
-    )!;
-    editItem.click();
+    const title = menu!.querySelector<HTMLElement>(".context-title");
+    expect(title!.textContent).toBe("Edit");
+    expect(title!.tagName).not.toBe("BUTTON");
+
     const quoteItem = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
       (n) => n.textContent === "Quote",
     )!;

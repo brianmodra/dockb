@@ -16,12 +16,21 @@ export function openContextMenu(
   x: number,
   y: number,
   items: ContextMenuItem[],
+  options: { title?: string } = {},
 ): ContextMenuHandle {
   const element = document.createElement("div");
   element.className = "context-menu";
   element.dataset.testid = "context-menu";
   element.style.left = `${x}px`;
   element.style.top = `${y}px`;
+
+  if (options.title) {
+    // A title names the menu; it is not a choice, so it is not a button.
+    const title = document.createElement("div");
+    title.className = "context-title";
+    title.textContent = options.title;
+    element.append(title);
+  }
 
   const close = (): void => {
     element.remove();

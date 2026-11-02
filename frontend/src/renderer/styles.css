@@ -213,6 +213,13 @@ body {
   cursor: pointer;
 }
 
+.context-title {
+  padding: 5px 12px 3px;
+  font-size: 11px;
+  color: #777;
+  cursor: default;
+}
+
 .context-item:hover {
   background: #e8e8e5;
 }
