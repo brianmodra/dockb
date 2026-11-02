@@ -384,6 +384,24 @@ class TestSingleNewlineParagraphs:
 
 
 class TestExistingChapter:
+
+    def test_quote_type_only_change_persists_the_paragraph(self, nlp, tmp_path):
+        chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
+        chapter.paragraphs[0].quote_type = "reading"
+        chapter_repo, uow_factory = _setup(chapter)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        file = tmp_path / "Old Title.md"
+        file.write_text('---\nid: c1\n---\n\n<span data-par-id="par-1" data-quote-type="writing">\nFirst sentence.\n</span>')
+        document = _make_document("d1", chapter)
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+
+        assert summary.changed == 1
+        paragraphs = [m for m, _ in _saved_paragraphs(uow)]
+        assert [p.quote_type for p in paragraphs] == ["writing"]
+        assert all(p.state is DataState.CHANGED for p in paragraphs)
+
     def test_chapter_from_another_document_is_rejected(self, nlp, tmp_path, header):
         file = tmp_path / "c1.md"
         file.write_text(f"{header}\n\nBody.")

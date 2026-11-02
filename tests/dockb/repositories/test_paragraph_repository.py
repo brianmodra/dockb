@@ -60,6 +60,16 @@ class TestSaveNewParagraph:
 
         _, params = extract_call(neo4j_session)
         assert params["chapter_id"] == "ch1"
+
+    def test_passes_the_quote_type(self, paragraph_repo, neo4j_session, paragraph):
+        paragraph.state = DataState.NEW
+        paragraph.quote_type = "writing"
+
+        paragraph_repo.save(paragraph, chapter_id="ch1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "SET p.quote_type = $quote_type" in cypher
+        assert params["quote_type"] == "writing"
         assert params["paragraph_id"] == paragraph.id
 
     def test_passes_sentence_ids(self, paragraph_repo, neo4j_session, paragraph):
@@ -237,6 +247,18 @@ class TestLoadParagraph:
         neo4j_session.run.return_value = [{"paragraph_id": "p-1"}]
         p = paragraph_repo.load("p-1", _OWNER)
         assert p.state == DataState.SYNC
+
+    def test_loads_the_quote_type_from_graph(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"paragraph_id": "p-1", "paragraph_quote_type": "reading"},
+        ]
+        p = paragraph_repo.load("p-1", _OWNER)
+        assert p is not None and p.quote_type == "reading"
+
+    def test_loads_an_empty_quote_type_when_the_graph_has_none(self, paragraph_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"paragraph_id": "p-1"}]
+        p = paragraph_repo.load("p-1", _OWNER)
+        assert p is not None and p.quote_type == ""
 
 
 # ---------------------------------------------------------------------------

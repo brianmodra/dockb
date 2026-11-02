@@ -70,21 +70,22 @@ def write_chapter_markdown(
 def _serialize_paragraph(paragraph: Paragraph) -> str:
     """Serialize one paragraph as a single identity span around its sentence lines."""
     if not paragraph.sentences:
-        return _serialize_plain_text(paragraph.get_text())
+        return _serialize_plain_text(paragraph.get_text(), quote_type=paragraph.quote_type)
     lines = [sentence.get_text().rstrip() for sentence in paragraph.sentences if sentence.get_text().strip()]
     if not lines:
         return ""
-    return _paragraph_span(paragraph.id, "\n".join(lines))
+    return _paragraph_span(paragraph.id, "\n".join(lines), quote_type=paragraph.quote_type)
 
 
-def _serialize_plain_text(text: str) -> str:
+def _serialize_plain_text(text: str, quote_type: str = "") -> str:
     """Wrap span-free text in a fresh-id paragraph identity span."""
     if not text.strip():
         return ""
-    return _paragraph_span(str(Paragraph().id), text)
+    return _paragraph_span(str(Paragraph().id), text, quote_type=quote_type)
 
 
-def _paragraph_span(paragraph_id: str, text: str) -> str:
+def _paragraph_span(paragraph_id: str, text: str, quote_type: str = "") -> str:
     par_id = html.escape(paragraph_id, quote=True)
     escaped = html.escape(text, quote=True)
-    return f'<span data-par-id="{par_id}">\n{escaped}\n</span>'
+    quote_attr = f' data-quote-type="{html.escape(quote_type, quote=True)}"' if quote_type else ""
+    return f'<span data-par-id="{par_id}"{quote_attr}>\n{escaped}\n</span>'

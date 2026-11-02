@@ -434,6 +434,35 @@ class TestLoadChapter:
         assert ch is not None
         assert ch.act == "Act I"
 
+    def test_loads_paragraph_quote_type_from_graph(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "chapter_id": "ch-1",
+                "chapter_title": "Intro",
+                "chapter_act": "Act I",
+                "chapter_category": "Chapter",
+                "paragraph_id": "p-1",
+                "paragraph_index": 0,
+                "paragraph_quote_type": "reading",
+                "sentence_id": None,
+                "sentence_index": None,
+                "token_id": None,
+                "token_index": None,
+                "token_text": None,
+                "token_type": None,
+                "token_trailing_ws": None,
+                "token_pos": None,
+                "token_lemma": None,
+                "token_is_digit": None,
+                "token_like_num": None,
+                "token_is_alpha": None,
+                "token_is_stop": None,
+            }
+        ]
+        ch = chapter_repo.load("ch-1", _OWNER)
+        assert ch is not None
+        assert ch.paragraphs[0].quote_type == "reading"
+
     def test_loads_category_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
             {

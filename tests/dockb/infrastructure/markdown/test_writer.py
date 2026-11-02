@@ -48,6 +48,11 @@ class TestSerializeBody:
         chapter = _chapter(_make_paragraph("First sentence.", "Second sentence.", p_id="p1"))
         assert writer.serialize_body(chapter, nlp) == ('<span data-par-id="p1">\nFirst sentence.\nSecond sentence.\n</span>')
 
+    def test_spans_carry_the_quote_type(self, nlp):
+        chapter = _chapter(_make_paragraph("Quoted.", p_id="p1"))
+        chapter.paragraphs[0].quote_type = "reading"
+        assert writer.serialize_body(chapter, nlp) == ('<span data-par-id="p1" data-quote-type="reading">\nQuoted.\n</span>')
+
     def test_spans_carry_paragraph_ids_and_no_sentence_id(self, nlp):
         chapter = _chapter(_make_paragraph("Alpha.", "Beta.", p_id="para-7"), _make_paragraph("Gamma.", p_id="para-8"))
         body = writer.serialize_body(chapter, nlp)

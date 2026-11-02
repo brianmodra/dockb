@@ -68,6 +68,48 @@ def test_changed_paragraph_carries_new_text():
 
     assert diff.changed == [ChangedParagraph(par_id="par-1", text="First sentence changed.\nSecond sentence.")]
     assert not diff.new
+
+
+def test_quote_type_change_with_identical_text_marks_changed():
+    old = _chapter([("par-1", ["First sentence."])])
+    old.paragraphs[0].quote_type = "reading"
+    body = '<span data-par-id="par-1" data-quote-type="writing">\nFirst sentence.\n</span>'
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.changed == [ChangedParagraph(par_id="par-1", text="First sentence.", quote_type="writing")]
+    assert not diff.new
+
+
+def test_removing_the_quote_type_marks_changed():
+    old = _chapter([("par-1", ["First sentence."])])
+    old.paragraphs[0].quote_type = "writing"
+    body = _span("par-1", "First sentence.")
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.changed == [ChangedParagraph(par_id="par-1", text="First sentence.", quote_type="")]
+    assert not diff.new
+
+
+def test_span_quote_attribute_parses_into_changed_paragraph():
+    old = _chapter([("par-1", ["First sentence. ", "Second sentence."])])
+    body = '<span data-par-id="par-1" data-quote-type="reading">\nFirst sentence changed.\nSecond sentence.\n</span>'
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.changed == [ChangedParagraph(par_id="par-1", text="First sentence changed.\nSecond sentence.", quote_type="reading")]
+
+
+def test_span_quote_attribute_parses_into_new_paragraph():
+    old = _chapter([("par-0", ["Existing paragraph."])])
+    body = (
+        _span("par-0", "Existing paragraph.") + "\n\n" + '<span data-quote-type="writing" data-par-id="fresh">\nQuoted paragraph.\n</span>'
+    )
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.new == [NewParagraph(text="Quoted paragraph.", quote_type="writing", after_id="par-0")]
     assert not diff.deleted
 
 

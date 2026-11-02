@@ -20,6 +20,7 @@ _NEW_CYPHER = """
 MATCH (c:Chapter {id: $chapter_id})-[:PART_OF]->(:Document {owner: $owner})
 MERGE (p:Paragraph {id: $paragraph_id})
 MERGE (p)-[:PART_OF]->(c)
+SET p.quote_type = $quote_type
 WITH p
 UNWIND $sentences AS s
 MERGE (sent:Sentence {id: s.id})
@@ -56,6 +57,7 @@ OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   p.id AS paragraph_id,
+  p.quote_type AS paragraph_quote_type,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
@@ -87,6 +89,7 @@ class ParagraphRepository(BaseRepository[Paragraph]):
             "chapter_id": parent_ids["chapter_id"],
             "owner": parent_ids["owner"],
             "paragraph_id": model.id,
+            "quote_type": model.quote_type,
             "sentences": [{"id": s.id, "index": i} for i, s in enumerate(model.sentences)],
         }
 
@@ -124,7 +127,7 @@ class ParagraphRepository(BaseRepository[Paragraph]):
         if first.get("paragraph_id") is None:
             return None
 
-        paragraph = Paragraph(id=first["paragraph_id"], state=DataState.SYNC)
+        paragraph = Paragraph(id=first["paragraph_id"], state=DataState.SYNC, quote_type=first.get("paragraph_quote_type") or "")
 
         seen_sentences: set[str] = set()
         current_sentence: Sentence | None = None

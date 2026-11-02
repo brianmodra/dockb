@@ -16,10 +16,11 @@ _SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
 
 @dataclass
 class ChangedParagraph:
-    """A paragraph present on both sides whose text differs."""
+    """A paragraph present on both sides whose text or quote type differs."""
 
     par_id: str
     text: str
+    quote_type: str = ""
 
 
 @dataclass
@@ -29,6 +30,7 @@ class NewParagraph:
     text: str
     after_id: str | None = None
     at_start: bool = False
+    quote_type: str = ""
 
 
 @dataclass
@@ -87,7 +89,8 @@ def detect_changes(  # pylint: disable=too-many-locals
         created = True
 
     old_texts = {paragraph.id: _old_texts(paragraph) for paragraph in old_chapter.paragraphs}
-    changed, new, seen_ids = _classify_blocks(body, old_texts, bool(old_chapter.paragraphs), single_newline_paragraphs)
+    old_quotes = {paragraph.id: paragraph.quote_type for paragraph in old_chapter.paragraphs}
+    changed, new, seen_ids = _classify_blocks(body, old_texts, old_quotes, bool(old_chapter.paragraphs), single_newline_paragraphs)
 
     return ChapterDiff(
         changed=changed,
@@ -105,6 +108,7 @@ def detect_changes(  # pylint: disable=too-many-locals
 def _classify_blocks(
     body: str,
     old_texts: dict[str, str],
+    old_quotes: dict[str, str],
     chapter_has_paragraphs: bool,
     single_newline_paragraphs: bool,
 ) -> tuple[list[ChangedParagraph], list[NewParagraph], set[str]]:
@@ -113,7 +117,9 @@ def _classify_blocks(
     *anchor* is the nearest preceding block that survives (an unchanged or
     changed paragraph); consecutive new blocks all carry the same anchor, and a
     leading-new block is flagged ``at_start`` only when the old chapter already
-    has paragraphs (so placement at the start matters).
+    has paragraphs (so placement at the start matters). A paragraph whose text
+    is unchanged but whose span's ``data-quote-type`` differs from the old
+    side's counts as changed too — the quote lives beside the text.
     """
     changed: list[ChangedParagraph] = []
     new: list[NewParagraph] = []
@@ -122,7 +128,7 @@ def _classify_blocks(
     for block in _paragraph_blocks(body, single_newline_paragraphs):
         if not block:
             continue
-        par_id, text = _parse_block(block)
+        par_id, quote_type, text = _parse_block(block)
         if not text.strip():
             if par_id is not None:
                 seen_ids.add(par_id)
@@ -133,11 +139,12 @@ def _classify_blocks(
                     text,
                     after_id=anchor,
                     at_start=anchor is None and chapter_has_paragraphs,
+                    quote_type=quote_type,
                 )
             )
         else:
-            if text != old_texts[par_id]:
-                changed.append(ChangedParagraph(par_id, text))
+            if text != old_texts[par_id] or quote_type != old_quotes.get(par_id, ""):
+                changed.append(ChangedParagraph(par_id, text, quote_type))
             anchor = par_id
         if par_id is not None:
             seen_ids.add(par_id)
@@ -183,23 +190,25 @@ def _paragraph_blocks(body: str, single_newline: bool) -> list[str]:
     return blocks
 
 
-def _parse_block(block: str) -> tuple[str | None, str]:
-    """Parse one paragraph block into ``(par_id, text)``.
+def _parse_block(block: str) -> tuple[str | None, str, str]:
+    """Parse one paragraph block into ``(par_id, quote_type, text)``.
 
     One identity span usually wraps the whole paragraph; its inner text minus the
     structural newlines after the open tag and before the close tag is the
-    paragraph text. Loose text before, between, and after spans is kept at its
+    paragraph text, and its ``data-quote-type`` attribute — when present — is the
+    paragraph's quote. Loose text before, between, and after spans is kept at its
     position, so hand-typed content appended after the closing span still belongs
     to the same paragraph.
     """
     matches = list(_SPAN_RE.finditer(block))
     if not matches:
-        return None, block
+        return None, "", block
     if len(matches) == 1 and not _span_attr(matches[0].group(1), "data-par-id"):
-        return None, block
+        return None, "", block
 
     parts: list[str] = []
     par_id: str | None = None
+    quote_type = ""
     position = 0
     for match in matches:
         parts.append(block[position : match.start()])
@@ -207,13 +216,14 @@ def _parse_block(block: str) -> tuple[str | None, str]:
         span_par_id = _span_attr(tag, "data-par-id")
         if par_id is None and span_par_id:
             par_id = span_par_id
+            quote_type = _span_attr(tag, "data-quote-type") or ""
         parts.append(html.unescape(match.group(2)).strip("\n"))
         position = match.end()
     parts.append(block[position:])
 
     if par_id is None:
-        return None, "".join(parts)
-    return par_id, "".join(parts)
+        return None, "", "".join(parts)
+    return par_id, quote_type, "".join(parts)
 
 
 def _span_attr(tag: str, name: str) -> str | None:

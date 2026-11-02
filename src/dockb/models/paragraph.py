@@ -14,6 +14,9 @@ class Paragraph(DockbModel):
     """A paragraph containing a list of sentences."""
 
     sentences: DockbCollection[Sentence] = Field(default_factory=DockbCollection)
+    # Empty when the paragraph is not a quote; otherwise the quote's type name
+    # ("reading", "writing"), as the canonical span's data-quote-type attribute.
+    quote_type: str = ""
 
     def get_text(self) -> str:
         if self.dirty:

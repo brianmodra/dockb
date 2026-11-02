@@ -567,6 +567,7 @@ def _skeleton(front_id: str | None, title: str) -> Chapter:
 def _build_paragraph(new: NewParagraph, nlp: Language) -> Paragraph:
     """Build a fresh NEW paragraph with Sentences sliced from *new*'s text."""
     paragraph = Paragraph()
+    paragraph.quote_type = new.quote_type
     paragraph.sentences[:] = _split_sentences(new.text, nlp)
     paragraph.state = DataState.NEW
     return paragraph
@@ -575,6 +576,7 @@ def _build_paragraph(new: NewParagraph, nlp: Language) -> Paragraph:
 def _apply_changed(chapter: Chapter, changed: ChangedParagraph, nlp: Language) -> Paragraph:
     """Replace *changed* paragraph's sentences and mark it CHANGED for persistence."""
     paragraph = next(p for p in chapter.paragraphs if p.id == changed.par_id)
+    paragraph.quote_type = changed.quote_type
     paragraph.sentences[:] = _split_sentences(changed.text, nlp)
     paragraph.state = DataState.CHANGED
     return paragraph

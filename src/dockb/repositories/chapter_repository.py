@@ -98,7 +98,7 @@ OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   c.id AS chapter_id, c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
-  p.id AS paragraph_id, rp.index AS paragraph_index,
+  p.id AS paragraph_id, rp.index AS paragraph_index, p.quote_type AS paragraph_quote_type,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
@@ -222,7 +222,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             p_id = rec.get("paragraph_id")
             if p_id is not None and p_id not in seen_paragraphs:
                 seen_paragraphs.add(p_id)
-                current_paragraph = Paragraph(id=p_id, state=DataState.SYNC)
+                current_paragraph = Paragraph(id=p_id, state=DataState.SYNC, quote_type=rec.get("paragraph_quote_type") or "")
                 chapter.paragraphs.append(current_paragraph)
 
             s_id = rec.get("sentence_id")
