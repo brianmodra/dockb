@@ -6,7 +6,8 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from "@codem
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
-import { WysiwygView, chapterBody } from "./wysiwyg";
+import { WysiwygView, chapterBody, quoteSignatureOf } from "./wysiwyg";
+import { openContextMenu } from "./contextMenu";
 import type { Mode } from "./menubar";
 
 export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDocument">;
@@ -69,7 +70,35 @@ export class EditPanel {
     this.view = new EditorView({ state, parent: this.rawHost });
     this.wysiwyg = new WysiwygView({ onChange: () => this.notifyDirty() });
     this.wysiwygHost.append(this.wysiwyg.element);
+    this.wysiwygHost.addEventListener("contextmenu", (event) => this.openParagraphMenu(event));
     this.applyMode();
+  }
+
+  /** Right-click inside a paragraph: the Edit ▸ Quote pulldown for that paragraph. */
+  private openParagraphMenu(event: MouseEvent): void {
+    event.preventDefault();
+    const current = this.wysiwyg.quoteTypeAtDom(event.target as Element);
+    if (current === null) {
+      return;
+    }
+    const setQuote = (quoteType: string): void => {
+      this.wysiwyg.setQuoteTypeAtDom(event.target as Element, quoteType);
+    };
+    openContextMenu(event.clientX, event.clientY, [
+      {
+        label: "Edit",
+        children: [
+          {
+            label: "Quote",
+            children: [
+              { label: "None", checked: current === "", onSelect: () => setQuote("") },
+              { label: "Reading", checked: current === "reading", onSelect: () => setQuote("reading") },
+              { label: "Writing", checked: current === "writing", onSelect: () => setQuote("writing") },
+            ],
+          },
+        ],
+      },
+    ]);
   }
 
   setMode(mode: Mode): void {
@@ -121,7 +150,8 @@ export class EditPanel {
     }
     return this.mode === "raw"
       ? this.view.state.doc.toString() !== this.lastCanonicalText
-      : this.wysiwyg.plainContent() !== chapterBody(this.lastCanonicalText);
+      : this.wysiwyg.plainContent() !== chapterBody(this.lastCanonicalText) ||
+          this.wysiwyg.quoteSignature() !== quoteSignatureOf(this.lastCanonicalText);
   }
 
   lastCanonical(): string | null {

@@ -217,6 +217,31 @@ body {
   background: #e8e8e5;
 }
 
+.context-item.is-checked::before {
+  content: "\2713\00a0";
+}
+
+.context-row {
+  position: relative;
+}
+
+.context-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  z-index: 101;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  padding: 2px 0;
+}
+
+.context-submenu--open {
+  display: block;
+}
+
 /* ---- move drop bar ---- */
 
 .chapter-list.is-moving {

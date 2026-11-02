@@ -435,4 +435,32 @@ describe("WysiwygView quoted paragraphs", () => {
     expect(view.content()).toContain('data-quote-type="reading"');
     void paragraph;
   });
+
+  it("reports the quote type of the paragraph a DOM node belongs to", () => {
+    const view = new WysiwygView();
+    view.setContent(
+      '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\n<span data-par-id="p-2">\nPlain.\n</span>',
+    );
+
+    const [quotedP, plainP] = view.element.querySelectorAll("p");
+    expect(view.quoteTypeAtDom(quotedP)).toBe("reading");
+    expect(view.quoteTypeAtDom(plainP)).toBe("");
+    expect(view.quoteTypeAtDom(null)).toBeNull();
+  });
+
+  it("sets the quote type on the paragraph under the pointer, minting an id when it has none", () => {
+    const view = new WysiwygView();
+    view.setContent(
+      '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\nPlain text.',
+    );
+    const [, plainBlock] = view.element.querySelectorAll("p");
+
+    expect(view.setQuoteTypeAtDom(plainBlock, "writing")).toBe(true);
+
+    const rendered = view.content();
+    expect(rendered).toContain('<span data-par-id="p-1" data-quote-type="reading">');
+    const written = rendered.split("\n\n").find((block) => block.includes("data-quote-type=\"writing\""));
+    expect(written).not.toBeUndefined();
+    expect(written!).toMatch(/<span data-par-id="[^"]+" data-quote-type="writing">/);
+  });
 });

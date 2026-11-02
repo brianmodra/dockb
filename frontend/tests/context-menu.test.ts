@@ -56,4 +56,51 @@ describe("context menu", () => {
     handle.close();
     expect(handle.element.isConnected).toBe(false);
   });
+
+  it("opens a nested pulldown and highlights the current choice", () => {
+    const onReading = vi.fn();
+    const handle = openContextMenu(10, 20, [
+      {
+        label: "Edit",
+        children: [
+          {
+            label: "Quote",
+            children: [
+              { label: "None" },
+              { label: "Reading", checked: true, onSelect: onReading },
+              { label: "Writing", onSelect: vi.fn() },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const editItem = handle.element.querySelector<HTMLElement>(".context-item")!;
+    expect(editItem.textContent).toBe("Edit");
+    editItem.click();
+    const quoteItem = Array.from(handle.element.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "Quote",
+    )!;
+    expect(quoteItem).not.toBeUndefined();
+    quoteItem.click();
+    const reading = Array.from(handle.element.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "Reading" && n.classList.contains("is-checked"),
+    );
+    expect(reading).not.toBeUndefined();
+
+    reading!.click();
+    expect(onReading).toHaveBeenCalled();
+    expect(handle.element.isConnected).toBe(false);
+  });
+
+  it("keeps the menu open while walking the submenus", () => {
+    const handle = openContextMenu(0, 0, [
+      { label: "Edit", children: [{ label: "Quote", children: [{ label: "None" }] }] },
+    ]);
+    handle.element.querySelector<HTMLElement>(".context-item")!.click();
+    Array.from(handle.element.querySelectorAll<HTMLElement>(".context-item"))
+      .find((n) => n.textContent === "Quote")!
+      .click();
+    expect(handle.element.isConnected).toBe(true);
+  });
 });

@@ -1,6 +1,10 @@
 export interface ContextMenuItem {
   label: string;
-  onSelect: () => void;
+  /** What happens when the item is chosen; items with a submenu need none. */
+  onSelect?: () => void;
+  /** The currently-chosen entry of a pulldown, drawn with a tick. */
+  checked?: boolean;
+  children?: ContextMenuItem[];
 }
 
 export interface ContextMenuHandle {
@@ -18,20 +22,6 @@ export function openContextMenu(
   element.dataset.testid = "context-menu";
   element.style.left = `${x}px`;
   element.style.top = `${y}px`;
-
-  for (const item of items) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "context-item";
-    button.textContent = item.label;
-    button.addEventListener("click", () => {
-      close();
-      item.onSelect();
-    });
-    element.append(button);
-  }
-
-  document.body.append(element);
 
   const close = (): void => {
     element.remove();
@@ -53,5 +43,42 @@ export function openContextMenu(
   document.addEventListener("mousedown", onBackgroundMousedown, true);
   window.addEventListener("keydown", onKeydown);
 
+  appendItems(element, items, close);
+
+  document.body.append(element);
+
   return { element, close };
+}
+
+/** Mount one level of items into *container*; a submenu opens when its parent is clicked. */
+function appendItems(container: HTMLElement, items: ContextMenuItem[], close: () => void): void {
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "context-item";
+    if (item.checked) {
+      button.classList.add("is-checked");
+    }
+    button.textContent = item.label;
+
+    if (item.children && item.children.length > 0) {
+      const submenu = document.createElement("div");
+      submenu.className = "context-submenu";
+      appendItems(submenu, item.children, close);
+      button.addEventListener("click", () => {
+        submenu.classList.toggle("context-submenu--open");
+      });
+      const row = document.createElement("div");
+      row.className = "context-row";
+      row.append(button, submenu);
+      container.append(row);
+      continue;
+    }
+
+    button.addEventListener("click", () => {
+      close();
+      item.onSelect?.();
+    });
+    container.append(button);
+  }
 }

@@ -85,6 +85,42 @@ describe("EditPanel", () => {
     expect(panel.element.querySelector(".ProseMirror")!.getAttribute("contenteditable")).not.toBe("false");
   });
 
+  it("quotes a paragraph from its right-click menu", async () => {
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("Body text.")) });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    const paragraph = panel.element.querySelector("p")!;
+    paragraph.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+
+    const menu = document.querySelector("[data-testid='context-menu']");
+    expect(menu).not.toBeNull();
+    const editItem = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "Edit",
+    )!;
+    editItem.click();
+    const quoteItem = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "Quote",
+    )!;
+    quoteItem.click();
+    // Nothing is quoted yet, so "None" is the highlighted choice.
+    const none = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "None" && n.classList.contains("is-checked"),
+    );
+    expect(none).not.toBeUndefined();
+
+    const reading = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "Reading",
+    )!;
+    reading.click();
+
+    await vi.waitFor(() =>
+      expect(panel.content()).toContain('data-quote-type="reading"'),
+    );
+    expect(panel.isDirty()).toBe(true);
+  });
+
   it("open saves the dirty buffer before loading another chapter", async () => {
     const api = fakeApi({
       getChapterDocument: vi.fn(async () => doc("Second")),

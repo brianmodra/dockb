@@ -90,6 +90,13 @@ function extractSpanAttrs(buffer: string): SpanAttrs {
   return { ids, quoteTypes };
 }
 
+/** The canonical *buffer*'s per-paragraph quote types, in order — see `WysiwygView.quoteSignature`. */
+export function quoteSignatureOf(buffer: string): string {
+  return extractSpanAttrs(buffer)
+    .quoteTypes.map((quote) => quote ?? "")
+    .join("\u241F");
+}
+
 export function chapterBody(buffer: string): string {
   const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
   const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
@@ -318,6 +325,65 @@ export class WysiwygView {
     this.innerView?.setProps({ editable: () => enabled });
   }
 
+  /**
+   * The quote type of the paragraph the event landed on, or null when off one.
+   *
+   * The paragraph is found through the event's DOM target — its rendered
+   * `<p>` — rather than pointer coordinates, so the answer follows the text
+   * instead of the geometry.
+   */
+  quoteTypeAtDom(target: EventTarget | null): string | null {
+    const pos = this.paragraphPosFromDom(target);
+    if (pos === null) {
+      return null;
+    }
+    const node = this.view.state.doc.nodeAt(pos);
+    return node?.type.name === "paragraph" ? (node.attrs.quoteType ?? "") : null;
+  }
+
+  /**
+   * Set the quote type of the paragraph the event landed on.
+   *
+   * A paragraph that has no id yet — brand-new, never saved — gains one now:
+   * the quote type lives in the canonical span, so without an id there would
+   * be nothing to carry it. Returns false when the pointer is not on a paragraph.
+   */
+  setQuoteTypeAtDom(target: EventTarget | null, quoteType: string): boolean {
+    const pos = this.paragraphPosFromDom(target);
+    if (pos === null) {
+      return false;
+    }
+    const node = this.view.state.doc.nodeAt(pos);
+    if (!node || node.type.name !== "paragraph") {
+      return false;
+    }
+    const attrs = {
+      id: node.attrs.id ?? crypto.randomUUID(),
+      quoteType,
+      blanksBefore: node.attrs.blanksBefore,
+    };
+    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null, attrs));
+    return true;
+  }
+
+  /** The document position that opens the paragraph *target* sits in, if any. */
+  private paragraphPosFromDom(target: EventTarget | null): number | null {
+    if (!this.innerView || !(target instanceof Element)) {
+      return null;
+    }
+    const dom = target.closest("p");
+    if (!dom || !this.innerView.dom.contains(dom)) {
+      return null;
+    }
+    try {
+      const pos = this.innerView.posAtDOM(dom, 0);
+      const $pos = this.innerView.state.doc.resolve(pos);
+      return $pos.depth >= 1 ? $pos.before(1) : null;
+    } catch {
+      return null;
+    }
+  }
+
   setContent(buffer: string): void {
     const { ids, quoteTypes } = extractSpanAttrs(buffer);
     const display = chapterBody(buffer);
@@ -358,6 +424,21 @@ export class WysiwygView {
 
   plainContent(): string {
     return this.innerView ? docToString(this.innerView.state.doc) : "";
+  }
+
+  /**
+   * The open doc's per-paragraph quote types, in order.
+   *
+   * `plainContent()` cannot see them — they are node attributes, not text —
+   * so the dirty check reads this beside it.
+   */
+  quoteSignature(): string {
+    if (!this.innerView) {
+      return "";
+    }
+    const types: string[] = [];
+    this.innerView.state.doc.forEach((paragraph) => types.push(paragraph.attrs.quoteType ?? ""));
+    return types.join("\u241F");
   }
 
   destroy(): void {
