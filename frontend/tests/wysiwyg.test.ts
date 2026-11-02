@@ -25,6 +25,7 @@ import {
   docToCanonical,
   docToString,
   findHeadingLines,
+  uniformQuoteType,
 } from "../src/renderer/layout/wysiwyg";
 import MarkdownIt from "markdown-it";
 
@@ -436,31 +437,50 @@ describe("WysiwygView quoted paragraphs", () => {
     void paragraph;
   });
 
-  it("reports the quote type of the paragraph a DOM node belongs to", () => {
-    const view = new WysiwygView();
-    view.setContent(
-      '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\n<span data-par-id="p-2">\nPlain.\n</span>',
-    );
-
-    const [quotedP, plainP] = view.element.querySelectorAll("p");
-    expect(view.quoteTypeAtDom(quotedP)).toBe("reading");
-    expect(view.quoteTypeAtDom(plainP)).toBe("");
-    expect(view.quoteTypeAtDom(null)).toBeNull();
-  });
-
-  it("sets the quote type on the paragraph under the pointer, minting an id when it has none", () => {
+  it("acts on the pointer's paragraph when the selection is empty", () => {
     const view = new WysiwygView();
     view.setContent(
       '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\nPlain text.',
     );
-    const [, plainBlock] = view.element.querySelectorAll("p");
+    const [quotedP, plainP] = view.element.querySelectorAll("p");
 
-    expect(view.setQuoteTypeAtDom(plainBlock, "writing")).toBe(true);
+    // The pointer's paragraph: the quoted one keeps its type, the plain one is span-less.
+    expect(view.quoteTypeAt(view.paragraphPositions(quotedP)[0])).toBe("reading");
+    expect(view.quoteTypeAt(view.paragraphPositions(plainP)[0])).toBe("");
+
+    expect(view.setQuoteTypeAtPositions(view.paragraphPositions(plainP), "writing")).toBe(true);
 
     const rendered = view.content();
     expect(rendered).toContain('<span data-par-id="p-1" data-quote-type="reading">');
-    const written = rendered.split("\n\n").find((block) => block.includes("data-quote-type=\"writing\""));
+    const written = rendered.split("\n\n").find((block) => block.includes('data-quote-type="writing"'));
     expect(written).not.toBeUndefined();
     expect(written!).toMatch(/<span data-par-id="[^"]+" data-quote-type="writing">/);
+  });
+
+  it("acts on every paragraph the selection spans, not just the one under the pointer", () => {
+    const view = new WysiwygView();
+    view.setContent(
+      '<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>\n\n<span data-par-id="p-3">\nThree.\n</span>',
+    );
+    const doc = view.view.state.doc;
+    // Select from the middle of "One." to the middle of "Three.".
+    const p3Start = doc.content.size - doc.child(2).nodeSize + 1;
+    view.view.dispatch(
+      view.view.state.tr.setSelection(TextSelection.create(doc, 3, p3Start + 3)),
+    );
+
+    const positions = view.paragraphPositions(null);
+
+    expect(positions.length).toBe(3);
+    view.setQuoteTypeAtPositions(positions, "reading");
+    const blocks = view.content().split("\n\n");
+    expect(blocks.filter((block) => block.includes('data-quote-type="reading"'))).toHaveLength(3);
+  });
+
+  it("ticks the pulldown's one choice only when every affected paragraph agrees", () => {
+    expect(uniformQuoteType(["reading", "reading"])).toBe("reading");
+    expect(uniformQuoteType(["reading", ""])).toBeNull();
+    expect(uniformQuoteType(["", ""])).toBe("");
+    expect(uniformQuoteType([])).toBe("");
   });
 });

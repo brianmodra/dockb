@@ -97,6 +97,19 @@ export function quoteSignatureOf(buffer: string): string {
     .join("\u241F");
 }
 
+/**
+ * The one quote type every *types* shares, or null when they disagree.
+ *
+ * A pulldown can only tick one entry: an empty list counts as `""` (nothing
+ * quoted), a disagreement as null (nothing ticked).
+ */
+export function uniformQuoteType(types: string[]): string | null {
+  if (types.length === 0) {
+    return "";
+  }
+  return types.every((type) => type === types[0]) ? types[0] : null;
+}
+
 export function chapterBody(buffer: string): string {
   const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
   const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
@@ -326,43 +339,64 @@ export class WysiwygView {
   }
 
   /**
-   * The quote type of the paragraph the event landed on, or null when off one.
+   * The document positions opening each paragraph a right-click acts on.
    *
-   * The paragraph is found through the event's DOM target — its rendered
-   * `<p>` — rather than pointer coordinates, so the answer follows the text
-   * instead of the geometry.
+   * A selection — even one spanning paragraphs — names every paragraph it
+   * touches; an empty selection falls back to the paragraph the pointer is on.
    */
-  quoteTypeAtDom(target: EventTarget | null): string | null {
-    const pos = this.paragraphPosFromDom(target);
-    if (pos === null) {
-      return null;
+  paragraphPositions(target: EventTarget | null): number[] {
+    if (!this.innerView) {
+      return [];
     }
+    const { from, to, empty } = this.innerView.state.selection;
+    if (empty) {
+      const pos = this.paragraphPosFromDom(target);
+      return pos === null ? [] : [pos];
+    }
+    const positions: number[] = [];
+    let offset = 0;
+    this.innerView.state.doc.forEach((node, localStart) => {
+      const contentStart = offset + 1;
+      const contentEnd = offset + node.nodeSize - 1;
+      if (contentEnd > from && contentStart < to) {
+        positions.push(localStart);
+      }
+      offset += node.nodeSize;
+    });
+    return positions;
+  }
+
+  /** The quote type of the paragraph at *pos* ("" when it is not a quote). */
+  quoteTypeAt(pos: number): string {
     const node = this.view.state.doc.nodeAt(pos);
-    return node?.type.name === "paragraph" ? (node.attrs.quoteType ?? "") : null;
+    return node?.type.name === "paragraph" ? (node.attrs.quoteType ?? "") : "";
   }
 
   /**
-   * Set the quote type of the paragraph the event landed on.
+   * Set the quote type of every paragraph at *positions*, in one transaction.
    *
    * A paragraph that has no id yet — brand-new, never saved — gains one now:
    * the quote type lives in the canonical span, so without an id there would
-   * be nothing to carry it. Returns false when the pointer is not on a paragraph.
+   * be nothing to carry it. One transaction keeps the whole marking one undo
+   * step and one save-worthy change.
    */
-  setQuoteTypeAtDom(target: EventTarget | null, quoteType: string): boolean {
-    const pos = this.paragraphPosFromDom(target);
-    if (pos === null) {
+  setQuoteTypeAtPositions(positions: number[], quoteType: string): boolean {
+    if (positions.length === 0) {
       return false;
     }
-    const node = this.view.state.doc.nodeAt(pos);
-    if (!node || node.type.name !== "paragraph") {
-      return false;
+    const tr = this.view.state.tr;
+    for (const pos of positions) {
+      const node = this.view.state.doc.nodeAt(pos);
+      if (!node || node.type.name !== "paragraph") {
+        continue;
+      }
+      tr.setNodeMarkup(pos, null, {
+        id: node.attrs.id ?? crypto.randomUUID(),
+        quoteType,
+        blanksBefore: node.attrs.blanksBefore,
+      });
     }
-    const attrs = {
-      id: node.attrs.id ?? crypto.randomUUID(),
-      quoteType,
-      blanksBefore: node.attrs.blanksBefore,
-    };
-    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null, attrs));
+    this.view.dispatch(tr);
     return true;
   }
 

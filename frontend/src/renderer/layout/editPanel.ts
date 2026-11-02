@@ -6,7 +6,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from "@codem
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
-import { WysiwygView, chapterBody, quoteSignatureOf } from "./wysiwyg";
+import { WysiwygView, chapterBody, quoteSignatureOf, uniformQuoteType } from "./wysiwyg";
 import { openContextMenu } from "./contextMenu";
 import type { Mode } from "./menubar";
 
@@ -74,15 +74,17 @@ export class EditPanel {
     this.applyMode();
   }
 
-  /** Right-click inside a paragraph: the Edit ▸ Quote pulldown for that paragraph. */
+  /** Right-click inside a paragraph: the Edit ▸ Quote pulldown for the selection's paragraphs. */
   private openParagraphMenu(event: MouseEvent): void {
     event.preventDefault();
-    const current = this.wysiwyg.quoteTypeAtDom(event.target as Element);
-    if (current === null) {
+    const positions = this.wysiwyg.paragraphPositions(event.target);
+    if (positions.length === 0) {
       return;
     }
+    const types = positions.map((pos) => this.wysiwyg.quoteTypeAt(pos));
+    const uniform = uniformQuoteType(types);
     const setQuote = (quoteType: string): void => {
-      this.wysiwyg.setQuoteTypeAtDom(event.target as Element, quoteType);
+      this.wysiwyg.setQuoteTypeAtPositions(positions, quoteType);
     };
     openContextMenu(
       event.clientX,
@@ -91,9 +93,9 @@ export class EditPanel {
         {
           label: "Quote",
           children: [
-            { label: "None", checked: current === "", onSelect: () => setQuote("") },
-            { label: "Reading", checked: current === "reading", onSelect: () => setQuote("reading") },
-            { label: "Writing", checked: current === "writing", onSelect: () => setQuote("writing") },
+            { label: "None", checked: uniform === "", onSelect: () => setQuote("") },
+            { label: "Reading", checked: uniform === "reading", onSelect: () => setQuote("reading") },
+            { label: "Writing", checked: uniform === "writing", onSelect: () => setQuote("writing") },
           ],
         },
       ],

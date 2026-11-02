@@ -96,7 +96,9 @@ its 10px floor.
   of the same canonical buffer; dirty = buffer vs last canonical, where the
   quote types count too (`quoteSignature`), so a quote-only change is still
   saved. Right-click inside a WYSIWYG paragraph opens **Edit ▸ Quote** —
-  None / Reading / Writing, the current one ticked; a quoted paragraph renders
+  None / Reading / Writing, ticked when every affected paragraph agrees; the
+  affected paragraphs are the selection's, or the pointer's when nothing is
+  selected — and a quoted paragraph renders
   indented (`4ch`) and its span carries `data-quote-type` in the canonical
   text. While a save
   or load is in flight the panel is greyed (`is-busy`) and frozen: clicks turn
