@@ -64,6 +64,11 @@ Rendering rules:
 - Every paragraph is exactly one `<span data-par-id>` element. The newlines
   after the open tag and before the close tag are structural, not content; the
   parser strips them.
+- A paragraph with a quote type (`Paragraph.quote_type`, e.g. `reading` or
+  `writing`) writes its `data-quote-type` on that span; a paragraph without one
+  writes no attribute, so an unquoted paragraph renders byte-for-byte as it did
+  before quotes existed. The reader takes the quote from the first
+  `data-par-id` span of the block.
 - A paragraph with sentences emits one rstripped sentence per line.
 - A paragraph without sentences, and a `dirty` chapter's blank-line block, is
   wrapped as raw text in a **fresh-id** span (a paragraph id is never reused);

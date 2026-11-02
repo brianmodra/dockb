@@ -91,7 +91,12 @@ its 10px floor.
 - `layout.ts` — window chrome, panel seams, mode, dirty badge, menubar username
   label, message sink.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
-  of the same canonical buffer; dirty = buffer vs last canonical. While a save
+  of the same canonical buffer; dirty = buffer vs last canonical, where the
+  quote types count too (`quoteSignature`), so a quote-only change is still
+  saved. Right-click inside a WYSIWYG paragraph opens **Edit ▸ Quote** —
+  None / Reading / Writing, the current one ticked; a quoted paragraph renders
+  indented (`4ch`) and its span carries `data-quote-type` in the canonical
+  text. While a save
   or load is in flight the panel is greyed (`is-busy`) and frozen: clicks turn
   away, both editors read contenteditable=false, and focus leaves the buffer,
   until the operation completes or fails. The raw view

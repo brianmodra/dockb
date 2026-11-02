@@ -127,7 +127,9 @@ old chapter to diff against: `get_chapter` is not called and `create_chapter` bu
 - A **span-bearing block** holds one `<span data-par-id="…">` wrapping the whole paragraph; the
   span's inner text minus the structural newlines after the open tag and before the close tag is
   the paragraph text. `data-par-id` is paragraph identity **only** — never part of the paragraph
-  text. Loose (unspanned) text before, between, and after spans is kept at its position; nothing
+  text. A `data-quote-type="…"` attribute on that span is the paragraph's quote type (""/absent
+  when it is not a quote); like the id it is never part of the paragraph text. Loose (unspanned)
+  text before, between, and after spans is kept at its position; nothing
   is dropped. The paragraph id is taken from the first `data-par-id` span in the block.
 - A **span-free block** (hand-typed, pre-hydration) yields no paragraph id.
 - A block yields **raw paragraph text**, not sentences: the caller splits it with spaCy. Sentence
@@ -146,11 +148,14 @@ into fake paragraphs. The write-back is always canonical.
 
 ## Classification
 
-- **changed** — id present in the DB chapter and in the new file, sentence texts differ
-  → `ChangedParagraph(id, new_sentence_texts)`. The paragraph's whole new sentence list is carried;
+- **changed** — id present in the DB chapter and in the new file, and the sentence texts differ
+  **or the span's `data-quote-type` differs from the old side's** (`ChangedParagraph.quote_type`
+  carries the file's value, `""` when the attribute is absent — so clearing a quote is a change
+  too)
+  → `ChangedParagraph(id, new_sentence_texts, quote_type)`. The paragraph's whole new sentence list is carried;
   every sentence is replaced by the caller.
-- **unchanged** — id in both, sentence texts identical → **omitted entirely**.
-- **new** — no id, or an id not present in the DB chapter → `NewParagraph(sentence_texts, …)`.
+- **unchanged** — id in both, sentence texts identical **and** the quote type the same → **omitted entirely**.
+- **new** — no id, or an id not present in the DB chapter → `NewParagraph(sentence_texts, …, quote_type)`.
   A stale/unknown `data-par-id` is ignored: never reported, never stripped, never mutated.
   Positioning is described under "Data structures" below.
 - **deleted** — DB paragraph ids absent from the new file → listed as ids only.
