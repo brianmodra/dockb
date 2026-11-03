@@ -37,6 +37,7 @@ from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.services.chapter_front_matter import set_pov as apply_set_pov
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
@@ -619,6 +620,28 @@ class ChapterService:
                     uow.commit()
         self._chapter_repo.reorder(document_id, ordered_ids, owner=owner)
         return ch
+
+    def set_pov(self, chapter_id: str, name: str, *, owner: str) -> dict[str, object] | None:
+        """Set, suggest, or clear the chapter's point-of-view character.
+
+        The matching and persistence live in :mod:`dockb.services.chapter_front_matter`."""
+        ch = self._chapter_repo.load(chapter_id, owner)
+        if ch is None:
+            return None
+        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
+        if document_id is None:
+            return None
+        document = self._document_repo.load_shell(document_id, owner) if self._document_repo is not None else None
+        return apply_set_pov(
+            ch,
+            document_id,
+            name,
+            chapter_repo=self._chapter_repo,
+            uow_factory=self._uow_factory,
+            store=self._store(owner),
+            document=document,
+            owner=owner,
+        )
 
     def renumber(self, document_id: str, *, owner: str, start: int = 1) -> list[dict[str, str]] | None:
         """Renumber every act chapter of *document_id*, from *start*, in display order.

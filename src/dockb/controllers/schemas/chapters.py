@@ -51,6 +51,7 @@ class ChapterImportSummaryWire(BaseModel):
     changed: int
     added: int
     deleted: int
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ChapterDocumentRequest(BaseModel):
@@ -64,3 +65,30 @@ class ChapterDocumentResponse(BaseModel):
 
     content: str
     summary: ChapterImportSummaryWire | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PovRequest(BaseModel):
+    """POST /api/chapters/{id}/pov request body — the typed character name."""
+
+    name: str = ""
+
+
+class PovCharacterWire(BaseModel):
+    """The POV character the chapter is written from."""
+
+    id: str
+    title: str
+
+
+class PovResponse(BaseModel):
+    """POST /api/chapters/{id}/pov response.
+
+    ``applied`` is True when the pov was set (``pov`` names the character) or
+    cleared (``pov`` null). False means nothing was applied: ``warning`` says
+    why, and ``pov`` carries the suggested character when there is one.
+    """
+
+    applied: bool
+    pov: PovCharacterWire | None = None
+    warning: str | None = None

@@ -80,6 +80,50 @@ RETURN c.title AS title
 LIMIT 1
 """
 
+# The pov matcher: one word matches the first name, then a nickname, then the
+# surname (precedence by ORDER BY); two words are the first and surname in that
+# order; three or more are the full name, first name, middle names, and surname
+# joined with spaces.
+_FIND_BY_ONE_WORD_CYPHER = """
+MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+WITH c, CASE
+  WHEN toLower(c.first_name) = $w0 THEN 0
+  WHEN toLower($w0) IN [n IN c.nicknames | toLower(n)] THEN 1
+  WHEN toLower(c.surname) = $w0 THEN 2
+  ELSE 3
+END AS priority
+WHERE priority < 3
+RETURN c.id AS id, c.title AS title
+ORDER BY priority
+LIMIT 1
+"""
+
+_FIND_BY_TWO_WORDS_CYPHER = """
+MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+WHERE toLower(c.first_name + ' ' + c.surname) = $full
+RETURN c.id AS id, c.title AS title
+LIMIT 1
+"""
+
+_FIND_BY_FULL_NAME_CYPHER = """
+MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+WHERE toLower(reduce(s = c.first_name, n IN coalesce(c.middle_names, []) | s + ' ' + n) + ' ' + c.surname) = $full
+RETURN c.id AS id, c.title AS title
+LIMIT 1
+"""
+
+# The "perhaps you meant" pass: the typed text (at least three characters,
+# enforced by the service) sitting inside any of a character's names.
+_SUGGEST_CYPHER = """
+MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+WHERE toLower(c.first_name) CONTAINS $text
+   OR toLower(c.surname) CONTAINS $text
+   OR toLower(c.first_name + ' ' + c.surname) CONTAINS $text
+   OR any(n IN c.nicknames WHERE toLower(n) CONTAINS $text)
+RETURN c.id AS id, c.title AS title
+LIMIT 1
+"""
+
 _RETITLE_CYPHER = """
 UNWIND $entries AS entry
 MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
@@ -126,6 +170,15 @@ RETURN
   t.is_stop AS token_is_stop
 ORDER BY paragraph_index, sentence_index, token_index
 """
+
+
+def _find_by_name_cypher(word_count: int) -> str:
+    """The pov matcher's Cypher for *word_count* typed words (see find_character_by_name)."""
+    if word_count == 1:
+        return _FIND_BY_ONE_WORD_CYPHER
+    if word_count == 2:
+        return _FIND_BY_TWO_WORDS_CYPHER
+    return _FIND_BY_FULL_NAME_CYPHER
 
 
 class ChapterRepository(BaseRepository[Chapter]):
@@ -192,6 +245,21 @@ class ChapterRepository(BaseRepository[Chapter]):
             return None
         return str(records[0].get("document_id")) if records[0].get("document_id") is not None else None
 
+    def find_characters_containing(self, document_id: str, text: str, owner: str) -> list[dict[str, str]]:
+        """Return the Character chapters whose names contain *text*, best first.
+
+        The "perhaps you meant" pass behind a failed pov match: the typed text
+        (the service enforces at least three characters) sits inside a first
+        name, a surname, the first-and-surname pair, or a nickname.
+        """
+        return [
+            {"id": str(record["id"]), "title": str(record["title"])}
+            for record in self._session.run(
+                _SUGGEST_CYPHER,
+                {"document_id": document_id, "text": text.lower(), "owner": owner},
+            )
+        ]
+
     def reorder(self, document_id: str, ordered_ids: list[str], owner: str) -> None:
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
         entries = [{"id": chapter_id, "index": i} for i, chapter_id in enumerate(ordered_ids)]
@@ -228,6 +296,29 @@ class ChapterRepository(BaseRepository[Chapter]):
         if not records:
             return None
         return str(records[0].get("title")) if records[0].get("title") is not None else None
+
+    def find_character_by_name(self, document_id: str, words: list[str], owner: str) -> dict[str, str] | None:
+        """Return the Character chapter *words* name, or None when none does.
+
+        The words are the caller's already-split, already-case-preserved text:
+        one word matches the first name, then a nickname, then the surname; two
+        words are the first name and surname in that order; three or more are
+        the full name, first name, middle names, and surname joined with
+        spaces. All comparisons are case-insensitive.
+        """
+        cypher = _find_by_name_cypher(len(words))
+        params: dict[str, Any] = {"document_id": document_id, "owner": owner}
+        if len(words) == 1:
+            params["w0"] = words[0].lower()
+        else:
+            params["full"] = " ".join(word.lower() for word in words)
+        records = list(self._session.run(cypher, params))
+        if not records:
+            return None
+        record = records[0]
+        if record.get("id") is None:
+            return None
+        return {"id": str(record["id"]), "title": str(record["title"])}
 
     def retitle(self, document_id: str, entries: list[dict[str, str]], owner: str) -> None:
         """Rewrite the chapters' `title`/`title_key` to their entry's title, in one transaction.

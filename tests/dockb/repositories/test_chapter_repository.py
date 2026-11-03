@@ -372,7 +372,7 @@ class TestListByDocument:
 # ---------------------------------------------------------------------------
 
 
-class TestLoadChapter:
+class TestLoadChapter:  # pylint: disable=too-many-public-methods
     """Behaviour of ChapterRepository.load()."""
 
     def test_returns_none_when_not_found(self, chapter_repo, neo4j_session):
@@ -564,6 +564,55 @@ class TestLoadChapter:
     def test_character_title_by_id_is_none_when_dangling(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = []
         assert chapter_repo.find_character_title("d-1", "ghost", _OWNER) is None
+
+    def test_finds_a_character_by_first_name_before_nickname_then_surname(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "k1", "title": "Karakas"}]
+
+        found = chapter_repo.find_character_by_name("d-1", ["kiral"], _OWNER)
+
+        assert found == {"id": "k1", "title": "Karakas"}
+        cypher, params = extract_call(neo4j_session)
+        assert "toLower(c.first_name) = $w0" in cypher
+        assert "IN [n IN c.nicknames | toLower(n)]" in cypher
+        assert "toLower(c.surname) = $w0" in cypher
+        assert "ORDER BY priority" in cypher
+        assert "LIMIT 1" in cypher
+        assert params["w0"] == "kiral"
+        assert params["document_id"] == "d-1"
+        assert params["owner"] == _OWNER
+
+    def test_finds_a_character_by_two_words_as_first_then_surname(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "k1", "title": "Karakas"}]
+
+        chapter_repo.find_character_by_name("d-1", ["kiral", "karakas"], _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "toLower(c.first_name + ' ' + c.surname) = $full" in cypher
+        assert params["full"] == "kiral karakas"
+
+    def test_finds_a_character_by_three_words_as_the_full_name(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "k1", "title": "Karakas"}]
+
+        chapter_repo.find_character_by_name("d-1", ["kiral", "edgar", "karakas"], _OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "reduce" in cypher
+        assert params["full"] == "kiral edgar karakas"
+
+    def test_character_by_name_is_none_when_nothing_matches(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert chapter_repo.find_character_by_name("d-1", ["ghost"], _OWNER) is None
+
+    def test_suggests_characters_whose_names_contain_the_typed_text(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "k1", "title": "Karakas"}]
+
+        suggestions = chapter_repo.find_characters_containing("d-1", "kira", _OWNER)
+
+        assert suggestions == [{"id": "k1", "title": "Karakas"}]
+        cypher, params = extract_call(neo4j_session)
+        assert "CONTAINS $text" in cypher
+        assert params["text"] == "kira"
+        assert "category: 'Character'" in cypher
 
     def test_loads_character_properties_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [

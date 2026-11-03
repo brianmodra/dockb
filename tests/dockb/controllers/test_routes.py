@@ -134,6 +134,11 @@ class MockChapterService:
     def renumber(self, document_id: str, owner: str = "") -> list[dict[str, str]] | None:  # pylint: disable=unused-argument
         return []
 
+    def set_pov(self, chapter_id: str, name: str, owner: str = "") -> dict[str, object] | None:
+        if chapter_id not in self._chapters:
+            return None
+        return {"applied": True, "pov": None, "warning": None}
+
     def open_document(self, chapter_id: str, owner: str = "") -> str | None:
         if chapter_id not in self._chapters:
             return None
@@ -145,7 +150,9 @@ class MockChapterService:
         self._documents[chapter_id] = content
         return SimpleNamespace(
             content=content,
-            summary=SimpleNamespace(created=False, changed=1, added=0, deleted=0),
+            summary=SimpleNamespace(
+                created=False, changed=1, added=0, deleted=0, warnings=["The pov 'X' did not match any character chapter"]
+            ),
         )
 
 
@@ -527,6 +534,43 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
             )
         assert resp.status_code == 409
 
+    def test_set_pov_applies(self) -> None:
+        self.ch_svc.create("c1", "Ch1", "d1")
+        with patch.object(
+            self.ch_svc,
+            "set_pov",
+            wraps=self.ch_svc.set_pov,
+        ) as set_pov_mock:
+            set_pov_mock.return_value = {
+                "applied": True,
+                "pov": {"id": "k1", "title": "Karakas"},
+                "warning": None,
+            }
+            resp = self.client.post("/api/chapters/c1/pov", json={"name": "Kiral"})
+        assert resp.status_code == 200
+        assert resp.json()["applied"] is True
+        assert resp.json()["pov"] == {"id": "k1", "title": "Karakas"}
+        set_pov_mock.assert_called_once_with("c1", "Kiral", owner="acct-1")
+
+    def test_set_pov_reports_a_suggestion_without_applying(self) -> None:
+        with patch.object(
+            self.ch_svc,
+            "set_pov",
+            return_value={
+                "applied": False,
+                "pov": None,
+                "warning": 'The pov "Kira" did not match; perhaps you meant "Karakas"',
+            },
+        ):
+            resp = self.client.post("/api/chapters/c1/pov", json={"name": "Kira"})
+        assert resp.status_code == 200
+        assert resp.json()["applied"] is False
+        assert resp.json()["warning"].endswith('perhaps you meant "Karakas"')
+
+    def test_set_pov_unknown_chapter_is_404(self) -> None:
+        resp = self.client.post("/api/chapters/ghost/pov", json={"name": "Karakas"})
+        assert resp.status_code == 404
+
     def test_renumber_chapters(self) -> None:
         renames = [{"id": "c1", "old_title": "Ch 2", "new_title": "Ch 1"}]
         with patch.object(self.ch_svc, "renumber", wraps=self.ch_svc.renumber) as renumber_mock:
@@ -576,7 +620,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
         self.ch_svc.create("c1", "Intro", "d1")
         resp = self.client.get("/api/chapters/c1/document")
         assert resp.status_code == 200
-        assert resp.json() == {"content": "# New\n", "summary": None}
+        assert resp.json() == {"content": "# New\n", "summary": None, "warnings": []}
 
     def test_get_chapter_document_not_found(self) -> None:
         resp = self.client.get("/api/chapters/nonexistent/document")
@@ -592,6 +636,7 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
         assert data["summary"]["changed"] == 1
         assert data["summary"]["added"] == 0
         assert data["summary"]["deleted"] == 0
+        assert data["warnings"] == ["The pov 'X' did not match any character chapter"]
 
     def test_put_chapter_document_not_found(self) -> None:
         resp = self.client.put("/api/chapters/nonexistent/document", json={"content": "x"})

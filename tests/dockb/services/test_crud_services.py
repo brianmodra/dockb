@@ -140,13 +140,21 @@ class StubOwnedRepo(StubRepo):
         return super().load(model_id)
 
 
-class StubChapterRepo(StubOwnedRepo):
+class StubChapterRepo(StubOwnedRepo):  # pylint: disable=too-many-instance-attributes
     def __init__(self) -> None:
         super().__init__()
         self._document_of: dict[str, str] = {}
         self._index_of: dict[str, int] = {}
         self._reorders: list[tuple[str, list[str]]] = []
         self._retitles: list[tuple[str, list[dict[str, str]]]] = []
+        self._pov_lookups: list[tuple[str, list[str], str]] = []
+        self._pov_matches: dict[tuple[str, ...], dict[str, str]] = {}
+        self._pov_suggestions: dict[str, list[dict[str, str]]] = {}
+        self._pov_ids_by_title: dict[str, str] = {}
+        self._pov_titles_by_id: dict[str, str] = {}
+        self._pov_suggestion_lookups: list[tuple[str, str, str]] = []
+        self._pov_title_lookups: list[tuple[str, str, str]] = []
+        self._pov_id_lookups: list[tuple[str, str, str]] = []
 
     def set_document(self, chapter_id: str, document_id: str) -> None:
         self._document_of[chapter_id] = document_id
@@ -179,6 +187,22 @@ class StubChapterRepo(StubOwnedRepo):
 
     def retitle(self, document_id: str, entries: list[dict[str, str]], owner: str = "") -> None:  # pylint: disable=unused-argument
         self._retitles.append((document_id, list(entries)))
+
+    def find_character_by_name(self, document_id: str, words: list[str], owner: str = "") -> dict[str, str] | None:
+        self._pov_lookups.append((document_id, list(words), owner))
+        return self._pov_matches.get(tuple(word.lower() for word in words))
+
+    def find_characters_containing(self, document_id: str, text: str, owner: str = "") -> list[dict[str, str]]:
+        self._pov_suggestion_lookups.append((document_id, text, owner))
+        return self._pov_suggestions.get(text.lower(), [])
+
+    def find_character_id_by_title(self, document_id: str, title: str, owner: str = "") -> str | None:
+        self._pov_title_lookups.append((document_id, title, owner))
+        return self._pov_ids_by_title.get(title)
+
+    def find_character_title(self, document_id: str, pov_id: str, owner: str = "") -> str | None:
+        self._pov_id_lookups.append((document_id, pov_id, owner))
+        return self._pov_titles_by_id.get(pov_id)
 
 
 class StubParagraphRepo(StubOwnedRepo):
@@ -959,6 +983,70 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         with pytest.raises(DuplicateTitleError):
             self.svc.renumber("d1", owner=self._OWNER)
         assert not self.repo._retitles
+
+    def test_set_pov_clears_when_the_name_is_empty(self) -> None:
+        self._own_document()
+        chapter = Chapter(id="c1", title="Opening 1", pov="k1", state=DataState.SYNC)
+        self.repo._store["c1"] = chapter
+        self.repo.set_document("c1", "d1")
+
+        result = self.svc.set_pov("c1", "  ", owner=self._OWNER)
+
+        assert result == {"applied": True, "pov": None, "warning": None}
+        assert chapter.pov == ""
+        assert self.uow.registered
+
+    def test_set_pov_applies_a_matched_character(self, tmp_path) -> None:
+        chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
+        self.repo._store["c1"] = chapter
+        self.repo.set_document("c1", "d1")
+        self.repo._pov_matches[("kiral",)] = {"id": "k1", "title": "Karakas"}
+        doc_repo = StubDocumentRepo()
+        doc_repo._store["d1"] = Document(id="d1", title="T", author="A", owner=self._OWNER, state=DataState.SYNC)
+        store = DocumentStore(base_dir=tmp_path, account_id=self._OWNER)
+        store.write_chapter("T", "", "Opening 1", "---\nid: c1\ntitle: Opening 1\n---\n\nbody\n")
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+        )
+
+        result = svc.set_pov("c1", "Kiral", owner=self._OWNER)
+
+        assert result == {"applied": True, "pov": {"id": "k1", "title": "Karakas"}, "warning": None}
+        assert chapter.pov == "k1"
+        content = store.read_chapter("T", "", "Opening 1")
+        assert content is not None and "pov: Karakas" in content
+
+    def test_set_pov_suggests_instead_of_applying_when_only_a_substring_matches(self) -> None:
+        chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
+        self.repo._store["c1"] = chapter
+        self.repo.set_document("c1", "d1")
+        self.repo._pov_suggestions["kira"] = [{"id": "k1", "title": "Karakas"}]
+
+        result = self.svc.set_pov("c1", "Kira", owner=self._OWNER)
+
+        assert result == {
+            "applied": False,
+            "pov": None,
+            "warning": 'The pov "Kira" did not match any character chapter; perhaps you meant "Karakas"',
+        }
+        assert chapter.pov == ""
+        assert not self.uow.registered
+
+    def test_set_pov_warns_when_nothing_matches(self) -> None:
+        chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
+        self.repo._store["c1"] = chapter
+        self.repo.set_document("c1", "d1")
+
+        result = self.svc.set_pov("c1", "Zzz", owner=self._OWNER)
+
+        assert result == {"applied": False, "pov": None, "warning": 'The pov "Zzz" did not match any character chapter'}
+        assert chapter.pov == ""
+
+    def test_set_pov_of_an_unknown_chapter_is_none(self) -> None:
+        assert self.svc.set_pov("nope", "Karakas", owner=self._OWNER) is None
 
     def test_renumber_unknown_document_is_none(self) -> None:
         assert self.svc.renumber("nope", owner=self._OWNER) is None

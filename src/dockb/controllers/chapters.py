@@ -15,6 +15,8 @@ from dockb.controllers.schemas.chapters import (
     ChapterDocumentResponse,
     ChapterImportSummaryWire,
     CreateChapterRequest,
+    PovRequest,
+    PovResponse,
     RenumberChaptersRequest,
     ReorderChapterRequest,
     UpdateChapterRequest,
@@ -123,6 +125,20 @@ def get_chapter_document(
     return ChapterDocumentResponse(content=content).model_dump()
 
 
+@router.post("/{chapter_id}/pov")
+def set_pov(
+    chapter_id: str,
+    body: PovRequest,
+    svc: Any = Depends(get_ch_service),
+    owner: str = Depends(get_owner),
+) -> dict[str, Any]:
+    """Set, suggest, or clear the chapter's point-of-view character."""
+    result = svc.set_pov(chapter_id, body.name, owner=owner)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
+    return PovResponse(**result).model_dump()
+
+
 @router.put("/{chapter_id}/document")
 def put_chapter_document(
     chapter_id: str,
@@ -141,7 +157,9 @@ def put_chapter_document(
             changed=summary.changed,
             added=summary.added,
             deleted=summary.deleted,
+            warnings=list(summary.warnings) if summary.warnings else [],
         ),
+        warnings=list(summary.warnings) if summary.warnings else [],
     ).model_dump()
 
 
