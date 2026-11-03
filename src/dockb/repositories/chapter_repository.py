@@ -142,7 +142,8 @@ SET c.title_key = c.id
 
 _LIST_BY_DOCUMENT_CYPHER = """
 MATCH (c:Chapter)-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
-RETURN c.id AS id, c.title AS title, c.act AS act, c.category AS category, r.index AS index
+OPTIONAL MATCH (pov:Chapter {id: c.pov})
+RETURN c.id AS id, c.title AS title, c.act AS act, c.category AS category, r.index AS index, pov.title AS pov
 ORDER BY r.index
 """
 
@@ -229,6 +230,7 @@ class ChapterRepository(BaseRepository[Chapter]):
                 "act": r.get("act") or "",
                 "category": r.get("category") or "Chapter",
                 "index": r.get("index") or 0,
+                "pov": r.get("pov") or "",
             }
             for r in records
         ]

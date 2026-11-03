@@ -303,13 +303,13 @@ class TestListByDocument:
 
     def test_returns_id_title_and_index(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0, "pov": ""},
+            {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1, "pov": ""},
         ]
         result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == [
-            {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "", "category": "Chapter", "index": 0, "pov": ""},
+            {"id": "ch-2", "title": "Chapter 2", "act": "", "category": "Chapter", "index": 1, "pov": ""},
         ]
 
     def test_orders_by_relationship_index(self, chapter_repo, neo4j_session):
@@ -331,24 +331,24 @@ class TestListByDocument:
 
     def test_returns_act(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0, "pov": ""},
+            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1, "pov": ""},
         ]
         result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == [
-            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
-            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0, "pov": ""},
+            {"id": "ch-2", "title": "Chapter 2", "act": "Act II", "category": "Chapter", "index": 1, "pov": ""},
         ]
 
     def test_returns_category(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
-            {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0, "pov": ""},
+            {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1, "pov": ""},
         ]
         result = chapter_repo.list_by_document("d-1", _OWNER)
         assert result == [
-            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0},
-            {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1},
+            {"id": "ch-1", "title": "Chapter 1", "act": "Act I", "category": "Chapter", "index": 0, "pov": ""},
+            {"id": "ch-2", "title": "Dramatis", "act": "", "category": "Character", "index": 1, "pov": ""},
         ]
 
     def test_defaults_missing_act_to_empty(self, chapter_repo, neo4j_session):
@@ -532,6 +532,19 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
         ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.category == "Character"
+
+    def test_list_carries_the_pov_character_title(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "c1", "title": "Opening 1", "act": "Act I", "category": "Chapter", "index": 0, "pov": "Karakas"},
+            {"id": "k1", "title": "Karakas", "act": "", "category": "Character", "index": 1, "pov": None},
+        ]
+
+        rows = chapter_repo.list_by_document("d-1", _OWNER)
+
+        assert rows[0]["pov"] == "Karakas"
+        assert rows[1]["pov"] == ""
+        cypher, _ = extract_call(neo4j_session)
+        assert "pov:Chapter {id: c.pov}" in cypher
 
     def test_loads_the_pov_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_pov": "k1"}]

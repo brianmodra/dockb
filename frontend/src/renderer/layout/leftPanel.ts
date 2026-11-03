@@ -114,7 +114,7 @@ export class LeftPanel {
     if (!this.documentId) {
       return;
     }
-    let initial = "";
+    let initial = this.chapterList.chapter(chapterId)?.pov ?? "";
     let warning: string | undefined;
     for (;;) {
       const { value, input } = await povModal({

@@ -347,6 +347,26 @@ describe("LeftPanel", () => {
     await vi.waitFor(() => expect(document.querySelector("[data-testid='pov-input']")).toBeNull());
   });
 
+  it("pre-fills the POV modal with the chapter's existing POV character", async () => {
+    const setPov = vi.fn(async () => ({ applied: true, pov: null, warning: null }));
+    const api = fakeApi({
+      listChapters: vi.fn(
+        async (): Promise<ChapterListRow[]> => [{ id: "a", title: "Opening 1", act: "I", index: 0, pov: "Karakas" }],
+      ),
+      setPov,
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"))
+      .find((n) => n.textContent === "POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(document.querySelector<HTMLInputElement>("[data-testid='pov-input']")!.value).toBe("Karakas");
+  });
+
   it("tells the shell when a chapter's POV was set", async () => {
     const setPov = vi.fn(async () => ({ applied: true, pov: { id: "k1", title: "Karakas" }, warning: null }));
     const api = fakeApi({

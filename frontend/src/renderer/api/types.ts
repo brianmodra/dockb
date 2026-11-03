@@ -85,6 +85,8 @@ export interface ChapterListRow {
   act: string;
   index: number;
   category?: "Chapter" | "Character";
+  /** The chapter's POV character's title, when one is set. */
+  pov?: string | null;
 }
 
 export interface ChapterRelations {
