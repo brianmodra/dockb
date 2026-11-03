@@ -50,7 +50,7 @@ describe("EditPanel", () => {
 
     const header = panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!;
     expect(header).not.toBeNull();
-    expect(header.textContent).toBe("Kiral Karakas — 34");
+    expect(header.textContent).toBe("Kiral Karakas - 34");
     expect(header.tagName).not.toBe("INPUT");
     expect(header.getAttribute("contenteditable")).toBe("false");
   });

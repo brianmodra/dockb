@@ -25,6 +25,33 @@ describe("frontMatterFields", () => {
     expect(fields.nicknames).toEqual(["Adams", "Jer"]);
   });
 
+  it("reads block-style lists (one dash per line)", () => {
+    const buffer = [
+      "---",
+      "first_name: Jeremiah",
+      "surname: Adams",
+      "nicknames:",
+      "- Adams",
+      "- Jer",
+      "- Jer-bear",
+      "midle_names:",
+      "- Edgar",
+      "age: 32",
+      "location: Brisbane",
+      "---",
+      "",
+      "Body.",
+      "",
+    ].join("\n");
+    const fields = frontMatterFields(buffer);
+    expect(fields.firstName).toBe("Jeremiah");
+    expect(fields.surname).toBe("Adams");
+    expect(fields.nicknames).toEqual(["Adams", "Jer", "Jer-bear"]);
+    expect(fields.middleNames).toEqual(["Edgar"]);
+    expect(fields.age).toBe("32");
+    expect(fields.location).toBe("Brisbane");
+  });
+
   it("leaves the fields undefined when the front matter is absent", () => {
     expect(frontMatterFields("Body without front matter.\n").title).toBeUndefined();
   });
@@ -38,17 +65,17 @@ describe("characterHeaderText", () => {
     expect(characterHeaderText(fields)).toBe("Kiral Edgar John Karakas");
   });
 
-  it("appends the nicknames, age, and location when present", () => {
+  it("appends the nicknames in parentheses, the age, and the location", () => {
     const fields = frontMatterFields(
       frontMatter({
-        first_name: "Kiral",
-        surname: "Karakas",
-        nicknames: "[Adams, Jer]",
-        age: "34",
-        location: "York",
+        first_name: "Jeremiah",
+        surname: "Adams",
+        nicknames: "[Adams, Jer, Jer-bear]",
+        age: "32",
+        location: "Brisbane",
       }),
     );
-    expect(characterHeaderText(fields)).toBe("Kiral Karakas, known as Adams, Jer — 34, York");
+    expect(characterHeaderText(fields)).toBe("Jeremiah Adams (Adams, Jer, Jer-bear) - 32, Brisbane");
   });
 
   it("omits the pieces that are absent", () => {

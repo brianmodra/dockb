@@ -26,7 +26,8 @@ export function frontMatterFields(buffer: string): ChapterFrontMatterFields {
   }
   const lines = buffer.split("\n").slice(1);
   const fields: ChapterFrontMatterFields = {};
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (line.startsWith("---")) {
       break;
     }
@@ -46,13 +47,26 @@ export function frontMatterFields(buffer: string): ChapterFrontMatterFields {
       fields.age = value || undefined;
     } else if (key === "location") {
       fields.location = value || undefined;
-    } else if (key === "middle_names") {
-      fields.middleNames = parseList(value);
+    } else if (key === "middle_names" || key === "midle_names") {
+      fields.middleNames = value ? parseList(value) : blockList(lines, index);
     } else if (key === "nicknames") {
-      fields.nicknames = parseList(value);
+      fields.nicknames = value ? parseList(value) : blockList(lines, index);
     }
   }
   return fields;
+}
+
+/** The `- item` lines that follow a list-valued key. */
+function blockList(lines: string[], keyIndex: number): string[] {
+  const items: string[] = [];
+  for (let index = keyIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.startsWith("- ")) {
+      break;
+    }
+    items.push(line.slice(2).trim());
+  }
+  return items;
 }
 
 function parseList(value: string): string[] | undefined {
@@ -68,10 +82,10 @@ export function characterHeaderText(fields: ChapterFrontMatterFields): string {
   const name = [fields.firstName, ...(fields.middleNames ?? []), fields.surname].filter((part) => part).join(" ");
   let line = name;
   if (fields.nicknames?.length) {
-    line = `${line}${line ? ", " : ""}known as ${fields.nicknames.join(", ")}`;
+    line = `${line}${line ? " " : ""}(${fields.nicknames.join(", ")})`;
   }
   if (fields.age) {
-    line = `${line}${line ? " — " : ""}${fields.age}`;
+    line = `${line}${line ? " - " : ""}${fields.age}`;
   }
   if (fields.location) {
     line = `${line}${line ? ", " : ""}${fields.location}`;
