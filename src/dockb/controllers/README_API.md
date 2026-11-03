@@ -6,7 +6,7 @@ This note is the contract between DockB's editor and the server. It lists the re
 
 It also describes the two ways a document gets into the graph. `POST /api/documents` and the chapter/paragraph/sentence routes carry ordinary editor edits. `POST /api/import` instead takes a whole document directory as a multipart upload and runs the same directory walker the command line uses, so a manuscript can be brought in without naming a path on the server. Because an upload is untrusted, that route has its own path and size rules, and it is where a document's owner comes from the session rather than the request.
 
-Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff, and it is also served the editor shell itself from `/editor/`, which is why the window and the API share an origin and one session cookie.
+Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff, and it is also served the editor shell itself from `/editor/`, which is why the window and the API share an origin and one session cookie. Whole-chapter operations live beside the CRUD: renumbering a document's chapters, and naming a chapter's point-of-view character (applied, suggested, or cleared).
 
 ## Core Principle
 
@@ -295,6 +295,8 @@ chapter's `act` attribute, so the editor can group chapters under act headers.
 | `GET` | `/api/chapters/{id}` | Returns the full chapter as a ProseMirror JSON tree (paragraphs → sentences → text) |
 | `PUT` | `/api/chapters/{id}` | Replace the attributes of a chapter with the supplied data (See **PUT Chapter Data**) |
 | `POST` | `/api/chapters/{id}/reorder` | Move the chapter to follow another chapter (See **POST Reorder Data**) |
+| `POST` | `/api/chapters/renumber` | Renumber every act chapter of a document, from a requested start (See **POST Renumber Data**) |
+| `POST` | `/api/chapters/{id}/pov` | Set, suggest, or clear the chapter's point-of-view character (See **POST POV Data**) |
 | `DELETE` | `/api/chapters/{id}` | Delete chapter + all children |
 
 #### POST Chapter Data
@@ -362,6 +364,45 @@ act server-side, even to empty.
   "after_chapter_id": "c-uuid-1"
 }
 ```
+
+#### POST Renumber Data
+
+The body of a POST to `/api/chapters/renumber` names the document and the number the first
+chapter takes:
+
+``` json
+{ "document_id": "d-uuid-1", "start": 1 }
+```
+
+`start` defaults to 1; `0` counts from zero; anything else is rejected (422). Every act chapter
+(`category` `Chapter`) is numbered from that start in the document's current display order —
+the number replaced in place in its title, any letter suffix dropped, a title with no number
+gaining one at the end. `Character` chapters are untouched but count for the duplicate-title
+check, which is case-insensitive and rejects the whole renumber (409) before anything is
+written. The response carries `renames`: `{id, old_title, new_title}` per changed chapter.
+
+#### POST POV Data
+
+The body of a POST to `/api/chapters/{id}/pov` is the typed character name:
+
+``` json
+{ "name": "Kiral" }
+```
+
+An empty name clears the POV. A name matching a `Character` chapter of the same document —
+one word matching the first name, then a nickname, then the surname; two words the first name
+and surname in that order; three or more the full first-plus-middle-plus-surname name, all
+case-insensitively — is applied: the graph stores the character chapter's **id**, the file's
+front matter `pov:` its **title**. The response is
+`{ "applied": true, "pov": {"id": "...", "title": "..."}, "warning": null }`.
+A name matching nothing but sitting inside some character's name (at least three characters)
+is **not** applied: `applied: false` with a `warning` suggesting the character
+(`"...perhaps you meant \"Karakas\""` and `"suggestion": "Karakas"`); no near match gives the
+warning alone. The editor's own chapter-file saves validate a hand-edited front-matter `pov`
+the same way: an invalid title warns (the stored id is kept, the save continues), an absent
+one clears, and a pov id whose character chapter was deleted warns on read and is emptied
+from the front matter until a save clears it. Both the save and the read of a chapter's
+document carry a `warnings` list for this.
 
 ### Paragraph CRUD
 

@@ -7,10 +7,11 @@ document, edit a chapter, or import a whole document from a folder on disk. It n
 itself — an import reads a directory the user picks and hands it to the server, which does the
 writing. The window does not even load its own interface from disk; the backend serves it, so the
 app and the API share an origin and the signed-in session reaches every route. Besides editing,
-the chapter list's right-click menu renames, moves, and renumbers chapters — renumbering rewrites
-every act chapter's number, from 1 or 0, in the current order, on the server — and inside the
-text a paragraph's right-click marks it as a quote (Reading or Writing), which renders indented
-and saves through the same chapter save.
+the chapter list's right-click menu renames, moves, renumbers, and assigns a point-of-view
+character to chapters — renumbering rewrites every act chapter's number, from 1 or 0, in the
+current order, on the server, and a chapter's POV names one of its document's characters by
+title — and inside the text a paragraph's right-click marks it as a quote (Reading or
+Writing), which renders indented and saves through the same chapter save.
 
 Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
 back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in
@@ -130,7 +131,7 @@ DOM as HTML.
   Sign out, Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on
   outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
   `confirmUnsaved`, so they share one unsaved-buffer question rather than two.
-- `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber.
+- `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber/POV.
   Manuscript chapters group under act headers; `Character` chapters sit in a
   Characters section after the acts. Move only offers drop slots inside the
   mover's category. **Renumber** asks once, then renumbers every act chapter of
@@ -140,7 +141,11 @@ DOM as HTML.
   chapter selects it **and** loads its text into the editor (via `onEdit` →
   `editPanel.open` → the `.../document` GET); a dirty buffer is saved first, and
   a failed save keeps the editor on the open chapter rather than losing the
-  text. Exposes the selected chapter and a reload that keeps the
+  text. **POV** (manuscript chapters only) opens a name modal: Enter applies a
+  match, or — when only part of a name matched — replaces the typed text with
+  the suggested character's title and prints the warning, staying open; an
+  empty name clears. Save/read warnings (an invalid or dangling `pov`) pop a
+  warning dialog. Exposes the selected chapter and a reload that keeps the
   selection.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).

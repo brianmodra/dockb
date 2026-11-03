@@ -85,6 +85,7 @@ The Document title in this example will be "Linchpin".
 Note that the directory structure under Linchpin must be a set of subdirectories called "Act I", "Act II", "Act III" etc.
 In each "Act..." dubdirectory, a set of markdown files, each with a consecutive number after the chapter title name. E.g. "Opening 1".
 And also supported in a subdirectory called "Characters", which will hold the markdown files (one per character) to describe the characters.
+A character's front matter carries their name parts, age, and location; a chapter's front matter may name the character whose point of view it is written from (`pov:`), matched case-insensitively against those name parts, with a suggestion when only part of the name matches.
 Moving chapters can put the title numbers out of step with the reading order; the chapter
 context menu's "Renumber" rewrites every act chapter's number in the current order,
 counting from 1, or from 0 when "Start from 0" is ticked.

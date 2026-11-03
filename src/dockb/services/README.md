@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It also covers the whole-document chapter operations that live beside them — renumbering a document's chapters in their current reading order (from 1, or 0) after moves have shuffled the title numbers, which is planned in full before anything is written and lands as one graph query plus one git commit. It is for someone changing those editing services, not the files on disk.
+This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It also covers the chapter-file front matter that the graph mirrors by hand — who a character is, whose point of view a chapter is written from — and the whole-document chapter operations that live beside them: renumbering a document's chapters in their current reading order (from 1, or 0) after moves have shuffled the title numbers, which is planned in full before anything is written and lands as one graph query plus one git commit. It is for someone changing those editing services, not the files on disk.
 
 Every service method names the account it acts for as a required keyword argument, and no service may default it: an account is something the caller states, so a service cannot be handed a document id and quietly guess whose work it is. Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
 
@@ -16,6 +16,21 @@ Publishing a manuscript is a later feature. There is no whole-book exporter. Whe
 Chapter-level paths (open, save, create, rename, delete, and the store export) load the owning
 document through `DocumentRepository.load_shell` — attrs and chapter ids only — because they read
 the title, never the hierarchy. The full load is reserved for document-level paths.
+
+### Chapter front matter: character properties and POV
+
+`services/chapter_front_matter.py` owns the sync between a chapter file's YAML
+front matter and the graph for the hand-maintained side: a `Character`
+chapter's identity properties (first name, surname, middle names, nicknames,
+age, location) and a manuscript chapter's `pov` — the character chapter whose
+point of view it is written from. The file carries the character's **title**;
+the graph stores the character chapter's **id**, so renaming a character does
+not break a POV, and a deleted one warns on read and clears on the next save.
+`set_pov` matches a typed name case-insensitively — one word against the first
+name, then a nickname, then the surname; two words the first and surname in
+that order; three or more the full joined name — and, failing that, suggests a
+character whose name contains the typed text (at least three characters)
+without applying it.
 
 ### Renumbering chapters
 

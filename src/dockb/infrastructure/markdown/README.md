@@ -35,6 +35,13 @@ Second sentence.
   untouched and existing attribute positions kept (new keys appended); a file with no front matter
   gets a block prepended.
 
+A `Character` chapter's front matter also carries who the character is —
+`first_name`, `surname`, `middle_names` (a list), `nicknames` (a list), `age`
+(an integer), and `location` — hand-maintained, and mirrored onto the graph
+node. A manuscript chapter may carry `pov: <character title>`, naming the
+character chapter whose point of view it is written from; the graph stores that
+POV as the character chapter's **id** and the file keeps the **title**.
+
 History snapshots always carry front matter; `SnapshotReader` enforces that by rejecting content
 that does not start with `---` (wrapping the parser's `ChapterMismatchError` as `SnapshotError`).
 The import path treats missing front matter as a new chapter instead.

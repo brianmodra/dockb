@@ -132,6 +132,12 @@ old chapter to diff against: `get_chapter` is not called and `create_chapter` bu
   text before, between, and after spans is kept at its position; nothing
   is dropped. The paragraph id is taken from the first `data-par-id` span in the block.
 - A **span-free block** (hand-typed, pre-hydration) yields no paragraph id.
+- The front matter's `pov` (a character chapter's **title**) and character
+  properties are carried on the diff beside the paragraph changes: a
+  front-matter-only hand edit — no text change at all — still updates the
+  chapter node. An absent `pov` key means "no POV" (the stored id clears on
+  save); a `pov` that names no character of the document warns and leaves the
+  stored id alone.
 - A block yields **raw paragraph text**, not sentences: the caller splits it with spaCy. Sentence
   splitting is never this package's job.
 - A newline inside a span is ordinary whitespace and is preserved byte-for-byte; a `\`-newline hard
