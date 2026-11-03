@@ -135,6 +135,15 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
                         category=category or "",
                     ),
                 )
+        else:
+            # A hand edit of only the character properties leaves the diff empty:
+            # the graph still has to learn what the file now says.
+            loaded = load_once(chapter_id)
+            if loaded is not None and _character_props_changed(diff, loaded):
+                _apply_character_props(loaded, diff)
+                loaded.state = DataState.CHANGED
+                with measure("stage.persist"):
+                    _persist(uow_factory, document.id, loaded, [], [], nlp, owner)
         return ChapterImportSummary(
             chapter_id=chapter_id,
             created=diff.created,
@@ -413,6 +422,7 @@ def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language
     if chapter.act:
         attrs["act"] = chapter.act
     attrs["category"] = chapter.category
+    attrs.update(writer.character_front_matter(chapter))
     chapter_file.write_text(writer.render_chapter_markdown(chapter, nlp, attrs=attrs), encoding="utf-8")
 
 
@@ -546,17 +556,61 @@ def _persist(  # pylint: disable=too-many-arguments,too-many-positional-argument
 def _build_chapter(chapter_id: str, diff: ChapterDiff, loaded: Chapter | None) -> Chapter:
     """Return the NEW chapter skeleton, or the already-loaded old chapter marked CHANGED."""
     if diff.created:
-        return Chapter(
+        chapter = Chapter(
             id=chapter_id,
             title=diff.title,
             act=diff.act,
             category="Character" if diff.category == "Character" else "Chapter",
             state=DataState.NEW,
         )
+        _apply_character_props(chapter, diff)
+        return chapter
     if loaded is None:
         raise ChapterMismatchError(f"Chapter '{chapter_id}' was not found in the knowledge graph")
+    _apply_character_props(loaded, diff)
     loaded.state = DataState.CHANGED
     return loaded
+
+
+def _apply_character_props(chapter: Chapter, diff: ChapterDiff) -> None:
+    """Write the file's character properties onto *chapter*.
+
+    The front matter is the hand-maintained source, so when the chapter is a
+    Character (or the file carries any of the properties) the graph values are
+    replaced wholesale — including a property the hand edit dropped, which
+    clears. A manuscript chapter whose file carries none of them is untouched,
+    keeping the graph's empties.
+    """
+    carried = any(
+        (
+            diff.first_name,
+            diff.surname,
+            diff.middle_names,
+            diff.nicknames,
+            diff.age is not None,
+            diff.location,
+        )
+    )
+    if not carried and chapter.category != "Character":
+        return
+    chapter.first_name = diff.first_name
+    chapter.surname = diff.surname
+    chapter.middle_names = list(diff.middle_names)
+    chapter.nicknames = list(diff.nicknames)
+    chapter.age = diff.age
+    chapter.location = diff.location
+
+
+def _character_props_changed(diff: ChapterDiff, chapter: Chapter) -> bool:
+    """Return whether the file's character properties differ from the graph's."""
+    return (
+        diff.first_name != chapter.first_name
+        or diff.surname != chapter.surname
+        or list(diff.middle_names) != list(chapter.middle_names)
+        or list(diff.nicknames) != list(chapter.nicknames)
+        or diff.age != chapter.age
+        or diff.location != chapter.location
+    )
 
 
 def _skeleton(front_id: str | None, title: str) -> Chapter:

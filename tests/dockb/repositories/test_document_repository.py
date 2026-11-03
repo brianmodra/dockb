@@ -286,6 +286,54 @@ class TestDocumentOwnership:
         assert doc is not None
         assert doc.owner == "acct-1"
 
+    def test_load_carries_chapter_attributes(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "document_id": "d-1",
+                "document_title": "Linchpin",
+                "document_author": "Paul",
+                "chapter_id": "ch-1",
+                "chapter_index": 0,
+                "chapter_title": "Karakas",
+                "chapter_act": "",
+                "chapter_category": "Character",
+                "chapter_first_name": "Kiral",
+                "chapter_surname": "Karakas",
+                "chapter_middle_names": ["Edgar"],
+                "chapter_nicknames": ["Adams"],
+                "chapter_age": 34,
+                "chapter_location": "York",
+                "paragraph_id": None,
+                "paragraph_index": None,
+                "paragraph_quote_type": None,
+                "sentence_id": None,
+                "sentence_index": None,
+                "token_id": None,
+                "token_index": None,
+                "token_text": None,
+                "token_type": None,
+                "token_trailing_ws": None,
+                "token_pos": None,
+                "token_lemma": None,
+                "token_is_digit": None,
+                "token_like_num": None,
+                "token_is_alpha": None,
+                "token_is_stop": None,
+            }
+        ]
+
+        doc = document_repo.load("d-1", "acct-1")
+
+        chapter = doc.chapters[0]
+        assert chapter.title == "Karakas"
+        assert chapter.category == "Character"
+        assert chapter.first_name == "Kiral"
+        assert chapter.surname == "Karakas"
+        assert chapter.middle_names == ["Edgar"]
+        assert chapter.nicknames == ["Adams"]
+        assert chapter.age == 34
+        assert chapter.location == "York"
+
     def test_find_summary_returns_the_document_and_its_owner(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "d-1", "title": "Faith", "owner": "acct-1"}]
         assert document_repo.find_summary("d-1") == {"id": "d-1", "title": "Faith", "owner": "acct-1"}

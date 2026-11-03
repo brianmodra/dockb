@@ -22,6 +22,15 @@ class Chapter(DockbModel):
     title: str = ""
     act: str = ""
     category: Literal["Chapter", "Character"] = "Chapter"
+    # Character-chapter properties (hand-maintained in the file's front matter,
+    # meaningful only for category "Character"): who this character is, for POV
+    # matching. Empty/None on manuscript chapters.
+    first_name: str = ""
+    surname: str = ""
+    middle_names: list[str] = Field(default_factory=list)
+    nicknames: list[str] = Field(default_factory=list)
+    age: int | None = None
+    location: str = ""
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

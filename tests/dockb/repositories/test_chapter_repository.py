@@ -73,6 +73,38 @@ class TestSaveNewChapter:
         _, params = extract_call(neo4j_session)
         assert params["act"] == "Act I"
 
+    def test_passes_the_character_properties(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+        chapter.category = "Character"
+        chapter.first_name = "Kiral"
+        chapter.surname = "Karakas"
+        chapter.middle_names = ["Edgar", "John"]
+        chapter.nicknames = ["Adams", "Jer"]
+        chapter.age = 34
+        chapter.location = "York"
+
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "SET c.first_name = $first_name" in cypher
+        assert "c.nicknames = $nicknames" in cypher
+        assert params["first_name"] == "Kiral"
+        assert params["surname"] == "Karakas"
+        assert params["middle_names"] == ["Edgar", "John"]
+        assert params["nicknames"] == ["Adams", "Jer"]
+        assert params["age"] == 34
+        assert params["location"] == "York"
+
+    def test_character_properties_default_to_empty(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
+
+        _, params = extract_call(neo4j_session)
+        assert params["first_name"] == ""
+        assert params["middle_names"] == []
+        assert params["age"] is None
+
     def test_passes_category(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
         chapter.category = "Character"
@@ -490,6 +522,46 @@ class TestLoadChapter:
         ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
         assert ch.category == "Character"
+
+    def test_loads_character_properties_from_graph(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "chapter_id": "ch-1",
+                "chapter_title": "Karakas",
+                "chapter_act": "",
+                "chapter_category": "Character",
+                "chapter_first_name": "Kiral",
+                "chapter_surname": "Karakas",
+                "chapter_middle_names": ["Edgar", "John"],
+                "chapter_nicknames": ["Adams", "Jer"],
+                "chapter_age": 34,
+                "chapter_location": "York",
+                "paragraph_id": None,
+                "paragraph_index": None,
+                "paragraph_quote_type": None,
+                "sentence_id": None,
+                "sentence_index": None,
+                "token_id": None,
+                "token_index": None,
+                "token_text": None,
+                "token_type": None,
+                "token_trailing_ws": None,
+                "token_pos": None,
+                "token_lemma": None,
+                "token_is_digit": None,
+                "token_like_num": None,
+                "token_is_alpha": None,
+                "token_is_stop": None,
+            }
+        ]
+        ch = chapter_repo.load("ch-1", _OWNER)
+        assert ch is not None
+        assert ch.first_name == "Kiral"
+        assert ch.surname == "Karakas"
+        assert ch.middle_names == ["Edgar", "John"]
+        assert ch.nicknames == ["Adams", "Jer"]
+        assert ch.age == 34
+        assert ch.location == "York"
 
     def test_defaults_null_category_to_chapter(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_act": None}]

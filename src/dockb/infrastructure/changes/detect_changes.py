@@ -6,6 +6,7 @@ import html
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from dockb.infrastructure.markdown import front_matter
 from dockb.models.chapter import Chapter
@@ -34,7 +35,7 @@ class NewParagraph:
 
 
 @dataclass
-class ChapterDiff:
+class ChapterDiff:  # pylint: disable=too-many-instance-attributes
     """The result of diffing a chapter: what to rehydrate, add, and delete.
 
     ``chapter_id`` is the resolved chapter identity — the front-matter id of the
@@ -53,6 +54,12 @@ class ChapterDiff:
     category: str = ""
     front_id: str | None = None
     created: bool = False
+    first_name: str = ""
+    surname: str = ""
+    middle_names: list[str] = field(default_factory=list)
+    nicknames: list[str] = field(default_factory=list)
+    age: int | None = None
+    location: str = ""
 
     def __bool__(self) -> bool:
         return bool(self.changed or self.new or self.deleted)
@@ -79,8 +86,9 @@ def detect_changes(  # pylint: disable=too-many-locals
     instead of a blank-line-separated one, so files whose paragraphs end in a
     single newline and whose sentences run on inside a line import correctly.
     """
-    front_id, front_title, front_act, front_category, body = _extract_front_matter(new_markdown)
+    front_id, front_title, front_act, front_category, attrs, body = _extract_front_matter(new_markdown)
     title = front_title or title_fallback
+    character_props = _character_props(attrs)
 
     old_chapter = get_chapter(front_id) if front_id is not None else None
     created = False
@@ -102,6 +110,7 @@ def detect_changes(  # pylint: disable=too-many-locals
         category=front_category or "",
         front_id=front_id,
         created=created,
+        **character_props,
     )
 
 
@@ -233,8 +242,10 @@ def _span_attr(tag: str, name: str) -> str | None:
     return html.unescape(match.group(1))
 
 
-def _extract_front_matter(content: str) -> tuple[str | None, str | None, str | None, str | None, str]:
-    """Read an optional YAML front matter block; return its ``id``, ``title``, ``act``, ``category``, and the body.
+def _extract_front_matter(
+    content: str,
+) -> tuple[str | None, str | None, str | None, str | None, dict[str, Any], str]:
+    """Read an optional YAML front matter block; return its ``id``, ``title``, ``act``, ``category``, all attrs, and the body.
 
     Front matter is optional: a file without it is a new chapter (no ``id``).
     A file that opens with ``---`` but is missing the closing ``---`` is malformed.
@@ -249,5 +260,22 @@ def _extract_front_matter(content: str) -> tuple[str | None, str | None, str | N
         str(front_title) if front_title is not None else None,
         str(front_act) if front_act is not None else None,
         str(front_category) if front_category is not None else None,
+        attrs,
         body,
     )
+
+
+def _character_props(attrs: dict[str, Any]) -> dict[str, Any]:
+    """Extract a character chapter's identity properties from the front matter *attrs*.
+
+    A missing key stays the field's default, so a file that drops a property
+    reads as the property being cleared — the front matter is the source.
+    """
+    return {
+        "first_name": str(attrs.get("first_name") or ""),
+        "surname": str(attrs.get("surname") or ""),
+        "middle_names": [str(name) for name in (attrs.get("middle_names") or [])],
+        "nicknames": [str(name) for name in (attrs.get("nicknames") or [])],
+        "age": int(attrs["age"]) if attrs.get("age") is not None else None,
+        "location": str(attrs.get("location") or ""),
+    }

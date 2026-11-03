@@ -52,7 +52,10 @@ OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   d.id AS document_id, d.title AS document_title, d.author AS document_author,
   c.id AS chapter_id, rc.index AS chapter_index,
-  p.id AS paragraph_id, rp.index AS paragraph_index,
+  c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
+  c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
+  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location,
+  p.id AS paragraph_id, rp.index AS paragraph_index, p.quote_type AS paragraph_quote_type,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
@@ -268,7 +271,19 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             ch_id = rec.get("chapter_id")
             if ch_id is not None and ch_id not in seen_chapters:
                 seen_chapters.add(ch_id)
-                current_chapter = Chapter(id=ch_id, state=DataState.SYNC)
+                current_chapter = Chapter(
+                    id=ch_id,
+                    title=rec.get("chapter_title") or "",
+                    act=rec.get("chapter_act") or "",
+                    category=rec.get("chapter_category") or "Chapter",
+                    first_name=rec.get("chapter_first_name") or "",
+                    surname=rec.get("chapter_surname") or "",
+                    middle_names=list(rec.get("chapter_middle_names") or []),
+                    nicknames=list(rec.get("chapter_nicknames") or []),
+                    age=rec.get("chapter_age"),
+                    location=rec.get("chapter_location") or "",
+                    state=DataState.SYNC,
+                )
                 document.chapters.append(current_chapter)
 
             p_id = rec.get("paragraph_id")

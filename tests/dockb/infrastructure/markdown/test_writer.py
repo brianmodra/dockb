@@ -53,6 +53,33 @@ class TestSerializeBody:
         chapter.paragraphs[0].quote_type = "reading"
         assert writer.serialize_body(chapter, nlp) == ('<span data-par-id="p1" data-quote-type="reading">\nQuoted.\n</span>')
 
+    def test_character_front_matter_is_written_back(self, nlp):
+        chapter = _chapter(_make_paragraph("Name: Kiral Karakas.", p_id="p1"), c_id="ch1", title="Karakas")
+        chapter.category = "Character"
+        chapter.first_name = "Kiral"
+        chapter.surname = "Karakas"
+        chapter.middle_names = ["Edgar", "John"]
+        chapter.nicknames = ["Adams", "Jer"]
+        chapter.age = 34
+        chapter.location = "York"
+
+        rendered = writer.render_chapter_markdown(chapter, nlp)
+
+        assert "first_name: Kiral" in rendered
+        assert "surname: Karakas" in rendered
+        assert "middle_names:" in rendered and "Edgar" in rendered
+        assert "nicknames:" in rendered and "Adams" in rendered
+        assert "age: 34" in rendered
+        assert "location: York" in rendered
+
+    def test_manuscript_chapters_write_no_character_front_matter(self, nlp):
+        chapter = _chapter(_make_paragraph("Body.", p_id="p1"))
+
+        rendered = writer.render_chapter_markdown(chapter, nlp)
+
+        assert "first_name" not in rendered
+        assert "nicknames" not in rendered
+
     def test_spans_carry_paragraph_ids_and_no_sentence_id(self, nlp):
         chapter = _chapter(_make_paragraph("Alpha.", "Beta.", p_id="para-7"), _make_paragraph("Gamma.", p_id="para-8"))
         body = writer.serialize_body(chapter, nlp)

@@ -28,6 +28,8 @@ _NEW_CYPHER = f"""
 MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
+SET c.first_name = $first_name, c.surname = $surname, c.middle_names = $middle_names,
+    c.nicknames = $nicknames, c.age = $age, c.location = $location
 MERGE (c)-[rc:PART_OF]->(d)
 SET rc.index = $index
 WITH d, c
@@ -42,6 +44,8 @@ _CHANGED_CYPHER = f"""
 MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
+SET c.first_name = $first_name, c.surname = $surname, c.middle_names = $middle_names,
+    c.nicknames = $nicknames, c.age = $age, c.location = $location
 MERGE (c)-[:PART_OF]->(d)
 {_PARAGRAPH_UNWIND_CYPHER}
 WITH c, COLLECT(p.id) AS keep_ids
@@ -98,6 +102,8 @@ OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   c.id AS chapter_id, c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
+  c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
+  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location,
   p.id AS paragraph_id, rp.index AS paragraph_index, p.quote_type AS paragraph_quote_type,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
@@ -134,6 +140,12 @@ class ChapterRepository(BaseRepository[Chapter]):
             "act": model.act,
             "category": model.category,
             "index": int(parent_ids.get("index", "0")),
+            "first_name": model.first_name,
+            "surname": model.surname,
+            "middle_names": list(model.middle_names),
+            "nicknames": list(model.nicknames),
+            "age": model.age,
+            "location": model.location,
             "paragraphs": [{"id": p.id, "index": i} for i, p in enumerate(model.paragraphs)],
         }
 
@@ -210,6 +222,12 @@ class ChapterRepository(BaseRepository[Chapter]):
             title=first.get("chapter_title") or "",
             act=first.get("chapter_act") or "",
             category=first.get("chapter_category") or "Chapter",
+            first_name=first.get("chapter_first_name") or "",
+            surname=first.get("chapter_surname") or "",
+            middle_names=list(first.get("chapter_middle_names") or []),
+            nicknames=list(first.get("chapter_nicknames") or []),
+            age=first.get("chapter_age"),
+            location=first.get("chapter_location") or "",
             state=DataState.SYNC,
         )
 

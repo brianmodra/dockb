@@ -41,6 +41,7 @@ class SnapshotWriter:  # pylint: disable=too-few-public-methods
         extras = getattr(chapter, "model_extra", None) or {}
         for key, value in extras.items():
             attrs[key] = value
+        attrs.update(markdown_writer.character_front_matter(chapter))
         return attrs
 
     def _git(self, *args: str) -> str:

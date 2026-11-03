@@ -120,6 +120,29 @@ class TestNewChapter:
         assert summary.chapter_id == chapter.id
         uow.commit.assert_called_once()
 
+    def test_character_front_matter_persists_onto_the_chapter(self, nlp, tmp_path):
+        file = tmp_path / "Karakas.md"
+        file.write_text(
+            "---\ntitle: Karakas\ncategory: Character\n"
+            "first_name: Kiral\nsurname: Karakas\nmiddle_names: [Edgar]\n"
+            "nicknames: [Adams, Jer]\nage: 34\nlocation: York\n---\n\n"
+            '<span data-par-id="par-1">\nName: Kiral Karakas.\n</span>'
+        )
+        document = _make_document("d1")
+        chapter_repo, uow_factory = _setup(None)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, category="Character", owner=_OWNER)
+
+        chapter, _ = _saved_chapter(uow)
+        assert chapter.first_name == "Kiral"
+        assert chapter.surname == "Karakas"
+        assert chapter.middle_names == ["Edgar"]
+        assert chapter.nicknames == ["Adams", "Jer"]
+        assert chapter.age == 34
+        assert chapter.location == "York"
+
     def test_act_override_sets_act_on_created_chapter(self, nlp, tmp_path):
         file = tmp_path / "Chapter 1.md"
         file.write_text("Body.")
@@ -384,6 +407,29 @@ class TestSingleNewlineParagraphs:
 
 
 class TestExistingChapter:
+
+    def test_character_front_matter_edit_persists_without_text_changes(self, nlp, tmp_path):
+        chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
+        chapter.category = "Character"
+        chapter.first_name = "Kiral"
+        chapter_repo, uow_factory = _setup(chapter)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        file = tmp_path / "Karakas.md"
+        file.write_text(
+            "---\nid: c1\ntitle: Karakas\ncategory: Character\n"
+            "first_name: Kiral\nsurname: Karakas\nnicknames: [Adams]\n---\n\n"
+            '<span data-par-id="par-1">\nFirst sentence.\n</span>'
+        )
+        document = _make_document("d1", chapter)
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+
+        saved, _ = _saved_chapter(uow)
+        assert saved.surname == "Karakas"
+        assert saved.nicknames == ["Adams"]
+        assert saved.state is DataState.CHANGED
+        assert summary.changed == 0
 
     def test_quote_type_only_change_persists_the_paragraph(self, nlp, tmp_path):
         chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))

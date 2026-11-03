@@ -78,6 +78,27 @@ def test_write_front_matter(writer, git_repo):
     assert content.startswith("---\n")
     assert "id: c-00000000-0000-0000-0000-000000000003" in content
     assert "title: My Chapter" in content
+
+
+def test_write_character_properties_in_front_matter(writer, git_repo):
+    chapter = Chapter(id="c-00000000-0000-0000-0000-000000000003", title="Karakas")
+    chapter.first_name = "Kiral"
+    chapter.surname = "Karakas"
+    chapter.middle_names = ["Edgar"]
+    chapter.nicknames = ["Adams", "Jer"]
+    chapter.age = 34
+    chapter.location = "York"
+    chapter.paragraphs.append(_make_paragraph("Body text."))
+
+    writer.write(chapter)
+
+    content = (git_repo / "chapter-c-00000000-0000-0000-0000-000000000003.md").read_text()
+    assert "first_name: Kiral" in content
+    assert "surname: Karakas" in content
+    assert "middle_names:" in content and "Edgar" in content
+    assert "nicknames:" in content and "Adams" in content
+    assert "age: 34" in content
+    assert "location: York" in content
     dash_lines = [i for i, line in enumerate(content.split("\n")) if line.strip() == "---"]
     assert len(dash_lines) >= 2
 

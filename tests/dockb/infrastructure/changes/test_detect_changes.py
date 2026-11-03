@@ -70,6 +70,38 @@ def test_changed_paragraph_carries_new_text():
     assert not diff.new
 
 
+def test_character_front_matter_parses_onto_the_diff():
+    front = (
+        "---\ntitle: Karakas\ncategory: Character\n"
+        "first_name: Kiral\nsurname: Karakas\nmiddle_names: [Edgar, John]\n"
+        "nicknames: [Adams, Jer, Jer-bear]\nage: 34\nlocation: York\n---\n\n"
+    )
+    body = _span("par-1", "Name: Kiral Karakas.")
+
+    diff = detect_changes(front + body, _no_get, lambda *_: Chapter(id="c-1"))
+
+    assert diff.first_name == "Kiral"
+    assert diff.surname == "Karakas"
+    assert diff.middle_names == ["Edgar", "John"]
+    assert diff.nicknames == ["Adams", "Jer", "Jer-bear"]
+    assert diff.age == 34
+    assert diff.location == "York"
+
+
+def test_absent_character_front_matter_leaves_defaults():
+    old = _chapter([("par-1", ["First sentence."])])
+    body = _span("par-1", "First sentence.")
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.first_name == ""
+    assert diff.surname == ""
+    assert not diff.middle_names
+    assert not diff.nicknames
+    assert diff.age is None
+    assert diff.location == ""
+
+
 def test_quote_type_change_with_identical_text_marks_changed():
     old = _chapter([("par-1", ["First sentence."])])
     old.paragraphs[0].quote_type = "reading"
