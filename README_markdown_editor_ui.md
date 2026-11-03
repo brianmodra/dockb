@@ -5,7 +5,9 @@
 This is the design of DockB's writing window. It explains the menus, the chapter list, the editor
 and the dialogs, so someone new can see what the writer sees and why each click does what it does —
 including how a writer signs out: the File menu offers to save unsaved work first, then ends the
-session and brings the sign-in screen back rather than closing the window.
+session and brings the sign-in screen back rather than closing the window. The edit panel also
+carries an un-editable identity line — a character's name parts, or a chapter's title and its
+point-of-view character — that scrolls with the text and is refreshed from the front matter.
 
 The window only sends text to the server and gets text back. It never touches files. How the files
 and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
@@ -113,8 +115,14 @@ stays identical across platforms; the native menu is removed at startup
   Beyond the current document, other documents appear here too — place descriptions, world
   building, supporting research — to be defined later.
 - Width is user-resizable via the vertical seam.
-- Right-clicking a chapter opens the context menu: **Edit, Rename, Move, Delete**. (A metadata YAML
-  entry is a later addition once per-chapter `*.yaml` meta files exist.)
+- Right-clicking a chapter opens the context menu: **Edit, Rename, Move, Renumber, POV, Delete**
+  for a manuscript chapter; a character chapter drops **Move**, **Renumber**, and **POV** (they
+  are not a manuscript's to move or number, and a character has no point of view). **POV** opens
+  a name modal: the typed name is matched case-insensitively against the document's characters —
+  one word against first name, then a nickname, then the surname; two words the first and
+  surname in order; three or more the full name — and a near miss suggests a character
+  (replacing the typed text, warning shown, the modal staying open). An empty name clears.
+  (A metadata YAML entry is a later addition once per-chapter `*.yaml` meta files exist.)
 - **Edit** — opens the chapter (`GET /api/chapters/{id}/document`) in the edit panel.
 - **Rename** — a modal with a single field for the new name and **Cancel / Rename**.
 - **Delete** — a confirmation modal first: **Cancel / Delete**.

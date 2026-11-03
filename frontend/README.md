@@ -141,7 +141,12 @@ DOM as HTML.
   chapter selects it **and** loads its text into the editor (via `onEdit` →
   `editPanel.open` → the `.../document` GET); a dirty buffer is saved first, and
   a failed save keeps the editor on the open chapter rather than losing the
-  text. **POV** (manuscript chapters only) opens a name modal: Enter applies a
+  text. Above the text (in the same scroll) sits the chapter's identity line
+  (`characterHeader.ts`, read-only): a character's name parts as one prose
+  line, or the title and its point of view; hidden in raw mode, where the
+  front matter is visible as text. When a POV is set on the open chapter the
+  shell refreshes the buffer's pov line in place, so the next save carries it.
+  **POV** (manuscript chapters only) opens a name modal: Enter applies a
   match, or — when only part of a name matched — replaces the typed text with
   the suggested character's title and prints the warning, staying open; an
   empty name clears. Save/read warnings (an invalid or dangling `pov`) pop a
