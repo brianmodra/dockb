@@ -6,7 +6,7 @@ import logging
 import re
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -51,6 +51,7 @@ class ChapterImportSummary:
     changed: int = 0
     added: int = 0
     deleted: int = 0
+    warnings: list[str] = field(default_factory=list)
 
 
 def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
@@ -135,20 +136,32 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
                         category=category or "",
                     ),
                 )
-        else:
-            # A hand edit of only the character properties leaves the diff empty:
-            # the graph still has to learn what the file now says.
-            loaded = load_once(chapter_id)
-            if loaded is not None and _character_props_changed(diff, loaded):
-                _apply_character_props(loaded, diff)
-                loaded.state = DataState.CHANGED
-                with measure("stage.persist"):
-                    _persist(uow_factory, document.id, loaded, [], [], nlp, owner)
+            return ChapterImportSummary(
+                chapter_id=chapter_id,
+                created=diff.created,
+                title=diff.title,
+                category=_resolved_category(diff, category, load_once(chapter_id)),
+            )
+        # A hand edit of only the front matter (character properties, or the
+        # pov) leaves the diff empty: the graph still has to learn what the
+        # file now says.
+        warnings = _reconcile_front_matter_only(
+            load_once(chapter_id),
+            diff,
+            document,
+            path,
+            write_back=write_back,
+            chapter_repo=chapter_repo,
+            uow_factory=uow_factory,
+            nlp=nlp,
+            owner=owner,
+        )
         return ChapterImportSummary(
             chapter_id=chapter_id,
             created=diff.created,
             title=diff.title,
             category=_resolved_category(diff, category, load_once(chapter_id)),
+            warnings=warnings,
         )
 
     chapter = _build_chapter(chapter_id, diff, load_once(chapter_id))
@@ -156,6 +169,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
         chapter.act = act
     if category is not None:
         chapter.category = category
+    warnings, _pov_changed = _reconcile_pov(chapter, diff, document.id, chapter_repo, owner)
 
     for paragraph_id in diff.deleted:
         chapter.delete_child(paragraph_id)
@@ -168,7 +182,12 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
         _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp, owner)
     if write_back:
         with measure("stage.render"):
-            _write_back_chapter_file(path, chapter, nlp)
+            _write_back_chapter_file(
+                path,
+                chapter,
+                nlp,
+                pov_title=_reconcile_pov_title(chapter, document.id, chapter_repo, owner),
+            )
 
     return ChapterImportSummary(
         chapter_id=chapter.id,
@@ -178,6 +197,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
         changed=len(changed_paragraphs),
         added=len(added_paragraphs),
         deleted=len(diff.deleted),
+        warnings=warnings,
     )
 
 
@@ -408,12 +428,16 @@ def _discover_chapter_files(document_dir: Path) -> Iterator[tuple[str, Literal["
             yield "", "Character", chapter_file
 
 
-def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language) -> None:
+def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language, pov_title: str | None = None) -> None:
     """Rewrite *chapter_file* so its text mirrors *chapter*.
 
     The front matter keeps any existing attributes, adding the chapter's
     ``id``/``title`` (and its ``act``/``category`` when set); the body is the
-    chapter serialized as one identity span per paragraph.
+    chapter serialized as one identity span per paragraph. *pov_title* — when
+    not None — is the chapter's POV character's title: a non-empty value is
+    written as the ``pov`` line, an empty one removes the line, which is how a
+    dangling POV (or a cleared one) empties out of the file. Left as None the
+    file's own pov line is untouched.
     """
     existing = chapter_file.read_text(encoding="utf-8")
     attrs = front_matter.parse(existing)[0]
@@ -423,6 +447,11 @@ def _write_back_chapter_file(chapter_file: Path, chapter: Chapter, nlp: Language
         attrs["act"] = chapter.act
     attrs["category"] = chapter.category
     attrs.update(writer.character_front_matter(chapter))
+    if pov_title is not None:
+        if pov_title:
+            attrs["pov"] = pov_title
+        else:
+            attrs.pop("pov", None)
     chapter_file.write_text(writer.render_chapter_markdown(chapter, nlp, attrs=attrs), encoding="utf-8")
 
 
@@ -616,6 +645,86 @@ def _character_props_changed(diff: ChapterDiff, chapter: Chapter) -> bool:
 def _skeleton(front_id: str | None, title: str) -> Chapter:
     """Build the empty chapter side for detect_changes when no old chapter exists."""
     return Chapter(id=front_id or str(uuid.uuid4()), title=title)
+
+
+def _reconcile_front_matter_only(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    loaded: Chapter | None,
+    diff: ChapterDiff,
+    document: Document,
+    path: Path,
+    *,
+    write_back: bool,
+    chapter_repo: ChapterRepository,
+    uow_factory: UnitOfWorkFactory,
+    nlp: Language,
+    owner: str,
+) -> list[str]:
+    """Learn a front-matter-only hand edit (character properties, pov) into the graph.
+
+    The text diff is empty by definition here, so without this the graph would
+    never see the file's new front matter. The chapter is persisted only when
+    something actually changed; the write-back normalises the pov line (a
+    dangling pov's line is removed, which is what makes the next save clear it).
+    """
+    if loaded is None:
+        return []
+    warnings, pov_changed = _reconcile_pov(loaded, diff, document.id, chapter_repo, owner)
+    if not pov_changed and not warnings and not _character_props_changed(diff, loaded):
+        return warnings
+    _apply_character_props(loaded, diff)
+    loaded.state = DataState.CHANGED
+    with measure("stage.persist"):
+        _persist(uow_factory, document.id, loaded, [], [], nlp, owner)
+    if write_back:
+        _write_back_chapter_file(
+            path,
+            loaded,
+            nlp,
+            pov_title=_reconcile_pov_title(loaded, document.id, chapter_repo, owner),
+        )
+    return warnings
+
+
+def _reconcile_pov(
+    chapter: Chapter,
+    diff: ChapterDiff,
+    document_id: str,
+    chapter_repo: ChapterRepository,
+    owner: str,
+) -> tuple[list[str], bool]:
+    """Align *chapter*'s `pov` with the file's front matter, and report warnings.
+
+    The front matter carries the POV character's **title**; the graph carries
+    its **id**. A title that names a Character chapter of the same document sets
+    the id (the file is the hand-edited source); a title that names nothing
+    warns and leaves the stored id alone; a key that is absent or empty is no
+    POV at all and clears the id. A stored id that no longer resolves (the
+    character chapter was deleted) warns every time it is seen — the write-back
+    writes no pov line for it, so the next save's absent key clears the id.
+    Returns the warnings and whether the chapter's `pov` changed.
+    """
+    before = chapter.pov
+    warnings: list[str] = []
+    if diff.pov is None or diff.pov == "":
+        chapter.pov = ""
+    else:
+        resolved = chapter_repo.find_character_id_by_title(document_id, diff.pov, owner)
+        if resolved is not None:
+            chapter.pov = resolved
+        else:
+            warnings.append(
+                f"The pov '{diff.pov}' did not match any character chapter of this document; the chapter's stored POV is unchanged"
+            )
+    if chapter.pov and chapter_repo.find_character_title(document_id, chapter.pov, owner) is None:
+        warnings.append("The chapter's POV character no longer exists; the pov line is removed and will be cleared on the next save")
+    return warnings, chapter.pov != before
+
+
+def _reconcile_pov_title(chapter: Chapter, document_id: str, chapter_repo: ChapterRepository, owner: str) -> str:
+    """The POV character's **title** for the front matter ("" when there is no POV)."""
+    if not chapter.pov:
+        return ""
+    return chapter_repo.find_character_title(document_id, chapter.pov, owner) or ""
 
 
 def _build_paragraph(new: NewParagraph, nlp: Language) -> Paragraph:

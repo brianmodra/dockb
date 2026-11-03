@@ -88,6 +88,18 @@ def test_character_front_matter_parses_onto_the_diff():
     assert diff.location == "York"
 
 
+def test_pov_front_matter_parses_onto_the_diff():
+    front = "---\ntitle: C\npov: Karakas\n---\n\n"
+    diff = detect_changes(front + _span("par-1", "Text."), _no_get, lambda *_: Chapter(id="c-1"))
+    assert diff.pov == "Karakas"
+
+    empty_value = detect_changes("---\ntitle: C\npov:\n---\n\n" + _span("par-1", "Text."), _no_get, lambda *_: Chapter(id="c-1"))
+    assert empty_value.pov == ""
+
+    absent = detect_changes(_front_matter() + _span("par-1", "Text."), _get_old(_chapter([("par-1", ["Text."])])), _no_create)
+    assert absent.pov is None
+
+
 def test_absent_character_front_matter_leaves_defaults():
     old = _chapter([("par-1", ["First sentence."])])
     body = _span("par-1", "First sentence.")

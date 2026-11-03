@@ -29,7 +29,7 @@ MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 SET c.first_name = $first_name, c.surname = $surname, c.middle_names = $middle_names,
-    c.nicknames = $nicknames, c.age = $age, c.location = $location
+    c.nicknames = $nicknames, c.age = $age, c.location = $location, c.pov = $pov
 MERGE (c)-[rc:PART_OF]->(d)
 SET rc.index = $index
 WITH d, c
@@ -45,7 +45,7 @@ MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 SET c.first_name = $first_name, c.surname = $surname, c.middle_names = $middle_names,
-    c.nicknames = $nicknames, c.age = $age, c.location = $location
+    c.nicknames = $nicknames, c.age = $age, c.location = $location, c.pov = $pov
 MERGE (c)-[:PART_OF]->(d)
 {_PARAGRAPH_UNWIND_CYPHER}
 WITH c, COLLECT(p.id) AS keep_ids
@@ -66,6 +66,18 @@ _REORDER_CYPHER = """
 UNWIND $entries AS entry
 MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
 SET r.index = entry.index
+"""
+
+_FIND_CHARACTER_ID_BY_TITLE_CYPHER = """
+MATCH (c:Chapter {title_key: toLower($title), category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+RETURN c.id AS id
+LIMIT 1
+"""
+
+_FIND_CHARACTER_TITLE_CYPHER = """
+MATCH (c:Chapter {id: $pov_id, category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+RETURN c.title AS title
+LIMIT 1
 """
 
 _RETITLE_CYPHER = """
@@ -103,7 +115,7 @@ OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   c.id AS chapter_id, c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
   c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
-  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location,
+  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location, c.pov AS chapter_pov,
   p.id AS paragraph_id, rp.index AS paragraph_index, p.quote_type AS paragraph_quote_type,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
@@ -146,6 +158,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             "nicknames": list(model.nicknames),
             "age": model.age,
             "location": model.location,
+            "pov": model.pov,
             "paragraphs": [{"id": p.id, "index": i} for i, p in enumerate(model.paragraphs)],
         }
 
@@ -183,6 +196,38 @@ class ChapterRepository(BaseRepository[Chapter]):
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
         entries = [{"id": chapter_id, "index": i} for i, chapter_id in enumerate(ordered_ids)]
         self._session.run(_REORDER_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
+
+    def find_character_id_by_title(self, document_id: str, title: str, owner: str) -> str | None:
+        """Return the id of *document_id*'s Character chapter titled *title*, or None.
+
+        The title matches case-insensitively through ``title_key``. Scoped to
+        the same document, so a POV can only ever name a character of its own book.
+        """
+        records = list(
+            self._session.run(
+                _FIND_CHARACTER_ID_BY_TITLE_CYPHER,
+                {"document_id": document_id, "title": title, "owner": owner},
+            )
+        )
+        if not records:
+            return None
+        return str(records[0].get("id")) if records[0].get("id") is not None else None
+
+    def find_character_title(self, document_id: str, pov_id: str, owner: str) -> str | None:
+        """Return *pov_id*'s Character chapter title within *document_id*, or None when it dangles.
+
+        A pov id pointing at a chapter of another document, a manuscript chapter,
+        or nothing at all all read the same: unresolvable.
+        """
+        records = list(
+            self._session.run(
+                _FIND_CHARACTER_TITLE_CYPHER,
+                {"document_id": document_id, "pov_id": pov_id, "owner": owner},
+            )
+        )
+        if not records:
+            return None
+        return str(records[0].get("title")) if records[0].get("title") is not None else None
 
     def retitle(self, document_id: str, entries: list[dict[str, str]], owner: str) -> None:
         """Rewrite the chapters' `title`/`title_key` to their entry's title, in one transaction.
@@ -228,6 +273,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             nicknames=list(first.get("chapter_nicknames") or []),
             age=first.get("chapter_age"),
             location=first.get("chapter_location") or "",
+            pov=first.get("chapter_pov") or "",
             state=DataState.SYNC,
         )
 

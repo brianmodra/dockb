@@ -303,6 +303,7 @@ class TestDocumentOwnership:
                 "chapter_nicknames": ["Adams"],
                 "chapter_age": 34,
                 "chapter_location": "York",
+                "chapter_pov": "k-other",
                 "paragraph_id": None,
                 "paragraph_index": None,
                 "paragraph_quote_type": None,
@@ -333,6 +334,7 @@ class TestDocumentOwnership:
         assert chapter.nicknames == ["Adams"]
         assert chapter.age == 34
         assert chapter.location == "York"
+        assert chapter.pov == "k-other"
 
     def test_find_summary_returns_the_document_and_its_owner(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "d-1", "title": "Faith", "owner": "acct-1"}]

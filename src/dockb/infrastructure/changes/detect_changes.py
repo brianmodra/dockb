@@ -60,6 +60,9 @@ class ChapterDiff:  # pylint: disable=too-many-instance-attributes
     nicknames: list[str] = field(default_factory=list)
     age: int | None = None
     location: str = ""
+    # The front matter's `pov` — a character chapter's title. None when the key
+    # is absent (which a later save reads as "no POV"); "" when present but empty.
+    pov: str | None = None
 
     def __bool__(self) -> bool:
         return bool(self.changed or self.new or self.deleted)
@@ -271,6 +274,11 @@ def _character_props(attrs: dict[str, Any]) -> dict[str, Any]:
     A missing key stays the field's default, so a file that drops a property
     reads as the property being cleared — the front matter is the source.
     """
+    if "pov" in attrs:
+        front_pov = attrs.get("pov")
+        pov_field = "" if front_pov is None else str(front_pov)
+    else:
+        pov_field = None
     return {
         "first_name": str(attrs.get("first_name") or ""),
         "surname": str(attrs.get("surname") or ""),
@@ -278,4 +286,5 @@ def _character_props(attrs: dict[str, Any]) -> dict[str, Any]:
         "nicknames": [str(name) for name in (attrs.get("nicknames") or [])],
         "age": int(attrs["age"]) if attrs.get("age") is not None else None,
         "location": str(attrs.get("location") or ""),
+        "pov": pov_field,
     }

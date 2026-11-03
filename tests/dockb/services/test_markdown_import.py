@@ -408,6 +408,92 @@ class TestSingleNewlineParagraphs:
 
 class TestExistingChapter:
 
+    def _character_document(self, chapter: Chapter) -> Document:
+        character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
+        return _make_document("d1", chapter, character)
+
+    def test_pov_title_resolves_to_the_character_chapter_id(self, nlp, tmp_path):
+        chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
+        chapter.pov = ""
+        chapter_repo, uow_factory = _setup(chapter)
+        chapter_repo.find_character_id_by_title.return_value = "k1"
+        chapter_repo.find_character_title.return_value = "Karakas"
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        file = tmp_path / "Opening 1.md"
+        file.write_text('---\nid: c1\npov: Karakas\n---\n\n<span data-par-id="par-1">\nFirst sentence.\n</span>')
+        document = self._character_document(chapter)
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+
+        saved, _ = _saved_chapter(uow)
+        assert saved.pov == "k1"
+        assert not summary.warnings
+        assert "pov: Karakas" in file.read_text()
+
+    def test_pov_title_that_matches_no_character_warns_and_keeps_the_graph_value(self, nlp, tmp_path):
+        chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
+        chapter.pov = "k-old"
+        chapter_repo, uow_factory = _setup(chapter)
+        chapter_repo.find_character_id_by_title.return_value = None
+        chapter_repo.find_character_title.return_value = "Old Character"
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        file = tmp_path / "Opening 1.md"
+        file.write_text('---\nid: c1\npov: Misspelled\n---\n\n<span data-par-id="par-1">\nFirst sentence.\n</span>')
+        document = self._character_document(chapter)
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+
+        saved, _ = _saved_chapter(uow)
+        assert saved.pov == "k-old"
+        assert summary.warnings and "Misspelled" in summary.warnings[0]
+        assert "pov: Old Character" in file.read_text()
+
+    def test_absent_front_matter_pov_clears_the_graph_value(self, nlp, tmp_path):
+        chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
+        chapter.pov = "k-old"
+        chapter_repo, uow_factory = _setup(chapter)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        file = tmp_path / "Opening 1.md"
+        file.write_text('---\nid: c1\n---\n\n<span data-par-id="par-1">\nFirst sentence.\n</span>')
+        document = self._character_document(chapter)
+
+        apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+
+        saved, _ = _saved_chapter(uow)
+        assert saved.pov == ""
+        assert "pov:" not in file.read_text()
+
+    def test_dangling_pov_id_empties_the_front_matter_and_the_next_save_clears_it(self, nlp, tmp_path):
+        chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
+        chapter.pov = "ghost"
+        chapter_repo, uow_factory = _setup(chapter)
+        chapter_repo.find_character_id_by_title.return_value = None
+        chapter_repo.find_character_title.return_value = None
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        file = tmp_path / "Opening 1.md"
+        file.write_text('---\nid: c1\npov: Karakas\n---\n\n<span data-par-id="par-1">\nFirst sentence.\n</span>')
+        document = self._character_document(chapter)
+
+        # The read/save that discovers the dangling id: warn, keep the stored id,
+        # and stop writing the pov line.
+        first = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+        saved, _ = _saved_chapter(uow)
+        assert saved.pov == "ghost"
+        assert any("POV" in warning for warning in first.warnings)
+        assert "pov:" not in file.read_text()
+
+        # The next save: the front matter's pov is gone, so the graph clears too.
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+        second = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, owner=_OWNER)
+        saved, _ = _saved_chapter(uow)
+        assert saved.pov == ""
+        assert not second.warnings
+
     def test_character_front_matter_edit_persists_without_text_changes(self, nlp, tmp_path):
         chapter = _make_chapter("c1", _make_paragraph("par-1", "First sentence."))
         chapter.category = "Character"

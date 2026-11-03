@@ -127,10 +127,24 @@ class DocumentService:
         return doc
 
     def _materialize(self, store: DocumentStore, doc: Document) -> None:
-        """Write the document's owned tree from the graph and git-commit it."""
+        """Write the document's owned tree from the graph and git-commit it.
+
+        A chapter's `pov` is stored in the graph as the character chapter's **id**;
+        the front matter carries the character's **title** instead, resolved here
+        from the document's own character chapters — a pov id that resolves to
+        nothing (the character chapter was deleted) writes no pov line at all.
+        """
+        titles = {chapter.id: chapter.title for chapter in doc.chapters if chapter.category == "Character"}
         store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
         for chapter in doc.chapters:
-            content = markdown_writer.render_chapter_markdown(chapter, self._nlp)
+            attrs: dict[str, object] = {"id": chapter.id, "title": chapter.title}
+            if chapter.act:
+                attrs["act"] = chapter.act
+            attrs["category"] = chapter.category
+            pov_title = titles.get(chapter.pov, "")
+            if pov_title:
+                attrs["pov"] = pov_title
+            content = markdown_writer.render_chapter_markdown(chapter, self._nlp, attrs=attrs)
             store.write_chapter(doc.title, chapter.act, chapter.title, content, chapter.category)
         store.git_commit(doc.title, f"materialize: {doc.id[:8]}")
 

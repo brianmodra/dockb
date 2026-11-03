@@ -31,6 +31,8 @@ class Chapter(DockbModel):
     nicknames: list[str] = Field(default_factory=list)
     age: int | None = None
     location: str = ""
+    # The id of the Character chapter this chapter is written from ("" = no POV).
+    pov: str = ""
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)
 
     def get_text(self) -> str:

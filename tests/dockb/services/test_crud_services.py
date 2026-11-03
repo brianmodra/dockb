@@ -475,6 +475,54 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         assert result.returncode == 0
         assert result.stdout.strip()
 
+    def test_open_materializes_the_pov_title_into_the_front_matter(self, tmp_path, nlp) -> None:
+        from dockb.models.token import Token
+
+        character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
+        chapter = Chapter(id="c1", title="Intro", pov="k1", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Hello world.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        chapter.paragraphs.append(para)
+        doc = Document(owner=self._OWNER, id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(chapter)
+        doc.chapters.append(character)
+        self.repo._store["d1"] = doc
+
+        store = self._store(tmp_path)
+        svc = self._service_with_store(tmp_path, nlp)
+        svc.open("d1", owner=self._OWNER)
+
+        content = store.read_chapter("Faith", "", "Intro")
+        assert content is not None
+        assert "pov: Karakas" in content
+
+    def test_open_materializes_a_dangling_pov_as_absent(self, tmp_path, nlp) -> None:
+        from dockb.models.token import Token
+
+        chapter = Chapter(id="c1", title="Intro", pov="ghost", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Hello world.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        chapter.paragraphs.append(para)
+        doc = Document(owner=self._OWNER, id="d1", title="Faith", author="Paul", state=DataState.SYNC)
+        doc.chapters.append(chapter)
+        self.repo._store["d1"] = doc
+
+        store = self._store(tmp_path)
+        svc = self._service_with_store(tmp_path, nlp)
+        svc.open("d1", owner=self._OWNER)
+
+        content = store.read_chapter("Faith", "", "Intro")
+        assert content is not None
+        assert "pov:" not in content
+
     def test_open_does_not_overwrite_existing_tree(self, tmp_path, nlp) -> None:
         doc = Document(owner=self._OWNER, id="d1", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d1"] = doc

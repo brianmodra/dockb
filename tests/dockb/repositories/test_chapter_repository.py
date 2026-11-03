@@ -73,6 +73,16 @@ class TestSaveNewChapter:
         _, params = extract_call(neo4j_session)
         assert params["act"] == "Act I"
 
+    def test_passes_the_pov_id(self, chapter_repo, neo4j_session, chapter):
+        chapter.state = DataState.NEW
+        chapter.pov = "k1"
+
+        chapter_repo.save(chapter, document_id="d1", owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "c.pov = $pov" in cypher
+        assert params["pov"] == "k1"
+
     def test_passes_the_character_properties(self, chapter_repo, neo4j_session, chapter):
         chapter.state = DataState.NEW
         chapter.category = "Character"
@@ -523,6 +533,38 @@ class TestLoadChapter:
         assert ch is not None
         assert ch.category == "Character"
 
+    def test_loads_the_pov_from_graph(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_pov": "k1"}]
+        ch = chapter_repo.load("ch-1", _OWNER)
+        assert ch is not None and ch.pov == "k1"
+
+    def test_finds_a_character_id_by_title(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "k1"}]
+
+        assert chapter_repo.find_character_id_by_title("d-1", "Karakas", _OWNER) == "k1"
+
+        cypher, params = extract_call(neo4j_session)
+        assert "category: 'Character'" in cypher
+        assert "title_key: toLower($title)" in cypher
+        assert params == {"document_id": "d-1", "title": "Karakas", "owner": _OWNER}
+
+    def test_character_id_by_title_is_none_when_absent(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert chapter_repo.find_character_id_by_title("d-1", "Ghost", _OWNER) is None
+
+    def test_finds_a_character_title_by_id(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"title": "Karakas"}]
+
+        assert chapter_repo.find_character_title("d-1", "k1", _OWNER) == "Karakas"
+
+        cypher, params = extract_call(neo4j_session)
+        assert "category: 'Character'" in cypher
+        assert params == {"document_id": "d-1", "pov_id": "k1", "owner": _OWNER}
+
+    def test_character_title_by_id_is_none_when_dangling(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert chapter_repo.find_character_title("d-1", "ghost", _OWNER) is None
+
     def test_loads_character_properties_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
             {
@@ -536,6 +578,7 @@ class TestLoadChapter:
                 "chapter_nicknames": ["Adams", "Jer"],
                 "chapter_age": 34,
                 "chapter_location": "York",
+                "chapter_pov": None,
                 "paragraph_id": None,
                 "paragraph_index": None,
                 "paragraph_quote_type": None,

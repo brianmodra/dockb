@@ -54,7 +54,7 @@ RETURN
   c.id AS chapter_id, rc.index AS chapter_index,
   c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
   c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
-  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location,
+  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location, c.pov AS chapter_pov,
   p.id AS paragraph_id, rp.index AS paragraph_index, p.quote_type AS paragraph_quote_type,
   s.id AS sentence_id, rs.index AS sentence_index,
   t.id AS token_id, rt.index AS token_index,
@@ -282,6 +282,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
                     nicknames=list(rec.get("chapter_nicknames") or []),
                     age=rec.get("chapter_age"),
                     location=rec.get("chapter_location") or "",
+                    pov=rec.get("chapter_pov") or "",
                     state=DataState.SYNC,
                 )
                 document.chapters.append(current_chapter)
