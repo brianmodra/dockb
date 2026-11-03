@@ -11,7 +11,9 @@ the chapter list's right-click menu renames, moves, renumbers, and assigns a poi
 character to chapters — renumbering rewrites every act chapter's number, from 1 or 0, in the
 current order, on the server, and a chapter's POV names one of its document's characters by
 title — and inside the text a paragraph's right-click marks it as a quote (Reading or
-Writing), which renders indented and saves through the same chapter save.
+Writing), which renders indented and saves through the same chapter save. Above the text sits
+a read-only identity line — the chapter's title, its POV, or a character's name parts — kept
+current with the front matter.
 
 Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
 back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in
