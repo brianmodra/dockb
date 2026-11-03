@@ -15,6 +15,7 @@ export interface LeftPanelOptions {
   api: LeftPanelApi;
   onEdit?: (chapterId: string) => void;
   onMessage?: (text: string) => void;
+  onPovChanged?: (chapterId: string, povTitle: string | null) => void;
 }
 
 export class LeftPanel {
@@ -23,6 +24,7 @@ export class LeftPanel {
   private api: LeftPanelApi;
   private onEdit?: (chapterId: string) => void;
   private onMessage?: (text: string) => void;
+  private onPovChanged?: (chapterId: string, povTitle: string | null) => void;
   private documentId: string | null = null;
   private chapters: ChapterListRow[] = [];
   private chapterList: ChapterList;
@@ -32,6 +34,7 @@ export class LeftPanel {
     this.api = options.api;
     this.onEdit = options.onEdit;
     this.onMessage = options.onMessage;
+    this.onPovChanged = options.onPovChanged;
     this.element = document.createElement("div");
     this.element.className = "left-panel";
 
@@ -127,6 +130,7 @@ export class LeftPanel {
       const response = await this.api.setPov(chapterId, input);
       if (response.applied) {
         this.onMessage?.(response.pov ? `POV set to "${response.pov.title}".` : "POV cleared.");
+        this.onPovChanged?.(chapterId, response.pov?.title ?? null);
         await this.load(this.documentId);
         return;
       }

@@ -347,6 +347,29 @@ describe("LeftPanel", () => {
     await vi.waitFor(() => expect(document.querySelector("[data-testid='pov-input']")).toBeNull());
   });
 
+  it("tells the shell when a chapter's POV was set", async () => {
+    const setPov = vi.fn(async () => ({ applied: true, pov: { id: "k1", title: "Karakas" }, warning: null }));
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      setPov,
+    });
+    const onPovChanged = vi.fn();
+    const panel = new LeftPanel({ api, onPovChanged });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"))
+      .find((n) => n.textContent === "POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.querySelector<HTMLInputElement>("[data-testid='pov-input']")!.value = "Karakas";
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"))
+      .find((n) => n.textContent === "Set POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await vi.waitFor(() => expect(onPovChanged).toHaveBeenCalledWith("a", "Karakas"));
+  });
+
   it("renumbers the document from the context menu after confirming", async () => {
     const renumberChapters = vi.fn(async () => ({
       status: { code: "ok", message: "ok" },

@@ -6,6 +6,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from "@codem
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
+import { characterHeaderText, frontMatterFields, manuscriptHeaderText } from "./characterHeader";
 import { WysiwygView, chapterBody, quoteSignatureOf, uniformQuoteType } from "./wysiwyg";
 import { openContextMenu } from "./contextMenu";
 import type { Mode } from "./menubar";
@@ -36,6 +37,7 @@ export class EditPanel {
   private lastDirty: boolean | null = null;
   private readonly readOnlyCompartment = new Compartment();
   private busy = false;
+  private readonly header: HTMLElement;
 
   constructor(options: EditPanelOptions) {
     this.api = options.api;
@@ -47,11 +49,19 @@ export class EditPanel {
     this.element.className = "edit-panel";
     this.element.dataset.testid = "edit-panel";
 
+    this.header = document.createElement("div");
+    this.header.className = "chapter-header";
+    this.header.dataset.testid = "chapter-header";
+    this.header.setAttribute("contenteditable", "false");
+
     this.rawHost = document.createElement("div");
     this.rawHost.dataset.testid = "edit-raw";
     this.wysiwygHost = document.createElement("div");
     this.wysiwygHost.dataset.testid = "edit-wysiwyg";
-    this.element.append(this.rawHost, this.wysiwygHost);
+    const scroll = document.createElement("div");
+    scroll.className = "edit-scroll";
+    scroll.append(this.rawHost, this.wysiwygHost);
+    this.element.append(this.header, scroll);
 
     const state = EditorState.create({
       doc: "",
@@ -219,6 +229,7 @@ export class EditPanel {
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
       this.notifyDirty();
+      this.updateHeader();
       for (const warning of response.warnings ?? []) {
         this.onWarning?.(warning);
       }
@@ -239,6 +250,7 @@ export class EditPanel {
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
       this.notifyDirty();
+      this.updateHeader();
       this.onMessage?.(saveMessage(response));
       for (const warning of response.warnings ?? []) {
         this.onWarning?.(warning);
@@ -263,7 +275,56 @@ export class EditPanel {
     const raw = this.mode === "raw";
     this.rawHost.hidden = !raw;
     this.wysiwygHost.hidden = raw;
+    // The raw view shows the front matter itself; the header would say it twice.
+    this.header.hidden = raw;
     this.element.dataset.mode = this.mode;
+  }
+
+  /**
+   * The un-editable identity line above the text: a character's name parts, or
+   * the manuscript chapter's title and its point of view.
+   */
+  private updateHeader(): void {
+    if (this.lastCanonicalText === null) {
+      this.header.textContent = "";
+      return;
+    }
+    const fields = frontMatterFields(this.lastCanonicalText);
+    this.header.textContent =
+      fields.category === "Character" ? characterHeaderText(fields) : manuscriptHeaderText(fields);
+  }
+
+  /**
+   * Rewrite the buffer's pov line in place after a POV set or clear elsewhere.
+   *
+   * The open buffer's front matter would otherwise go stale — and its next
+   * save, carrying no pov, would clear what the modal just set. Both the
+   * buffer and the clean baseline learn the new line, so the save sends it.
+   */
+  refreshPovLine(povTitle: string | null): void {
+    const rewrite = (text: string | null): string | null => {
+      if (text === null) {
+        return null;
+      }
+      if (!text.startsWith("---")) {
+        return text;
+      }
+      const lines = text.split("\n");
+      const closing = lines.findIndex((line, index) => index > 0 && line.startsWith("---"));
+      if (closing === -1) {
+        return text;
+      }
+      const kept = lines.filter((line, index) => index === 0 || index >= closing || !line.startsWith("pov:"));
+      if (povTitle) {
+        const bodyLines = lines.length - closing;
+        kept.splice(kept.length - bodyLines, 0, `pov: ${povTitle}`);
+      }
+      return kept.join("\n");
+    };
+    this.lastCanonicalText = rewrite(this.lastCanonicalText);
+    this.replaceDoc(this.lastCanonicalText ?? "");
+    this.updateHeader();
+    this.notifyDirty();
   }
 }
 

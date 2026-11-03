@@ -109,6 +109,18 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         void editPanel.open(chapterId);
       },
       onMessage: (text) => layout.pushMessage(text),
+      onPovChanged: (chapterId, povTitle) => {
+        // The file's pov line changed under the open buffer: a clean buffer
+        // re-reads it; a dirty one learns the line in place, so its next save
+        // carries the pov instead of clearing it.
+        if (panel.selectedChapter()?.id === chapterId) {
+          if (editPanel.isDirty()) {
+            editPanel.refreshPovLine(povTitle);
+          } else {
+            void editPanel.load(chapterId);
+          }
+        }
+      },
     });
     layout.leftPanelEl().append(panel.element);
 

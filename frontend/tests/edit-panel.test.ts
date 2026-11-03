@@ -35,6 +35,77 @@ describe("EditPanel", () => {
     expect(panel.isDirty()).toBe(false);
   });
 
+  it("shows a character chapter's front matter as an un-editable header line", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc(
+          '---\ntitle: Karakas\ncategory: Character\nfirst_name: Kiral\nsurname: Karakas\nage: 34\n---\n\n<span data-par-id="p1">\nBody.\n</span>',
+        ),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    const header = panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!;
+    expect(header).not.toBeNull();
+    expect(header.textContent).toBe("Kiral Karakas — 34");
+    expect(header.tagName).not.toBe("INPUT");
+    expect(header.getAttribute("contenteditable")).toBe("false");
+  });
+
+  it("names a manuscript chapter and its point of view in the header", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\npov: Karakas\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    expect(panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!.textContent).toBe(
+      "Opening 1, from the point of view of Karakas",
+    );
+  });
+
+  it("hides the header in raw mode, where the front matter is already visible", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\ntitle: Karakas\ncategory: Character\nfirst_name: Kiral\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    panel.setMode("raw");
+
+    const header = panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!;
+    expect(header.hidden).toBe(true);
+  });
+
+  it("refreshes the pov line in place when a character is assigned to the open chapter", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    panel.refreshPovLine("Karakas");
+
+    expect(panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!.textContent).toBe(
+      "Opening 1, from the point of view of Karakas",
+    );
+    expect(panel.lastCanonical()).toContain("pov: Karakas");
+    expect(panel.isDirty()).toBe(false);
+  });
+
   it("reports the response's warnings through onWarning after a load", async () => {
     const onWarning = vi.fn();
     const api = fakeApi({

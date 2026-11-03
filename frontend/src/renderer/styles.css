@@ -430,14 +430,31 @@ body {
   height: 100%;
 }
 
-.edit-panel .ProseMirror {
+.edit-panel .chapter-header {
+  padding: 8px 12px 6px;
+  color: #555;
+  font-style: italic;
+  cursor: default;
+  user-select: none;
+}
+
+.edit-scroll {
   height: 100%;
   overflow: auto;
+}
+
+.edit-panel .ProseMirror {
+  min-height: 100%;
   box-sizing: border-box;
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.5;
   outline: none;
+}
+
+.edit-panel[data-mode="raw"] .ProseMirror {
+  height: 100%;
+  overflow: auto;
 }
 
 .edit-panel .ProseMirror p {
