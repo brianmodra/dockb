@@ -7,10 +7,11 @@ DockB is a writing tool that stores each book as a knowledge graph
 backend and spaCy for language analysis. Writers get structure a plain text
 editor cannot: sentence splits, parts of speech, and a version history of every
 chapter. Moving chapters can leave the numbers in their titles out of step with
-the reading order, so the editor can renumber every chapter in one
-command. This file is the front door: the install command, how to run the dev
-servers, how to import an existing set of markdown files, and pointers to the
-per-layer documentation.
+the reading order, so the editor can renumber every chapter in one command; and
+a chapter can name the character its point of view is written from, matched
+against the characters' own name parts. This file is the front door: the
+install command, how to run the dev servers, how to import an existing set of
+markdown files, and pointers to the per-layer documentation.
 
 The desktop editor (`frontend/`) is a thin API client that never writes files or git: writers edit
 canonical markdown in WYSIWYG or raw view, and an import only reads the directory a writer picks and
