@@ -4,6 +4,9 @@ import { openContextMenu } from "../src/renderer/layout/contextMenu";
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
+  delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+  delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+  delete (window as { innerHeight?: number }).innerHeight;
 });
 
 describe("context menu", () => {
@@ -114,5 +117,42 @@ describe("context menu", () => {
       .find((n) => n.textContent === "Quote")!
       .click();
     expect(handle.element.isConnected).toBe(true);
+  });
+
+  it("clamps the menu inside the window on both axes", () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 200 });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 300 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
+
+    const handle = openContextMenu(900, 700, [{ label: "Quote", onSelect: vi.fn() }]);
+    expect(handle.element.style.left).toBe("824px");
+    expect(handle.element.style.top).toBe("468px");
+  });
+
+  it("never places the menu above or left of the window", () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 200 });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 300 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
+
+    const handle = openContextMenu(-50, -10, [{ label: "Quote", onSelect: vi.fn() }]);
+    expect(handle.element.style.left).toBe("0px");
+    expect(handle.element.style.top).toBe("0px");
+  });
+
+  it("clamps an open submenu so it stays inside the window too", () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 200 });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 300 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 490 });
+
+    const handle = openContextMenu(10, 700, [
+      { label: "Edit", children: [{ label: "Quote", children: [{ label: "None" }] }] },
+    ]);
+    handle.element.querySelector<HTMLElement>(".context-item")!.click();
+    const submenu = handle.element.querySelector<HTMLElement>(".context-submenu")!;
+    Object.defineProperty(submenu, "offsetHeight", { configurable: true, value: 500 });
+    handle.element.querySelector<HTMLElement>(".context-item")!.click();
+    handle.element.querySelector<HTMLElement>(".context-item")!.click();
+
+    expect(submenu.style.top).toBe("-190px");
   });
 });

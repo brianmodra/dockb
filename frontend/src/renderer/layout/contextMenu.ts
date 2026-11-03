@@ -55,8 +55,52 @@ export function openContextMenu(
   appendItems(element, items, close);
 
   document.body.append(element);
+  clampIntoWindow(element, x, y);
 
   return { element, close };
+}
+
+/**
+ * Pull *menu* back inside the window on both axes.
+ *
+ * Measured after mounting (the size is not known before), so a menu opened
+ * near the edge shows all of itself: never left of 0, never right of the
+ * window's edge, and the same vertically.
+ */
+function clampIntoWindow(menu: HTMLElement, x: number, y: number): void {
+  const left = Math.max(0, Math.min(x, window.innerWidth - menu.offsetWidth));
+  const top = Math.max(0, Math.min(y, window.innerHeight - menu.offsetHeight));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+/**
+ * Pull an open submenu back inside the window.
+ *
+ * A submenu hangs off its row's edge; when that would reach past the window's
+ * bottom it slides up (but never above the menu's own top), and when it would
+ * reach past the right edge it flips to the row's other side.
+ */
+function clampSubmenu(row: HTMLElement, submenu: HTMLElement): void {
+  if (!submenu.classList.contains("context-submenu--open")) {
+    return;
+  }
+  const menu = row.closest<HTMLElement>(".context-menu");
+  if (!menu) {
+    return;
+  }
+  const menuLeft = Number.parseInt(menu.style.left, 10) || 0;
+  const menuTop = Number.parseInt(menu.style.top, 10) || 0;
+  const viewportTop = menuTop + row.offsetTop;
+  const overflowBelow = viewportTop + submenu.offsetHeight - window.innerHeight;
+  if (overflowBelow > 0) {
+    submenu.style.top = `-${Math.min(overflowBelow, viewportTop)}px`;
+  }
+  const overflowRight = menuLeft + row.offsetWidth + submenu.offsetWidth - window.innerWidth;
+  if (overflowRight > 0) {
+    submenu.style.left = "auto";
+    submenu.style.right = "100%";
+  }
 }
 
 /** Mount one level of items into *container*; a submenu opens when its parent is clicked. */
@@ -76,8 +120,9 @@ function appendItems(container: HTMLElement, items: ContextMenuItem[], close: ()
       appendItems(submenu, item.children, close);
       button.addEventListener("click", () => {
         submenu.classList.toggle("context-submenu--open");
+        clampSubmenu(row, submenu);
       });
-      const row = document.createElement("div");
+      const row = document.createElement("div") as HTMLDivElement;
       row.className = "context-row";
       row.append(button, submenu);
       container.append(row);
