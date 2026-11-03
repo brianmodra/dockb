@@ -10,6 +10,7 @@ function fakeApi(overrides: Partial<LeftPanelApi> = {}): LeftPanelApi {
     deleteChapter: vi.fn(async () => ok),
     reorderChapter: vi.fn(async () => ok),
     renumberChapters: vi.fn(async () => ({ status: { code: "ok", message: "ok" }, renames: [] })),
+    setPov: vi.fn(async () => ({ applied: true, pov: null, warning: null })),
     ...overrides,
   };
 }
@@ -248,6 +249,102 @@ describe("LeftPanel", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(document.querySelector("[data-testid='move-bar']")).toBeNull();
     expect(reorderChapter).not.toHaveBeenCalled();
+  });
+
+  it("offers Move, Renumber, and POV on a manuscript chapter", async () => {
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const labels = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item")).map(
+      (n) => n.textContent,
+    );
+    expect(labels).toEqual(["Edit", "Rename", "Move", "Renumber", "POV", "Delete"]);
+  });
+
+  it("drops Move, Renumber, and POV on a character chapter", async () => {
+    const api = fakeApi({
+      listChapters: vi.fn(
+        async (): Promise<ChapterListRow[]> => [{ id: "k", title: "Karakas", act: "", index: 0, category: "Character" }],
+      ),
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const labels = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item")).map(
+      (n) => n.textContent,
+    );
+    expect(labels).toEqual(["Edit", "Rename", "Delete"]);
+  });
+
+  it("sets the POV from the modal and closes it", async () => {
+    const setPov = vi.fn(async () => ({ applied: true, pov: { id: "k1", title: "Karakas" }, warning: null }));
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      setPov,
+    });
+    const onMessage = vi.fn();
+    const panel = new LeftPanel({ api, onMessage });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"))
+      .find((n) => n.textContent === "POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const input = document.querySelector<HTMLInputElement>("[data-testid='pov-input']")!;
+    expect(input).not.toBeNull();
+    input.value = "Kiral";
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"))
+      .find((n) => n.textContent === "Set POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await vi.waitFor(() => expect(setPov).toHaveBeenCalledWith("a", "Kiral"));
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith('POV set to "Karakas".'));
+    await vi.waitFor(() => expect(document.querySelector("[data-testid='pov-input']")).toBeNull());
+  });
+
+  it("stays in the POV modal on a suggestion, with the text replaced and the warning shown", async () => {
+    const setPov = vi
+      .fn(async () => ({ applied: false, pov: null, warning: 'The pov "Kira" did not match; perhaps you meant "Karakas"', suggestion: "Karakas" }))
+      .mockResolvedValueOnce({ applied: false, pov: null, warning: 'The pov "Kira" did not match; perhaps you meant "Karakas"', suggestion: "Karakas" })
+      .mockResolvedValueOnce({ applied: true, pov: { id: "k1", title: "Karakas" }, warning: null });
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      setPov,
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"))
+      .find((n) => n.textContent === "POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.querySelector<HTMLInputElement>("[data-testid='pov-input']")!.value = "Kira";
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"))
+      .find((n) => n.textContent === "Set POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await vi.waitFor(() => {
+      const modalInput = document.querySelector<HTMLInputElement>("[data-testid='pov-input']");
+      expect(modalInput).not.toBeNull();
+      expect(modalInput!.value).toBe("Karakas");
+      expect(document.querySelector("[data-testid='pov-warning']")!.textContent).toContain("perhaps you meant");
+    });
+
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"))
+      .find((n) => n.textContent === "Set POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await vi.waitFor(() => expect(setPov).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(document.querySelector("[data-testid='pov-input']")).toBeNull());
   });
 
   it("renumbers the document from the context menu after confirming", async () => {

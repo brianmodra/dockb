@@ -92,3 +92,4 @@ class PovResponse(BaseModel):
     applied: bool
     pov: PovCharacterWire | None = None
     warning: str | None = None
+    suggestion: str | None = None

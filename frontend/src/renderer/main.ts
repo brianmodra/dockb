@@ -12,6 +12,7 @@ import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
 import { quitApp, confirmUnsaved } from "./state/quit";
+import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
 
 export interface MountShellOptions {
@@ -99,6 +100,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     stateController = controller;
     editPanel.onMessage = (text) => layout.pushMessage(text);
     editPanel.onDirtyChange = (dirty) => layout.setDirty(dirty);
+    editPanel.onWarning = (text) => void warningModal("POV warning", text);
     layout.editPanelEl().append(editPanel.element);
 
     const panel = new LeftPanel({

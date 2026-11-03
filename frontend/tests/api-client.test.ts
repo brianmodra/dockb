@@ -179,6 +179,17 @@ describe("ApiClient chapters and lifecycle", () => {
     expect(result.renames).toEqual(renames);
   });
 
+  it("sets a chapter's POV character and returns the answer", async () => {
+    mockFetch(200, { applied: true, pov: { id: "k1", title: "Karakas" }, warning: null });
+    const client = new ApiClient();
+    const result = await client.setPov("ch-1", "Kiral");
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/chapters/ch-1/pov");
+    expect(call.init.method).toBe("POST");
+    expect(call.init.body).toContain('"name":"Kiral"');
+    expect(result.applied).toBe(true);
+  });
+
   it("renumbers from zero when asked", async () => {
     mockFetch(200, { status: { code: "ok", message: "success" }, renames: [] });
     const client = new ApiClient();

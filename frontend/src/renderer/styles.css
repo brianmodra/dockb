@@ -213,6 +213,11 @@ body {
   cursor: pointer;
 }
 
+.modal-warning {
+  color: #b23c17;
+  padding: 4px 0 8px;
+}
+
 .context-title {
   padding: 5px 12px 3px;
   font-size: 11px;

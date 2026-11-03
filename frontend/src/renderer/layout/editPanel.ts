@@ -15,6 +15,7 @@ export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDo
 export interface EditPanelOptions {
   api: EditPanelApi;
   onMessage?: (text: string) => void;
+  onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
 
@@ -23,6 +24,7 @@ export class EditPanel {
 
   api: EditPanelApi;
   onMessage?: (text: string) => void;
+  onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   private view: EditorView;
   private readonly wysiwyg: WysiwygView;
@@ -38,6 +40,7 @@ export class EditPanel {
   constructor(options: EditPanelOptions) {
     this.api = options.api;
     this.onMessage = options.onMessage;
+    this.onWarning = options.onWarning;
     this.onDirtyChange = options.onDirtyChange;
 
     this.element = document.createElement("div");
@@ -216,6 +219,9 @@ export class EditPanel {
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
       this.notifyDirty();
+      for (const warning of response.warnings ?? []) {
+        this.onWarning?.(warning);
+      }
     } catch (error) {
       reportError("Load chapter", error, this.onMessage);
     } finally {
@@ -234,6 +240,9 @@ export class EditPanel {
       this.replaceDoc(response.content);
       this.notifyDirty();
       this.onMessage?.(saveMessage(response));
+      for (const warning of response.warnings ?? []) {
+        this.onWarning?.(warning);
+      }
       return response;
     } catch (error) {
       reportError("Save chapter", error, this.onMessage);

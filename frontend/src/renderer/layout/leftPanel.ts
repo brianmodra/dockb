@@ -1,14 +1,14 @@
 import type { ChapterListRow } from "../api/types";
 import { ChapterList, orderedForDisplay } from "./chapterList";
 import { openContextMenu } from "./contextMenu";
-import { confirmCheckboxModal, confirmModal, promptModal } from "./modals";
+import { confirmCheckboxModal, confirmModal, povModal, promptModal } from "./modals";
 import { MoveMode } from "./moveMode";
 import { reportError } from "../log";
 import type { ApiClient } from "../api/client";
 
 export type LeftPanelApi = Pick<
   ApiClient,
-  "listChapters" | "updateChapter" | "deleteChapter" | "reorderChapter" | "renumberChapters"
+  "listChapters" | "updateChapter" | "deleteChapter" | "reorderChapter" | "renumberChapters" | "setPov"
 >;
 
 export interface LeftPanelOptions {
@@ -88,13 +88,51 @@ export class LeftPanel {
     if (!chapter) {
       return;
     }
-    openContextMenu(event.clientX, event.clientY, [
+    const items = [
       { label: "Edit", onSelect: () => this.onEdit?.(chapterId) },
       { label: "Rename", onSelect: () => void this.rename(chapterId, chapter.title) },
-      { label: "Move", onSelect: () => this.startMove(chapterId) },
-      { label: "Renumber", onSelect: () => void this.renumberAll() },
-      { label: "Delete", onSelect: () => void this.delete(chapterId, chapter.title) },
-    ]);
+    ];
+    if (chapter.category === "Character") {
+      // A character is neither moved within the manuscript nor numbered.
+      items.push({ label: "Delete", onSelect: () => void this.delete(chapterId, chapter.title) });
+    } else {
+      items.push(
+        { label: "Move", onSelect: () => this.startMove(chapterId) },
+        { label: "Renumber", onSelect: () => void this.renumberAll() },
+        { label: "POV", onSelect: () => void this.pov(chapterId) },
+        { label: "Delete", onSelect: () => void this.delete(chapterId, chapter.title) },
+      );
+    }
+    openContextMenu(event.clientX, event.clientY, items);
+  }
+
+  /** Ask for a POV character by name until one applies, is cleared, or is cancelled. */
+  private async pov(chapterId: string): Promise<void> {
+    if (!this.documentId) {
+      return;
+    }
+    let initial = "";
+    let warning: string | undefined;
+    for (;;) {
+      const { value, input } = await povModal({
+        title: "POV character",
+        label: "Character name",
+        initial,
+        confirmLabel: "Set POV",
+        warning,
+      });
+      if (value !== "confirm") {
+        return;
+      }
+      const response = await this.api.setPov(chapterId, input);
+      if (response.applied) {
+        this.onMessage?.(response.pov ? `POV set to "${response.pov.title}".` : "POV cleared.");
+        await this.load(this.documentId);
+        return;
+      }
+      initial = response.suggestion ?? input;
+      warning = response.warning ?? "No matching character chapter";
+    }
   }
 
   private async rename(chapterId: string, currentTitle: string): Promise<void> {

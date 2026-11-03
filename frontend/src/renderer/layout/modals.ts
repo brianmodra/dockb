@@ -206,6 +206,77 @@ export function editDocumentModal(
   });
 }
 
+export interface PovModalResult {
+  value: "confirm" | null;
+  input: string;
+}
+
+/**
+ * A name prompt that can come back with a warning line.
+ *
+ * The POV flow asks, learns the typed name matches nothing, and asks again —
+ * same modal, the warning printed between the field and the buttons, and the
+ * input carrying the suggested name.
+ */
+export function povModal(options: {
+  title: string;
+  label: string;
+  initial?: string;
+  confirmLabel: string;
+  warning?: string;
+}): Promise<PovModalResult> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.className = "modal-input";
+    input.dataset.testid = "pov-input";
+    input.type = "text";
+    input.value = options.initial ?? "";
+
+    const fieldLabel = document.createElement("label");
+    fieldLabel.className = "modal-field-label";
+    fieldLabel.textContent = options.label;
+    fieldLabel.append(input);
+
+    const body = document.createElement("div");
+    body.append(fieldLabel);
+    if (options.warning) {
+      const warning = document.createElement("div");
+      warning.className = "modal-warning";
+      warning.dataset.testid = "pov-warning";
+      warning.textContent = options.warning;
+      body.append(warning);
+    }
+
+    openModal({
+      title: options.title,
+      body,
+      buttons: [
+        { label: "Cancel", value: "cancel" },
+        { label: options.confirmLabel, value: "confirm", primary: true },
+      ],
+    }).then((value) => resolve({ value: value === "confirm" ? "confirm" : null, input: input.value }));
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
+        buttons.find((button) => button.textContent === options.confirmLabel)?.click();
+      }
+    });
+
+    queueMicrotask(() => input.focus());
+  });
+}
+
+/** A single OK button carrying bad news the writer must see. */
+export function warningModal(title: string, message: string): Promise<void> {
+  return openModal({
+    title,
+    body: message,
+    buttons: [{ label: "OK", value: "ok", primary: true }],
+  }).then(() => undefined);
+}
+
 export function promptModal(options: {
   title: string;
   label: string;

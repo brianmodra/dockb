@@ -11,6 +11,7 @@ import type {
   DocumentWire,
   ImportResponse,
   MutationResponse,
+  PovResponse,
   RenumberResponse,
   Session,
   UserProfile,
@@ -151,6 +152,20 @@ export class ApiClient {
         body: JSON.stringify({ after_chapter_id: afterChapterId }),
       },
     );
+  }
+
+  /**
+   * Set, suggest, or clear a chapter's point-of-view character.
+   *
+   * An empty name clears. A name that matches nothing — or only part of a
+   * character's name — is not applied: `applied` is false and `warning` says
+   * why (`suggestion` carries the character's title, when one is near).
+   */
+  async setPov(chapterId: string, name: string): Promise<PovResponse> {
+    return request<PovResponse>(this.url(`/chapters/${encodeURIComponent(chapterId)}/pov`), {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
   }
 
   /**

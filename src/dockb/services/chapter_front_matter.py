@@ -188,7 +188,12 @@ def set_pov(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         warning = f'The pov "{typed}" did not match any character chapter; ' f'perhaps you meant "{suggestion["title"]}"'
     else:
         warning = f'The pov "{typed}" did not match any character chapter'
-    return {"applied": False, "pov": None, "warning": warning}
+    return {
+        "applied": False,
+        "pov": None,
+        "warning": warning,
+        "suggestion": suggestion["title"] if suggestion else None,
+    }
 
 
 def apply_pov(  # pylint: disable=too-many-arguments,too-many-positional-arguments

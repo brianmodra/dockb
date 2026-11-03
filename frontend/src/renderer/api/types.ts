@@ -123,6 +123,14 @@ export interface ImportResponse {
   imports: ImportSummaryWire[];
 }
 
+/** The answer to setting a chapter's point-of-view character. */
+export interface PovResponse {
+  applied: boolean;
+  pov: { id: string; title: string } | null;
+  warning: string | null;
+  suggestion?: string | null;
+}
+
 /** One chapter whose title a renumber changed. */
 export interface ChapterRename {
   id: string;
@@ -138,6 +146,7 @@ export interface RenumberResponse {
 export interface DocumentContentResponse {
   content: string;
   summary: ChapterImportSummaryWire | null;
+  warnings?: string[];
 }
 
 export interface Status {

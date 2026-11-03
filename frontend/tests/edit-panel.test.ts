@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentContentResponse } from "../src/renderer/api/types";
 import { EditPanel, type EditPanelApi } from "../src/renderer/layout/editPanel";
 
-function doc(content: string, summary = null): DocumentContentResponse {
-  return { content, summary };
+function doc(content: string, warnings: string[] = [], summary: DocumentContentResponse["summary"] = null): DocumentContentResponse {
+  return { content, summary, warnings };
 }
 
 function fakeApi(overrides: Partial<EditPanelApi> = {}): EditPanelApi {
@@ -33,6 +33,37 @@ describe("EditPanel", () => {
     expect(panel.content()).toBe("# Title\n\nBody");
     expect(panel.lastCanonical()).toBe("# Title\n\nBody");
     expect(panel.isDirty()).toBe(false);
+  });
+
+  it("reports the response's warnings through onWarning after a load", async () => {
+    const onWarning = vi.fn();
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("# Body", ["The chapter's POV character no longer exists; the pov was cleared"])),
+    });
+    const panel = new EditPanel({ api });
+    panel.onWarning = onWarning;
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    expect(onWarning).toHaveBeenCalledWith("The chapter's POV character no longer exists; the pov was cleared");
+  });
+
+  it("reports the response's warnings through onWarning after a save", async () => {
+    const onWarning = vi.fn();
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("# Body")),
+      saveChapterDocument: vi.fn(async () => doc("# Body", ["The pov 'X' did not match any character chapter"])),
+    });
+    const panel = new EditPanel({ api });
+    panel.onWarning = onWarning;
+    document.body.append(panel.element);
+    await panel.load("c1");
+    panel.setContent("# Body");
+
+    await panel.save();
+
+    expect(onWarning).toHaveBeenCalledWith("The pov 'X' did not match any character chapter");
   });
 
   it("greys out and blocks input while a load is in flight", async () => {
@@ -261,7 +292,7 @@ describe("EditPanel", () => {
   it("writes a save-result message to the console on success", async () => {
     const onMessage = vi.fn();
     const summary = { created: false, changed: 2, added: 1, deleted: 0 };
-    const api = fakeApi({ saveChapterDocument: vi.fn(async () => doc("c", summary)) });
+    const api = fakeApi({ saveChapterDocument: vi.fn(async () => doc("c", [], summary)) });
     const panel = new EditPanel({ api, onMessage });
     document.body.append(panel.element);
     await panel.load("c1");

@@ -1031,6 +1031,7 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             "applied": False,
             "pov": None,
             "warning": 'The pov "Kira" did not match any character chapter; perhaps you meant "Karakas"',
+            "suggestion": "Karakas",
         }
         assert chapter.pov == ""
         assert not self.uow.registered
@@ -1042,7 +1043,12 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
 
         result = self.svc.set_pov("c1", "Zzz", owner=self._OWNER)
 
-        assert result == {"applied": False, "pov": None, "warning": 'The pov "Zzz" did not match any character chapter'}
+        assert result == {
+            "applied": False,
+            "pov": None,
+            "warning": 'The pov "Zzz" did not match any character chapter',
+            "suggestion": None,
+        }
         assert chapter.pov == ""
 
     def test_set_pov_of_an_unknown_chapter_is_none(self) -> None:
