@@ -24,7 +24,6 @@ load_dotenv()
 # handler; application logs such as dockb.timing's INFO request timings would
 # otherwise be silently dropped. Give the root logger an INFO stderr handler.
 logging.basicConfig(level=logging.INFO)
-print(f"DEBUG_SERVER_SECRET={os.environ.get('DOCKB_SECRET_KEY')}", flush=True)
 
 app = create_app()
 

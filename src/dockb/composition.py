@@ -21,6 +21,7 @@ from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import set_doc_service
 from dockb.controllers.history import set_history_service
 from dockb.controllers.imports import set_import_service
+from dockb.controllers.mcp_mint import set_mint_issuer, set_mint_secret
 from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
 from dockb.controllers.sentences import set_sent_service
@@ -227,6 +228,8 @@ def wire(  # pylint: disable=too-many-locals
     set_session_context(ctx)
     set_mcp_issuer(PromptTokenIssuer())
     set_mcp_repos(repos[Chapter], repos[Document])
+    set_mint_issuer(get_mcp_issuer())
+    set_mint_secret(os.environ.get("DOCKB_SECRET_KEY"))
 
     if snapshot_base_dir is not None:
         assert nlp is not None
@@ -254,6 +257,8 @@ def unwire() -> None:
     set_import_service(None)
     set_mcp_issuer(None)
     set_mcp_repos(None, None)
+    set_mint_issuer(None)
+    set_mint_secret(None)
     if _stack is not None:
         _stack.close()
         _stack = None

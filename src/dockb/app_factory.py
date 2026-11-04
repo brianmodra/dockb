@@ -14,6 +14,7 @@ from dockb.controllers.chapters import router as chapters_router
 from dockb.controllers.documents import router as documents_router
 from dockb.controllers.history import router as history_router
 from dockb.controllers.imports import router as imports_router
+from dockb.controllers.mcp_mint import router as mcp_mint_router
 from dockb.controllers.notifications import router as notifications_router
 from dockb.controllers.paragraphs import router as paragraphs_router
 from dockb.controllers.sentences import router as sentences_router
@@ -42,6 +43,10 @@ def create_app() -> FastAPI:
     application.include_router(history_router, dependencies=_authenticated)
     application.include_router(notifications_router, dependencies=_authenticated)
     application.include_router(imports_router, dependencies=_authenticated)
+    # The MCP mint route is the operator's, not the editor's: gated by the
+    # server's own secret (not a session), and answered by the live in-memory
+    # issuer this process holds.
+    application.include_router(mcp_mint_router)
     # The editor is served from here rather than loaded from file://, so it is
     # same-origin with /api. That is what lets the SameSite=Strict session cookie
     # reach the manuscript routes, and it means no CORS grant is needed — or
