@@ -18,11 +18,21 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
 
 _prompt_id: ContextVar[str | None] = ContextVar("mcp_prompt_id", default=None)
+_account_id: ContextVar[str | None] = ContextVar("mcp_account_id", default=None)
 
 
 def get_prompt_id() -> str | None:
     """Return the prompt identity bound to the current request, or None."""
     return _prompt_id.get()
+
+
+def get_account_id() -> str | None:
+    """Return the account the current request's token was minted for, or None.
+
+    This is the subject every MCP tool scopes its reads by — the token's
+    account, not anything a caller argument could name.
+    """
+    return _account_id.get()
 
 
 class BearerAuthMiddleware:  # pylint: disable=too-few-public-methods
@@ -52,4 +62,5 @@ class BearerAuthMiddleware:  # pylint: disable=too-few-public-methods
             await response(scope, receive, send)
             return
         _prompt_id.set(prompt_id)
+        _account_id.set(self._issuer.account_of(token))
         await self.app(scope, receive, send)

@@ -523,7 +523,7 @@ class TestWireMcpIssuer:
         try:
             wire(mock_sf)
             issuer = get_mcp_issuer()
-            token = issuer.mint("prompt-composition")
+            token = issuer.mint("prompt-composition", "acct-1")
             assert issuer.verify(token) == "prompt-composition"
         finally:
             unwire()

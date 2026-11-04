@@ -19,7 +19,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from dockb.infrastructure.mcp.app import create_mcp_app
-from dockb.infrastructure.mcp.auth import BearerAuthMiddleware, get_prompt_id
+from dockb.infrastructure.mcp.auth import BearerAuthMiddleware, get_account_id, get_prompt_id
 from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
 
 _OTHER_ISSUER = PromptTokenIssuer(ttl_seconds=60)
@@ -45,7 +45,7 @@ def _auth_host(issuer: PromptTokenIssuer) -> Starlette:
     """A host app running only the middleware, so the gate is testable in isolation."""
 
     def echo(_request) -> JSONResponse:
-        return JSONResponse({"prompt_id": get_prompt_id()})
+        return JSONResponse({"prompt_id": get_prompt_id(), "account_id": get_account_id()})
 
     inner = Starlette(routes=[Route("/", echo)])
     return Starlette(
@@ -65,7 +65,7 @@ def test_missing_authorization_header_is_401() -> None:
 
 def test_non_bearer_scheme_is_401() -> None:
     issuer = _issuer()
-    token = issuer.mint("prompt-1")
+    token = issuer.mint("prompt-1", "acct-1")
     with TestClient(_auth_host(issuer)) as client:
         response = client.get("/", headers={"Authorization": f"Basic {token}"})
     assert response.status_code == 401
@@ -80,15 +80,15 @@ def test_empty_token_is_401() -> None:
 
 def test_valid_token_passes_and_binds_the_prompt_id() -> None:
     issuer = _issuer()
-    token = issuer.mint("prompt-7")
+    token = issuer.mint("prompt-7", "acct-1")
     with TestClient(_auth_host(issuer)) as client:
         response = client.get("/", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
-    assert response.json() == {"prompt_id": "prompt-7"}
+    assert response.json() == {"prompt_id": "prompt-7", "account_id": "acct-1"}
 
 
 def test_token_from_another_issuer_is_401() -> None:
-    foreign = _OTHER_ISSUER.mint("prompt-8")
+    foreign = _OTHER_ISSUER.mint("prompt-8", "acct-1")
     with TestClient(_auth_host(_issuer())) as client:
         response = client.get("/", headers={"Authorization": f"Bearer {foreign}"})
     assert response.status_code == 401
@@ -96,7 +96,7 @@ def test_token_from_another_issuer_is_401() -> None:
 
 def test_expired_token_is_401() -> None:
     issuer = PromptTokenIssuer(ttl_seconds=-1)
-    token = issuer.mint("prompt-9")
+    token = issuer.mint("prompt-9", "acct-1")
     with TestClient(_auth_host(issuer)) as client:
         response = client.get("/", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
@@ -104,6 +104,16 @@ def test_expired_token_is_401() -> None:
 
 def test_get_prompt_id_is_none_outside_a_request() -> None:
     assert get_prompt_id() is None
+    assert get_account_id() is None
+
+
+def test_the_account_id_rides_the_verified_token() -> None:
+    issuer = _issuer()
+    token = issuer.mint("prompt-1", "acct-9")
+    with TestClient(_auth_host(issuer)) as client:
+        response = client.get("/", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert response.json() == {"prompt_id": "prompt-1", "account_id": "acct-9"}
 
 
 # --- the public application ---
@@ -118,7 +128,7 @@ def test_every_route_is_401_without_a_token() -> None:
 
 def test_no_manuscript_route_is_served_with_a_valid_token() -> None:
     issuer = _issuer()
-    token = issuer.mint("prompt-11")
+    token = issuer.mint("prompt-11", "acct-1")
     with _client(issuer) as client:
         response = client.get("/api/documents", headers={"Authorization": f"Bearer {token}"})
 
@@ -128,7 +138,7 @@ def test_no_manuscript_route_is_served_with_a_valid_token() -> None:
 
 def test_no_oauth_discovery_endpoint_is_served() -> None:
     issuer = _issuer()
-    token = issuer.mint("prompt-13")
+    token = issuer.mint("prompt-13", "acct-1")
     with _client(issuer) as client:
         response = client.get("/.well-known/oauth-protected-resource/mcp", headers={"Authorization": f"Bearer {token}"})
 
@@ -137,7 +147,7 @@ def test_no_oauth_discovery_endpoint_is_served() -> None:
 
 def test_a_disallowed_host_is_rejected() -> None:
     issuer = _issuer()
-    token = issuer.mint("prompt-11")
+    token = issuer.mint("prompt-11", "acct-1")
     app = create_mcp_app(issuer, allowed_hosts=["only.example.com", "only.example.com:*"])
     with TestClient(app, base_url="http://other.example.net") as client:
         response = client.get("/mcp", headers={"Authorization": f"Bearer {token}"})
@@ -147,7 +157,7 @@ def test_a_disallowed_host_is_rejected() -> None:
 @pytest.mark.asyncio
 async def test_tools_list_is_empty_with_a_valid_token() -> None:
     issuer = _issuer()
-    token = issuer.mint("prompt-12")
+    token = issuer.mint("prompt-12", "acct-1")
     app = create_mcp_app(
         issuer,
         allowed_hosts=["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*", "testserver", "testserver:*"],

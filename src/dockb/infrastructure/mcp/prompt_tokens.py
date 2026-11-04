@@ -39,20 +39,28 @@ class PromptTokenIssuer:
         if ttl_seconds is None:
             ttl_seconds = float(os.environ.get(_TTL_ENV_VAR, str(_DEFAULT_TTL_SECONDS)))
         self._ttl_seconds = ttl_seconds
-        self._entries: dict[str, dict[str, bytes]] = {}
+        self._entries: dict[str, dict[str, tuple[bytes, str]]] = {}
 
     @property
     def ttl_seconds(self) -> float:
         """The configured token lifetime in seconds."""
         return self._ttl_seconds
 
-    def mint(self, prompt_id: str) -> str:
-        """Mint a token for *prompt_id*, valid until now + the TTL."""
+    def mint(self, prompt_id: str, account_id: str) -> str:
+        """Mint a token for *prompt_id* bound to *account_id*, valid until now + the TTL.
+
+        The account is the tool-side subject: everything an MCP tool reads is
+        scoped to it, exactly as an editor session's reads are scoped to the
+        signed-in account. A token without one could read nobody's books, so
+        minting refuses to make one.
+        """
+        if not account_id or not account_id.strip():
+            raise ValueError("an MCP token needs the account it is minted for")
         now = time.time()
         self._prune(now)
         expiry = str(int((now + self._ttl_seconds) * 1_000_000))
         secret = secrets.token_bytes(32)
-        self._entries.setdefault(expiry, {})[prompt_id] = secret
+        self._entries.setdefault(expiry, {})[prompt_id] = (secret, account_id.strip())
         return f"{expiry}.{prompt_id}.{_mac(secret, f'{expiry}.{prompt_id}')}"
 
     def verify(self, token: str) -> str | None:
@@ -73,9 +81,10 @@ class PromptTokenIssuer:
             return "malformed"
         if int(expiry) <= time.time() * 1_000_000:
             return "expired"
-        secret = self._entries.get(expiry, {}).get(prompt_id)
-        if secret is None:
+        entry = self._entries.get(expiry, {}).get(prompt_id)
+        if entry is None:
             return "no live entry"
+        secret = entry[0]
         if not hmac.compare_digest(_mac(secret, f"{expiry}.{prompt_id}"), presented):
             return "mac mismatch"
         return None
@@ -88,6 +97,20 @@ class PromptTokenIssuer:
         if not dot or not last_dot or not prompt_id:
             return None
         return first, prompt_id, mac
+
+    def account_of(self, token: str) -> str | None:
+        """Return the account *token* was minted for, or None when it is invalid.
+
+        Verified with the same check ``verify`` runs, so an answer only ever
+        comes from a token that would pass the bearer gate.
+        """
+        if self._check(token) is not None:
+            return None
+        fields = self._parse(token)
+        if fields is None:
+            return None
+        entry = self._entries.get(fields[0], {}).get(fields[1])
+        return str(entry[1]) if entry is not None else None
 
     @classmethod
     def _prompt_id_of(cls, token: str) -> str:

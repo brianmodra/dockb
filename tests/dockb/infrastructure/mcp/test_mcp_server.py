@@ -98,7 +98,7 @@ class TestBuildMcpApp:
                     assert (await client.get("/mcp")).status_code == 401
                     assert (await client.get("/api/documents")).status_code == 401
 
-                token = issuer.mint("prompt-serve")
+                token = issuer.mint("prompt-serve", "acct-1")
                 async with httpx2.AsyncClient(
                     transport=httpx2.ASGITransport(app=app),
                     base_url="http://127.0.0.1:8001",
@@ -163,7 +163,7 @@ class TestServers:
                 assert (await client.get(f"http://127.0.0.1:{loopback_port}/api/health")).status_code == 200
                 assert (await client.get(f"http://127.0.0.1:{public_port}/mcp")).status_code == 401
 
-            token = issuer.mint("prompt-serve")
+            token = issuer.mint("prompt-serve", "acct-1")
             async with httpx2.AsyncClient(
                 base_url=f"http://127.0.0.1:{public_port}",
                 headers={"Authorization": f"Bearer {token}"},
