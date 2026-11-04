@@ -27,6 +27,7 @@ import asyncio
 import json
 import sys
 
+import httpx2
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -50,18 +51,18 @@ CRITERIA = {
 
 
 async def main() -> None:
-    async with streamable_http_client(
-        mcp_url,
+    async with httpx2.AsyncClient(
         headers={"Authorization": f"Bearer {token}"},
-    ) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
+    ) as http_client:
+        async with streamable_http_client(mcp_url, http_client=http_client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
 
-            result = await session.call_tool(
-                "find_paragraphs",
-                {"document_id": document_id, "criteria": CRITERIA},
-            )
-            print(json.dumps(json.loads(result.content[0].text), indent=2))
+                result = await session.call_tool(
+                    "find_paragraphs",
+                    {"document_id": document_id, "criteria": CRITERIA},
+                )
+                print(json.dumps(json.loads(result.content[0].text), indent=2))
 
 
 asyncio.run(main())
