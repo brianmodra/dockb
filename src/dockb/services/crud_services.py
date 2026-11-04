@@ -19,7 +19,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from dockb.chapter_numbers import renumber_title
 from dockb.exceptions import (
     ChapterAfterNotFoundError,
     ChapterCategoryMismatchError,
@@ -29,7 +28,7 @@ from dockb.exceptions import (
     DuplicateTitleError,
     ParagraphNotFoundError,
 )
-from dockb.infrastructure.document_store.store import ChapterRename, DocumentMetadata
+from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
@@ -38,6 +37,7 @@ from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.services.chapter_front_matter import set_pov as apply_set_pov
+from dockb.services.chapter_renumber import plan_renumber
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
@@ -244,50 +244,6 @@ class DocumentService:
 def _row_category(row: dict[str, str | int]) -> str:
     """Return a list-row's category, defaulting old rows to ``Chapter``."""
     return str(row.get("category") or "Chapter")
-
-
-def _plan_renumber(
-    rows: list[dict[str, str | int]],
-    start: int = 1,
-) -> tuple[list[dict[str, str]], list[dict[str, str]], list[ChapterRename]]:
-    """Plan a document's renumber from its chapter rows in display order.
-
-    Act chapters (category ``Chapter``) take their position as the new number,
-    counting from *start*; ``Character`` rows are untouched. A case-insensitive
-    duplicate among the final titles — new act titles beside unchanged character
-    titles — raises ``DuplicateTitleError`` before anything is written. Returns
-    the graph retitle entries, the ``{id, old_title, new_title}`` reports, and
-    the store moves, all covering only the chapters whose title changes.
-    """
-    numbered = [row for row in rows if _row_category(row) != "Character"]
-    characters = [row for row in rows if _row_category(row) == "Character"]
-    new_titles = {str(row["id"]): renumber_title(str(row["title"]), position) for position, row in enumerate(numbered, start=start)}
-    final_titles = [new_titles[str(row["id"])] for row in numbered] + [str(row["title"]) for row in characters]
-    seen: set[str] = set()
-    for title in final_titles:
-        if title.lower() in seen:
-            raise DuplicateTitleError(title)
-        seen.add(title.lower())
-    entries: list[dict[str, str]] = []
-    renames: list[dict[str, str]] = []
-    moves: list[ChapterRename] = []
-    for row in numbered:
-        chapter_id = str(row["id"])
-        old_title = str(row["title"])
-        new_title = new_titles[chapter_id]
-        if new_title == old_title:
-            continue
-        entries.append({"id": chapter_id, "title": new_title})
-        renames.append({"id": chapter_id, "old_title": old_title, "new_title": new_title})
-        moves.append(
-            ChapterRename(
-                act=str(row.get("act") or ""),
-                category=_row_category(row),
-                old_title=old_title,
-                new_title=new_title,
-            )
-        )
-    return entries, renames, moves
 
 
 def _crosses_category(members: list[dict[str, str | int]], mover: Chapter, after_chapter_id: str | None) -> bool:
@@ -667,7 +623,7 @@ class ChapterService:
         document = self._document_repo.load_shell(document_id, owner) if self._document_repo is not None else None
         if document is None:
             return None
-        entries, renames, moves = _plan_renumber(self._chapter_repo.list_by_document(document_id, owner), start=start)
+        entries, renames, moves = plan_renumber(self._chapter_repo.list_by_document(document_id, owner), start=start)
         if not entries:
             return []
         self._chapter_repo.retitle(document_id, entries, owner)
