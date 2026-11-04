@@ -54,8 +54,8 @@ async def main() -> None:
     async with httpx2.AsyncClient(
         headers={"Authorization": f"Bearer {token}"},
     ) as http_client:
-        async with streamable_http_client(mcp_url, http_client=http_client) as (read, write, _):
-            async with ClientSession(read, write) as session:
+        async with streamable_http_client(mcp_url, http_client=http_client) as streams:
+            async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
 
                 result = await session.call_tool(
