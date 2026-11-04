@@ -9,7 +9,8 @@ it attaches the MCP server as a tool and passes a per-prompt bearer token in tha
 tool's `authorization` field, which OpenAI's infrastructure then presents on
 every call. The token is minted from a fresh in-memory secret just before the
 prompt, kept in a live-token map keyed by its expiry, and dies with its entry —
-no credential store, no signing key, no admin CLI — so a stolen token is useless
+no credential store, no signing key, no admin CLI — the operator can mint a
+token on demand from the loopback API (§10) — so a stolen token is useless
 within a short, configurable window and nothing secret is written to disk.
 
 One process serves two listeners: the loopback one carries the manuscript API and
@@ -328,6 +329,28 @@ The questions this revision had open, and the listener's own configuration, are 
    `Host` it was not told to serve — a deployed hostname must be named or every request is
    rejected before any handler runs. The caller is not a browser and sends no `Origin`, so the
    origin half of the same protection does not gate the real caller.
+
+## 10. Minting a token by hand (operator)
+
+The mint is a route, not a CLI, because the live-token map lives in the server
+process's memory: a token minted anywhere else would verify against nothing.
+`POST /api/mcp/mint` on the **loopback** listener asks this process to mint;
+it is gated by the server's own `DOCKB_SECRET_KEY` in the `X-MCP-Mint-Secret`
+header (constant-time compared) rather than by a session, because accounts
+carry no admin flag and the mint is an operator power, like the accounts CLI —
+and it lives on the loopback listener, which is not the public one.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/mcp/mint \
+  -H "X-MCP-Mint-Secret: $DOCKB_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_id": "prompt-1", "account_id": "<account id>"}'
+```
+
+The account id must exist (`users list` prints the ids). The answer carries the
+`token` (bound to that account, so the MCP tools read only its books), the
+prompt id, and the token's TTL — after which the entry dies and a new token is
+minted the same way.
 
 ## 9. Resolved questions
 
