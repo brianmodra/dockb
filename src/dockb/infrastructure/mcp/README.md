@@ -11,10 +11,10 @@ on disk.
 
 `PromptTokenIssuer` mints the token and resolves a presented one to its prompt or
 rejects it; `BearerAuthMiddleware` and `create_mcp_app` put that verification in
-front of an MCP endpoint that mounts nothing else, and the runner one level up
-(`src/dockb/mcp_server.py`) serves that application alongside the manuscript API
-on one event loop. Read this for what the token looks like, what makes one valid,
-and the shape of the public application; the threat model, the two-listener split
+front of an MCP endpoint carrying the two manuscript tools (`tools.py`), and the
+runner one level up (`src/dockb/mcp_server.py`) serves that application
+alongside the manuscript API on one event loop. Read this for what the token looks like, what makes one valid,
+the account it is bound to, the two tools it unlocks, and the shape of the public application; the threat model, the two-listener split
 and why this is a MAC rather than a signature are in `README_mcp_auth.md` at the
 repository root.
 
@@ -26,6 +26,7 @@ infrastructure/mcp/
 ├── __init__.py         # Re-exports the token pair, the middleware and the app
 ├── prompt_tokens.py    # PromptTokenIssuer — mint() and verify()
 ├── auth.py             # BearerAuthMiddleware — the Authorization check
+├── tools.py            # mount_tools() — the manuscript tools
 └── app.py              # create_mcp_app() — the MCP-only public ASGI app
 ```
 
@@ -39,11 +40,13 @@ and public listeners on one event loop.
 
 ### `PromptTokenIssuer`
 
-- `mint(prompt_id: str) -> str` — generates a fresh secret, prunes entries whose
-  expiry has passed, inserts the new secret under *now* + the TTL, and returns
-  the token `expiry.prompt_id.mac(expiry + "." + prompt_id)`. The MAC is
-  HMAC-SHA256 under the entry's secret; `prompt_id` is supplied by the caller
-  (the MCP endpoint's handle for one prompt) and is not secret.
+- `mint(prompt_id: str, account_id: str) -> str` — generates a fresh secret,
+  prunes entries whose expiry has passed, inserts the new secret **with the
+  account it is bound to** under *now* + the TTL, and returns the token
+  `expiry.prompt_id.mac(expiry + "." + prompt_id)`. The MAC is HMAC-SHA256
+  under the entry's secret; `prompt_id` is supplied by the caller (the MCP
+  endpoint's handle for one prompt) and is not secret. The account is the
+  subject the tools read as — minting without one is refused.
 - `verify(token: str) -> str | None` — parses the expiry and prompt identity,
   rejects a token whose expiry has passed or whose entry is not live, recomputes
   the MAC with that entry's secret and compares in constant time. Every attempt

@@ -177,6 +177,12 @@ credential label: it identifies *which request* a token belonged to, so a token
 seen somewhere it should not be traces to one prompt rather than to "the MCP
 client".
 
+**The account.** A token is also minted bound to an **account id** — the
+subject its tools read as, the same scoping an editor session reads by. Every
+MCP tool reads only that account's manuscripts, and nothing a tool argument
+says can widen it: a token without a bound account cannot be minted, and the
+tools refuse one with no account in it.
+
 ## 5. Decision: one process, two listeners (decided, superseding two processes)
 
 The MCP server and the DockB backend are one Python process serving two
