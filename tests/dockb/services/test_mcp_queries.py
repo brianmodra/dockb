@@ -165,6 +165,28 @@ def test_find_paragraphs_resolves_a_character_by_name_for_the_match() -> None:
     assert [p["id"] for p in found] == ["p2"]
 
 
+def test_find_paragraphs_excludes_character_chapters_unless_asked() -> None:
+    document = _document()
+    character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
+    character.paragraphs.append(_paragraph("kp1", "The murder room."))
+    document.chapters.append(character)
+    chapter_repo, document_repo = _search_service(document)
+    criteria = {"type": "word", "word": "murder"}
+
+    default_run = find_paragraphs_payload("d1", criteria, chapter_repo=chapter_repo, document_repo=document_repo, owner="acct-1")
+    with_characters = find_paragraphs_payload(
+        "d1",
+        criteria,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner="acct-1",
+        include_characters=True,
+    )
+
+    assert [p["id"] for p in default_run] == ["p1"]
+    assert [(p["id"], p["chapter_id"]) for p in with_characters] == [("p1", "c1"), ("kp1", "k1")]
+
+
 def test_find_paragraphs_of_an_unowned_document_is_empty() -> None:
     document = _document()
     chapter_repo, document_repo = _search_service(document)

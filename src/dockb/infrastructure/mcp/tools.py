@@ -59,7 +59,11 @@ def mount_tools(
             raise ToolError("no such chapter for this account")
         return payload
 
-    def find_paragraphs(document_id: str, criteria: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    def find_paragraphs(
+        document_id: str,
+        criteria: dict[str, Any],
+        include_characters: bool = False,
+    ) -> dict[str, list[dict[str, Any]]]:
         """The paragraphs of one document a criteria tree selects.
 
         The tree: `{"type": "criteria", "op": "and"|"or", "criteria": [...]}`
@@ -78,6 +82,7 @@ def mount_tools(
             chapter_repo=chapter_repo,
             document_repo=document_repo,
             owner=account,
+            include_characters=include_characters,
         )
         # A bare top-level array is not a valid structured output root (the JSON
         # schema the protocol requires wants an object), so the paragraphs ride
@@ -98,6 +103,7 @@ def mount_tools(
         description=(
             "Find paragraphs of one document by a nested criteria tree over words, text "
             "substrings, and story characters; answers {paragraphs: [...]}, every match "
-            "carrying its chapter id, position, and full text."
+            "carrying its chapter id, position, and full text. Manuscript chapters only, "
+            "unless include_characters is true."
         ),
     )

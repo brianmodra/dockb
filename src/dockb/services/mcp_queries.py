@@ -88,11 +88,14 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
     chapter_repo: Any,
     document_repo: Any,
     owner: str,
+    include_characters: bool = False,
 ) -> list[dict[str, object]]:
     """The paragraphs of *document_id* the criteria tree selects, in reading order.
 
     The document is loaded owner-scoped (a document another account owns is
-    nobody's: the empty list). Every matching paragraph comes back as the
+    nobody's: the empty list). Only manuscript chapters are searched unless
+    *include_characters* is set, in which case the character chapters'
+    paragraphs are searched too. Every matching paragraph comes back as the
     tools' full payload — its properties, its sentences with their canonical
     text, the chapter it hangs under, and its position there.
     """
@@ -101,8 +104,9 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
         return []
 
     characters = {chapter.id: _character_names(chapter) for chapter in document.chapters if chapter.category == "Character"}
+    chapters = [chapter for chapter in document.chapters if include_characters or chapter.category != "Character"]
     found: list[dict[str, object]] = []
-    for chapter in document.chapters:
+    for chapter in chapters:
         for index, paragraph in enumerate(chapter.paragraphs):
             text = "\n".join(sentence.get_text().rstrip() for sentence in paragraph.sentences)
             if _matches_tree(criteria, text, characters, document, chapter_repo, owner):

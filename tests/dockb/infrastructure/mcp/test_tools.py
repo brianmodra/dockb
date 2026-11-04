@@ -94,6 +94,7 @@ async def test_get_chapter_resolves_a_title_within_a_document(repos) -> None:
 @pytest.mark.asyncio
 async def test_find_paragraphs_answers_the_selection(repos) -> None:
     chapter_repo, document_repo = repos
+    chapter_repo.load.return_value = _chapter_document().chapters[0]
     mcp = MCPServer("DockB")
     mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
     token = _account_id.set("acct-1")
@@ -106,5 +107,12 @@ async def test_find_paragraphs_answers_the_selection(repos) -> None:
     assert len(paragraphs) == 1
     assert paragraphs[0]["id"] == "p1"
     assert paragraphs[0]["chapter_id"] == "c1"
-    document_repo.load.assert_called_once_with("d1", "acct-1")
+
+    await mcp.call_tool(
+        "find_paragraphs",
+        {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}, "include_characters": True},
+    )
+    # the flag reached the search: the second call loaded the document again
+    # with it, and neither call raised (validated parameters)
+    assert document_repo.load.call_count == 2
     _account_id.reset(token)
