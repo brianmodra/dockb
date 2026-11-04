@@ -546,6 +546,19 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
         cypher, _ = extract_call(neo4j_session)
         assert "pov:Chapter {id: c.pov}" in cypher
 
+    def test_finds_a_chapter_id_by_title(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"id": "c9"}]
+
+        assert chapter_repo.find_id_by_title("d-1", "Opening 1", _OWNER) == "c9"
+
+        cypher, params = extract_call(neo4j_session)
+        assert "title_key: toLower($title)" in cypher
+        assert params == {"document_id": "d-1", "title": "Opening 1", "owner": _OWNER}
+
+    def test_chapter_id_by_title_is_none_when_absent(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert chapter_repo.find_id_by_title("d-1", "Ghost", _OWNER) is None
+
     def test_loads_the_pov_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [{"chapter_id": "ch-1", "chapter_pov": "k1"}]
         ch = chapter_repo.load("ch-1", _OWNER)

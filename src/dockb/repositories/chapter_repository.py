@@ -74,6 +74,12 @@ RETURN c.id AS id
 LIMIT 1
 """
 
+_FIND_ID_BY_TITLE_CYPHER = """
+MATCH (c:Chapter {title_key: toLower($title)})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+RETURN c.id AS id
+LIMIT 1
+"""
+
 _FIND_CHARACTER_TITLE_CYPHER = """
 MATCH (c:Chapter {id: $pov_id, category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
 RETURN c.title AS title
@@ -266,6 +272,22 @@ class ChapterRepository(BaseRepository[Chapter]):
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
         entries = [{"id": chapter_id, "index": i} for i, chapter_id in enumerate(ordered_ids)]
         self._session.run(_REORDER_CYPHER, {"document_id": document_id, "owner": owner, "entries": entries})
+
+    def find_id_by_title(self, document_id: str, title: str, owner: str) -> str | None:
+        """Return the id of *document_id*'s chapter titled *title*, any category, or None.
+
+        The title matches case-insensitively through ``title_key``. This is the
+        title-addressed lookup a caller uses when the id is not known.
+        """
+        records = list(
+            self._session.run(
+                _FIND_ID_BY_TITLE_CYPHER,
+                {"document_id": document_id, "title": title, "owner": owner},
+            )
+        )
+        if not records:
+            return None
+        return str(records[0].get("id")) if records[0].get("id") is not None else None
 
     def find_character_id_by_title(self, document_id: str, title: str, owner: str) -> str | None:
         """Return the id of *document_id*'s Character chapter titled *title*, or None.
