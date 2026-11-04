@@ -51,8 +51,11 @@ CRITERIA = {
 
 
 async def main() -> None:
+    # A find can take a while (the whole document is read); the client's
+    # default 5s read timeout would drop the SSE stream mid-call.
     async with httpx2.AsyncClient(
         headers={"Authorization": f"Bearer {token}"},
+        timeout=httpx2.Timeout(600.0, connect=10.0),
     ) as http_client:
         async with streamable_http_client(mcp_url, http_client=http_client) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
