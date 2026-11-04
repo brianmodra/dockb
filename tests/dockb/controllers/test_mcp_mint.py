@@ -23,7 +23,7 @@ def app():
     set_mint_issuer(issuer)
     mcp_mint.set_mint_secret(_SECRET)
     auth = MagicMock()
-    auth.get_user.side_effect = lambda user_id: {"id": user_id, "username": "abby"} if user_id == "acct-1" else None
+    auth.get_user_by_id.side_effect = lambda user_id: {"id": user_id, "username": "abby"} if user_id == "acct-1" else None
     set_auth_service(auth)
     return application
 

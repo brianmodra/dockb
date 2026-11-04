@@ -1,5 +1,3 @@
-import spacy
-
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
@@ -10,8 +8,7 @@ from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job_queue import JobQueue
 
 
-def test_async_reconstructor_can_hydrate_a_document_asynchronously():
-    nlp = spacy.load("en_core_web_sm")
+def test_async_reconstructor_can_hydrate_a_document_asynchronously(nlp):
     cache = DocCache(nlp)
     queue = JobQueue()
     queue.start()
@@ -29,8 +26,7 @@ def test_async_reconstructor_can_hydrate_a_document_asynchronously():
     assert document.chapters[1].text == chapter2_text
 
 
-def test_async_reconstructor_does_not_double_up_with_document_hydratation():
-    nlp = spacy.load("en_core_web_sm")
+def test_async_reconstructor_does_not_double_up_with_document_hydratation(nlp):
     cache = DocCache(nlp)
     queue = JobQueue()
     reconstructor = AsyncReconstructor(cache, queue)
@@ -52,8 +48,7 @@ def test_async_reconstructor_does_not_double_up_with_document_hydratation():
     assert len(document.chapters) == 1
 
 
-def test_async_reconstructor_can_hydrate_a_chapter_asynchronously():
-    nlp = spacy.load("en_core_web_sm")
+def test_async_reconstructor_can_hydrate_a_chapter_asynchronously(nlp):
     cache = DocCache(nlp)
     queue = JobQueue()
     queue.start()
@@ -71,8 +66,7 @@ def test_async_reconstructor_can_hydrate_a_chapter_asynchronously():
     assert chapter.paragraphs[1].text == paragraph2_text
 
 
-def test_async_reconstructor_does_not_double_up_with_chapter_hydratation():
-    nlp = spacy.load("en_core_web_sm")
+def test_async_reconstructor_does_not_double_up_with_chapter_hydratation(nlp):
     cache = DocCache(nlp)
     queue = JobQueue()
     reconstructor = AsyncReconstructor(cache, queue)
@@ -94,8 +88,7 @@ def test_async_reconstructor_does_not_double_up_with_chapter_hydratation():
     assert len(chapter.paragraphs) == 1
 
 
-def test_async_reconstructor_can_hydrate_a_paragraph_asynchronously():
-    nlp = spacy.load("en_core_web_sm")
+def test_async_reconstructor_can_hydrate_a_paragraph_asynchronously(nlp):
     cache = DocCache(nlp)
     queue = JobQueue()
     queue.start()
@@ -111,8 +104,7 @@ def test_async_reconstructor_can_hydrate_a_paragraph_asynchronously():
     assert len(paragraph.sentences) == 2
 
 
-def test_async_reconstructor_does_not_double_up_with_paragraph_hydratation():
-    nlp = spacy.load("en_core_web_sm")
+def test_async_reconstructor_does_not_double_up_with_paragraph_hydratation(nlp):
     cache = DocCache(nlp)
     queue = JobQueue()
     reconstructor = AsyncReconstructor(cache, queue)
@@ -132,7 +124,7 @@ def test_async_reconstructor_does_not_double_up_with_paragraph_hydratation():
     assert len(paragraph.sentences) == 1
 
 
-def test_async_reconstructor_can_retokenise_a_sentence_asynchronously():
+def test_async_reconstructor_can_retokenise_a_sentence_asynchronously(nlp):
     expected = [
         Token(text="The", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
         Token(text="cat", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="cat", pos=POS.NOUN),
@@ -150,7 +142,6 @@ def test_async_reconstructor_can_retokenise_a_sentence_asynchronously():
         Token(text="😜", type=Type.EXTENDED, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma="", pos=POS._),
         Token(text=".", type=Type.PUNCTUATION, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma=".", pos=POS.PUNCT),
     ]
-    nlp = spacy.load("en_core_web_sm")
     cache = DocCache(nlp)
     queue = JobQueue()
     queue.start()
@@ -173,7 +164,7 @@ def test_async_reconstructor_can_retokenise_a_sentence_asynchronously():
         assert actual.pos == exp.pos
 
 
-def test_async_reconstructor_does_not_double_up_with_retokenization():
+def test_async_reconstructor_does_not_double_up_with_retokenization(nlp):
     expected = [
         Token(text="The", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="the", pos=POS.DET),
         Token(text="cat", type=Type.WORD, trailing_ws=" ", is_digit=False, like_num=False, is_alpha=True, lemma="cat", pos=POS.NOUN),
@@ -191,7 +182,6 @@ def test_async_reconstructor_does_not_double_up_with_retokenization():
         Token(text="😜", type=Type.EXTENDED, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma="", pos=POS._),
         Token(text=".", type=Type.PUNCTUATION, trailing_ws="", is_digit=False, like_num=False, is_alpha=False, lemma=".", pos=POS.PUNCT),
     ]
-    nlp = spacy.load("en_core_web_sm")
     cache = DocCache(nlp)
     queue = JobQueue()
     reconstructor = AsyncReconstructor(cache, queue)

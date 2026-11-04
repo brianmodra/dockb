@@ -169,9 +169,9 @@ to the user.
 A single build section may contain multiple TDD sections.
 
 If there are multiple sections, and not all sections are completed after C.9, then
-**ask** the user permission to repeat the tdd sequence (C) for the next section. Do not
+repeat the tdd sequence (C) for the next section. Do not
 mention [E. Wrap-up](#e-wrap-up) while sections remain.
-Otherwise, if all sections are complete, **ask** the user permission to proceed to wrap-up (E).
+Otherwise, if all sections are complete, proceed to wrap-up (E).
 
 ### E. Wrap-up
 

@@ -54,6 +54,11 @@ def _run(argv) -> int:
     return cli.main(argv)
 
 
+def store_id_for(store_obj, username: str) -> str:
+    """The account id a created username was given (from the store, not the output)."""
+    return next(user for user in store_obj.list_users() if user["username"] == username)["id"]
+
+
 class TestMissingConfiguration:
 
     def test_without_a_secret_it_says_so_and_exits_nonzero(self, capsys, monkeypatch):
@@ -197,6 +202,15 @@ class TestList:
         _run(["create", "--username", "brian", "--email", "brian@example.com"])
         out = capsys.readouterr().out
         assert "abby" in out and "brian" in out
+
+    def test_it_lists_each_account_id(self, store, capsys):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        account_id = store_id_for(store, "abby")
+        capsys.readouterr()  # drop the create's output
+
+        assert _run(["list"]) == 0
+        abby_row = next((line for line in capsys.readouterr().out.splitlines() if "abby" in line), "")
+        assert account_id in abby_row
 
     def test_it_never_prints_a_hash_or_a_password(self, store, capsys):
         _run(["create", "--username", "abby", "--email", "abby@example.com"])

@@ -174,7 +174,7 @@ def _cmd_list(admin: _Admin, _args: argparse.Namespace) -> int:
         states = [state for state in ("blocked", "deleted") if user.get(f"{state}_at")]
         if user.get("must_change_password"):
             states.append("must change password")
-        print(f"{user['username']}\t{user['email'] or '-'}\t{', '.join(states) or 'active'}")
+        print(f"{user['id']}\t{user['username']}\t{user['email'] or '-'}\t{', '.join(states) or 'active'}")
     return _EXIT_OK
 
 

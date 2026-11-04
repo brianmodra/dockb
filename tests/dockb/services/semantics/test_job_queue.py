@@ -6,7 +6,7 @@ from dockb.models.sentence import Sentence
 from dockb.services.semantics.delete_job import DeleteJob
 from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job import Job, JobStatus
-from dockb.services.semantics.job_queue import WORKER_GET_TIMEOUT, JobQueue
+from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
 from dockb.services.semantics.sentence_tokenizer import (
     SentenceTokenizer,
@@ -273,13 +273,13 @@ def test_job_queue_calls_on_idle_when_empty():
     def on_idle() -> None:
         calls.append(True)
 
-    queue = JobQueue(on_idle=on_idle)
-    queue.start()
-    queue.join()
-    # Patched value not available yet — wait for natural idle cycle
-    time.sleep(WORKER_GET_TIMEOUT + 0.5)
-    assert len(calls) > 0
-    queue.shutdown()
+    with patch("dockb.services.semantics.job_queue.WORKER_GET_TIMEOUT", 0.1):
+        queue = JobQueue(on_idle=on_idle)
+        queue.start()
+        queue.join()
+        time.sleep(0.35)
+        assert len(calls) > 0  # at least one idle cycle in 350ms with 100ms timeout
+        queue.shutdown()
 
 
 def test_job_queue_calls_on_idle_repeatedly():

@@ -267,6 +267,10 @@ class AuthService:
         """Return the stored profile for *user_id*, or None."""
         return self._accounts.get_user(user_id)
 
+    def get_user_by_id(self, user_id: str) -> dict[str, object] | None:
+        """Return the stored profile for the internal id *user_id*, or None."""
+        return self._accounts.get_user_by_id(user_id)
+
     def session_for(self, user_id: str) -> object | None:
         """Return the live SessionContext for *user_id*, possibly None (e.g. after restart)."""
         return self._sessions.get(user_id)

@@ -579,13 +579,26 @@ def test_block_and_delete_reject_an_unknown_user(tmp_path) -> None:
 # ---------------------------------------------------------------- listing
 
 
-def test_list_users_excludes_the_hash_and_the_internal_id(tmp_path) -> None:
+def test_list_users_excludes_the_hash_but_carries_the_id(tmp_path) -> None:
     store = _store(tmp_path)
     store.create_user("brian", email=_EMAIL, display_name="Brian", password_hash="a-hash")
     (listed,) = store.list_users()
     assert "password_hash" not in listed
-    assert "id" not in listed
+    # the internal id, not the username: the MCP mint route names the account by it
+    assert listed["id"] != "brian"
+    assert len(listed["id"]) == 36
     assert listed["username"] == "brian"
+
+
+def test_get_user_by_id_resolves_the_internal_id(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user("brian", email=_EMAIL, display_name="Brian", password_hash="a-hash")
+    (listed,) = store.list_users()
+
+    found = store.get_user_by_id(listed["id"])
+
+    assert found is not None and found["username"] == "brian"
+    assert store.get_user_by_id("no-such-id") is None
 
 
 def test_list_users_reports_every_account_including_blocked_and_deleted(tmp_path) -> None:

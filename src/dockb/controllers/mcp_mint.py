@@ -73,7 +73,7 @@ def mint(
         raise HTTPException(status_code=403, detail="mint_secret_rejected")
     if _issuer is None:
         raise HTTPException(status_code=503, detail="mcp_issuer_unavailable")
-    if auth is None or auth.get_user(request.account_id) is None:
+    if auth is None or auth.get_user_by_id(request.account_id) is None:
         raise HTTPException(status_code=404, detail="account_not_found")
     token = _issuer.mint(request.prompt_id, request.account_id)
     return MintResponse(

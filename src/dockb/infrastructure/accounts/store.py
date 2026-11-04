@@ -185,6 +185,15 @@ class AccountStore:
 
     # ------------------------------------------------------------------ users
 
+    def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        """Return the user row with internal id *user_id*, or None."""
+        connection = self._connect()
+        try:
+            row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        finally:
+            connection.close()
+        return dict(row) if row is not None else None
+
     def get_user(self, username: str) -> dict[str, Any] | None:
         """Return the user row with *username*, or None."""
         connection = self._connect()
@@ -498,13 +507,14 @@ class AccountStore:
     def list_users(self) -> list[dict[str, Any]]:
         """Return every account, oldest first, without password hashes.
 
-        Excludes the hash and the id: this feeds the CLI's ``users list``, and a listing
-        has no use for either.
+        Excludes the hash: this feeds the CLI's ``users list``, and a listing
+        has no use for it. The id is included — the MCP mint route names the
+        account by it.
         """
         connection = self._connect()
         try:
             rows = connection.execute("""
-                SELECT username, email, display_name, avatar_url, must_change_password,
+                SELECT id, username, email, display_name, avatar_url, must_change_password,
                        blocked_at, deleted_at, last_login_at, created_at
                 FROM users ORDER BY created_at, username
                 """).fetchall()
