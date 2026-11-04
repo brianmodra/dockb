@@ -20,16 +20,27 @@ from starlette.routing import Mount
 
 from dockb.infrastructure.mcp.auth import BearerAuthMiddleware
 from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
+from dockb.infrastructure.mcp.tools import mount_tools
+from dockb.repositories.chapter_repository import ChapterRepository
+from dockb.repositories.document_repository import DocumentRepository
 
 
-def create_mcp_app(issuer: PromptTokenIssuer, *, allowed_hosts: Sequence[str]) -> Starlette:
+def create_mcp_app(
+    issuer: PromptTokenIssuer,
+    *,
+    allowed_hosts: Sequence[str],
+    chapter_repo: ChapterRepository,
+    document_repo: DocumentRepository,
+) -> Starlette:
     """Return the ASGI application the public listener serves.
 
     *issuer* verifies the per-prompt bearer token on every request;
     *allowed_hosts* is the list of ``Host`` values the MCP transport will
-    answer (see ``README_mcp_auth.md`` §8.5).
+    answer (see ``README_mcp_auth.md`` §8.5); the repositories are what the
+    manuscript tools read through, owner-scoped to the token's account.
     """
     mcp = MCPServer("DockB")
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
     security = TransportSecuritySettings(allowed_hosts=list(allowed_hosts))
     mcp_app = mcp.streamable_http_app(transport_security=security)
 

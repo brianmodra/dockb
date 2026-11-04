@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import time
+from unittest.mock import MagicMock
 
 import httpx2
 import pytest
@@ -86,7 +87,7 @@ class TestBuildMcpApp:
             build_mcp_app()
 
     @pytest.mark.asyncio
-    async def test_serves_only_the_gated_mcp_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_serves_only_the_gated_mcp_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:  # pylint: disable=too-many-locals
         monkeypatch.delenv("DOCKB_MCP_ALLOWED_HOSTS", raising=False)
         monkeypatch.delenv("DOCKB_MCP_PUBLIC_URL", raising=False)
         issuer = PromptTokenIssuer(ttl_seconds=60)
@@ -107,7 +108,8 @@ class TestBuildMcpApp:
                     async with streamable_http_client("http://127.0.0.1:8001/mcp", http_client=http_client) as streams:
                         async with ClientSession(streams[0], streams[1]) as session:
                             await session.initialize()
-                            assert (await session.list_tools()).tools == []
+                            tool_names = sorted(tool.name for tool in (await session.list_tools()).tools)
+                assert tool_names == ["find_paragraphs", "get_chapter"]
         finally:
             set_mcp_issuer(None)
 
@@ -136,11 +138,13 @@ class TestServers:
         pytest.fail(f"server never became reachable at {url}")
 
     @pytest.mark.asyncio
-    async def test_both_listeners_answer_in_the_same_process(self) -> None:
+    async def test_both_listeners_answer_in_the_same_process(self) -> None:  # pylint: disable=too-many-locals
         issuer = PromptTokenIssuer(ttl_seconds=60)
         mcp_app = create_mcp_app(
             issuer,
             allowed_hosts=["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*"],
+            chapter_repo=MagicMock(),
+            document_repo=MagicMock(),
         )
         loopback_app = Starlette(routes=[Route("/api/health", lambda _request: JSONResponse({"ok": True}))])
 
@@ -171,7 +175,8 @@ class TestServers:
                 async with streamable_http_client(f"http://127.0.0.1:{public_port}/mcp", http_client=http_client) as streams:
                     async with ClientSession(streams[0], streams[1]) as session:
                         await session.initialize()
-                        assert (await session.list_tools()).tools == []
+                        tool_names = sorted(tool.name for tool in (await session.list_tools()).tools)
+                assert tool_names == ["find_paragraphs", "get_chapter"]
         finally:
             loopback.should_exit = True
             public.should_exit = True

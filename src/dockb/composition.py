@@ -56,6 +56,9 @@ _wired_factory: Any | None = None
 
 _mcp_issuer: PromptTokenIssuer | None = None
 
+_mcp_chapter_repo: Any | None = None
+_mcp_document_repo: Any | None = None
+
 _DOCUMENTS_DIR_NAME = "dockb_chapters_dir"
 
 
@@ -70,6 +73,23 @@ def get_mcp_issuer() -> PromptTokenIssuer:
     if _mcp_issuer is None:
         raise RuntimeError("MCP prompt-token issuer is not wired")
     return _mcp_issuer
+
+
+def get_mcp_chapter_repo() -> Any:
+    """Return the chapter repository the MCP tools read through, or None when unwired."""
+    return _mcp_chapter_repo
+
+
+def get_mcp_document_repo() -> Any:
+    """Return the document repository the MCP tools read through, or None when unwired."""
+    return _mcp_document_repo
+
+
+def set_mcp_repos(chapter_repo: Any | None, document_repo: Any | None) -> None:
+    """Set (or clear) the repositories the MCP tools read through."""
+    global _mcp_chapter_repo, _mcp_document_repo  # noqa: PLW0603
+    _mcp_chapter_repo = chapter_repo
+    _mcp_document_repo = document_repo
 
 
 def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
@@ -206,6 +226,7 @@ def wire(  # pylint: disable=too-many-locals
     set_sent_service(sent_svc)
     set_session_context(ctx)
     set_mcp_issuer(PromptTokenIssuer())
+    set_mcp_repos(repos[Chapter], repos[Document])
 
     if snapshot_base_dir is not None:
         assert nlp is not None
@@ -232,6 +253,7 @@ def unwire() -> None:
     set_history_service(None)
     set_import_service(None)
     set_mcp_issuer(None)
+    set_mcp_repos(None, None)
     if _stack is not None:
         _stack.close()
         _stack = None

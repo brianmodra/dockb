@@ -23,6 +23,8 @@ from starlette.types import ASGIApp
 
 from dockb.app_factory import create_app
 from dockb.composition import (
+    get_mcp_chapter_repo,
+    get_mcp_document_repo,
     get_mcp_issuer,
     resolve_document_base_dir,
     unwire,
@@ -80,8 +82,13 @@ def default_allowed_hosts() -> list[str]:
 
 
 def build_mcp_app() -> ASGIApp:
-    """Build the public MCP application from the wired issuer and allowlist."""
-    return create_mcp_app(get_mcp_issuer(), allowed_hosts=mcp_allowed_hosts())
+    """Build the public MCP application from the wired issuer, repos, and allowlist."""
+    return create_mcp_app(
+        get_mcp_issuer(),
+        allowed_hosts=mcp_allowed_hosts(),
+        chapter_repo=get_mcp_chapter_repo(),
+        document_repo=get_mcp_document_repo(),
+    )
 
 
 def servers(
