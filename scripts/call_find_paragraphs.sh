@@ -37,13 +37,13 @@ CRITERIA = {
     "type": "criteria",
     "op": "and",
     "criteria": [
-        {"type": "word", "word": "murder"},
+        {"type": "word", "word": "dream"},
         {
             "type": "criteria",
             "op": "or",
             "criteria": [
-                {"type": "character", "character": "Karakas"},
-                {"type": "character", "character": "Arthurton"},
+                {"type": "character", "character": "Jeremiah"},
+                {"type": "character", "character": "Jael"},
             ],
         },
     ],

@@ -106,7 +106,7 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
         for index, paragraph in enumerate(chapter.paragraphs):
             text = "\n".join(sentence.get_text().rstrip() for sentence in paragraph.sentences)
             if _matches_tree(criteria, text, characters, document, chapter_repo, owner):
-                found.append(paragraph_payload(paragraph, index, chapter.id))
+                found.append(paragraph_payload(paragraph, index, chapter.id, chapter_title=chapter.title))
     return found
 
 

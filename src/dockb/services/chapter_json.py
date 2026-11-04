@@ -32,12 +32,13 @@ def sentence_payload(sentence: Sentence, index: int) -> dict[str, object]:
     }
 
 
-def paragraph_payload(paragraph: Paragraph, index: int, chapter_id: str) -> dict[str, object]:
-    """One paragraph: its node properties, its position, and its sentences."""
+def paragraph_payload(paragraph: Paragraph, index: int, chapter_id: str, chapter_title: str = "") -> dict[str, object]:
+    """One paragraph: its node properties, its position and chapter, and its sentences."""
     return {
         "id": paragraph.id,
         "index": index,
         "chapter_id": chapter_id,
+        "chapter_title": chapter_title,
         "quote_type": paragraph.quote_type,
         "sentences": [sentence_payload(sentence, order) for order, sentence in enumerate(paragraph.sentences)],
     }
@@ -56,7 +57,10 @@ def chapter_payload(chapter: Chapter, *, chapter_id_ref: str, pov_title: str | N
         "act": chapter.act,
         "category": chapter.category,
         "pov": pov_title or None,
-        "paragraphs": [paragraph_payload(paragraph, index, chapter_id_ref) for index, paragraph in enumerate(chapter.paragraphs)],
+        "paragraphs": [
+            paragraph_payload(paragraph, index, chapter_id_ref, chapter_title=chapter.title)
+            for index, paragraph in enumerate(chapter.paragraphs)
+        ],
     }
 
 

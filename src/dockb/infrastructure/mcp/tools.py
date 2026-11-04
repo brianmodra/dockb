@@ -59,7 +59,7 @@ def mount_tools(
             raise ToolError("no such chapter for this account")
         return payload
 
-    def find_paragraphs(document_id: str, criteria: dict[str, Any]) -> list[dict[str, Any]]:
+    def find_paragraphs(document_id: str, criteria: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         """The paragraphs of one document a criteria tree selects.
 
         The tree: `{"type": "criteria", "op": "and"|"or", "criteria": [...]}`
@@ -72,13 +72,17 @@ def mount_tools(
         position there, with its full text.
         """
         account = _account()
-        return find_paragraphs_payload(
+        found = find_paragraphs_payload(
             document_id,
             criteria,
             chapter_repo=chapter_repo,
             document_repo=document_repo,
             owner=account,
         )
+        # A bare top-level array is not a valid structured output root (the JSON
+        # schema the protocol requires wants an object), so the paragraphs ride
+        # in a one-key object.
+        return {"paragraphs": found}
 
     mcp.add_tool(
         get_chapter,
@@ -93,6 +97,7 @@ def mount_tools(
         name="find_paragraphs",
         description=(
             "Find paragraphs of one document by a nested criteria tree over words, text "
-            "substrings, and story characters; every match carries its chapter id and position."
+            "substrings, and story characters; answers {paragraphs: [...]}, every match "
+            "carrying its chapter id, position, and full text."
         ),
     )

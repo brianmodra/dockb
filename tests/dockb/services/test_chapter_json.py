@@ -39,6 +39,7 @@ def test_paragraphs_carry_their_properties_and_references() -> None:
     assert [p["id"] for p in paragraphs] == ["p1", "p2"]
     assert [p["index"] for p in paragraphs] == [0, 1]
     assert all(p["chapter_id"] == "c1" for p in paragraphs)
+    assert all(p["chapter_title"] == "Opening 1" for p in paragraphs)
     assert paragraphs[0]["quote_type"] == "reading"
     assert paragraphs[1]["quote_type"] == ""
 

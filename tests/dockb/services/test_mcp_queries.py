@@ -138,6 +138,7 @@ def test_find_paragraphs_returns_payloads_with_chapter_and_position() -> None:
 
     assert len(found) == 1
     assert found[0]["chapter_id"] == "c1"
+    assert found[0]["chapter_title"] == "Opening 1"
     assert found[0]["index"] == 0
     assert found[0]["id"] == "p1"
     assert found[0]["sentences"][0]["text"] == "The murder was discovered at dawn."

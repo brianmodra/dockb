@@ -101,5 +101,10 @@ async def test_find_paragraphs_answers_the_selection(repos) -> None:
     found = await mcp.call_tool("find_paragraphs", {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}})
 
     assert found is not None
+    assert found.is_error is False
+    paragraphs = found.structured_content["paragraphs"]
+    assert len(paragraphs) == 1
+    assert paragraphs[0]["id"] == "p1"
+    assert paragraphs[0]["chapter_id"] == "c1"
     document_repo.load.assert_called_once_with("d1", "acct-1")
     _account_id.reset(token)
