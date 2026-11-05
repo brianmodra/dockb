@@ -113,7 +113,7 @@ export class AppLayout {
       menubar.element,
       mainRow,
       this.seam("resize-handle-h-bottom", "horizontal", (delta) => {
-        this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight + delta);
+        this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight - delta);
         this.messagePanel.style.height = `${this.messageHeight}px`;
         this.options.onWidthsChange?.(this.panelWidths());
       }),

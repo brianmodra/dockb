@@ -68,12 +68,21 @@ describe("AppLayout", () => {
     expect(parseInt(right.style.width, 10)).toBe(10);
   });
 
-  it("grows the message panel downward through the bottom seam, following the mouse", () => {
+  it("grows the message panel when the bottom seam is dragged up, following the mouse", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
-    drag(bottomHandle(layout), 100, 500, 0, 60);
+    drag(bottomHandle(layout), 100, 500, 0, -60);
     expect(parseInt(message.style.height, 10)).toBe(84);
+  });
+
+  it("shrinks the message panel when the bottom seam is dragged down", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    expect(parseInt(message.style.height, 10)).toBe(24);
+    drag(bottomHandle(layout), 100, 500, 0, 200);
+    expect(parseInt(message.style.height, 10)).toBe(24);
   });
 
   it("enforces a minimum left-panel width", () => {
