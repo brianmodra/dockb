@@ -179,3 +179,101 @@ def test_a_missing_api_key_makes_no_call(monkeypatch) -> None:
 
     complete.assert_not_called()
     mentions_repo.stamp.assert_not_called()
+
+
+class _Span:  # pylint: disable=too-few-public-methods
+    """One entity span of the fake spaCy doc."""
+
+    def __init__(self, text: str, label: str) -> None:
+        self.text = text
+        self.label_ = label
+
+
+class _FakeDoc:  # pylint: disable=too-few-public-methods
+    """A spaCy doc stand-in carrying only its entity spans."""
+
+    def __init__(self, spans: list[_Span]) -> None:
+        self.ents = spans
+
+
+def _fake_nlp(spans: list[_Span]):
+    """A spaCy model stand-in that always returns *spans* as the doc's entities."""
+
+    def nlp(_text: str) -> _FakeDoc:
+        return _FakeDoc(spans)
+
+    return nlp
+
+
+def _ner_fixture(monkeypatch):
+    """'Adams waited.' is pending; the fake NER sees a full-name PERSON span."""
+    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    nlp = _fake_nlp([_Span("Jeremiah Adams", "PERSON")])
+    return mentions_repo, chapter_repo, document_repo, nlp
+
+
+def test_a_person_span_matching_one_candidate_resolves_it_without_the_model(monkeypatch) -> None:
+    from dockb.services.mentions import evaluate_chapter_tier2
+
+    mentions_repo, chapter_repo, document_repo, nlp = _ner_fixture(monkeypatch)
+    # the model is only asked about k2 (Jael): the span named Jeremiah exactly
+    complete = MagicMock(return_value='{"1": false}')
+
+    evaluate_chapter_tier2(
+        "c1",
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        complete=complete,
+        nlp=nlp,
+    )
+
+    assert complete.call_count == 1
+    stamped = mentions_repo.stamp.call_args
+    assert stamped is not None
+    assert stamped.args[0] == "p1"
+    assert stamped.kwargs["checked_at"]
+    assert [v["character_id"] for v in stamped.args[1]] == ["k1"]
+    assert all(v["method"] == "name" for v in stamped.args[1])
+
+
+def test_a_person_span_two_candidates_claim_does_not_resolve(monkeypatch) -> None:
+    from dockb.services.mentions import evaluate_chapter_tier2
+
+    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    nlp = _fake_nlp([_Span("Adams", "PERSON")])
+
+    evaluate_chapter_tier2(
+        "c1",
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        complete=lambda prompt: '{"1": true, "2": false}',
+        nlp=nlp,
+    )
+
+    stamped = mentions_repo.stamp.call_args
+    assert stamped is not None
+    assert stamped.kwargs["checked_at"]  # the model settled it
+    assert [v["method"] for v in stamped.args[1]] == ["model"]
+
+
+def test_no_nlp_goes_straight_to_the_model(monkeypatch) -> None:
+    from dockb.services.mentions import evaluate_chapter_tier2
+
+    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+
+    evaluate_chapter_tier2(
+        "c1",
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        complete=lambda prompt: '{"1": true, "2": false}',
+        nlp=None,
+    )
+
+    stamped = mentions_repo.stamp.call_args
+    assert stamped is not None and stamped.kwargs["checked_at"]

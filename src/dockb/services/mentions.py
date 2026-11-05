@@ -272,7 +272,7 @@ def judge_ambiguous(candidates: list[dict[str, Any]], *, complete: Any) -> dict[
     return out
 
 
-def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches
     chapter_id: str,
     *,
     owner: str,
@@ -280,6 +280,7 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     chapter_repo: Any,
     document_repo: Any,
     complete: Any = None,
+    nlp: Any = None,
 ) -> None:
     """Evaluate a chapter's pending paragraphs (tier 2): the model judges the
     ambiguous evidence.
@@ -309,9 +310,28 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
         if paragraph is None:
             continue
         settled, waiting = _judge_paragraph(paragraph, characters, ambiguity)
-        per_paragraph[paragraph_id] = (settled, waiting)
+        per_paragraph[paragraph_id] = (settled, waiting)  # waiting refined by NER below
         text = _paragraph_text(paragraph)
+
+        # The NER pass: a PERSON span exactly equal to one candidate's
+        # name-set entry — and to nobody else's — resolves that candidate
+        # deterministically. NER never rejects: a name the small model failed
+        # to tag falls through to the real judge.
+        person_spans = _ner_spans(nlp, text) if nlp is not None else []
+        still_waiting: list[Chapter] = []
         for character in waiting:
+            claimed = [
+                span.text
+                for span in person_spans
+                if span.label_ == "PERSON" and _normalised(span.text) in [_normalised(entry) for entry in name_set(character)]
+            ]
+            if claimed and len(ambiguity.get(_normalised(claimed[0]), [])) <= 1:
+                settled.append({"character_id": character.id, "method": "name", "confidence": 1.0})
+            else:
+                still_waiting.append(character)
+
+        per_paragraph[paragraph_id] = (settled, still_waiting)
+        for character in still_waiting:
             candidates.append(
                 {
                     "key": f"{paragraph_id}:{character.id}",
@@ -338,6 +358,21 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
                 mentions_repo.stamp(paragraph_id, settled)
         else:
             mentions_repo.stamp(paragraph_id, settled, checked_at=now)
+
+
+def _ner_spans(nlp: Any, text: str) -> list[Any]:
+    """The entity spans of *text* under the pipeline's spaCy model (None-safe)."""
+    try:
+        return list(nlp(text).ents)
+    except Exception:  # pylint: disable=broad-except
+        # NER is an optimisation, never a gate: a failure falls to the model.
+        logger.warning("The NER pass failed; the candidates go straight to the model", exc_info=True)
+        return []
+
+
+def _normalised(name: str) -> str:
+    """A name's comparison key: lowercased, hyphens and possessives flattened."""
+    return " ".join(word for word in name.lower().replace("'", "").replace("-", " ").split())
 
 
 def _openai_complete(prompt: str) -> str:
