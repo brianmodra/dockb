@@ -94,10 +94,12 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       if (!options.api) {
         return;
       }
+      layout.pushMessage(`You asked: ${prompt}`);
       void options.api
         .sendPrompt(prompt)
         .then((response) => {
           console.log(`AI reply: ${response.reply}`);
+          layout.pushMessage(`AI said: ${response.reply}`);
         })
         .catch((error) => {
           reportError("AI chat", error, (text) => layout.pushMessage(text));

@@ -67,7 +67,7 @@ describe("renderer shell", () => {
     expect(label?.textContent).toBe("brian");
   });
 
-  it("sends the chat prompt through the client and logs the reply", async () => {
+  it("sends the chat prompt through the client, echoes it, and shows the reply", async () => {
     const sendPrompt = vi.fn(async () => ({ reply: "an answer" }));
     const { api, bridge } = localModeApi({ sendPrompt });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -77,9 +77,12 @@ describe("renderer shell", () => {
     const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
     chat.value = "where should I start?";
     chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
+    expect(panel.textContent).toContain("You asked: where should I start?");
     expect(sendPrompt).toHaveBeenCalledWith("where should I start?");
     await new Promise((r) => setTimeout(r, 0));
     expect(log).toHaveBeenCalledWith("AI reply: an answer");
+    expect(panel.textContent).toContain("AI said: an answer");
   });
 
   it("routes a chat failure into the message panel", async () => {
