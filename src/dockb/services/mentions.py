@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -328,3 +329,66 @@ def _openai_complete(prompt: str) -> str:
     response.raise_for_status()
     payload = response.json()
     return str(payload["choices"][0]["message"]["content"])
+
+
+class MentionsJob:  # pylint: disable=too-few-public-methods
+    """The evaluation of one chapter's (or one document's) pending paragraphs.
+
+    Carries the scope and the repositories; `run` does the work (tier 1, then
+    tier 2 for what tier 1 left pending). It is a plain object rather than a
+    JobQueue job: the queue a chapter save could use is not wired in
+    production, and a mentions evaluation wants no ordering guarantees beyond
+    "after the commit" — which the caller guarantees by only constructing it
+    after the save returned.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        *,
+        mentions_repo: Any,
+        chapter_repo: Any,
+        document_repo: Any,
+        owner: str,
+        chapter_id: str | None = None,
+        document_id: str | None = None,
+    ) -> None:
+        self.chapter_id = chapter_id
+        self.document_id = document_id
+        self._repos = (mentions_repo, chapter_repo, document_repo)
+        self._owner = owner
+
+    def run(self) -> None:
+        """Evaluate every pending paragraph in the job's scope, both tiers."""
+        mentions_repo, chapter_repo, document_repo = self._repos
+        if self.chapter_id is not None:
+            chapter_ids: list[str] = [self.chapter_id]
+        elif self.document_id is not None:
+            chapter_ids = _document_chapter_ids(self.document_id, owner=self._owner, document_repo=document_repo)
+        else:
+            return
+        for chapter_id in chapter_ids:
+            _evaluate_chapter(
+                chapter_id,
+                owner=self._owner,
+                mentions_repo=mentions_repo,
+                chapter_repo=chapter_repo,
+                document_repo=document_repo,
+            )
+
+
+def run_mentions_async(job: MentionsJob) -> None:
+    """Run *job* on a one-shot daemon thread: the caller never waits on it."""
+    threading.Thread(target=job.run, daemon=True).start()
+
+
+def _document_chapter_ids(document_id: str, *, owner: str, document_repo: Any) -> list[str]:
+    document: Document | None = document_repo.load(document_id, owner)
+    if document is None:
+        return []
+    return [chapter.id for chapter in document.chapters]
+
+
+def _evaluate_chapter(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_repo: Any, document_repo: Any) -> None:
+    """Both tiers for one chapter's pending paragraphs."""
+    evaluate_chapter_tier1(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    evaluate_chapter_tier2(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)

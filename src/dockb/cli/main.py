@@ -19,16 +19,18 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from dockb.cli import import_document, reconstruct_chapter, users
+from dockb.cli import import_document, mentions, reconstruct_chapter, users
 
 _COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "import-document": import_document.main,
+    "mentions": mentions.main,
     "reconstruct-chapter": reconstruct_chapter.main,
     "users": users.main,
 }
 
 _SUMMARIES = {
     "import-document": "walk a directory of markdown and update the knowledge graph",
+    "mentions": "sweep a document's paragraphs for character mentions",
     "reconstruct-chapter": "write one chapter back out as markdown",
     "users": "administer accounts",
 }

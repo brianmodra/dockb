@@ -17,7 +17,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from dockb.exceptions import (
     ChapterAfterNotFoundError,
@@ -39,6 +39,7 @@ from dockb.models.sentence import Sentence
 from dockb.services.chapter_front_matter import set_pov as apply_set_pov
 from dockb.services.chapter_renumber import plan_renumber
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
+from dockb.services.mentions import MentionsJob, run_mentions_async
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
 from dockb.timing import measure
@@ -276,12 +277,16 @@ class ChapterService:
         document_repo: DocumentRepository | None = None,
         document_store_factory: DocumentStoreFactory | None = None,
         nlp: Language | None = None,
+        mentions_repo: Any | None = None,
+        session_context: SessionContext | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
         self._document_repo = document_repo
         self._document_store_factory = document_store_factory
         self._nlp = nlp
+        self._mentions_repo = mentions_repo
+        self._session_context = session_context
         self._save_locks: dict[str, threading.Lock] = {}
         self._save_users: dict[str, int] = {}
         self._save_registry_guard = threading.Lock()
@@ -396,6 +401,7 @@ class ChapterService:
         ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
+        before_identity = (ch.first_name, ch.surname, tuple(ch.middle_names), tuple(ch.nicknames))
         document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is None:
             return None
@@ -423,8 +429,39 @@ class ChapterService:
                 owner=owner,
             )
             store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
+        self._trigger_mentions(ch, document_id, before_identity, owner)
         canonical = store.read_chapter(document.title, ch.act, ch.title, ch.category)
         return ChapterSaveResult(content=canonical or "", summary=summary)
+
+    def _trigger_mentions(
+        self,
+        ch: Chapter,
+        document_id: str,
+        before_identity: tuple[str, str, tuple[str, ...], tuple[str, ...]],
+        owner: str,
+    ) -> None:
+        """Queue the mention evaluation the save made necessary, on a daemon thread.
+
+        A manuscript save scopes the job to its chapter; a character save that
+        changed the identity properties scopes it to the whole document — the
+        ambiguity of a shared name is decided by every character's name set.
+        A character save that changed no identity triggers nothing.
+        """
+        if self._mentions_repo is None:
+            return
+        after_identity = (ch.first_name, ch.surname, tuple(ch.middle_names), tuple(ch.nicknames))
+        identity_changed = ch.category == "Character" and after_identity != before_identity
+        if ch.category == "Character" and not identity_changed:
+            return
+        job = MentionsJob(
+            chapter_id=None if identity_changed else ch.id,
+            document_id=document_id if identity_changed else None,
+            mentions_repo=self._mentions_repo,
+            chapter_repo=self._chapter_repo,
+            document_repo=self._document_repo,
+            owner=owner,
+        )
+        run_mentions_async(job)
 
     def open_document(self, chapter_id: str, *, owner: str) -> str | None:
         """Read a chapter's owned file as canonical text, reconciling it first.

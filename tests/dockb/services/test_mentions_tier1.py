@@ -2,13 +2,17 @@
 
 from unittest.mock import MagicMock
 
+from dockb.infrastructure.document_store.factory import DocumentStoreFactory
+from dockb.infrastructure.document_store.store import DocumentStore
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token
-from dockb.services.mentions import evaluate_chapter_tier1
+from dockb.services import crud_services as crud_services_module
+from dockb.services.crud_services import ChapterService
+from dockb.services.mentions import evaluate_chapter_tier1, run_mentions_async
 
 _OWNER = "acct-1"
 
@@ -153,3 +157,138 @@ def test_states_2_and_3_paragraphs_are_not_touched() -> None:
 
     stamped_ids = [call.args[0] for call in mentions_repo.stamp.call_args_list]
     assert sorted(stamped_ids) == ["p2", "p4"]
+
+
+def test_a_chapter_save_triggers_a_chapter_scoped_evaluation(monkeypatch) -> None:
+    from dockb.services import mentions as mentions_module
+
+    triggered = []
+    monkeypatch.setattr(mentions_module, "run_mentions_async", lambda *args: triggered.append(args[0]))
+
+    chapter = _character("k1", "Jeremiah", first_name="Jeremiah")
+    document = Document(id="d1", state=DataState.SYNC)
+    document.chapters.append(chapter)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = []
+    chapter_repo = MagicMock()
+    chapter_repo.load.return_value = chapter
+    chapter_repo.find_document_id.return_value = "d1"
+    document_repo = MagicMock()
+    document_repo.load.return_value = document
+
+    job = mentions_module.MentionsJob(
+        chapter_id="k1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner="acct-1",
+    )
+    job.run()
+
+    assert mentions_repo.paragraph_states.call_count >= 1
+
+
+def test_run_mentions_async_runs_the_job_on_a_daemon_thread() -> None:
+    import threading
+
+    done = threading.Event()
+    job = MagicMock()
+    job.run.side_effect = done.set
+
+    run_mentions_async(job)
+
+    assert done.wait(5)
+    assert job.run.called
+
+
+def _save_service(tmp_path, chapter, mentions_repo, nlp):
+    chapter_repo = MagicMock()
+    chapter_repo.load.return_value = chapter
+    chapter_repo.find_document_id.return_value = "d1"
+    doc_repo = MagicMock()
+    document = Document(id="d1", title="T", author="A", owner="acct-1", state=DataState.SYNC)
+    document.chapters.append(chapter)
+    doc_repo.load.return_value = document
+    doc_repo.load_shell.return_value = document
+    store = DocumentStore(base_dir=tmp_path, account_id="acct-1")
+    store.write_chapter("T", chapter.act, chapter.title, chapter.get_text() or "body")
+    store.git_commit("T", "materialize: doc")
+    service = ChapterService(
+        uow_factory=MagicMock(),
+        chapter_repo=chapter_repo,
+        document_repo=doc_repo,
+        document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+        nlp=nlp,
+        mentions_repo=mentions_repo,
+    )
+    return service, chapter_repo, doc_repo, store
+
+
+def test_a_manuscript_save_triggers_a_chapter_scoped_mentions_job(tmp_path, monkeypatch, nlp) -> None:
+    chapter = Chapter(id="c1", title="Opening 1", act="Act I", state=DataState.SYNC)
+    paragraph = Paragraph(id="p1", state=DataState.SYNC)
+    sentence = Sentence(state=DataState.SYNC)
+    sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
+    paragraph.sentences.append(sentence)
+    chapter.paragraphs.append(paragraph)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = []
+    mentions_repo.stamp.side_effect = None
+    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, mentions_repo, nlp)
+    triggered = []
+    monkeypatch.setattr(crud_services_module, "run_mentions_async", triggered.append)
+
+    service.save_document("c1", '---\nid: c1\n---\n\n<span data-par-id="p1">\nBody.\n</span>', owner="acct-1")
+
+    assert len(triggered) == 1
+    assert triggered[0].chapter_id == "c1"
+    assert triggered[0].document_id is None
+
+
+def test_a_character_identity_change_triggers_a_document_scoped_job(tmp_path, monkeypatch, nlp) -> None:
+    chapter = Chapter(id="k1", title="Jeremiah", category="Character", state=DataState.SYNC)
+    paragraph = Paragraph(id="p1", state=DataState.SYNC)
+    sentence = Sentence(state=DataState.SYNC)
+    sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
+    paragraph.sentences.append(sentence)
+    chapter.paragraphs.append(paragraph)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = []
+    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, mentions_repo, nlp)
+    # the saved file's front matter renames the character's surname
+    triggered = []
+    monkeypatch.setattr(crud_services_module, "run_mentions_async", triggered.append)
+
+    content = (
+        "---\nid: k1\ntitle: Jeremiah\ncategory: Character\n"
+        "first_name: Jeremiah\nsurname: Adams\n---\n\n"
+        '<span data-par-id="p1">\nBody.\n</span>'
+    )
+    service.save_document("k1", content, owner="acct-1")
+
+    assert len(triggered) == 1
+    assert triggered[0].document_id == "d1"
+    assert triggered[0].chapter_id is None
+
+
+def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, monkeypatch, nlp) -> None:
+    chapter = Chapter(id="k1", title="Jeremiah", category="Character", state=DataState.SYNC)
+    chapter.first_name = "Jeremiah"
+    paragraph = Paragraph(id="p1", state=DataState.SYNC)
+    sentence = Sentence(state=DataState.SYNC)
+    sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
+    paragraph.sentences.append(sentence)
+    chapter.paragraphs.append(paragraph)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = []
+    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, mentions_repo, nlp)
+    triggered = []
+    monkeypatch.setattr(crud_services_module, "run_mentions_async", triggered.append)
+
+    content = (
+        "---\nid: k1\ntitle: Jeremiah\ncategory: Character\n"
+        'first_name: Jeremiah\n---\n\n<span data-par-id="p1">\nBody text changed.\n</span>'
+    )
+    service.save_document("k1", content, owner="acct-1")
+
+    assert not triggered

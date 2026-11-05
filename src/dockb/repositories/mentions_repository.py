@@ -60,6 +60,22 @@ WHERE size(rels) = 0 AND p.mentions_checked_at IS NOT NULL
 SET p.mentions_checked_at = null
 """
 
+_CHAPTER_RESET_CYPHER = """
+MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
+OPTIONAL MATCH (p)-[m:MENTIONS]->()
+DELETE m
+WITH DISTINCT p
+SET p.mentions_checked_at = null
+"""
+
+_DOCUMENT_RESET_CYPHER = """
+MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+OPTIONAL MATCH (p)-[m:MENTIONS]->()
+DELETE m
+WITH DISTINCT p
+SET p.mentions_checked_at = null
+"""
+
 _STAMP_CYPHER = """
 MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {owner: $owner})
 OPTIONAL MATCH (p)-[m:MENTIONS]->()
@@ -136,6 +152,20 @@ class MentionsRepository:
             _STAMP_CYPHER,
             {"paragraph_id": paragraph_id, "verdicts": verdicts, "checked_at": checked_at},
         )
+
+    def reset(self, owner: str, *, chapter_id: str | None = None, document_id: str | None = None) -> None:
+        """Forget every verdict in the scope: no stamp, no MENTIONS (all state 1).
+
+        The sweep's ``--full`` uses it: a re-evaluation from nothing, the old
+        verdicts not even kept as stale.
+        """
+        if chapter_id is not None:
+            cypher = _CHAPTER_RESET_CYPHER
+            params: dict[str, str | None] = {"chapter_id": chapter_id, "owner": owner}
+        else:
+            cypher = _DOCUMENT_RESET_CYPHER
+            params = {"document_id": document_id, "owner": owner}
+        self._session.run(cypher, params)
 
     def mark_stale(self, owner: str, *, chapter_id: str | None = None, document_id: str | None = None) -> None:
         """Invalidate every verdict in the scope (a chapter, or a whole document).
