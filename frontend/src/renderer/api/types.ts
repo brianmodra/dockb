@@ -125,6 +125,11 @@ export interface ImportResponse {
   imports: ImportSummaryWire[];
 }
 
+/** POST /api/ai/chat response — the model's reply to the editor's prompt. */
+export interface ChatResponse {
+  reply: string;
+}
+
 /** The answer to setting a chapter's point-of-view character. */
 export interface PovResponse {
   applied: boolean;

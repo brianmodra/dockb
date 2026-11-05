@@ -754,6 +754,19 @@ Returns an empty `notifications` array if the queue has nothing pending (no bloc
 
 Note that a paragraph split can include sentence splits, and a sentence operation could cause a paragraph split.
 
+### AI chat
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/ai/chat` | Send the editor's prompt to the model; returns the reply |
+
+Session-gated like every editor route. Not a manuscript mutation, so the reply is a bare
+payload rather than the status envelope: `{ "reply": "..." }`. The body is
+`{ "prompt": "..." }`, sent to the model as-is for now (no manuscript context). The
+`OPENAI_API_KEY` lives only on the server; the model is `DOCKB_CHAT_MODEL`
+(default `gpt-4o-mini`). Errors: `422` for an empty prompt, `503` when the service is
+unwired or the key is missing, `502` when the model call fails.
+
 ### Import
 
 | Method | Path | Purpose |

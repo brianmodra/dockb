@@ -94,7 +94,13 @@ minimum (left panel 120px, message console 24px) and the right panel starts at
 its 10px floor.
 
 - `layout.ts` — window chrome, panel seams, mode, dirty badge, menubar username
-  label, message sink.
+  label, message sink, and the AI chat line: a textarea pinned to the bottom of
+  the message panel (greyed "Prompt AI here" placeholder) whose height follows
+  the panel, so pulling the seam up makes it multi-line while the 24px floor
+  always leaves one line visible. Enter (without Shift, non-empty) submits the
+  prompt and clears the line; `main.ts` sends it via `ApiClient.sendPrompt`
+  (`POST /api/ai/chat`, key held server-side), logs the reply to the console,
+  and reports failures to the message panel.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
   of the same canonical buffer; dirty = buffer vs last canonical, where the
   quote types count too (`quoteSignature`), so a quote-only change is still

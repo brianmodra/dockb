@@ -16,6 +16,7 @@ from typing import Any
 import spacy
 from dotenv import load_dotenv
 
+from dockb.controllers.ai import set_ai_service
 from dockb.controllers.auth import set_auth_service
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import set_doc_service
@@ -44,6 +45,7 @@ from dockb.repositories.document_repository import DocumentRepository
 from dockb.repositories.mentions_repository import MentionsRepository
 from dockb.repositories.paragraph_repository import ParagraphRepository
 from dockb.repositories.sentence_repository import SentenceRepository
+from dockb.services.ai_chat import AiChatService
 from dockb.services.auth_service import AuthService
 from dockb.services.crud_services import ChapterService, DocumentService, ParagraphService, SentenceService
 from dockb.services.history_service import HistoryService
@@ -229,6 +231,7 @@ def wire(  # pylint: disable=too-many-locals
     ctx = SessionContext()
     _ctx = ctx
 
+    set_ai_service(AiChatService())
     set_doc_service(doc_svc)
     set_ch_service(ch_svc)
     set_para_service(para_svc)

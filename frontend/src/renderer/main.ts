@@ -90,6 +90,19 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onWidthsChange: (widths) => {
       void stateController?.savePanelWidths(widths);
     },
+    onPrompt: (prompt) => {
+      if (!options.api) {
+        return;
+      }
+      void options.api
+        .sendPrompt(prompt)
+        .then((response) => {
+          console.log(`AI reply: ${response.reply}`);
+        })
+        .catch((error) => {
+          reportError("AI chat", error, (text) => layout.pushMessage(text));
+        });
+    },
   });
   root.append(layout.element);
 

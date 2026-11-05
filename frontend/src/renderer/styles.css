@@ -489,10 +489,36 @@ body {
   font-size: 12px;
   padding: 2px 8px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .message-line {
   white-space: nowrap;
+}
+
+.message-log {
+  flex: 1 1 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.chat-line {
+  flex: none;
+  resize: none;
+  border: none;
+  outline: none;
+  background: #f9f9f7;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 18px;
+  padding: 2px 6px;
+  box-sizing: border-box;
+}
+
+.chat-line::placeholder {
+  color: #9a9a96;
 }
 
 /* ---- resize handles ---- */

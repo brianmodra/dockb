@@ -136,6 +136,51 @@ describe("AppLayout", () => {
     expect(message.textContent).toContain("hello console");
   });
 
+  it("shows the chat line with a greyed-out hint", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    expect(chat).toBeInstanceOf(HTMLTextAreaElement);
+    expect(chat.parentElement?.dataset.testid).toBe("panel-message");
+    expect(chat.placeholder).toBe("Prompt AI here");
+  });
+
+  it("sizes the chat line to the panel so pulling the seam up makes it multi-line", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    expect(parseInt(chat.style.height, 10)).toBe(24);
+    drag(bottomHandle(layout), 100, 500, 0, -40);
+    expect(parseInt(chat.style.height, 10)).toBe(64);
+  });
+
+  it("submits the chat prompt on Enter and clears the line", () => {
+    const onPrompt = vi.fn();
+    const layout = new AppLayout({ onPrompt });
+    document.body.append(layout.element);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    chat.value = "who wrote this?";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onPrompt).toHaveBeenCalledWith("who wrote this?");
+    expect(chat.value).toBe("");
+  });
+
+  it("ignores an empty or whitespace-only chat prompt and shift-enter", () => {
+    const onPrompt = vi.fn();
+    const layout = new AppLayout({ onPrompt });
+    document.body.append(layout.element);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onPrompt).not.toHaveBeenCalled();
+    chat.value = "   ";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onPrompt).not.toHaveBeenCalled();
+    chat.value = "draft text";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }));
+    expect(onPrompt).not.toHaveBeenCalled();
+    expect(chat.value).toBe("draft text");
+  });
+
   it("shows the dirty indicator when there are unsaved changes", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);

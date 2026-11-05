@@ -7,6 +7,7 @@ registered.  Service wiring is handled separately by ``composition.wire()``.
 from fastapi import Depends, FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
+from dockb.controllers.ai import router as ai_router
 from dockb.controllers.app_state import router as app_state_router
 from dockb.controllers.auth import get_current_user
 from dockb.controllers.auth import router as auth_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     application.include_router(history_router, dependencies=_authenticated)
     application.include_router(notifications_router, dependencies=_authenticated)
     application.include_router(imports_router, dependencies=_authenticated)
+    application.include_router(ai_router, dependencies=_authenticated)
     # The MCP mint route is the operator's, not the editor's: gated by the
     # server's own secret (not a session), and answered by the live in-memory
     # issuer this process holds.

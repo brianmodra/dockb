@@ -67,6 +67,37 @@ describe("renderer shell", () => {
     expect(label?.textContent).toBe("brian");
   });
 
+  it("sends the chat prompt through the client and logs the reply", async () => {
+    const sendPrompt = vi.fn(async () => ({ reply: "an answer" }));
+    const { api, bridge } = localModeApi({ sendPrompt });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "where should I start?";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(sendPrompt).toHaveBeenCalledWith("where should I start?");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(log).toHaveBeenCalledWith("AI reply: an answer");
+  });
+
+  it("routes a chat failure into the message panel", async () => {
+    const sendPrompt = vi.fn(async () => {
+      throw new ApiError(503, "ai_key_missing: OPENAI_API_KEY is not set");
+    });
+    const { api, bridge } = localModeApi({ sendPrompt });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "hello";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
+    expect(panel.textContent).toContain("AI chat: ai_key_missing");
+  });
+
   it("does not render the username when the profile is missing", async () => {
     const { api, bridge } = localModeApi({
       getMe: vi.fn(async () => {

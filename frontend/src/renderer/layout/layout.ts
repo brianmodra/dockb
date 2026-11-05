@@ -14,6 +14,7 @@ export interface AppLayoutOptions {
   onEditChapter?: () => void;
   onSignOut?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
+  onPrompt?: (prompt: string) => void;
 }
 
 const MIN_LEFT_WIDTH = 120;
@@ -39,6 +40,8 @@ export class AppLayout {
   }
   private readonly rightPanel: HTMLElement;
   private readonly messagePanel: HTMLElement;
+  private readonly messageLog: HTMLElement;
+  private readonly chatLine: HTMLTextAreaElement;
   private leftWidth = DEFAULT_LEFT_WIDTH;
   private rightWidth = MIN_RIGHT_WIDTH;
   private messageHeight = MIN_MESSAGE_HEIGHT;
@@ -71,6 +74,24 @@ export class AppLayout {
 
     this.leftPanel = this.panel("panel-left");
 
+    const chat = document.createElement("textarea");
+    chat.dataset.testid = "chat-line";
+    chat.className = "chat-line";
+    chat.setAttribute("rows", "1");
+    chat.placeholder = "Prompt AI here";
+    chat.spellcheck = false;
+    chat.addEventListener("keydown", (event: KeyboardEvent) => {
+      const text = chat.value.trim();
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        if (text !== "") {
+          chat.value = "";
+          this.options.onPrompt?.(text);
+        }
+      }
+    });
+    this.chatLine = chat;
+
     const dirty = document.createElement("div");
     dirty.dataset.testid = "dirty-indicator";
     dirty.className = "dirty-indicator";
@@ -90,6 +111,15 @@ export class AppLayout {
     this.editPanel = editPanel;
     this.rightPanel = this.panel("panel-right");
     this.messagePanel = this.panel("panel-message");
+    const messageLog = document.createElement("div");
+    messageLog.className = "message-log";
+    this.messageLog = messageLog;
+    this.messagePanel.append(this.messageLog, this.chatLine);
+
+    const setPanelHeight = (): void => {
+      this.messagePanel.style.height = `${this.messageHeight}px`;
+      this.chatLine.style.height = `${this.messageHeight}px`;
+    };
 
     const mainRow = document.createElement("div");
     mainRow.className = "main-row";
@@ -114,7 +144,7 @@ export class AppLayout {
       mainRow,
       this.seam("resize-handle-h-bottom", "horizontal", (delta) => {
         this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight - delta);
-        this.messagePanel.style.height = `${this.messageHeight}px`;
+        setPanelHeight();
         this.options.onWidthsChange?.(this.panelWidths());
       }),
       this.messagePanel,
@@ -122,7 +152,7 @@ export class AppLayout {
 
     this.leftPanel.style.width = `${this.leftWidth}px`;
     this.rightPanel.style.width = `${this.rightWidth}px`;
-    this.messagePanel.style.height = `${this.messageHeight}px`;
+    setPanelHeight();
     this.applyMode();
   }
 
@@ -130,7 +160,7 @@ export class AppLayout {
     const line = document.createElement("div");
     line.className = "message-line";
     line.textContent = text;
-    this.messagePanel.append(line);
+    this.messageLog.append(line);
   }
 
   setMode(mode: Mode): void {
@@ -156,6 +186,7 @@ export class AppLayout {
       if (typeof widths.message === "number") {
         this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, widths.message);
         this.messagePanel.style.height = `${this.messageHeight}px`;
+        this.chatLine.style.height = `${this.messageHeight}px`;
       }
       this.options.onWidthsChange?.(this.panelWidths());
     }

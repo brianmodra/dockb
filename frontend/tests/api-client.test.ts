@@ -84,6 +84,17 @@ describe("ApiClient documents", () => {
     expect(call.url).toBe("/api/documents/d-1");
     expect(call.init.method).toBe("DELETE");
   });
+
+  it("sends the prompt to /api/ai/chat and returns the reply", async () => {
+    mockFetch(200, { reply: "a reply" });
+    const client = new ApiClient();
+    const response = await client.sendPrompt("hello AI");
+    expect(response).toEqual({ reply: "a reply" });
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/ai/chat");
+    expect(call.init.method).toBe("POST");
+    expect(call.init.body).toBe(JSON.stringify({ prompt: "hello AI" }));
+  });
 });
 
 describe("ApiClient chapters and lifecycle", () => {

@@ -7,6 +7,7 @@ import type {
   ChapterListRow,
   ChapterNode,
   ChapterRelations,
+  ChatResponse,
   DocumentContentResponse,
   DocumentWire,
   ImportResponse,
@@ -108,6 +109,14 @@ export class ApiClient {
   async deleteDocument(documentId: string): Promise<MutationResponse> {
     return request<MutationResponse>(this.url(`/documents/${encodeURIComponent(documentId)}`), {
       method: "DELETE",
+    });
+  }
+
+  /** Post the editor's prompt for the model; the backend holds the OpenAI key. */
+  async sendPrompt(prompt: string): Promise<ChatResponse> {
+    return request<ChatResponse>(this.url("/ai/chat"), {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
     });
   }
 
