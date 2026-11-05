@@ -144,6 +144,28 @@ def test_a_false_verdict_stamps_the_paragraph_as_mentioning_nobody(monkeypatch) 
     assert stamped.kwargs["checked_at"]
 
 
+def test_no_ai_skips_the_model_with_a_warning(monkeypatch, caplog) -> None:
+    from dockb.services.mentions import evaluate_chapter_tier2
+
+    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    complete = MagicMock(side_effect=AssertionError("no-ai must not call"))
+
+    with caplog.at_level("WARNING"):
+        evaluate_chapter_tier2(
+            "c1",
+            owner="acct-1",
+            mentions_repo=mentions_repo,
+            chapter_repo=chapter_repo,
+            document_repo=document_repo,
+            complete=complete,
+            no_ai=True,
+        )
+
+    complete.assert_not_called()
+    mentions_repo.stamp.assert_not_called()
+    assert any("no-ai" in record.message or "no_ai" in record.message or "prevented" in record.message for record in caplog.records)
+
+
 def test_an_unresolved_candidate_leaves_the_paragraph_unstamped(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 

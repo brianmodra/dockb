@@ -14,6 +14,7 @@ never automatic. The per-save evaluation is the MentionsJob; see
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from contextlib import ExitStack
@@ -23,12 +24,16 @@ from dotenv import load_dotenv
 
 from dockb.cli.import_document import account_id_for
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
+from dockb.models.chapter import Chapter
+from dockb.models.document import Document
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
 from dockb.repositories.mentions_repository import MentionsRepository
 from dockb.services.mentions import evaluate_chapter_tier1, evaluate_chapter_tier2
 
 _STATE_NAMES = {1: "never evaluated", 2: "no mentions", 3: "mentions", 4: "stale"}
+
+logger = logging.getLogger(__name__)
 
 
 def _build() -> tuple[ChapterRepository, DocumentRepository, MentionsRepository]:
@@ -44,6 +49,36 @@ def _build() -> tuple[ChapterRepository, DocumentRepository, MentionsRepository]
     with ExitStack() as stack:
         session = stack.enter_context(session_factory.session())
         return ChapterRepository(session), DocumentRepository(session), MentionsRepository(session)
+
+
+def _log_chapter_mentions(
+    chapter: Chapter,
+    *,
+    owner: str,
+    mentions_repo: MentionsRepository,
+    document: Document,
+) -> None:
+    """Log each mention (character, chapter title, paragraph index) and the chapter's summary."""
+    characters = {c.id: c.title for c in document.chapters if c.category == "Character"}
+    counts: dict[str, int] = {}
+    for state in mentions_repo.paragraph_states(owner, chapter_id=chapter.id):
+        raw_mentions = state.get("mentions")
+        mentions: list[str] = [str(character_id) for character_id in raw_mentions] if isinstance(raw_mentions, list) else []
+        index = int(state.get("index") or 0)
+        for character_id in mentions:
+            title = characters.get(character_id, character_id)
+            logger.info(
+                "Character '%s' mentioned in chapter '%s', paragraph %d",
+                title,
+                chapter.title,
+                index,
+            )
+            counts[title] = counts.get(title, 0) + 1
+    if counts:
+        summary = ", ".join(f"'{title}' x {count}" for title, count in sorted(counts.items()))
+        logger.info("Chapter '%s' mentions summary: %s", chapter.title, summary)
+    else:
+        logger.info("Chapter '%s' mentions summary: none", chapter.title)
 
 
 def _resolve_document(document_ref: str, owner: str, document_repo: DocumentRepository) -> str | None:
@@ -65,6 +100,11 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
     sweep.add_argument("document", help="the document's id, or its title")
     sweep.add_argument("--owner", required=True, help="the account the document belongs to")
     sweep.add_argument("--full", action="store_true", help="re-evaluate every paragraph, ignoring existing MENTIONS")
+    sweep.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="when the pipeline would call the model, log a warning and leave those candidates un-evaluated",
+    )
     args = parser.parse_args(argv)
 
     owner = account_id_for(args.owner)
@@ -87,7 +127,15 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
         if args.full:
             mentions_repo.reset(owner, chapter_id=chapter.id)
         evaluate_chapter_tier1(chapter.id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
-        evaluate_chapter_tier2(chapter.id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+        evaluate_chapter_tier2(
+            chapter.id,
+            owner=owner,
+            mentions_repo=mentions_repo,
+            chapter_repo=chapter_repo,
+            document_repo=document_repo,
+            no_ai=args.no_ai,
+        )
+        _log_chapter_mentions(chapter, owner=owner, mentions_repo=mentions_repo, document=document)
 
         after_rows = mentions_repo.paragraph_states(owner, chapter_id=chapter.id)
         pending = sum(1 for row in after_rows if row["state"] in (1, 4))

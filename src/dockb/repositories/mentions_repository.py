@@ -23,9 +23,10 @@ from neo4j import Session
 _CHAPTER_STATES_CYPHER = """
 MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
 OPTIONAL MATCH (p)-[m:MENTIONS]->(target:Chapter)
-WITH p, collect({character_id: target.id, stale: coalesce(m.stale, false)}) AS mentions
+WITH p, pr.index AS index, collect({character_id: target.id, stale: coalesce(m.stale, false)}) AS mentions
 RETURN
   p.id AS id,
+  index,
   p.mentions_checked_at AS checked_at,
   mentions
 """
@@ -33,15 +34,20 @@ RETURN
 _DOCUMENT_STATES_CYPHER = """
 MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {id: $document_id, owner: $owner})
 OPTIONAL MATCH (p)-[m:MENTIONS]->(target:Chapter)
-WITH p, collect({character_id: target.id, stale: coalesce(m.stale, false)}) AS mentions
+WITH p, pr.index AS index, collect({character_id: target.id, stale: coalesce(m.stale, false)}) AS mentions
 RETURN
   p.id AS id,
+  index,
   p.mentions_checked_at AS checked_at,
   mentions
 """
 
 _CHAPTER_MARK_STALE_CYPHER = """
-MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
+MATCH (ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
+OPTIONAL MATCH (ch)-[cm:MENTIONS]->()
+WITH ch, collect(cm) AS chapter_rels
+FOREACH (cm IN chapter_rels | SET cm.stale = true)
+MATCH (p:Paragraph)-[pr:PART_OF]->(ch)
 OPTIONAL MATCH (p)-[m:MENTIONS]->()
 WITH p, collect(m) AS rels
 FOREACH (m IN rels | SET m.stale = true)
@@ -51,7 +57,11 @@ SET p.mentions_checked_at = null
 """
 
 _DOCUMENT_MARK_STALE_CYPHER = """
-MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+MATCH (ch:Chapter)-[:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+OPTIONAL MATCH (ch)-[cm:MENTIONS]->()
+WITH ch, collect(cm) AS chapter_rels
+FOREACH (cm IN chapter_rels | SET cm.stale = true)
+MATCH (p:Paragraph)-[pr:PART_OF]->(ch)
 OPTIONAL MATCH (p)-[m:MENTIONS]->()
 WITH p, collect(m) AS rels
 FOREACH (m IN rels | SET m.stale = true)
@@ -74,6 +84,16 @@ OPTIONAL MATCH (p)-[m:MENTIONS]->()
 DELETE m
 WITH DISTINCT p
 SET p.mentions_checked_at = null
+"""
+
+_CHAPTER_STAMP_CYPHER = """
+MATCH (ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
+OPTIONAL MATCH (ch)-[m:MENTIONS]->()
+DELETE m
+WITH ch
+UNWIND $character_ids AS character_id
+MATCH (c:Chapter {id: character_id, category: 'Character'})
+CREATE (ch)-[:MENTIONS {method: "rollup", confidence: 1.0}]->(c)
 """
 
 _STAMP_CYPHER = """
@@ -136,6 +156,7 @@ class MentionsRepository:
                 {
                     "id": str(record["id"]),
                     "state": state,
+                    "index": record.get("index") or 0,
                     # the characters the valid verdicts name (empty for states 1/2/4)
                     "mentions": [str(m["character_id"]) for m in mentions if not m.get("stale")] if state == 3 else [],
                 }
@@ -173,6 +194,18 @@ class MentionsRepository:
             cypher = _DOCUMENT_RESET_CYPHER
             params = {"document_id": document_id, "owner": owner}
         self._session.run(cypher, params)
+
+    def stamp_chapter(self, chapter_id: str, character_ids: list[str], *, owner: str) -> None:
+        """Refresh the chapter's own MENTIONS rollup from its paragraphs' valid verdicts.
+
+        The rollup is a view, never a judgement: the caller derives
+        *character_ids* from the paragraph verdicts it just stamped, and this
+        replaces the chapter's relationships wholesale.
+        """
+        self._session.run(
+            _CHAPTER_STAMP_CYPHER,
+            {"chapter_id": chapter_id, "character_ids": character_ids, "owner": owner},
+        )
 
     def mark_stale(self, owner: str, *, chapter_id: str | None = None, document_id: str | None = None) -> None:
         """Invalidate every verdict in the scope (a chapter, or a whole document).

@@ -140,10 +140,10 @@ def test_a_paragraph_with_no_name_tokens_becomes_state_2() -> None:
 def test_states_2_and_3_paragraphs_are_not_touched() -> None:
     mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture(
         [
-            {"id": "p2", "state": 1},
-            {"id": "p3", "state": 2},
-            {"id": "p1", "state": 3},
-            {"id": "p4", "state": 4},
+            {"id": "p2", "state": 1, "mentions": []},
+            {"id": "p3", "state": 2, "mentions": []},
+            {"id": "p1", "state": 3, "mentions": []},
+            {"id": "p4", "state": 4, "mentions": []},
         ]
     )
 
@@ -358,3 +358,19 @@ def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
     stamped = mentions_repo.stamp.call_args
     assert stamped is not None and stamped.args[0] == "p7"
     assert [v["character_id"] for v in stamped.args[1]] == ["k2"]
+
+
+def test_the_evaluation_refreshes_the_chapters_mention_rollup() -> None:
+    mentions_repo, chapter_repo, document_repo, _document = _fixture([{"id": "p2", "state": 1}])
+
+    def states_evolve(*_args, **_kwargs):
+        # the graph's view: pending until tier 1 stamps it, then a valid verdict
+        if mentions_repo.stamp.call_args_list:
+            return [{"id": "p2", "state": 3, "index": 0, "mentions": ["k1"]}]
+        return [{"id": "p2", "state": 1, "index": 0, "mentions": []}]
+
+    mentions_repo.paragraph_states.side_effect = states_evolve
+
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+    mentions_repo.stamp_chapter.assert_called_once_with("c1", ["k1"], owner=_OWNER)

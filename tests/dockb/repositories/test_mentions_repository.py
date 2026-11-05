@@ -25,19 +25,19 @@ class TestParagraphStates:
 
     def test_lists_a_chapters_paragraphs_with_states(self, repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "p1", "checked_at": None, "mentions": []},
-            {"id": "p2", "checked_at": 1, "mentions": []},
-            {"id": "p3", "checked_at": 1, "mentions": [{"character_id": "k1", "stale": False}]},
-            {"id": "p4", "checked_at": 1, "mentions": [{"character_id": "k1", "stale": True}]},
+            {"id": "p1", "index": 0, "checked_at": None, "mentions": []},
+            {"id": "p2", "index": 1, "checked_at": 1, "mentions": []},
+            {"id": "p3", "index": 2, "checked_at": 1, "mentions": [{"character_id": "k1", "stale": False}]},
+            {"id": "p4", "index": 3, "checked_at": 1, "mentions": [{"character_id": "k1", "stale": True}]},
         ]
 
         states = repo.paragraph_states(chapter_id="c1", owner=_OWNER)
 
         assert states == [
-            {"id": "p1", "state": 1, "mentions": []},
-            {"id": "p2", "state": 2, "mentions": []},
-            {"id": "p3", "state": 3, "mentions": ["k1"]},
-            {"id": "p4", "state": 4, "mentions": []},
+            {"id": "p1", "state": 1, "index": 0, "mentions": []},
+            {"id": "p2", "state": 2, "index": 1, "mentions": []},
+            {"id": "p3", "state": 3, "index": 2, "mentions": ["k1"]},
+            {"id": "p4", "state": 4, "index": 3, "mentions": []},
         ]
         cypher, params = extract_call(neo4j_session)
         assert "Chapter {id: $chapter_id}" in cypher
@@ -67,7 +67,7 @@ class TestParagraphStates:
 
         states = repo.paragraph_states(chapter_id="c1", owner=_OWNER)
 
-        assert states == [{"id": "p1", "state": 4, "mentions": []}]
+        assert states == [{"id": "p1", "state": 4, "index": 0, "mentions": []}]
 
 
 class TestStampVerdicts:
@@ -119,3 +119,22 @@ class TestMarkStale:
 
         cypher, _ = extract_call(neo4j_session)
         assert "mentions_checked_at = null" in cypher
+
+
+class TestChapterRollup:
+    """The chapter's own MENTIONS: a view over its paragraphs' valid verdicts."""
+
+    def test_stamp_chapter_replaces_the_chapters_mentions(self, repo, neo4j_session):
+        repo.stamp_chapter("c1", ["k1", "k2"], owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})" in cypher
+        assert "DELETE m" in cypher
+        assert params["character_ids"] == ["k1", "k2"]
+
+    def test_mark_stale_also_stales_the_chapters_rollup(self, repo, neo4j_session):
+        repo.mark_stale(chapter_id="c1", owner=_OWNER)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "(ch)-[cm:MENTIONS" in cypher
+        assert "cm.stale = true" in cypher

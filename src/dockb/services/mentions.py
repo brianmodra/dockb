@@ -117,6 +117,7 @@ def evaluate_chapter_tier1(
                 mentions_repo.stamp(paragraph_id, verdicts)
         else:
             mentions_repo.stamp(paragraph_id, verdicts, checked_at=now)
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
 
 def _gather(
@@ -140,7 +141,7 @@ def _gather(
     if not characters:
         return None, None, [], {}
     ambiguity = _ambiguity(document)
-    states = {state["id"]: state["state"] for state in mentions_repo.paragraph_states(chapter_id, owner=owner)}
+    states = {state["id"]: state["state"] for state in mentions_repo.paragraph_states(owner, chapter_id=chapter_id)}
     pending = [state_id for state_id, state in states.items() if state in (1, 4)]
     return pending, chapter, characters, ambiguity
 
@@ -281,6 +282,7 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     document_repo: Any,
     complete: Any = None,
     nlp: Any = None,
+    no_ai: bool = False,
 ) -> None:
     """Evaluate a chapter's pending paragraphs (tier 2): the model judges the
     ambiguous evidence.
@@ -310,26 +312,8 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
         if paragraph is None:
             continue
         settled, waiting = _judge_paragraph(paragraph, characters, ambiguity)
-        per_paragraph[paragraph_id] = (settled, waiting)  # waiting refined by NER below
         text = _paragraph_text(paragraph)
-
-        # The NER pass: a PERSON span exactly equal to one candidate's
-        # name-set entry — and to nobody else's — resolves that candidate
-        # deterministically. NER never rejects: a name the small model failed
-        # to tag falls through to the real judge.
-        person_spans = _ner_spans(nlp, text) if nlp is not None else []
-        still_waiting: list[Chapter] = []
-        for character in waiting:
-            claimed = [
-                span.text
-                for span in person_spans
-                if span.label_ == "PERSON" and _normalised(span.text) in [_normalised(entry) for entry in name_set(character)]
-            ]
-            if claimed and len(ambiguity.get(_normalised(claimed[0]), [])) <= 1:
-                settled.append({"character_id": character.id, "method": "name", "confidence": 1.0})
-            else:
-                still_waiting.append(character)
-
+        settled, still_waiting = _settle_by_ner(text, settled, waiting, ambiguity, nlp)
         per_paragraph[paragraph_id] = (settled, still_waiting)
         for character in still_waiting:
             candidates.append(
@@ -341,6 +325,13 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
                 }
             )
 
+    if no_ai and candidates:
+        logger.warning(
+            "The model was needed to judge %d ambiguous mention candidate(s), "
+            "but the call was prevented by the --no-ai setting; they stay un-evaluated",
+            len(candidates),
+        )
+        return
     verdicts = judge_ambiguous(candidates, complete=complete)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -358,6 +349,36 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
                 mentions_repo.stamp(paragraph_id, settled)
         else:
             mentions_repo.stamp(paragraph_id, settled, checked_at=now)
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+
+def _settle_by_ner(
+    text: str,
+    settled: list[dict[str, Any]],
+    waiting: list[Chapter],
+    ambiguity: dict[str, list[str]],
+    nlp: Any,
+) -> tuple[list[dict[str, Any]], list[Chapter]]:
+    """The NER pass: a PERSON span exactly equal to one candidate's name-set
+    entry — and to nobody else's — resolves that candidate deterministically.
+
+    NER never rejects: a name the small model failed to tag falls through to
+    the real judge.
+    """
+    person_spans = _ner_spans(nlp, text) if nlp is not None else []
+    settled = list(settled)
+    still_waiting: list[Chapter] = []
+    for character in waiting:
+        claimed = [
+            span.text
+            for span in person_spans
+            if span.label_ == "PERSON" and _normalised(span.text) in [_normalised(entry) for entry in name_set(character)]
+        ]
+        if claimed and len(ambiguity.get(_normalised(claimed[0]), [])) <= 1:
+            settled.append({"character_id": character.id, "method": "name", "confidence": 1.0})
+        else:
+            still_waiting.append(character)
+    return settled, still_waiting
 
 
 def _ner_spans(nlp: Any, text: str) -> list[Any]:
@@ -451,6 +472,30 @@ def _document_chapter_ids(document_id: str, *, owner: str, document_repo: Any) -
 
 
 def _evaluate_chapter(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_repo: Any, document_repo: Any) -> None:
-    """Both tiers for one chapter's pending paragraphs."""
+    """Both tiers for one chapter's pending paragraphs, then the chapter rollup."""
     evaluate_chapter_tier1(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
     evaluate_chapter_tier2(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+
+def _refresh_rollup(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_repo: Any, document_repo: Any) -> None:
+    """The chapter's own MENTIONS: the characters its paragraphs' valid verdicts name.
+
+    A view, never a judgement — rebuilt from the paragraph verdicts after every
+    evaluation, and marked stale by the same invalidation that marks them.
+    """
+    document_id = chapter_repo.find_document_id(chapter_id, owner)
+    if document_id is None:
+        return
+    document: Document | None = document_repo.load(document_id, owner)
+    if document is None:
+        return
+    character_titles = {chapter.id: chapter.title for chapter in document.chapters if chapter.category == "Character"}
+    mentioned = {
+        character_id
+        for state in mentions_repo.paragraph_states(owner, chapter_id=chapter_id)
+        if state["state"] == 3
+        for character_id in state["mentions"]
+        if character_id in character_titles
+    }
+    mentions_repo.stamp_chapter(chapter_id, sorted(mentioned), owner=owner)
