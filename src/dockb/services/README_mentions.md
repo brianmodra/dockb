@@ -29,6 +29,15 @@ Each paragraph is in exactly one of four states, and every part of the pipeline 
 
 A paragraph that turns out to mention nobody carries its verdict as **state 2**— the absence of MENTIONS with the stamp set means "checked and none", which is different from "never asked". Stale verdicts are **kept** (marked `stale`) rather than deleted, so state 4 is visible and the old verdict survives until re-judgement replaces it.
 
+**Chapters carry the rollup.** The same MENTIONS relationship runs one level
+up, chapter to character — a chapter mentions a character when any of its
+paragraphs' valid verdicts do — and is maintained at the same time as the
+paragraphs: each paragraph evaluation refreshes its chapter's rollup from the
+chapter's valid verdicts, and invalidation (which marks the paragraphs) marks
+the chapter's rollup stale with them. The rollup is a view, not a separate
+judgement: nothing about a chapter is ever judged that its paragraphs did
+not.
+
 ## 2. The name set, and the two judgement tiers
 
 A character's **name set** is every string that can count as naming them: `first_name`, `surname`, `first_name + surname`, the full name (first name, middle names, surname joined with spaces), and each nickname. For Jeremiah Edgar Adams (nicknames: Adams, Jer, Jer-bear) that is: *Jeremiah*, *Adams*, *Jer*, *Jer-bear*, *Jeremiah Adams*, *Jeremiah Edgar Adams*.
