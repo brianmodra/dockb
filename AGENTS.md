@@ -29,6 +29,9 @@
 - **Always use Test-Driven Development** (see the Workflow below).
 - Never use tools, skills, or any files under `/home/brian-modra/.claude`.
 - Prefer **small, focused diffs** and match the patterns of the package you touch.
+- For open-ended multi-file searches ("where is X handled?", "how does Y work?"),
+  delegate to a subagent (explore/general) instead of searching in the main context;
+  return only a concise summary.
 
 ## Specification
 
