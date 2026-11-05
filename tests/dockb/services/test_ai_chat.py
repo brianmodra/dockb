@@ -155,6 +155,13 @@ class TestResponsesCall:
         reply = AiChatService()._default_complete("hi", None, None)
         assert reply == "reply text"
 
+    def test_the_reply_is_logged_to_the_backend_console(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        self._post_capture(monkeypatch)
+        with caplog.at_level("INFO", logger="dockb.services.ai_chat"):
+            AiChatService()._default_complete("hi", None, None)
+        assert "reply text" in caplog.text
+
     def test_the_mcp_server_is_attached_with_the_token_in_authorization(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")

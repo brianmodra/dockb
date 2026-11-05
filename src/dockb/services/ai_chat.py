@@ -9,12 +9,15 @@ only in the tool's ``authorization`` field — never in model-visible text.
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from collections.abc import Callable
 from typing import Any
 
 import httpx2
+
+logger = logging.getLogger(__name__)
 
 _MODEL_ENV_VAR = "DOCKB_CHAT_MODEL"
 _DEFAULT_MODEL = "gpt-4o-mini"
@@ -85,7 +88,9 @@ class AiChatService:  # pylint: disable=too-few-public-methods
             timeout=120.0,
         )
         response.raise_for_status()
-        return _reply_from(response.json())
+        reply = _reply_from(response.json())
+        logger.info("AI reply: %s", reply)
+        return reply
 
 
 def _reply_from(payload: Any) -> str:
