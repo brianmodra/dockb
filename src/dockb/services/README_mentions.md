@@ -29,14 +29,37 @@ Each paragraph is in exactly one of four states, and every part of the pipeline 
 
 A paragraph that turns out to mention nobody carries its verdict as **state 2**— the absence of MENTIONS with the stamp set means "checked and none", which is different from "never asked". Stale verdicts are **kept** (marked `stale`) rather than deleted, so state 4 is visible and the old verdict survives until re-judgement replaces it.
 
-## 2. The name set, and the two judgement tiers (decided)
+## 2. The name set, and the two judgement tiers
 
 A character's **name set** is every string that can count as naming them: `first_name`, `surname`, `first_name + surname`, the full name (first name, middle names, surname joined with spaces), and each nickname. For Jeremiah Edgar Adams (nicknames: Adams, Jer, Jer-bear) that is: *Jeremiah*, *Adams*, *Jer*, *Jer-bear*, *Jeremiah Adams*, *Jeremiah Edgar Adams*.
 
+When the only evidence is **ambiguous** — a name shared by two or more of the document's characters ("Mordecai" could be Tobias or Ian; "Adams" is Jael's surname and Jeremiah's nickname), then after using Tier 1 logic, Tier 2 will be tried, and if it is still not 100% certain, then Tier 3.
+
 **Tier 1 — deterministic.** A paragraph mentions a character when one of the name set's entries appears in it as whole words, matched against the graph's `PROPN` tokens. This settles every unambiguous case and never calls the model.
 
-**Tier 2 — the model.** When the only evidence is **ambiguous** — a name shared by two or more of the document's characters ("Mordecai" could be Tobias or Ian; "Adams" is Jael's surname and Jeremiah's nickname) — the candidate sentences are sent to OpenAI in one batched prompt (numbered sentences, the character's names stated once, JSON verdicts back:
-`{"1": true, "2": false, ...}`), and each verdict is written as `method: "model"`. The key is `OPENAI_API_KEY` from the environment; a missing key, a network failure, or an unparseable answer is **benign**: the paragraph simply stays un-evaluated and is retried by the next trigger.
+**Tier 2 — deterministic context.** Within a candidate sentence, the token
+sequence may complete a *longer* name-set entry of another character: "Jael"
+before "Adams", or "Jeremiah Edgar" before it. At each position of the
+sentence, the **longest adjacent-run match** wins, and the defeated shorter
+match (the nickname "Adams") creates no verdict for the character it would
+have named. A shared name with no longer run to complete it stays unresolved.
+Possessive clitics are ignored when matching ("Jael's" names Jael); titles
+(Mr, Dr, Inspector) do not disambiguate a shared surname — both characters
+answer to "Mr Adams" — so they are left for tier 3.
+
+**Tier 3 — NER, then the model.** First a NER pass (spaCy's entity spans,
+already computed by the model the save pipeline loads) runs on the candidate
+sentence: a `PERSON` span whose text exactly equals one candidate's name-set
+entry resolves that character — deterministically, with no model call. NER is
+never a rejector: a name the small model fails to tag as a person ("Tobi",
+"Jer-bear" — fiction is exactly where it misses) must not conclude "not a
+mention", so everything else falls through. The remainder — shared names with
+no completing span, pronouns — are sent to OpenAI in one batched prompt
+(numbered sentences, the character's names stated once, JSON verdicts back:
+`{"1": true, "2": false, ...}`), and each verdict is written as
+`method: "model"`. The key is `OPENAI_API_KEY` from the environment; a missing
+key, a network failure, or an unparseable answer is **benign**: the paragraph
+simply stays un-evaluated and is retried by the next trigger.
 
 ## 3. What invalidates a verdict
 
@@ -58,9 +81,9 @@ A character's **name set** is every string that can count as naming them: `first
 
 `find_paragraphs` (the MCP tool; it also takes `include_characters`, which
 brings the character chapters' own paragraphs into the search) with a character
-criterion reads the cache first: state 2 and 3 paragraphs are answered from the graph alone. State 1 and 4 paragraphs are evaluated **tier 1 inline** (cheap, deterministic) and their tier-1 matches are included in that answer; the full evaluation, including tier 2, is enqueued as the async job, so the next search sees the model's verdicts. A search therefore never waits on the model, and its results self-improve.
+criterion reads the cache first: state 2 and 3 paragraphs are answered from the graph alone. State 1 and 4 paragraphs are evaluated **tier 1 inline** (cheap, deterministic) and their tier-1 matches are included in that answer; the full evaluation, including tier 2 and tier 3, is enqueued as the async job, so the next search sees the model's verdicts. A search therefore never waits on the model, and its results self-improve.
 
 ## 6. Phase 2 work for later
 
-- **Precision on homographs**: a character nicknamed "Rose" matches the flower. Tier 2 weeds out the obvious ones; a real person-resolution (spaCy NER or the model with the whole document's cast in context) is a later refinement and only touches the pipeline's judgement step.
+- **Precision on homographs**: a character nicknamed "Rose" matches the flower. Tier 3 weeds out the obvious ones; a real person-resolution (spaCy NER or the model with the whole document's cast in context) is a later refinement and only touches the pipeline's judgement step.
 - **Sentence-level MENTIONS** if a caller ever needs to know *which sentence* of a paragraph carries the mention; the pipeline judges sentences already.
