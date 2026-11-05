@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from dockb.controllers.auth import get_owner
 from dockb.controllers.schemas.ai import ChatRequest, ChatResponse
 from dockb.services.ai_chat import MissingApiKeyError
 
@@ -31,11 +32,15 @@ def set_ai_service(service: Any) -> None:
 
 
 @router.post("/chat")
-def chat(body: ChatRequest, svc: Any = Depends(get_ai_service)) -> dict[str, Any]:
+def chat(
+    body: ChatRequest,
+    svc: Any = Depends(get_ai_service),
+    owner: str = Depends(get_owner),
+) -> dict[str, Any]:
     if svc is None:
         raise HTTPException(status_code=503, detail="ai_service_unavailable")
     try:
-        reply = svc.complete(body.prompt)
+        reply = svc.complete(body.prompt, owner)
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=503, detail=f"ai_key_missing: {exc}") from exc
     except Exception as exc:

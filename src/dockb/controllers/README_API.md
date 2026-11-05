@@ -762,9 +762,15 @@ Note that a paragraph split can include sentence splits, and a sentence operatio
 
 Session-gated like every editor route. Not a manuscript mutation, so the reply is a bare
 payload rather than the status envelope: `{ "reply": "..." }`. The body is
-`{ "prompt": "..." }`, sent to the model as-is for now (no manuscript context). The
+`{ "prompt": "..." }`, sent to the model as-is (the signed-in account is bound
+to the call's MCP access, not sent by the client). The
 `OPENAI_API_KEY` lives only on the server; the model is `DOCKB_CHAT_MODEL`
-(default `gpt-4o-mini`). Errors: `422` for an empty prompt, `503` when the service is
+(default `gpt-4o-mini`). When `DOCKB_MCP_PUBLIC_URL` is set, the call carries
+DockB's MCP server as a Responses-API tool with a per-prompt bearer token in
+the tool's `authorization` field, minted for this prompt and scoped to the
+signed-in account (`README_mcp_auth.md` §2–§4); the token never enters
+model-visible text. When the URL is unset the prompt is sent without MCP.
+Errors: `422` for an empty prompt, `503` when the service is
 unwired or the key is missing, `502` when the model call fails.
 
 ### Import

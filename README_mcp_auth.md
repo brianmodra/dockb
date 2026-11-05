@@ -16,15 +16,17 @@ within a short, configurable window and nothing secret is written to disk.
 One process serves two listeners: the loopback one carries the manuscript API and
 the editor shell, and the public one carries only the MCP endpoint, so the public
 tunnel can never reach a manuscript route. The token, the bearer gate, the public
-listener and the runner that serves both are built; the MCP tools and the
-prompt-building that mints a token per prompt are still to come. Read this for the
+listener, the runner that serves both, and the editor's per-prompt token fleet
+are built; the MCP tools are read-only so far. Read this for the
 token design, why there is no authorization server, and why the two listeners
 stay separate even though they share a process.
 
 **Status.** This is the decided design, superseding the earlier two-process and
 `issued_tokens` draft. The token, the bearer gate and the public listener are
-implemented; the MCP tools and the prompt-building that mints a token per prompt
-are not yet. The account and session code that exists today is described in
+implemented; the editor chat prompt now mints a token per prompt and attaches
+the MCP server to its Responses-API call (`POST /api/ai/chat`,
+`services/ai_chat.py`). The MCP tools exist but remain read-only. The account
+and session code that exists today is described in
 `README_auth.md`, and the no-local-mode change that prerequisite depended on has
 since landed.
 
@@ -39,7 +41,10 @@ Two relationships exist, each with a different holder of the credential:
 
 There is no third row. In an earlier draft the MCP server called the backend
 with its own service credential; because both now live in one process (§5), it
-calls the service methods directly and there is nothing to authenticate.
+calls the service methods directly and there is nothing to authenticate. The
+editor's chat prompt is the caller that builds the relationship in row 2 today:
+`POST /api/ai/chat` mints a per-prompt token bound to the signed-in account and
+attaches the MCP server as a tool on the Responses-API call.
 
 The model itself never holds a credential. OpenAI's infrastructure holds the
 token and attaches it to each MCP request; the model only ever sees the tool

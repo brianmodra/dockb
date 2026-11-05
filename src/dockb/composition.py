@@ -231,7 +231,11 @@ def wire(  # pylint: disable=too-many-locals
     ctx = SessionContext()
     _ctx = ctx
 
-    set_ai_service(AiChatService())
+    set_ai_service(
+        AiChatService(
+            token_issuer=get_mcp_issuer,
+        )
+    )
     set_doc_service(doc_svc)
     set_ch_service(ch_svc)
     set_para_service(para_svc)
