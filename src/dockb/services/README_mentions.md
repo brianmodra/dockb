@@ -1,0 +1,112 @@
+# Character Mentions
+
+## Executive Summary
+
+This note describes how DockB works out which paragraphs of a book mention
+which characters, and how it remembers the answers so the question is cheap to
+ask again. The reason it exists: an MCP tool (or any future reader) wants to
+ask "which paragraphs involve Karakas?" and the honest answer needs to know
+that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, that
+"Tobi" is Tobias Mordecai, and that "Mordecai" alone is ambiguous between two
+characters. A name search alone cannot tell those apart.
+
+It is for someone changing the mention pipeline — the candidates, the
+judgement, the caching — not for the editor.
+
+## 1. The graph: a MENTIONS relationship, and four paragraph states (decided)
+
+A mention is stored as a relationship from the paragraph to the character
+chapter's node, never as a property list:
+
+```
+(:Paragraph)-[:MENTIONS {method: "name" | "model", confidence: float}]->(:Chapter)
+```
+
+- **A relationship**, because a paragraph can mention several characters and
+  because the search then is a one-hop query.
+- **Paragraph granularity**, the unit the tools return, even when a judgement
+  was made from a sentence's context.
+- `method` says how the verdict was reached: a deterministic name match, or
+  the model's judgement.
+
+Each paragraph is in exactly one of four states, and every part of the
+pipeline asks for paragraphs by state:
+
+| State | Meaning | Encoding |
+|---|---|---|
+| 1 | never evaluated | no `mentions_checked_at` property, no MENTIONS |
+| 2 | evaluated, no mentions | `mentions_checked_at` set, no MENTIONS |
+| 3 | valid MENTIONS | `mentions_checked_at` set, MENTIONS with `stale` absent or false |
+| 4 | invalidated | `mentions_checked_at` set, MENTIONS with `stale: true` |
+
+A paragraph that turns out to mention nobody carries its verdict as **state 2**
+— the absence of MENTIONS with the stamp set means "checked and none", which
+is different from "never asked". Stale verdicts are **kept** (marked `stale`)
+rather than deleted, so state 4 is visible and the old verdict survives until
+re-judgement replaces it.
+
+## 2. The name set, and the two judgement tiers (decided)
+
+A character's **name set** is every string that can count as naming them:
+`first_name`, `surname`, `first_name + surname`, the full name (first name,
+middle names, surname joined with spaces), and each nickname. For Jeremiah
+Edgar Adams (nicknames: Adams, Jer, Jer-bear) that is: *Jeremiah*, *Adams*,
+*Jer*, *Jer-bear*, *Jeremiah Adams*, *Jeremiah Edgar Adams*.
+
+**Tier 1 — deterministic.** A paragraph mentions a character when one of the
+name set's entries appears in it as whole words, matched against the graph's
+`PROPN` tokens. This settles every unambiguous case and never calls the model.
+
+**Tier 2 — the model.** When the only evidence is **ambiguous** — a name
+shared by two or more of the document's characters ("Mordecai" could be
+Tobias or Ian; "Adams" is Jael's surname and Jeremiah's nickname) — the
+candidate sentences are sent to OpenAI in one batched prompt (numbered
+sentences, the character's names stated once, JSON verdicts back:
+`{"1": true, "2": false, ...}`), and each verdict is written as
+`method: "model"`. The key is `OPENAI_API_KEY` from the environment; a missing
+key, a network failure, or an unparseable answer is **benign**: the paragraph
+simply stays un-evaluated and is retried by the next trigger.
+
+## 3. What invalidates a verdict (decided)
+
+| Event | Effect |
+|---|---|
+| A save changes a paragraph's text | The save's diff already names the changed paragraphs; their verdicts become state 4 and are recomputed. Deleted paragraphs' MENTIONS die with the node. |
+| A character's identity changes (name parts, nicknames) | The document's mentions become state 4 — ambiguity is document-wide: Jeremiah losing the nickname "Adams" changes whether "Adams" is ambiguous for Jael. |
+| A character chapter is deleted | Its node dies; MENTIONS pointing at it die with it. Nothing dangles. |
+| A save that changed nothing relevant, or a restart | Nothing: the verdict is in the database and survives. |
+
+## 4. What triggers an evaluation (decided)
+
+- **A manuscript chapter save** enqueues an async **MentionsJob** (the
+  existing job queue, after the CommitJob, because it reads the tokens the
+  commit persisted) scoped to that chapter: it evaluates the chapter's state 1
+  and state 4 paragraphs.
+- **A character chapter save that changed the identity properties** enqueues a
+  **document-wide** MentionsJob (the auto-fix: the ambiguity set is
+  document-wide, so the scope is too).
+- **The sweep CLI** — `dockb mentions sweep <document-title-or-id>` — is the
+  operator's manual, once-per-book backfill (and the retry after an outage).
+  Default: the document's state 1 and 4 paragraphs, resumable by construction
+  (each paragraph is stamped as it is judged, so an interrupted sweep just
+  continues). `--full`: re-evaluate every paragraph, ignoring existing
+  MENTIONS. It prints per-chapter state counts before, and anything left
+  pending after; it does not run at startup and is never automatic.
+
+## 5. How a search uses it (decided)
+
+`find_paragraphs` with a character criterion reads the cache first: state 2
+and 3 paragraphs are answered from the graph alone. State 1 and 4 paragraphs
+are evaluated **tier 1 inline** (cheap, deterministic) and their tier-1
+matches are included in that answer; the full evaluation, including tier 2,
+is enqueued as the async job, so the next search sees the model's verdicts. A
+search therefore never waits on the model, and its results self-improve.
+
+## 6. Not yet (open)
+
+- **Precision on homographs**: a character nicknamed "Rose" matches the
+  flower. Tier 2 weeds out the obvious ones; a real person-resolution
+  (spaCy NER or the model with the whole document's cast in context) is a
+  later refinement and only touches the pipeline's judgement step.
+- **Sentence-level MENTIONS** if a caller ever needs to know *which sentence*
+  of a paragraph carries the mention; the pipeline judges sentences already.

@@ -51,6 +51,12 @@ the files move through the store's `renumber_chapters` and its single git commit
 route is `POST /api/chapters/renumber` with the document id, answering the
 `{id, old_title, new_title}` list of what changed.
 
+## Character mentions
+
+The paragraph-to-character mention pipeline (candidates, the model's judgement,
+the MENTIONS cache and its four paragraph states) is designed in
+[README_mentions.md](README_mentions.md).
+
 ## Context
 
 JobQueue and DocCache objects are specific to a user's OAuth logged in session.
