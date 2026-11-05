@@ -13,12 +13,15 @@ current order, on the server, and a chapter's POV names one of its document's ch
 title — and inside the text a paragraph's right-click marks it as a quote (Reading or
 Writing), which renders indented and saves through the same chapter save. Above the text sits
 a read-only identity line — the chapter's title, its POV, or a character's name parts — kept
-current with the front matter.
+current with the front matter. A chat line at the bottom of the message panel sends a typed
+prompt to the AI through the server, and the panel's seams resize with the mouse in the
+direction the mouse moves.
 
-Read it to run the app, to find which file owns the chapter list, the editor, login, and the way
-back out of a session — **File → Sign out** clears what the session owned and returns to the sign-in
-gate instead of closing the window — and to see how a folder on disk becomes a document. How the
-window should look is in `../README_markdown_editor_ui.md`.
+Read it to run the app, to find which file owns the chapter list, the editor, the chat line,
+login, and the way back out of a session — **File → Sign out** clears what the session owned and
+returns to the sign-in gate instead of closing the window — and to see how a folder on disk becomes
+a document. How the window should look is in `../README_markdown_editor_ui.md`; what the AI chat
+line sends and receives is in `../src/dockb/controllers/README_API.md`.
 
 ## API client and session
 

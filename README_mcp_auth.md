@@ -4,22 +4,22 @@
 
 This document explains how the MCP server authenticates the OpenAI model that
 calls it, and why the MCP server runs in the same process as DockB's backend
-rather than as a separate one. When Brian's code builds a Responses API request
-it attaches the MCP server as a tool and passes a per-prompt bearer token in that
-tool's `authorization` field, which OpenAI's infrastructure then presents on
-every call. The token is minted from a fresh in-memory secret just before the
-prompt, kept in a live-token map keyed by its expiry, and dies with its entry —
-no credential store, no signing key, no admin CLI — the operator can mint a
-token on demand from the loopback API (§10) — so a stolen token is useless
+rather than as a separate one. When the editor's chat route builds a Responses
+API request it attaches the MCP server as a tool and passes a per-prompt bearer
+token in that tool's `authorization` field, which OpenAI's infrastructure then
+presents on every call. The token is minted from a fresh in-memory secret just
+before the prompt, kept in a live-token map keyed by its expiry, and dies with
+its entry — no credential store, no signing key, no admin CLI — the operator can
+mint a token on demand from the loopback API (§10) — so a stolen token is useless
 within a short, configurable window and nothing secret is written to disk.
 
 One process serves two listeners: the loopback one carries the manuscript API and
 the editor shell, and the public one carries only the MCP endpoint, so the public
 tunnel can never reach a manuscript route. The token, the bearer gate, the public
 listener, the runner that serves both, and the editor's per-prompt token fleet
-are built; the MCP tools are read-only so far. Read this for the
-token design, why there is no authorization server, and why the two listeners
-stay separate even though they share a process.
+are built; the MCP tools are read-only so far. Read this for the token design,
+why there is no authorization server, and why the two listeners stay separate
+even though they share a process.
 
 **Status.** This is the decided design, superseding the earlier two-process and
 `issued_tokens` draft. The token, the bearer gate and the public listener are
