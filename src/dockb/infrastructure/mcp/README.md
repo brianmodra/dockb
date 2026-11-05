@@ -14,7 +14,10 @@ rejects it; `BearerAuthMiddleware` and `create_mcp_app` put that verification in
 front of an MCP endpoint carrying the two manuscript tools (`tools.py`), and the
 runner one level up (`src/dockb/mcp_server.py`) serves that application
 alongside the manuscript API on one event loop. Read this for what the token looks like, what makes one valid,
-the account it is bound to, the two tools it unlocks, and the shape of the public application; the threat model, the two-listener split
+the account it is bound to, the two tools it unlocks (a chapter's paragraphs;
+a paragraph search over words, text, and characters, answered from the
+mention cache `services/README_mentions.md` describes), and the shape of the
+public application; the threat model, the two-listener split
 and why this is a MAC rather than a signature are in `README_mcp_auth.md` at the
 repository root.
 
@@ -27,6 +30,7 @@ infrastructure/mcp/
 ├── prompt_tokens.py    # PromptTokenIssuer — mint() and verify()
 ├── auth.py             # BearerAuthMiddleware — the Authorization check
 ├── tools.py            # mount_tools() — the manuscript tools
+
 └── app.py              # create_mcp_app() — the MCP-only public ASGI app
 ```
 

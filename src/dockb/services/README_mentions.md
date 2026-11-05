@@ -56,7 +56,9 @@ A character's **name set** is every string that can count as naming them: `first
 
 ## 5. How a search uses it
 
-`find_paragraphs` with a character criterion reads the cache first: state 2 and 3 paragraphs are answered from the graph alone. State 1 and 4 paragraphs are evaluated **tier 1 inline** (cheap, deterministic) and their tier-1 matches are included in that answer; the full evaluation, including tier 2, is enqueued as the async job, so the next search sees the model's verdicts. A search therefore never waits on the model, and its results self-improve.
+`find_paragraphs` (the MCP tool; it also takes `include_characters`, which
+brings the character chapters' own paragraphs into the search) with a character
+criterion reads the cache first: state 2 and 3 paragraphs are answered from the graph alone. State 1 and 4 paragraphs are evaluated **tier 1 inline** (cheap, deterministic) and their tier-1 matches are included in that answer; the full evaluation, including tier 2, is enqueued as the async job, so the next search sees the model's verdicts. A search therefore never waits on the model, and its results self-improve.
 
 ## 6. Phase 2 work for later
 
