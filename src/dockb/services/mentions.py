@@ -1,11 +1,17 @@
-"""The mention pipeline's tier 1: the deterministic name-set evaluation.
+"""The mention pipeline's tiers: deterministic names first, the model for the
+ambiguous remainder.
 
-A paragraph mentions a character when one of the character's **name set**
-entries — first name, surname, first+surname, the full name, each nickname —
-appears in it as whole words, read from the graph's `PROPN` tokens. Tier 1
-settles every unambiguous case without a model call; a match on a name that
-two or more of the document's characters share ("Adams" as Jael's surname and
-Jeremiah's nickname) is left for tier 2, the model, to judge.
+Tier 1: a paragraph mentions a character when one of the character's **name
+set** entries — first name, surname, first+surname, the full name, each
+nickname — appears in it as whole words, read from the graph's `PROPN` tokens.
+Tier 1 settles every unambiguous case without a model call; a match on a name
+that two or more of the document's characters share ("Adams" as Jael's surname
+and Jeremiah's nickname) is left for tier 2, the model, to judge.
+
+Tier 2: the ambiguous candidates' sentences go to OpenAI in one batched prompt
+(numbered sentences, JSON verdicts back). Any failure — no API key, network,
+unparseable answer — is benign: the candidate stays un-evaluated and is
+retried by the next trigger.
 
 Only paragraphs in states 1 (never evaluated) and 4 (invalidated) are
 evaluated; 2 and 3 carry fresh verdicts already.
@@ -13,14 +19,25 @@ evaluated; 2 and 3 carry fresh verdicts already.
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any
+
+import httpx2
 
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.token import POS
+
+logger = logging.getLogger(__name__)
+
+_MENTIONS_MODEL_ENV_VAR = "DOCKB_MENTIONS_MODEL"
+_DEFAULT_MODEL = "gpt-4o-mini"
+_KEY_ENV_VAR = "OPENAI_API_KEY"
 
 
 def name_set(chapter: Chapter) -> list[str]:
@@ -97,8 +114,8 @@ def evaluate_chapter_tier1(
         paragraph = next((p for p in chapter.paragraphs if p.id == paragraph_id), None)
         if paragraph is None:
             continue
-        verdicts, has_pending = _judge_paragraph(paragraph, characters, ambiguity)
-        if has_pending:
+        verdicts, waiting = _judge_paragraph(paragraph, characters, ambiguity)
+        if waiting:
             # Tier 2 must judge the ambiguous evidence; the settled verdicts
             # are written without the stamp so the paragraph stays un-evaluated.
             if verdicts:
@@ -137,13 +154,18 @@ def _judge_paragraph(
     paragraph: Paragraph,
     characters: list[Chapter],
     ambiguity: dict[str, list[str]],
-) -> tuple[list[dict[str, Any]], bool]:
-    """One paragraph's tier-1 verdicts, and whether ambiguous evidence waits on tier 2."""
+) -> tuple[list[dict[str, Any]], list[Chapter]]:
+    """One paragraph's tier-1 verdicts, and the characters waiting on tier 2.
+
+    A character whose matched evidence is unambiguous lands a verdict; one
+    whose only matches are names this document's other characters share is
+    returned in the pending list for tier 2 to judge.
+    """
     text = _paragraph_text(paragraph)
     verdicts: list[dict[str, Any]] = []
-    has_pending = False
+    waiting: list[Chapter] = []
     for character in characters:
-        matched_entry: str | None = None
+        settled = False
         ambiguous = False
         for entry in name_set(character):
             if not _whole_word(text, entry):
@@ -152,14 +174,14 @@ def _judge_paragraph(
                 continue
             if len(ambiguity.get(entry.lower(), [])) > 1:
                 ambiguous = True
-            else:
-                matched_entry = entry
                 break
-        if matched_entry is not None:
+            settled = True
+            break
+        if settled:
             verdicts.append({"character_id": character.id, "method": "name", "confidence": 1.0})
         elif ambiguous:
-            has_pending = True
-    return verdicts, has_pending
+            waiting.append(character)
+    return verdicts, waiting
 
 
 def _is_proper_noun_match(paragraph: Paragraph, entry: str) -> bool:
@@ -175,3 +197,134 @@ def _is_proper_noun_match(paragraph: Paragraph, entry: str) -> bool:
             if token.pos == POS.PROPN and token.text.lower() == first_word.lower():
                 return True
     return False
+
+
+def judge_ambiguous(candidates: list[dict[str, Any]], *, complete: Any) -> dict[str, bool | None]:
+    """Ask the model to judge each ambiguous candidate; answer per candidate key.
+
+    *candidates* is `[{key, sentence, character_title, names}]`; the prompt
+    numbers them, states each candidate character's names once, and asks for
+    JSON verdicts. An answer that cannot be got — a model error, an
+    unparseable reply — leaves that candidate None: unresolved, not false.
+    """
+    if not candidates:
+        return {}
+    lines = [
+        f"{number}. {candidate['sentence']} - possibly mentioning "
+        f"\"{candidate['character_title']}\" (names: {', '.join(candidate['names'])})"
+        for number, candidate in enumerate(candidates, start=1)
+    ]
+    prompt = "\n".join(
+        [
+            "For each numbered sentence, decide whether it mentions the named character",
+            "(a person, not just words that happen to match). Answer with a JSON object",
+            "mapping each number to true or false, and nothing else.",
+            "",
+            *lines,
+        ]
+    )
+    try:
+        # A failed call is a pending candidate, not a crash: the paragraph
+        # stays un-evaluated and the next trigger retries it.
+        answer = complete(prompt)
+    except Exception:  # pylint: disable=broad-except; any failure is a pending candidate, not a crash
+        logger.warning("The mention judge's model call failed; the candidates stay un-evaluated", exc_info=True)
+        return {candidate["key"]: None for candidate in candidates}
+    try:
+        verdicts = json.loads(answer)
+        if not isinstance(verdicts, dict):
+            raise ValueError("not a JSON object")
+    except (ValueError, TypeError):
+        logger.warning("The mention judge's answer was not a JSON verdict object")
+        return {candidate["key"]: None for candidate in candidates}
+    out: dict[str, bool | None] = {}
+    for number, candidate in enumerate(candidates, start=1):
+        value = verdicts.get(str(number))
+        out[candidate["key"]] = bool(value) if isinstance(value, bool) else None
+    return out
+
+
+def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    chapter_id: str,
+    *,
+    owner: str,
+    mentions_repo: Any,
+    chapter_repo: Any,
+    document_repo: Any,
+    complete: Any = None,
+) -> None:
+    """Evaluate a chapter's pending paragraphs (tier 2): the model judges the
+    ambiguous evidence.
+
+    The tier-1 pass leaves a paragraph un-stamped when its only evidence is
+    ambiguous; this pass gathers those paragraphs' candidates, asks the model
+    in one batch, and stamps each paragraph whose candidates are all settled —
+    mentions as `method: "model"`, rejections as a no-mentions verdict. A
+    candidate the model could not answer leaves its paragraph un-stamped for
+    the next trigger to retry.
+    """
+    pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo, document_repo)
+    if pending is None or chapter is None:
+        return
+
+    api_key = os.environ.get(_KEY_ENV_VAR)
+    if not api_key or not api_key.strip():
+        logger.warning("OPENAI_API_KEY is not set: the ambiguous mention candidates stay un-evaluated")
+        return
+    if complete is None:
+        complete = _openai_complete
+
+    candidates: list[dict[str, Any]] = []
+    per_paragraph: dict[str, tuple[list[dict[str, Any]], list[Chapter]]] = {}
+    for paragraph_id in pending:
+        paragraph = next((p for p in chapter.paragraphs if p.id == paragraph_id), None)
+        if paragraph is None:
+            continue
+        settled, waiting = _judge_paragraph(paragraph, characters, ambiguity)
+        per_paragraph[paragraph_id] = (settled, waiting)
+        text = _paragraph_text(paragraph)
+        for character in waiting:
+            candidates.append(
+                {
+                    "key": f"{paragraph_id}:{character.id}",
+                    "sentence": text,
+                    "character_title": character.title,
+                    "names": name_set(character),
+                }
+            )
+
+    verdicts = judge_ambiguous(candidates, complete=complete)
+
+    now = datetime.now(timezone.utc).isoformat()
+    for paragraph_id, (settled, waiting) in per_paragraph.items():
+        settled = list(settled)
+        unresolved = False
+        for character in waiting:
+            verdict = verdicts.get(f"{paragraph_id}:{character.id}")
+            if verdict is True:
+                settled.append({"character_id": character.id, "method": "model", "confidence": 1.0})
+            elif verdict is None:
+                unresolved = True
+        if unresolved:
+            if settled:
+                mentions_repo.stamp(paragraph_id, settled)
+        else:
+            mentions_repo.stamp(paragraph_id, settled, checked_at=now)
+
+
+def _openai_complete(prompt: str) -> str:
+    """The model call behind tier 2: one chat-completion, temperature 0, JSON out."""
+    key = os.environ.get(_KEY_ENV_VAR, "")
+    response = httpx2.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json={
+            "model": os.environ.get(_MENTIONS_MODEL_ENV_VAR, _DEFAULT_MODEL),
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        },
+        timeout=120.0,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return str(payload["choices"][0]["message"]["content"])
