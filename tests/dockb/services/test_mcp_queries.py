@@ -187,6 +187,59 @@ def test_find_paragraphs_excludes_character_chapters_unless_asked() -> None:
     assert [(p["id"], p["chapter_id"]) for p in with_characters] == [("p1", "c1"), ("kp1", "k1")]
 
 
+def test_find_paragraphs_answers_evaluated_paragraphs_from_the_cache() -> None:
+    document = _document()  # p1: "The murder was discovered at dawn." (no names in text)
+    character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
+    document.chapters.append(character)
+    chapter_repo, document_repo = _search_service(document)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = [
+        {"id": "p1", "state": 3, "mentions": ["k1"]},  # the cache says: a mention of k1
+        {"id": "p2", "state": 2, "mentions": []},  # evaluated: mentions nobody
+        {"id": "p3", "state": 1, "mentions": []},  # never evaluated
+    ]
+
+    found = find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "k1"},
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+    )
+
+    # state 3 answered from the cache; state 2 stayed out despite its text
+    assert [p["id"] for p in found] == ["p1"]
+
+
+def test_find_paragraphs_enqueues_the_evaluation_of_the_un_evaluated() -> None:
+    from dockb.services import mcp_queries
+
+    document = _document()
+    chapter_repo, document_repo = _search_service(document)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = [
+        {"id": "p1", "state": 1, "mentions": []},
+        {"id": "p2", "state": 4, "mentions": []},
+    ]
+    enqueued = []
+    original = mcp_queries.run_mentions_async
+    mcp_queries.run_mentions_async = enqueued.append
+
+    found = find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "Karakas"},
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+    )
+
+    mcp_queries.run_mentions_async = original
+    assert len(enqueued) == 1  # the document-wide evaluation is queued
+    assert not found  # no names in these paragraphs' texts: nothing inline matched
+
+
 def test_find_paragraphs_of_an_unowned_document_is_empty() -> None:
     document = _document()
     chapter_repo, document_repo = _search_service(document)

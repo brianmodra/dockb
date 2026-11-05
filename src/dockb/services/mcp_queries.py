@@ -19,6 +19,7 @@ from typing import Any
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.services.chapter_json import load_chapter_payload, paragraph_payload
+from dockb.services.mentions import MentionsJob, run_mentions_async
 
 Criterion = dict[str, Any]
 
@@ -81,7 +82,7 @@ def _resolve_character(reference: str, document: Document, chapter_repo: Any, ow
     return next((c for c in document.chapters if c.id == match["id"]), None)
 
 
-def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     document_id: str,
     criteria: Criterion,
     *,
@@ -89,6 +90,7 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
     document_repo: Any,
     owner: str,
     include_characters: bool = False,
+    mentions_repo: Any | None = None,
 ) -> list[dict[str, object]]:
     """The paragraphs of *document_id* the criteria tree selects, in reading order.
 
@@ -98,20 +100,79 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
     paragraphs are searched too. Every matching paragraph comes back as the
     tools' full payload — its properties, its sentences with their canonical
     text, the chapter it hangs under, and its position there.
+
+    A character criterion is answered from the MENTIONS cache when the
+    paragraph has been evaluated (states 2 and 3); a paragraph never evaluated
+    or invalidated (states 1 and 4) is matched by tier 1 inline, and the full
+    evaluation of the document is enqueued as the async job — so the answer
+    never waits on the model, and later searches see its verdicts. When no
+    mentions repository is given, the character criterion is answered by the
+    inline name match alone.
     """
     document: Document | None = document_repo.load(document_id, owner)
     if document is None:
         return []
 
     characters = {chapter.id: _character_names(chapter) for chapter in document.chapters if chapter.category == "Character"}
-    chapters = [chapter for chapter in document.chapters if include_characters or chapter.category != "Character"]
+    if mentions_repo is not None:
+        states = {state["id"]: state for state in mentions_repo.paragraph_states(owner, document_id=document_id)}
+    else:
+        states = {}
+    enqueue = mentions_repo is not None and _has_character_leaf(criteria)
+
+    def resolve_node(node: Criterion, text: str, state: int, mention_targets: list[str]) -> bool:
+        if node.get("type") == "character":
+            reference = str(node.get("character", ""))
+            names = characters.get(reference)
+            if names is None:
+                character = _resolve_character(reference, document, chapter_repo, owner)
+                names = _character_names(character) if character is not None else []
+            if state in (2, 3):
+                # The verdict is in the cache: state 2 judged "mentions nobody";
+                # state 3 mentions exactly the characters its valid rels name.
+                resolved_id = reference if reference in characters else _resolved_character_id(reference, document, chapter_repo, owner)
+                return state == 3 and resolved_id in mention_targets
+            return any(_mentions_whole_word(text, candidate) for candidate in names)
+        if node.get("type") == "criteria":
+            children = node.get("criteria") or []
+            matches = (resolve_node(child, text, state, mention_targets) for child in children)
+            if node.get("op") == "and":
+                return all(matches)
+            return any(matches)
+        return evaluate_criteria(node, text)
+
     found: list[dict[str, object]] = []
-    for chapter in chapters:
+    for chapter in document.chapters:
+        if chapter.category == "Character" and not include_characters:
+            continue
         for index, paragraph in enumerate(chapter.paragraphs):
             text = "\n".join(sentence.get_text().rstrip() for sentence in paragraph.sentences)
-            if _matches_tree(criteria, text, characters, document, chapter_repo, owner):
+            state = states.get(paragraph.id, {"state": 1, "mentions": []})
+            if resolve_node(criteria, text, state["state"], state["mentions"]):
                 found.append(paragraph_payload(paragraph, index, chapter.id, chapter_title=chapter.title))
+
+    if enqueue and any(row["state"] in (1, 4) for row in states.values()):
+        run_mentions_async(
+            MentionsJob(
+                document_id=document_id,
+                mentions_repo=mentions_repo,
+                chapter_repo=chapter_repo,
+                document_repo=document_repo,
+                owner=owner,
+            )
+        )
     return found
+
+
+def _has_character_leaf(criteria: Criterion) -> bool:
+    if criteria.get("type") == "character":
+        return True
+    return any(_has_character_leaf(child) for child in criteria.get("criteria") or [])
+
+
+def _resolved_character_id(reference: str, document: Document, chapter_repo: Any, owner: str) -> str | None:
+    character = _resolve_character(reference, document, chapter_repo, owner)
+    return character.id if character is not None else None
 
 
 def _matches_tree(  # pylint: disable=too-many-arguments,too-many-positional-arguments

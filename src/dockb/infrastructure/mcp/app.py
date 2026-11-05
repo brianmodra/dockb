@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -31,6 +32,7 @@ def create_mcp_app(
     allowed_hosts: Sequence[str],
     chapter_repo: ChapterRepository,
     document_repo: DocumentRepository,
+    mentions_repo: Any | None = None,
 ) -> Starlette:
     """Return the ASGI application the public listener serves.
 
@@ -40,7 +42,7 @@ def create_mcp_app(
     manuscript tools read through, owner-scoped to the token's account.
     """
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=mentions_repo)
     security = TransportSecuritySettings(allowed_hosts=list(allowed_hosts))
     mcp_app = mcp.streamable_http_app(transport_security=security)
 

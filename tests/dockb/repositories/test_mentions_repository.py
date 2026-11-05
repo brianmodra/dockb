@@ -34,10 +34,10 @@ class TestParagraphStates:
         states = repo.paragraph_states(chapter_id="c1", owner=_OWNER)
 
         assert states == [
-            {"id": "p1", "state": 1},
-            {"id": "p2", "state": 2},
-            {"id": "p3", "state": 3},
-            {"id": "p4", "state": 4},
+            {"id": "p1", "state": 1, "mentions": []},
+            {"id": "p2", "state": 2, "mentions": []},
+            {"id": "p3", "state": 3, "mentions": ["k1"]},
+            {"id": "p4", "state": 4, "mentions": []},
         ]
         cypher, params = extract_call(neo4j_session)
         assert "Chapter {id: $chapter_id}" in cypher
@@ -67,7 +67,7 @@ class TestParagraphStates:
 
         states = repo.paragraph_states(chapter_id="c1", owner=_OWNER)
 
-        assert states == [{"id": "p1", "state": 4}]
+        assert states == [{"id": "p1", "state": 4, "mentions": []}]
 
 
 class TestStampVerdicts:

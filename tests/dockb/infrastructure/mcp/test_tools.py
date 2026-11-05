@@ -31,6 +31,9 @@ def _chapter_document() -> Document:
 
 @pytest.fixture()
 def repos():
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = []
+    return_fixture = {"mentions": mentions_repo}
     chapter_repo = MagicMock()
     chapter_repo.load.return_value = None
     chapter_repo.find_document_id.return_value = "d1"
@@ -38,13 +41,15 @@ def repos():
     chapter_repo.find_id_by_title.return_value = "c1"
     document_repo = MagicMock()
     document_repo.load.return_value = _chapter_document()
-    return chapter_repo, document_repo
+    return_fixture["chapter"] = chapter_repo
+    return_fixture["document"] = document_repo
+    return (chapter_repo, document_repo, mentions_repo)
 
 
 @pytest.mark.asyncio
 async def test_mounting_registers_both_tools() -> None:
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=MagicMock(), document_repo=MagicMock())
+    mount_tools(mcp, chapter_repo=MagicMock(), document_repo=MagicMock(), mentions_repo=MagicMock())
 
     names = [tool.name for tool in await mcp.list_tools()]
     assert names == ["get_chapter", "find_paragraphs"]
@@ -53,10 +58,10 @@ async def test_mounting_registers_both_tools() -> None:
 @pytest.mark.asyncio
 @pytest.mark.asyncio
 async def test_get_chapter_answers_for_the_tokens_account(repos) -> None:
-    chapter_repo, document_repo = repos
+    chapter_repo, document_repo, _mentions = repos
     chapter_repo.load.return_value = _chapter_document().chapters[0]
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=MagicMock())
     token = _account_id.set("acct-1")
 
     chapter = await mcp.call_tool("get_chapter", {"chapter_id": "c1"})
@@ -68,9 +73,9 @@ async def test_get_chapter_answers_for_the_tokens_account(repos) -> None:
 
 @pytest.mark.asyncio
 async def test_get_chapter_without_a_bound_account_is_refused(repos) -> None:
-    chapter_repo, document_repo = repos
+    chapter_repo, document_repo, _mentions = repos
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=MagicMock())
 
     with pytest.raises(ToolError, match="account"):
         await mcp.call_tool("get_chapter", {"chapter_id": "c1"})
@@ -78,10 +83,10 @@ async def test_get_chapter_without_a_bound_account_is_refused(repos) -> None:
 
 @pytest.mark.asyncio
 async def test_get_chapter_resolves_a_title_within_a_document(repos) -> None:
-    chapter_repo, document_repo = repos
+    chapter_repo, document_repo, _mentions = repos
     chapter_repo.load.return_value = _chapter_document().chapters[0]
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=MagicMock())
     token = _account_id.set("acct-1")
 
     chapter = await mcp.call_tool("get_chapter", {"document_id": "d1", "title": "Opening 1"})
@@ -93,10 +98,10 @@ async def test_get_chapter_resolves_a_title_within_a_document(repos) -> None:
 
 @pytest.mark.asyncio
 async def test_find_paragraphs_answers_the_selection(repos) -> None:
-    chapter_repo, document_repo = repos
+    chapter_repo, document_repo, mentions_repo = repos
     chapter_repo.load.return_value = _chapter_document().chapters[0]
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo)
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=mentions_repo)
     token = _account_id.set("acct-1")
 
     found = await mcp.call_tool("find_paragraphs", {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}})
@@ -115,4 +120,6 @@ async def test_find_paragraphs_answers_the_selection(repos) -> None:
     # the flag reached the search: the second call loaded the document again
     # with it, and neither call raised (validated parameters)
     assert document_repo.load.call_count == 2
+    # and the mentions cache was consulted for the character criterion
+    assert mentions_repo.paragraph_states.called
     _account_id.reset(token)

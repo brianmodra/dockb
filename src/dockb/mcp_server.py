@@ -26,6 +26,7 @@ from dockb.composition import (
     get_mcp_chapter_repo,
     get_mcp_document_repo,
     get_mcp_issuer,
+    get_mcp_mentions_repo,
     resolve_document_base_dir,
     unwire,
     wire,
@@ -88,6 +89,7 @@ def build_mcp_app() -> ASGIApp:
         allowed_hosts=mcp_allowed_hosts(),
         chapter_repo=get_mcp_chapter_repo(),
         document_repo=get_mcp_document_repo(),
+        mentions_repo=get_mcp_mentions_repo(),
     )
 
 

@@ -120,7 +120,7 @@ class MentionsRepository:
             cypher = _DOCUMENT_STATES_CYPHER
             params = {"document_id": document_id, "owner": owner}
         records = list(self._session.run(cypher, params))
-        states: list[dict[str, int | str]] = []
+        states: list[dict[str, Any]] = []
         for record in records:
             checked = record.get("checked_at")
             mentions = record.get("mentions") or []
@@ -132,7 +132,14 @@ class MentionsRepository:
                 state = 4
             else:
                 state = 3
-            states.append({"id": str(record["id"]), "state": state})
+            states.append(
+                {
+                    "id": str(record["id"]),
+                    "state": state,
+                    # the characters the valid verdicts name (empty for states 1/2/4)
+                    "mentions": [str(m["character_id"]) for m in mentions if not m.get("stale")] if state == 3 else [],
+                }
+            )
         return states
 
     def stamp(

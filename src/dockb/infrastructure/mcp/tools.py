@@ -26,6 +26,7 @@ def mount_tools(
     *,
     chapter_repo: ChapterRepository,
     document_repo: DocumentRepository,
+    mentions_repo: Any | None = None,
 ) -> None:
     """Register the manuscript tools on *mcp*."""
 
@@ -83,6 +84,7 @@ def mount_tools(
             document_repo=document_repo,
             owner=account,
             include_characters=include_characters,
+            mentions_repo=mentions_repo,
         )
         # A bare top-level array is not a valid structured output root (the JSON
         # schema the protocol requires wants an object), so the paragraphs ride
