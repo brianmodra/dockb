@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import threading
 from datetime import datetime, timezone
 from typing import Any
@@ -64,12 +63,6 @@ def name_set(chapter: Chapter) -> list[str]:
     return seen
 
 
-def _whole_word(text: str, entry: str) -> bool:
-    """Whether *entry* appears in *text* as whole words, case-insensitively."""
-    found = re.search(rf"(?<!\w){re.escape(entry)}(?!\w)", text, re.IGNORECASE) is not None
-    return bool(found)
-
-
 def _paragraph_text(paragraph: Paragraph) -> str:
     """The paragraph's sentences joined, each token's whitespace preserved."""
     return " ".join(sentence.get_text().rstrip() for sentence in paragraph.sentences)
@@ -86,7 +79,8 @@ def _ambiguity(document: Document) -> dict[str, list[str]]:
         if chapter.category != "Character":
             continue
         for entry in name_set(chapter):
-            owners.setdefault(entry.lower(), []).append(chapter.id)
+            key = " ".join(_entry_words(entry))
+            owners.setdefault(key, []).append(chapter.id)
     return owners
 
 
@@ -151,53 +145,86 @@ def _gather(
     return pending, chapter, characters, ambiguity
 
 
-def _judge_paragraph(
+def _judge_paragraph(  # pylint: disable=too-many-locals,too-many-branches
     paragraph: Paragraph,
     characters: list[Chapter],
     ambiguity: dict[str, list[str]],
 ) -> tuple[list[dict[str, Any]], list[Chapter]]:
     """One paragraph's tier-1 verdicts, and the characters waiting on tier 2.
 
-    A character whose matched evidence is unambiguous lands a verdict; one
-    whose only matches are names this document's other characters share is
-    returned in the pending list for tier 2 to judge.
+    The paragraph's sentences are read as token runs: at each position, the
+    LONGEST name-set entry matching an adjacent run of tokens wins, and the
+    defeated shorter matches (a nickname "Adams" completed by "Jael" before
+    it) create no verdict for the character they would have named. When the
+    winning run's length is tied between characters — a shared surname alone —
+    every tied character waits on tier 2.
     """
-    text = _paragraph_text(paragraph)
+    by_id = {character.id: character for character in characters}
+    entries = _name_entries(characters, ambiguity)
+
     verdicts: list[dict[str, Any]] = []
     waiting: list[Chapter] = []
-    for character in characters:
-        settled = False
-        ambiguous = False
-        for entry in name_set(character):
-            if not _whole_word(text, entry):
+    matched: dict[str, bool] = {}  # character id -> pending anywhere in the paragraph?
+    for sentence in paragraph.sentences:
+        words: list[tuple[str, bool]] = []
+        for token in sentence.tokens:
+            if token.pos in (POS.PUNCT, POS.PART):
                 continue
-            if not _is_proper_noun_match(paragraph, entry):
-                continue
-            if len(ambiguity.get(entry.lower(), [])) > 1:
-                ambiguous = True
-                break
-            settled = True
-            break
-        if settled:
-            verdicts.append({"character_id": character.id, "method": "name", "confidence": 1.0})
-        elif ambiguous:
-            waiting.append(character)
+            # a hyphenated token ("Jer-bear") splits like a hyphenated entry
+            for piece in token.text.lower().split("-"):
+                if piece:
+                    words.append((piece, token.pos == POS.PROPN))
+        position = 0
+        while position < len(words):
+            best_length = 0
+            winners: dict[str, bool] = {}
+            for entry_words, character, unique in entries:
+                length = len(entry_words)
+                if length < best_length or position + length > len(words):
+                    continue
+                run = words[position : position + length]
+                if [word for word, _proper in run] != list(entry_words):
+                    continue
+                if not run[0][1]:  # a name run starts at a proper noun
+                    continue
+                if length == best_length:
+                    # a tie at the winning length: both characters are candidates
+                    winners[character.id] = winners.get(character.id, False) or unique
+                else:
+                    best_length = length
+                    winners = {character.id: unique}
+            for character_id, unique in winners.items():
+                matched[character_id] = matched.get(character_id, False) or not unique
+            # the winning run consumes its tokens: a defeated shorter match
+            # inside it (the "Adams" of "Jeremiah Edgar Adams") counts no more
+            position += max(best_length, 1)
+
+    for character_id, is_pending in matched.items():
+        if is_pending:
+            waiting.append(by_id[character_id])
+        else:
+            verdicts.append({"character_id": character_id, "method": "name", "confidence": 1.0})
     return verdicts, waiting
 
 
-def _is_proper_noun_match(paragraph: Paragraph, entry: str) -> bool:
-    """Whether a PROPN token of *paragraph* can begin a match of *entry*.
+def _name_entries(characters: list[Chapter], ambiguity: dict[str, list[str]]) -> list[tuple[tuple[str, ...], Chapter, bool]]:
+    """Every character's name-set entries as word tuples: (words, character, unambiguous?)."""
+    entries: list[tuple[tuple[str, ...], Chapter, bool]] = []
+    for character in characters:
+        for entry in name_set(character):
+            entry_words = _entry_words(entry)
+            if entry_words:
+                unique = len(ambiguity.get(" ".join(entry_words), [])) <= 1
+                entries.append((tuple(entry_words), character, unique))
+    return entries
 
-    The entry's first word is what spaCy tagged; the rest of the entry (the
-    surname after the first name, a nickname's hyphenated tail) is confirmed
-    on the text by the caller.
-    """
-    first_word = entry.split()[0]
-    for sentence in paragraph.sentences:
-        for token in sentence.tokens:
-            if token.pos == POS.PROPN and token.text.lower() == first_word.lower():
-                return True
-    return False
+
+def _entry_words(entry: str) -> list[str]:
+    """An entry split into words, hyphenated pieces split apart, lowercased."""
+    words: list[str] = []
+    for word in entry.lower().split():
+        words.extend(word.split("-"))
+    return words
 
 
 def judge_ambiguous(candidates: list[dict[str, Any]], *, complete: Any) -> dict[str, bool | None]:

@@ -67,7 +67,7 @@ def _fixture(chapter_states: list[dict]):
     chapter_repo.find_document_id.return_value = "d1"
     document_repo = MagicMock()
     document_repo.load.return_value = document
-    return mentions_repo, chapter_repo, document_repo, jeremiah
+    return mentions_repo, chapter_repo, document_repo, document
 
 
 def test_a_first_name_match_becomes_a_name_verdict() -> None:
@@ -292,3 +292,69 @@ def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, mon
     service.save_document("k1", content, owner="acct-1")
 
     assert not triggered
+
+
+def test_a_longer_adjacent_run_beats_the_defeated_shorter_match() -> None:
+    # "Jael Adams": the two-token run is Jael's name; the nickname "Adams"
+    # (Jeremiah's) is defeated — no verdict for Jeremiah, one for Jael.
+    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p5", "state": 1}])
+    jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
+    document.chapters.append(jael)
+    chapter = document.chapters[0]
+    chapter.paragraphs.append(_paragraph("p5", [("Jael", POS.PROPN), ("Adams", POS.PROPN), ("waited", POS.VERB)]))
+
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+    stamped = mentions_repo.stamp.call_args
+    assert stamped is not None and stamped.args[0] == "p5"
+    assert [v["character_id"] for v in stamped.args[1]] == ["k2"]
+
+
+def test_the_full_name_run_beats_both_the_first_name_and_the_nickname() -> None:
+    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p6", "state": 1}])
+    chapter = document.chapters[0]
+    chapter.paragraphs.append(
+        _paragraph(
+            "p6",
+            [("Jeremiah", POS.PROPN), ("Edgar", POS.PROPN), ("Adams", POS.PROPN), ("spoke", POS.VERB)],
+        )
+    )
+
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+    stamped = mentions_repo.stamp.call_args
+    assert stamped is not None and stamped.args[0] == "p6"
+    assert [v["character_id"] for v in stamped.args[1]] == ["k1"]
+    assert stamped.kwargs["checked_at"]
+
+
+def test_a_shared_name_with_no_completing_run_stays_pending() -> None:
+    # "Adams entered" alone: shared by Jeremiah (nickname) and Jael (surname).
+    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p3", "state": 1}])
+    jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
+    document.chapters.append(jael)
+
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+    mentions_repo.stamp.assert_not_called()  # pending for tier 3
+
+
+def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
+    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p7", "state": 1}])
+    chapter = document.chapters[0]
+    # "Jael's" tokenizes as Jael + 's
+    paragraph = Paragraph(id="p7", state=DataState.SYNC)
+    sentence = Sentence(state=DataState.SYNC)
+    sentence.tokens.append(Token(text="Jael", trailing_ws="", pos=POS.PROPN, state=DataState.SYNC))
+    sentence.tokens.append(Token(text="'s", trailing_ws=" ", pos=POS.PART, state=DataState.SYNC))
+    sentence.tokens.append(Token(text="brother", trailing_ws=" ", pos=POS.NOUN, state=DataState.SYNC))
+    paragraph.sentences.append(sentence)
+    chapter.paragraphs.append(paragraph)
+    jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
+    document.chapters.append(jael)
+
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+
+    stamped = mentions_repo.stamp.call_args
+    assert stamped is not None and stamped.args[0] == "p7"
+    assert [v["character_id"] for v in stamped.args[1]] == ["k2"]
