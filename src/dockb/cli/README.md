@@ -10,7 +10,7 @@ chapter back out as markdown, either into the server's folder or to a path you n
 over HTTP, it is the only way to create an account or to get someone back into a lost one.
 
 Use them without opening the editor. Every chapter command names the account the work belongs to
-with `--owner <username>`, because a document is stored under the account that owns it and the
+with `--owner <username-or-user-id>`, because a document is stored under the account that owns it and the
 tree is keyed by an internal account id rather than a name; `users assign` is the way a manuscript
 is handed from one account to another, which is how a document created before accounts existed — or
 one whose account was deleted — becomes visible in an editor again. `users` also creates, resets,
@@ -26,12 +26,14 @@ missing, and the command exits 1. Nothing is opened or imported first, so a misc
 never reaches the database. `startup.py` owns that check for both commands; only a model that is
 installed but broken is left to raise, since that is a real fault rather than a missing setting.
 Resolving `--owner` also goes through `startup.py::account_id_for`, which needs
-`DOCKB_SECRET_KEY` and the accounts database, reports an unknown username as a single `error:`
-line, and returns the internal account id the tree is keyed by.
+`DOCKB_SECRET_KEY` and the accounts database, accepts a username **or** a user id
+(a username is tried first, the id when no matching username exists), reports a
+reference naming no account as a single `error:` line, and returns the internal
+account id the tree is keyed by.
 
 ## Import a document directory
 
-`dockb import-document <document_dir> --owner <username> [--single-newline-paragraphs]` walks a
+`dockb import-document <document_dir> --owner <username-or-user-id> [--single-newline-paragraphs]` walks a
 directory of markdown chapter files, diffing each against its chapter in the graph and persisting
 changes. Each chapter file is matched through its front-matter `id`; changed or new files are
 rewritten into the canonical span format (one identity span per paragraph). With
@@ -131,7 +133,7 @@ not complete.
 
 ## Reconstruct a chapter
 
-`dockb reconstruct-chapter <chapter_id> --owner <username> [--out PATH]` renders the chapter with
+`dockb reconstruct-chapter <chapter_id> --owner <username-or-user-id> [--out PATH]` renders the chapter with
 `chapter_id` from the knowledge graph as markdown. Without `--out` the canonical chapter file is
 written into that account's tree — `<base>/<account id>/<document title>/<Act X>/<chapter title>.md`, or
 the `Characters` directory for a `Character` chapter — under

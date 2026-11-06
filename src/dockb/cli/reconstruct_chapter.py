@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--owner",
         default=None,
-        help="username owning the chapter's document; required, because a chapter id alone names no account",
+        help="username or user id owning the chapter's document; required, because a chapter id alone names no account",
     )
     args = parser.parse_args(argv)
 

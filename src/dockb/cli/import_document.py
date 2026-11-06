@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
     parser.add_argument(
         "--owner",
         default=None,
-        help="username the imported document belongs to (required: the document is stored under that account)",
+        help="username or user id the imported document belongs to (required: the document is stored under that account)",
     )
     parser.set_defaults(write_back=None)
     args = parser.parse_args(argv)

@@ -127,6 +127,31 @@ class TestAccountIdFor:
         self.store.get_user.assert_called_once_with("alice")
         assert self.seen_kwargs["secret"] == "secret"
 
+    def test_a_user_id_is_accepted_instead_of_a_username(self, monkeypatch):
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "secret")
+        self.store.get_user.return_value = None
+        self.store.get_user_by_id.return_value = {"id": _ACCOUNT_ID}
+
+        assert startup.account_id_for(_ACCOUNT_ID) == _ACCOUNT_ID
+
+        self.store.get_user_by_id.assert_called_once_with(_ACCOUNT_ID)
+
+    def test_a_username_wins_before_the_id_fallback(self, monkeypatch):
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "secret")
+        self.store.get_user.return_value = {"id": _ACCOUNT_ID}
+
+        assert startup.account_id_for("Alice") == _ACCOUNT_ID
+
+        self.store.get_user_by_id.assert_not_called()
+
+    def test_an_id_nobody_holds_is_reported(self, monkeypatch):
+        monkeypatch.setenv("DOCKB_SECRET_KEY", "secret")
+        self.store.get_user.return_value = None
+        self.store.get_user_by_id.return_value = None
+
+        with pytest.raises(startup.UnknownUserError, match="no account"):
+            startup.account_id_for("ghost")
+
     def test_missing_secret_is_a_configuration_error(self, monkeypatch):
         monkeypatch.delenv("DOCKB_SECRET_KEY", raising=False)
 
@@ -142,6 +167,7 @@ class TestAccountIdFor:
     def test_unknown_user_is_reported(self, monkeypatch):
         monkeypatch.setenv("DOCKB_SECRET_KEY", "secret")
         self.store.get_user.return_value = None
+        self.store.get_user_by_id.return_value = None
 
-        with pytest.raises(startup.UnknownUserError, match="unknown user 'alice'"):
+        with pytest.raises(startup.UnknownUserError, match="no account"):
             startup.account_id_for("alice")

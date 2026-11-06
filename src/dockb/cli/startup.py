@@ -59,15 +59,16 @@ def load_spacy_model() -> Language:
         ) from exc
 
 
-def account_id_for(username: str) -> str:
-    """Return the account id for *username*, the internal id documents are owned by.
+def account_id_for(owner_ref: str) -> str:
+    """Return the account id for a username or user id, whichever the command named.
 
     The markdown tree is keyed by account id rather than username, so a command
     naming a user resolves the id here instead of building a path from the name a
     human typed. Usernames stay mutable provider data; the id does not move when one
-    changes. Raises :class:`MissingConfigurationError` when the account database is
-    not configured or readable, and :class:`UnknownUserError` when there is no such
-    user.
+    changes. A username is tried first, and an id is accepted when no matching
+    username exists. Raises :class:`MissingConfigurationError` when the account
+    database is not configured or readable, and :class:`UnknownUserError` when
+    neither spelling names an account.
     """
     repo_root = Path(__file__).resolve().parents[3]
     load_dotenv(repo_root / ".env")
@@ -75,7 +76,11 @@ def account_id_for(username: str) -> str:
     secret = os.environ.get("DOCKB_SECRET_KEY", "")
     if not secret.strip():
         raise MissingConfigurationError("DOCKB_SECRET_KEY must be set in the environment or a .env file")
-    row = AccountStore(base_dir=resolve_document_base_dir(), secret=secret).get_user(normalize_username(username))
-    if row is None:
-        raise UnknownUserError(f"unknown user {normalize_username(username)!r}")
-    return str(row["id"])
+    store = AccountStore(base_dir=resolve_document_base_dir(), secret=secret)
+    row = store.get_user(normalize_username(owner_ref))
+    if row is not None:
+        return str(row["id"])
+    row = store.get_user_by_id(owner_ref)
+    if row is not None:
+        return str(row["id"])
+    raise UnknownUserError(f"no account names the username or id {owner_ref!r}")

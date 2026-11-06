@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
     sub = parser.add_subparsers(dest="command", required=True)
     sweep = sub.add_parser("sweep", help="evaluate the document's pending mention verdicts")
     sweep.add_argument("document", help="the document's id, or its title")
-    sweep.add_argument("--owner", required=True, help="the account the document belongs to")
+    sweep.add_argument("--owner", required=True, help="the account the document belongs to, as its username or user id")
     sweep.add_argument("--full", action="store_true", help="re-evaluate every paragraph, ignoring existing MENTIONS")
     sweep.add_argument(
         "--no-ai",

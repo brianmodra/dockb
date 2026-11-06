@@ -95,6 +95,26 @@ def test_full_resets_the_verdicts_first(wired):
     assert mentions_repo.reset.call_count == 3
 
 
+def test_the_document_may_be_named_by_its_id(wired):
+    _chapter_repo, document_repo, _mentions = wired
+
+    code = cli.main(["sweep", "d-uuid-1", "--owner", "abby"])
+
+    assert code == 0
+    document_repo.load.assert_any_call("d-uuid-1", "acct-1")
+
+
+def test_the_document_may_be_named_by_an_inexactly_cased_title(wired, document, capsys):
+    _chapter_repo, document_repo, _mentions = wired
+    # the id lookup misses for the raw title; the resolved id loads afterwards
+    document_repo.load.side_effect = lambda ref, owner: None if str(ref).lower() == "linchpin" else document
+
+    code = cli.main(["sweep", "LINCHPIN", "--owner", "abby"])
+
+    assert code == 0
+    assert "Opening 1" in capsys.readouterr().out
+
+
 def test_an_unknown_document_fails_with_a_message(wired, capsys):
     _, document_repo, _mentions = wired
     document_repo.load.return_value = None  # the id lookup misses
