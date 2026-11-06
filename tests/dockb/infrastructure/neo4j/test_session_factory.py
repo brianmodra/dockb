@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+from neo4j import NotificationDisabledClassification
+
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
 
 
@@ -9,7 +11,11 @@ class TestSessionFactoryCreate:  # pylint: disable=too-few-public-methods
     def test_creates_driver_with_uri_and_auth(self):
         with patch("dockb.infrastructure.neo4j.session_factory.GraphDatabase.driver") as mock_driver:
             factory = SessionFactory("bolt://localhost:7687", user="neo4j", password="test")
-            mock_driver.assert_called_once_with("bolt://localhost:7687", auth=("neo4j", "test"))
+            mock_driver.assert_called_once_with(
+                "bolt://localhost:7687",
+                auth=("neo4j", "test"),
+                notifications_disabled_classifications=[NotificationDisabledClassification.UNRECOGNIZED],
+            )
             factory.close()
 
 
