@@ -36,8 +36,13 @@ _STATE_NAMES = {1: "never evaluated", 2: "no mentions", 3: "mentions", 4: "stale
 logger = logging.getLogger(__name__)
 
 
-def _build() -> tuple[ChapterRepository, DocumentRepository, MentionsRepository]:
-    """The repositories the sweep reads and writes through, in its own session."""
+def _build(stack: ExitStack) -> tuple[ChapterRepository, DocumentRepository, MentionsRepository]:
+    """The repositories the sweep reads and writes through, in its own session.
+
+    The session is entered on the caller's stack, so it stays open for the whole
+    sweep and closes (with the connection pool) when the caller's ``with``
+    unwinds — not when this function returns.
+    """
     repo_root = Path(__file__).resolve().parents[3]
     load_dotenv(repo_root / ".env")
     load_dotenv()
@@ -46,9 +51,9 @@ def _build() -> tuple[ChapterRepository, DocumentRepository, MentionsRepository]
         user=os.environ["NEO4J_USER"],
         password=os.environ["NEO4J_PASSWORD"],
     )
-    with ExitStack() as stack:
-        session = stack.enter_context(session_factory.session())
-        return ChapterRepository(session), DocumentRepository(session), MentionsRepository(session)
+    stack.callback(session_factory.close)
+    session = stack.enter_context(session_factory.session())
+    return ChapterRepository(session), DocumentRepository(session), MentionsRepository(session)
 
 
 def _log_chapter_mentions(
@@ -108,43 +113,50 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
     args = parser.parse_args(argv)
 
     owner = account_id_for(args.owner)
-    chapter_repo, document_repo, mentions_repo = _build()
+    with ExitStack() as stack:
+        chapter_repo, document_repo, mentions_repo = _build(stack)
 
-    document_id = _resolve_document(args.document, owner, document_repo)
-    if document_id is None:
-        print(f"error: no document '{args.document}' for that account", file=sys.stderr)
-        return 1
+        document_id = _resolve_document(args.document, owner, document_repo)
+        if document_id is None:
+            print(f"error: no document '{args.document}' for that account", file=sys.stderr)
+            return 1
 
-    document = document_repo.load(document_id, owner)
-    assert document is not None
+        document = document_repo.load(document_id, owner)
+        assert document is not None
 
-    for chapter in document.chapters:
-        states = mentions_repo.paragraph_states(owner, chapter_id=chapter.id)
-        counts = {state: sum(1 for row in states if row["state"] == state) for state in (1, 2, 3, 4)}
-        before = " ".join(f"state {state} ({_STATE_NAMES[state]}): {counts[state]}" for state in (1, 2, 3, 4))
-        print(f"{chapter.title}: {before}")
+        for chapter in document.chapters:
+            states = mentions_repo.paragraph_states(owner, chapter_id=chapter.id)
+            counts = {state: sum(1 for row in states if row["state"] == state) for state in (1, 2, 3, 4)}
+            before = " ".join(f"state {state} ({_STATE_NAMES[state]}): {counts[state]}" for state in (1, 2, 3, 4))
+            print(f"{chapter.title}: {before}")
 
-        if args.full:
-            mentions_repo.reset(owner, chapter_id=chapter.id)
-        evaluate_chapter_tier1(chapter.id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
-        evaluate_chapter_tier2(
-            chapter.id,
-            owner=owner,
-            mentions_repo=mentions_repo,
-            chapter_repo=chapter_repo,
-            document_repo=document_repo,
-            no_ai=args.no_ai,
-        )
-        _log_chapter_mentions(chapter, owner=owner, mentions_repo=mentions_repo, document=document)
+            if args.full:
+                mentions_repo.reset(owner, chapter_id=chapter.id)
+            evaluate_chapter_tier1(
+                chapter.id,
+                owner=owner,
+                mentions_repo=mentions_repo,
+                chapter_repo=chapter_repo,
+                document_repo=document_repo,
+            )
+            evaluate_chapter_tier2(
+                chapter.id,
+                owner=owner,
+                mentions_repo=mentions_repo,
+                chapter_repo=chapter_repo,
+                document_repo=document_repo,
+                no_ai=args.no_ai,
+            )
+            _log_chapter_mentions(chapter, owner=owner, mentions_repo=mentions_repo, document=document)
 
-        after_rows = mentions_repo.paragraph_states(owner, chapter_id=chapter.id)
-        pending = sum(1 for row in after_rows if row["state"] in (1, 4))
-        print(f"{chapter.title}: pending after sweep: {pending}")
+            after_rows = mentions_repo.paragraph_states(owner, chapter_id=chapter.id)
+            pending = sum(1 for row in after_rows if row["state"] in (1, 4))
+            print(f"{chapter.title}: pending after sweep: {pending}")
 
-    remaining = mentions_repo.paragraph_states(owner, document_id=document_id)
-    pending = sum(1 for row in remaining if row["state"] in (1, 4))
-    if pending:
-        print(f"{pending} paragraph(s) still pending (an LLM outage leaves them for the next sweep)")
-    else:
-        print("every paragraph's mention verdicts are settled")
-    return 0
+        remaining = mentions_repo.paragraph_states(owner, document_id=document_id)
+        pending = sum(1 for row in remaining if row["state"] in (1, 4))
+        if pending:
+            print(f"{pending} paragraph(s) still pending (an LLM outage leaves them for the next sweep)")
+        else:
+            print("every paragraph's mention verdicts are settled")
+        return 0

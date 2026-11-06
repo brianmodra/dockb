@@ -1,5 +1,6 @@
 """The mentions sweep CLI: backfill a document's paragraphs, states 1 and 4 (or all)."""
 
+from contextlib import ExitStack
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,6 +12,42 @@ from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token
+
+
+def test_build_leaves_the_repositories_live(monkeypatch):
+    """The repos outlive _build's return; a query after it must not hit a closed session."""
+    events: list[str] = []
+
+    class FakeSession:
+        def __enter__(self):
+            events.append("session-open")
+            return self
+
+        def __exit__(self, *exc):
+            events.append("session-closed")
+
+    class FakeFactory:
+        def __init__(self, **kwargs):
+            events.append("factory")
+
+        def session(self):
+            return FakeSession()
+
+        def close(self):
+            events.append("factory-closed")
+
+    monkeypatch.setattr(cli, "SessionFactory", FakeFactory)
+    for name in ("NEO4J_URL", "NEO4J_USER", "NEO4J_PASSWORD"):
+        monkeypatch.setenv(name, "unused")
+
+    stack = ExitStack()
+    try:
+        cli._build(stack)
+        assert "session-closed" not in events
+    finally:
+        stack.close()
+    assert "session-closed" in events
+    assert "factory-closed" in events
 
 
 @pytest.fixture()
@@ -69,7 +106,7 @@ def wired(document, monkeypatch):
 
     mentions_repo.paragraph_states.side_effect = states
 
-    monkeypatch.setattr(cli, "_build", lambda: (chapter_repo, document_repo, mentions_repo))
+    monkeypatch.setattr(cli, "_build", lambda _stack: (chapter_repo, document_repo, mentions_repo))
     monkeypatch.setattr(cli, "account_id_for", lambda _username: "acct-1")
     return chapter_repo, document_repo, mentions_repo
 
