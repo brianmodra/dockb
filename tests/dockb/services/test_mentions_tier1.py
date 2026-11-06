@@ -188,6 +188,39 @@ def test_a_chapter_save_triggers_a_chapter_scoped_evaluation(monkeypatch) -> Non
     assert mentions_repo.paragraph_states.call_count >= 1
 
 
+def test_the_job_logs_the_mentions_found_for_the_finished_chapter(monkeypatch, caplog) -> None:
+    from dockb.services import mentions as mentions_module
+
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = [
+        {"id": "p1", "state": 3, "index": 0, "mentions": ["k1", "k2"]},
+        {"id": "p2", "state": 2, "index": 1, "mentions": []},
+    ]
+    chapter_repo = MagicMock()
+    chapter_repo.load.return_value = _character("c1", "")
+    chapter_repo.find_document_id.return_value = "d1"
+    document = Document(id="d1", title="Linchpin", state=DataState.SYNC)
+    document.chapters.append(Chapter(id="c1", title="Opening 1", state=DataState.SYNC))
+    document.chapters.append(_character("k1", "Karakas"))
+    document.chapters.append(_character("k2", "Jael"))
+    document_repo = MagicMock()
+    document_repo.load.return_value = document
+
+    job = mentions_module.MentionsJob(
+        chapter_id="c1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner="acct-1",
+    )
+    with caplog.at_level("INFO", logger="dockb.services.mentions"):
+        job.run()
+
+    assert any(
+        "Mentions for chapter 'Opening 1': 2" in record.message for record in caplog.records
+    )
+
+
 def test_run_mentions_async_runs_the_job_on_a_daemon_thread() -> None:
     import threading
 

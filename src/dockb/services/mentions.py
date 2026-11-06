@@ -491,11 +491,15 @@ def _refresh_rollup(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_
     if document is None:
         return
     character_titles = {chapter.id: chapter.title for chapter in document.chapters if chapter.category == "Character"}
-    mentioned = {
-        character_id
-        for state in mentions_repo.paragraph_states(owner, chapter_id=chapter_id)
-        if state["state"] == 3
-        for character_id in state["mentions"]
-        if character_id in character_titles
-    }
+    mentioned: set[str] = set()
+    total = 0
+    for state in mentions_repo.paragraph_states(owner, chapter_id=chapter_id):
+        if state["state"] != 3:
+            continue
+        for character_id in state["mentions"]:
+            if character_id in character_titles:
+                total += 1
+                mentioned.add(character_id)
     mentions_repo.stamp_chapter(chapter_id, sorted(mentioned), owner=owner)
+    chapter_title = next((chapter.title for chapter in document.chapters if chapter.id == chapter_id), chapter_id)
+    logger.info("Mentions for chapter '%s': %d", chapter_title, total)
