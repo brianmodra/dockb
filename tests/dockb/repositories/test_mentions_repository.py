@@ -77,22 +77,33 @@ class TestStampVerdicts:
         repo.stamp(
             "p1",
             [{"character_id": "k1", "method": "name", "confidence": 1.0}],
+            owner=_OWNER,
             checked_at="2026-11-05T00:00:00Z",
         )
 
         cypher, params = extract_call(neo4j_session)
         assert "DETACH DELETE" not in cypher  # the delete is of RELATIONSHIPS only
         assert "DELETE m" in cypher
+        assert "owner: $owner" in cypher
         assert "mentions_checked_at = $checked_at" in cypher
         assert params["paragraph_id"] == "p1"
+        assert params["owner"] == _OWNER
         assert params["checked_at"] == "2026-11-05T00:00:00Z"
         assert params["verdicts"] == [{"character_id": "k1", "method": "name", "confidence": 1.0}]
 
+    def test_a_partial_tier_1_write_carries_owner_but_no_stamp(self, repo, neo4j_session):
+        repo.stamp("p1", [{"character_id": "k1", "method": "name", "confidence": 1.0}], owner=_OWNER)
+
+        _, params = extract_call(neo4j_session)
+        assert params["owner"] == _OWNER
+        assert params["checked_at"] is None
+
     def test_stamping_no_verdicts_leaves_a_state_2_paragraph(self, repo, neo4j_session):
-        repo.stamp("p1", [], checked_at="2026-11-05T00:00:00Z")
+        repo.stamp("p1", [], owner=_OWNER, checked_at="2026-11-05T00:00:00Z")
 
         _, params = extract_call(neo4j_session)
         assert params["verdicts"] == []
+        assert params["owner"] == _OWNER
         assert params["checked_at"] == "2026-11-05T00:00:00Z"
 
 

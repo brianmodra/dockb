@@ -168,17 +168,25 @@ class MentionsRepository:
         paragraph_id: str,
         verdicts: list[dict[str, Any]],
         *,
-        checked_at: str,
+        owner: str,
+        checked_at: str | None = None,
     ) -> None:
         """Replace *paragraph_id*'s verdicts wholesale and stamp it evaluated.
 
         *verdicts* is `[{character_id, method, confidence}]` — an empty list is
         a "mentions nobody" verdict, which is what turns the paragraph into
-        state 2.
+        state 2. Every write is scoped to *owner* the way every read is. A
+        *checked_at* left off is a tier-1 partial write: verdicts become
+        visible while the paragraph stays un-stamped for tier 2 to finish.
         """
         self._session.run(
             _STAMP_CYPHER,
-            {"paragraph_id": paragraph_id, "verdicts": verdicts, "checked_at": checked_at},
+            {
+                "paragraph_id": paragraph_id,
+                "verdicts": verdicts,
+                "owner": owner,
+                "checked_at": checked_at,
+            },
         )
 
     def reset(self, owner: str, *, chapter_id: str | None = None, document_id: str | None = None) -> None:

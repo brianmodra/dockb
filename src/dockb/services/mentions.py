@@ -114,9 +114,9 @@ def evaluate_chapter_tier1(
             # Tier 2 must judge the ambiguous evidence; the settled verdicts
             # are written without the stamp so the paragraph stays un-evaluated.
             if verdicts:
-                mentions_repo.stamp(paragraph_id, verdicts)
+                mentions_repo.stamp(paragraph_id, verdicts, owner=owner)
         else:
-            mentions_repo.stamp(paragraph_id, verdicts, checked_at=now)
+            mentions_repo.stamp(paragraph_id, verdicts, owner=owner, checked_at=now)
     _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
 
@@ -346,9 +346,9 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
                 unresolved = True
         if unresolved:
             if settled:
-                mentions_repo.stamp(paragraph_id, settled)
+                mentions_repo.stamp(paragraph_id, settled, owner=owner)
         else:
-            mentions_repo.stamp(paragraph_id, settled, checked_at=now)
+            mentions_repo.stamp(paragraph_id, settled, owner=owner, checked_at=now)
     _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
 
