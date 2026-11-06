@@ -56,6 +56,26 @@ async def test_mounting_registers_both_tools() -> None:
 
 
 @pytest.mark.asyncio
+async def test_each_tool_call_and_its_answer_are_logged(repos, caplog) -> None:
+    chapter_repo, document_repo, mentions_repo = repos
+    chapter_repo.load.return_value = _chapter_document().chapters[0]
+    mcp = MCPServer("DockB")
+    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=mentions_repo)
+    token = _account_id.set("acct-1")
+
+    with caplog.at_level("INFO", logger="dockb.infrastructure.mcp.tools"):
+        await mcp.call_tool("get_chapter", {"chapter_id": "c1"})
+        await mcp.call_tool(
+            "find_paragraphs", {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}}
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("get_chapter" in message and "c1" in message for message in messages)
+    assert any("find_paragraphs" in message and "murder" in message for message in messages)
+    assert any("->" in message for message in messages), "the answer must be logged too"
+    _account_id.reset(token)
+
+
 @pytest.mark.asyncio
 async def test_get_chapter_answers_for_the_tokens_account(repos) -> None:
     chapter_repo, document_repo, _mentions = repos

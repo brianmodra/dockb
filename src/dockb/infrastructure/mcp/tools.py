@@ -10,6 +10,8 @@ than answer an empty world.
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 from mcp.server import MCPServer
@@ -19,6 +21,18 @@ from dockb.infrastructure.mcp.auth import get_account_id
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
 from dockb.services.mcp_queries import find_paragraphs_payload, get_chapter_payload
+
+logger = logging.getLogger(__name__)
+
+_RESPONSE_LOG_LIMIT = 2000
+
+
+def _logged(value: Any) -> str:
+    """Compact JSON for the log line, with oversized answers truncated."""
+    text = json.dumps(value, default=str)
+    if len(text) <= _RESPONSE_LOG_LIMIT:
+        return text
+    return f"{text[:_RESPONSE_LOG_LIMIT]} … ({len(text)} bytes, truncated)"
 
 
 def mount_tools(
@@ -49,6 +63,7 @@ def mount_tools(
         that names no chapter of the account's), is an error.
         """
         account = _account()
+        logger.info("MCP get_chapter <- %s", _logged({"chapter_id": chapter_id, "document_id": document_id, "title": title}))
         payload = get_chapter_payload(
             chapter_id=chapter_id,
             document_id=document_id,
@@ -58,6 +73,7 @@ def mount_tools(
         )
         if payload is None:
             raise ToolError("no such chapter for this account")
+        logger.info("MCP get_chapter -> %s", _logged(payload))
         return payload
 
     def find_paragraphs(
@@ -77,6 +93,10 @@ def mount_tools(
         position there, with its full text.
         """
         account = _account()
+        logger.info(
+            "MCP find_paragraphs <- %s",
+            _logged({"document_id": document_id, "criteria": criteria, "include_characters": include_characters}),
+        )
         found = find_paragraphs_payload(
             document_id,
             criteria,
@@ -89,7 +109,9 @@ def mount_tools(
         # A bare top-level array is not a valid structured output root (the JSON
         # schema the protocol requires wants an object), so the paragraphs ride
         # in a one-key object.
-        return {"paragraphs": found}
+        answer = {"paragraphs": found}
+        logger.info("MCP find_paragraphs -> %s", _logged(answer))
+        return answer
 
     mcp.add_tool(
         get_chapter,
