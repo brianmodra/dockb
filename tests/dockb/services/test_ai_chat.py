@@ -209,6 +209,28 @@ class TestResponsesCall:
         # the context rides in the instructions, never inside the user's text
         assert calls[0]["json"]["input"][0]["content"][0]["text"] == "hi"
 
+    def test_the_instructions_teach_the_response_syntax_for_find_paragraphs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"])
+        assert '"response"' in instructions
+        assert '"button"' in instructions
+        assert '"highlight"' in instructions
+        assert "chapter_id" in instructions
+        assert "paragraph_id" in instructions
+        assert "sentence_id" in instructions
+
+    def test_the_response_syntax_is_taught_even_without_an_open_document(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"])
+        assert '"highlight"' in instructions
+        assert "document" not in instructions.lower()
+
     def test_a_whitespace_key_refuses_the_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "   ")
         with pytest.raises(MissingApiKeyError):

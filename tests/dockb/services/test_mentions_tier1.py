@@ -188,7 +188,7 @@ def test_a_chapter_save_triggers_a_chapter_scoped_evaluation(monkeypatch) -> Non
     assert mentions_repo.paragraph_states.call_count >= 1
 
 
-def test_the_job_logs_the_mentions_found_for_the_finished_chapter(monkeypatch, caplog) -> None:
+def test_the_job_logs_the_mentions_found_for_the_finished_chapter(caplog) -> None:
     from dockb.services import mentions as mentions_module
 
     mentions_repo = MagicMock()
@@ -216,9 +216,7 @@ def test_the_job_logs_the_mentions_found_for_the_finished_chapter(monkeypatch, c
     with caplog.at_level("INFO", logger="dockb.services.mentions"):
         job.run()
 
-    assert any(
-        "Mentions for chapter 'Opening 1': 2" in record.message for record in caplog.records
-    )
+    assert any("Mentions for chapter 'Opening 1': 2" in record.message for record in caplog.records)
 
 
 def test_run_mentions_async_runs_the_job_on_a_daemon_thread() -> None:

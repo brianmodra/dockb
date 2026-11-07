@@ -27,7 +27,7 @@ def test_build_leaves_the_repositories_live(monkeypatch):
             events.append("session-closed")
 
     class FakeFactory:
-        def __init__(self, **kwargs):
+        def __init__(self, **_kwargs):
             events.append("factory")
 
         def session(self):

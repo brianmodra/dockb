@@ -34,6 +34,16 @@ _INSTRUCTIONS = (
 _DOCUMENT_INSTRUCTIONS = (
     " The user is viewing the manuscript whose document_id is " + '"{document_id}"; use it as the tools\' document_id argument.'
 )
+_RESPONSE_SYNTAX_INSTRUCTIONS = (
+    " When your answer is built on the find_paragraphs tool, reply in JSON using the editor's"
+    ' "response syntax" instead of prose: {"response": [{"text": "one point per item"},'
+    ' {"button": {"label": "Show me this paragraph", "function": "highlight",'
+    ' "args": {"chapter_id": "<the chapter id>", "paragraph_id": "<the paragraph id>",'
+    ' "sentence_id": "<optional: one sentence>"}}}]} — one "text" item per claim, and one'
+    " highlight button per found paragraph, its args carrying that paragraph's chapter id and"
+    " paragraph id, and its sentence id only when a single sentence should be named. Chapter and"
+    " paragraph ids are required; a reply without JSON shows the reader plain text."
+)
 
 
 class MissingApiKeyError(RuntimeError):
@@ -82,6 +92,7 @@ class AiChatService:  # pylint: disable=too-few-public-methods
         payload: dict[str, Any] = {"model": os.environ.get(_MODEL_ENV_VAR, _DEFAULT_MODEL)}
         if server_url and token:
             instructions = _INSTRUCTIONS.format(label=_MCP_SERVER_LABEL, server_url=server_url)
+            instructions += _RESPONSE_SYNTAX_INSTRUCTIONS
             if document_id:
                 instructions += _DOCUMENT_INSTRUCTIONS.format(document_id=document_id)
             payload["instructions"] = instructions

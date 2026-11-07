@@ -61,7 +61,7 @@ class CriteriaGroup(BaseModel):
 
     type: Literal["criteria"]
     op: Literal["and", "or"] = Field(description='"and" demands every child match; "or" any one of them.')
-    criteria: list["CriteriaTree"] = Field(description="The children this group combines.")
+    criteria: list[CriteriaTree] = Field(description="The children this group combines.")
 
 
 CriteriaTree = Annotated[

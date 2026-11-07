@@ -18,7 +18,7 @@ def test_a_word_leaf_is_a_whole_word_regex_parameter() -> None:
 
 
 def test_a_word_leaf_escapes_regex_metacharacters() -> None:
-    where, params = compile_criteria({"type": "word", "word": "C.E.O."}, _resolve)
+    _, params = compile_criteria({"type": "word", "word": "C.E.O."}, _resolve)
     assert params == {"p0": "(?isuU).*\\bC\\.E\\.O\\.\\b.*"}
 
 

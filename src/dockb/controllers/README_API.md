@@ -769,7 +769,11 @@ to the call's MCP access, not sent by the client). The
 DockB's MCP server as a Responses-API tool with a per-prompt bearer token in
 the tool's `authorization` field, minted for this prompt and scoped to the
 signed-in account (`README_mcp_auth.md` §2–§4); the token never enters
-model-visible text. When the URL is unset the prompt is sent without MCP.
+model-visible text. The same instructions teach the model the editor's
+response syntax, so a find_paragraphs answer comes back as
+`{"response": [{"text": ...}, {"button": {...}}]}` (the renderer's
+`README_response_area.md` specifies the shape) instead of prose. When the URL
+is unset the prompt is sent without MCP, and without the syntax instruction.
 Errors: `422` for an empty prompt, `503` when the service is
 unwired or the key is missing, `502` when the model call fails.
 
