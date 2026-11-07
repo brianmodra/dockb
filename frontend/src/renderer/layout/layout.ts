@@ -22,6 +22,9 @@ const DEFAULT_LEFT_WIDTH = 240;
 const MIN_RIGHT_WIDTH = 10;
 const MAX_RIGHT_WIDTH = 600;
 const MIN_MESSAGE_HEIGHT = 24;
+const CHAT_LINE_HEIGHT = 18;
+const CHAT_VERTICAL_PADDING = 4;
+const CHAT_LINE_UNIT = CHAT_LINE_HEIGHT + CHAT_VERTICAL_PADDING;
 
 export class AppLayout {
   readonly element: HTMLElement;
@@ -80,12 +83,16 @@ export class AppLayout {
     chat.setAttribute("rows", "1");
     chat.placeholder = "Prompt AI here";
     chat.spellcheck = false;
+    chat.addEventListener("input", () => {
+      this.setChatHeight();
+    });
     chat.addEventListener("keydown", (event: KeyboardEvent) => {
       const text = chat.value.trim();
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         if (text !== "") {
           chat.value = "";
+          this.setChatHeight();
           this.options.onPrompt?.(text);
         }
       }
@@ -112,14 +119,13 @@ export class AppLayout {
     this.rightPanel = this.panel("panel-right");
     this.messagePanel = this.panel("panel-message");
     const messageLog = document.createElement("div");
+    messageLog.dataset.testid = "message-log";
     messageLog.className = "message-log";
     this.messageLog = messageLog;
     this.messagePanel.append(this.messageLog, this.chatLine);
 
-    const setPanelHeight = (): void => {
-      this.messagePanel.style.height = `${this.messageHeight}px`;
-      this.chatLine.style.height = `${this.messageHeight}px`;
-    };
+    this.messagePanel.style.height = `${this.messageHeight}px`;
+    this.setChatHeight();
 
     const mainRow = document.createElement("div");
     mainRow.className = "main-row";
@@ -144,7 +150,8 @@ export class AppLayout {
       mainRow,
       this.seam("resize-handle-h-bottom", "horizontal", (delta) => {
         this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight - delta);
-        setPanelHeight();
+        this.messagePanel.style.height = `${this.messageHeight}px`;
+        this.setChatHeight();
         this.options.onWidthsChange?.(this.panelWidths());
       }),
       this.messagePanel,
@@ -152,7 +159,8 @@ export class AppLayout {
 
     this.leftPanel.style.width = `${this.leftWidth}px`;
     this.rightPanel.style.width = `${this.rightWidth}px`;
-    setPanelHeight();
+    this.messagePanel.style.height = `${this.messageHeight}px`;
+    this.setChatHeight();
     this.applyMode();
   }
 
@@ -186,7 +194,7 @@ export class AppLayout {
       if (typeof widths.message === "number") {
         this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, widths.message);
         this.messagePanel.style.height = `${this.messageHeight}px`;
-        this.chatLine.style.height = `${this.messageHeight}px`;
+        this.setChatHeight();
       }
       this.options.onWidthsChange?.(this.panelWidths());
     }
@@ -210,6 +218,33 @@ export class AppLayout {
     el.dataset.testid = name;
     el.className = "panel";
     return el;
+  }
+
+  private isOneLinePanel(): boolean {
+    return this.messageHeight <= MIN_MESSAGE_HEIGHT;
+  }
+
+  private measuredChatLines(): number {
+    const scrollHeight = this.chatLine.scrollHeight;
+    if (scrollHeight <= this.chatLine.clientHeight) {
+      return 0;
+    }
+    return Math.ceil((scrollHeight - CHAT_VERTICAL_PADDING) / CHAT_LINE_HEIGHT);
+  }
+
+  private setChatHeight(): void {
+    const oneLine = this.isOneLinePanel();
+    this.messageLog.hidden = oneLine;
+    if (oneLine) {
+      this.chatLine.style.height = `${this.messageHeight}px`;
+      return;
+    }
+    const panel = this.messageHeight;
+    const needed = Math.max(this.measuredChatLines(), this.chatLine.value.split("\n").length);
+    const defaultLines = Math.max(1, Math.round(panel / 3 / CHAT_LINE_UNIT));
+    const maxLines = Math.max(1, Math.floor((panel - MIN_MESSAGE_HEIGHT) / CHAT_LINE_UNIT));
+    const lines = Math.min(Math.max(needed, defaultLines), maxLines);
+    this.chatLine.style.height = `${lines * CHAT_LINE_UNIT}px`;
   }
 
   private seam(

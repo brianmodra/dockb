@@ -189,10 +189,13 @@ underlies cursor/view recovery after a save (`README_markdown_redesign.md` §5).
 
 ## 6. Message panel (decided)
 
-A strip under the edit panel showing one line of text by default. Dragging the horizontal seam makes
-it taller, revealing a **scrollback console** of earlier messages. Its role is the console: save
-results (canonicalized, change summary), errors, and delivered diagnostics — plus further message
-kinds to be designed later.
+A strip under the edit panel showing one line by default: the **chat box** alone. Dragging the
+horizontal seam makes it taller, revealing a **scrollback console** of earlier messages above the
+chat box. Its role is the console: save results (canonicalized, change summary), errors, and
+delivered diagnostics — plus the AI chat history and the model's response area, to follow. The
+chat box is always a whole number of text lines high (about one third of the panel by default,
+growing automatically as its typed text needs more lines); the console scrolls when more
+messages exist than the panel shows.
 
 ## 7. Right panel (decided shape, no role yet)
 

@@ -145,13 +145,61 @@ describe("AppLayout", () => {
     expect(chat.placeholder).toBe("Prompt AI here");
   });
 
-  it("sizes the chat line to the panel so pulling the seam up makes it multi-line", () => {
+  it("shows only the chat box when the message panel is one line high", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    const log = layout.element.querySelector<HTMLElement>('[data-testid="message-log"]')!;
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    expect(parseInt(message.style.height, 10)).toBe(24);
+    expect(log.hidden).toBe(true);
+    expect(parseInt(chat.style.height, 10)).toBe(24);
+  });
+
+  it("reveals the log above a one-line chat box once the panel grows past one line", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const log = layout.element.querySelector<HTMLElement>('[data-testid="message-log"]')!;
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    drag(bottomHandle(layout), 100, 500, 0, -40);
+    expect(log.hidden).toBe(false);
+    expect(parseInt(chat.style.height, 10)).toBe(22);
+  });
+
+  it("defaults the chat box to about one third of the panel in whole lines", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    drag(bottomHandle(layout), 100, 500, 0, -100);
+    const panel = parseInt(message.style.height, 10);
+    const defaultLines = Math.max(1, Math.round((panel / 3) / 22));
+    expect(parseInt(chat.style.height, 10)).toBe(defaultLines * 22);
+  });
+
+  it("extends the chat box in whole lines to fit the text being typed", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
-    expect(parseInt(chat.style.height, 10)).toBe(24);
-    drag(bottomHandle(layout), 100, 500, 0, -40);
-    expect(parseInt(chat.style.height, 10)).toBe(64);
+    drag(bottomHandle(layout), 100, 500, 0, -100);
+    chat.value = "first\nsecond\nthird";
+    chat.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(parseInt(chat.style.height, 10)).toBe(66);
+  });
+
+  it("returns the chat box to its default once the text is cleared", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const message = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    drag(bottomHandle(layout), 100, 500, 0, -100);
+    const defaultHeight = parseInt(chat.style.height, 10);
+    chat.value = "first\nsecond\nthird";
+    chat.dispatchEvent(new Event("input", { bubbles: true }));
+    chat.value = "";
+    chat.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(parseInt(chat.style.height, 10)).toBe(defaultHeight);
+    expect(parseInt(message.style.height, 10)).toBe(124);
   });
 
   it("submits the chat prompt on Enter and clears the line", () => {

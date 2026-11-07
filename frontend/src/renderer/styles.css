@@ -485,7 +485,7 @@ body {
   height: 24px;
   border-top: 1px solid #ddd;
   background: #f2f2f0;
-  overflow-y: auto;
+  overflow-y: hidden;
   font-size: 12px;
   padding: 2px 8px;
   box-sizing: border-box;
