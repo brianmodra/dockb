@@ -35,6 +35,29 @@ describe("WysiwygView sentence selection", () => {
     expect(view.selectedText()).toBe("Karakas closed the door.");
   });
 
+  it("scrolls the whole selected paragraph into view inside the editor's scroller", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent(BUFFER);
+    const paragraphs = Array.from(view.element.querySelectorAll("p")) as HTMLElement[];
+    const scrolled: Array<[HTMLElement, ScrollIntoViewOptions | undefined]> = [];
+    for (const paragraph of paragraphs) {
+      (paragraph as { scrollIntoView?: unknown }).scrollIntoView = (options: ScrollIntoViewOptions) => {
+        scrolled.push([paragraph, options]);
+      };
+    }
+    view.selectSentence("p2", null);
+    expect(scrolled).toEqual([[paragraphs[1], { block: "nearest" }]]);
+  });
+
+  it("ensures the selection's highlight is drawn by focusing the editor again", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent(BUFFER);
+    view.selectSentence("p1", 0);
+    expect(document.activeElement).toBe(view.element.querySelector(".ProseMirror"));
+  });
+
   it("selects a whole paragraph when no sentence index is given", () => {
     const view = new WysiwygView();
     document.body.append(view.element);

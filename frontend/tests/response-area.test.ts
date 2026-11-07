@@ -69,6 +69,18 @@ describe("ResponseArea", () => {
     expect(area.element.hidden).toBe(true);
     expect(area.element.textContent).toBe("");
   });
+
+  it("replaces the spinner and an earlier reply when a new reply arrives", () => {
+    const area = new ResponseArea({});
+    document.body.append(area.element);
+    area.showSpinner();
+    area.show([{ text: "first reply", button: { label: "Old", function: "nope" } }]);
+    area.show([{ text: "second reply" }]);
+    expect(area.element.querySelector('[data-testid="response-spinner"]')).toBeNull();
+    expect(area.element.querySelectorAll("button")).toHaveLength(0);
+    expect(area.element.textContent).toContain("second reply");
+    expect(area.element.textContent).not.toContain("first reply");
+  });
 });
 
 describe("parseResponseReply", () => {

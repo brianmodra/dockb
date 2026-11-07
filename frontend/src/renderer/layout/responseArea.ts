@@ -80,6 +80,7 @@ export class ResponseArea {
   }
 
   show(objects: ResponseObject[]): void {
+    this.element.replaceChildren();
     for (const object of objects) {
       if (object.text !== undefined) {
         const line = document.createElement("div");

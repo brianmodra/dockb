@@ -553,8 +553,17 @@ export class WysiwygView {
     }
     const tr = this.innerView.state.tr;
     tr.setSelection(TextSelection.create(doc, Math.min(from, to), Math.max(from, to)));
-    tr.scrollIntoView();
     this.innerView.dispatch(tr);
+    // The selection highlight is drawn while the editor has focus; bring the
+    // view back so the rectangle is on the screen the writer is looking at.
+    this.innerView.focus();
+    // ProseMirror's Own scrollIntoView stops at the nearest edge — the last
+    // line when the paragraph hangs below — so the whole paragraph box is
+    // scrolled in instead.
+    const dom = this.innerView.nodeDOM(paragraphPos) as HTMLElement | null;
+    if (dom && typeof dom.scrollIntoView === "function") {
+      dom.scrollIntoView({ block: "nearest" });
+    }
     return true;
   }
 
