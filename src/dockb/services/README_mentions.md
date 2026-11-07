@@ -2,9 +2,10 @@
 
 ## Executive Summary
 
-This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so next time the same question is asked, it is easy and quick to answer. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit.
+This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so next time the same question is asked, it is easy and quick to answer. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit. Search answers character questions straight from the cached verdicts — the search itself never judges anything.
 
-The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, that "Tobi" is Tobias Mordecai, and that "Mordecai" alone is ambiguous between two characters, Ian and Tobias. A name search alone cannot tell those apart, so deterministic name matching answers what it can and the model judges the rest, asynchronously, while the search reads the settled verdicts straight from the graph.
+The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, and that a shared surname could be either of two characters. Deterministic name matching (with NER where a whole name span settles it) answers what it can and the model judges the ambiguous remainder, asynchronously, only after a save or an operator sweep says it is time — the scheduler in `mentions_scheduler.py` keeps at most one
+evaluation running per chapter, so an editing burst never piles up model calls.
 
 ## 1. The graph: a MENTIONS relationship, and four paragraph states
 
@@ -81,10 +82,10 @@ simply stays un-evaluated and is retried by the next trigger.
 
 ## 4. What triggers an evaluation
 
-The only triggers are chapter saves and the sweep CLI — a search never evaluates. The auto triggers go through **`mentions_scheduler.py`**, which keeps *at most one running evaluation per chapter*: when a chapter's job is already running, a newer trigger cancels it (cooperatively, at the pipeline's checkpoints — an already-sent model batch may finish, but its verdicts are discarded) and the running worker then starts a fresh job built from the newest state. An editing burst therefore costs at most one immediate run plus one successor per chapter, and the latest state is always evaluated eventually.
+The only triggers are chapter saves and the sweep CLI — a search never evaluates. The auto triggers go through **`mentions_scheduler.py`**, which keeps at most one running evaluation per chapter and evaluates the latest state next (its module docstring carries the coalescing and cancellation semantics; an already-sent model batch may finish, but its verdicts are discarded).
 
-- **A manuscript chapter save** schedules one **MentionsJob** for that chapter, run on a daemon thread after the save returns (it reads what the commit persisted): it evaluates the chapter's state 1 and state 4 paragraphs.
-- **A character chapter save that changed the identity properties** schedules a MentionsJob **per chapter of the document** (the auto-fix: the ambiguity set is document-wide, so the scope is too; the per-chapter split is what lets the scheduler coalesce them).
+- **A manuscript chapter save** schedules one **MentionsJob** for that chapter: it evaluates the chapter's state 1 and state 4 paragraphs.
+- **A character chapter save that changed the identity properties** schedules a MentionsJob **per chapter of the document** (the ambiguity set is document-wide, so the scope is too).
 - **The sweep CLI** — `dockb mentions sweep <document-title-or-id>` — is the operator's manual, once-per-book backfill (and the retry after an outage).
   Default: the document's state 1 and 4 paragraphs, resumable by construction (each paragraph is stamped as it is judged, so an interrupted sweep just continues). `--full`: re-evaluate every paragraph, ignoring existing MENTIONS. It prints per-chapter state counts before, and anything left pending after; it does not run at startup and is never automatic.
 
@@ -97,11 +98,9 @@ whole criteria tree into one Cypher query (`services/criteria_cypher.py` and
 reconstructed in the database, and a character criterion is answered there —
 state 2 and 3 paragraphs from their cached verdicts (the MENTIONS
 relationships), state 1 and 4 paragraphs by **tier 1 inline** whole-word name
-matching. The search is read-only over the verdicts: it takes no mentions
-repository and never starts an evaluation. Ambiguous names stay unsettled in
-search answers until a save trigger or a sweep computes the verdicts. A search
-therefore never calls the model, never materializes the manuscript into
-Python, and never delays: what it answers reflects the cache as it stands.
+matching. The search is read-only over the verdicts and never evaluates, so
+an ambiguous name stays unsettled in search answers until a save trigger or
+a sweep computes it.
 
 ## 6. Phase 2 work for later
 
