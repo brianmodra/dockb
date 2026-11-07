@@ -151,8 +151,12 @@ describe("renderer shell", () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
+    const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
     expect(panel.textContent).toContain("plain prose answer");
     expect(panel.querySelectorAll(".response-line")).toHaveLength(0);
+    expect(chat.hidden).toBe(false);
+    expect(area.hidden).toBe(true);
+    expect(area.querySelector("[data-testid='response-spinner']")).toBeNull();
   });
 
   it("runs the reply's highlight button straight from the sentence positions it carries", async () => {

@@ -103,6 +103,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         .then((response) => {
           const parsed = parseResponseReply(response.reply);
           if (parsed === null) {
+            layout.cancelResponse();
             layout.pushMessage(response.reply);
           } else {
             layout.showResponse(parsed);

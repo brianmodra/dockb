@@ -40,7 +40,8 @@ The model's reply is JSON of one of two shapes — a bare array, or an object ca
 `parseResponseReply` accepts a reply only when it parses to that shape: every array member must
 be an object carrying a `text` string or a `button` object with string `label` and string
 `function`. Anything else parses as null and `main.ts` falls back to appending the raw reply to
-the message log. A button naming no registry function renders disabled.
+the message log and restoring the chat box (`cancelResponse`), so the spinner does not linger
+after a plain-prose answer. A button naming no registry function renders disabled.
 
 ## The function registry
 
