@@ -60,8 +60,11 @@ export class EditPanel {
     this.wysiwygHost.dataset.testid = "edit-wysiwyg";
     const scroll = document.createElement("div");
     scroll.className = "edit-scroll";
-    scroll.append(this.rawHost, this.wysiwygHost);
-    this.element.append(this.header, scroll);
+    // the header lives inside the scroll container, so the original scrollbar
+    // covers it alongside the chapter text and nothing spills into .panel to
+    // grow a second, far-right scrollbar
+    scroll.append(this.header, this.rawHost, this.wysiwygHost);
+    this.element.append(scroll);
 
     const state = EditorState.create({
       doc: "",

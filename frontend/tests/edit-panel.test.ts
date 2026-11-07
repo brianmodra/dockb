@@ -71,6 +71,23 @@ describe("EditPanel", () => {
     );
   });
 
+  it("scrolls the chapter header away with the text inside the edit scroll", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\npov: Karakas\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    const scroll = panel.element.querySelector<HTMLElement>(".edit-scroll")!;
+    const header = panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!;
+    expect(scroll.contains(header)).toBe(true);
+    expect(panel.element.firstElementChild).toBe(scroll);
+  });
+
   it("hides the header in raw mode, where the front matter is already visible", async () => {
     const api = fakeApi({
       getChapterDocument: vi.fn(async () =>
