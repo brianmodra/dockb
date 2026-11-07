@@ -197,4 +197,7 @@ report to the user which step you are working on.
    If the file already has an "Executive Summary" section — wherever it sits in the file —
    replace it, and place the new one at the top.
 
+3. Check that all environment variables added in this work are included in .env.example.
+   Add them if they are missing, with simple explanations.
+
 3. **Ask** the user if the changes committed should be pushed to git.
