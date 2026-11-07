@@ -1,8 +1,9 @@
 """AI chat route — POST /api/ai/chat.
 
-One editor prompt in, one model reply out. The prompt is sent to OpenAI as-is
-for now (no manuscript context yet); the OPENAI_API_KEY never leaves the
-server.
+One editor prompt in, one model reply out. The prompt is sent to the model
+as-is; the request's document_id (the manuscript the editor has open) rides in
+the call's instructions, never inside the prompt text. The OPENAI_API_KEY never
+leaves the server.
 """
 
 # pylint: disable=invalid-name,missing-function-docstring,global-statement
@@ -40,7 +41,7 @@ def chat(
     if svc is None:
         raise HTTPException(status_code=503, detail="ai_service_unavailable")
     try:
-        reply = svc.complete(body.prompt, owner)
+        reply = svc.complete(body.prompt, owner, document_id=body.document_id)
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=503, detail=f"ai_key_missing: {exc}") from exc
     except Exception as exc:

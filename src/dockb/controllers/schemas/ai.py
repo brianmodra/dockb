@@ -6,9 +6,10 @@ from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
-    """The user's prompt. Sent to the model as-is for now."""
+    """The user's prompt, and the manuscript they have open (sent to the model as-is)."""
 
     prompt: str = Field(min_length=1)
+    document_id: str | None = None
 
 
 class ChatResponse(BaseModel):

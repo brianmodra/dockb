@@ -30,23 +30,34 @@ class TestCompleteSignature:
     """complete() sends the prompt and returns the model's reply."""
 
     def test_prompt_passes_to_the_model_and_reply_comes_back(self) -> None:
-        seen: list[tuple[str, str | None, str | None]] = []
+        seen: list[tuple[str, str | None, str | None, str | None]] = []
 
-        def complete(prompt: str, token: str | None, server_url: str | None) -> str:
-            seen.append((prompt, token, server_url))
+        def complete(prompt: str, token: str | None, server_url: str | None, document_id: str | None = None) -> str:
+            seen.append((prompt, token, server_url, document_id))
             return "the reply"
 
         service = AiChatService(complete=complete)
         assert service.complete("what about chapter 2?", "account-1") == "the reply"
-        assert seen == [("what about chapter 2?", None, None)]
+        assert seen == [("what about chapter 2?", None, None, None)]
+
+    def test_the_open_document_is_forwarded_to_the_call(self) -> None:
+        seen: list[tuple[str, str | None, str | None, str | None]] = []
+
+        def complete(prompt: str, token: str | None, server_url: str | None, document_id: str | None = None) -> str:
+            seen.append((prompt, token, server_url, document_id))
+            return "the reply"
+
+        service = AiChatService(complete=complete)
+        assert service.complete("what about chapter 2?", "account-1", document_id="d1") == "the reply"
+        assert seen == [("what about chapter 2?", None, None, "d1")]
 
     def test_a_live_issuer_mints_a_token_bound_to_the_account(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
         issuer = _StubIssuer()
-        seen: list[tuple[str, str | None, str | None]] = []
+        seen: list[tuple[str, str | None, str | None, str | None]] = []
 
-        def complete(prompt: str, token: str | None, server_url: str | None) -> str:
-            seen.append((prompt, token, server_url))
+        def complete(prompt: str, token: str | None, server_url: str | None, document_id: str | None = None) -> str:
+            seen.append((prompt, token, server_url, document_id))
             return "the reply"
 
         service = AiChatService(complete=complete, token_issuer=lambda: issuer)
@@ -76,39 +87,39 @@ class TestCompleteSignature:
     def test_without_a_public_url_the_prompt_sends_without_mcp(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(_PUBLIC_URL_ENV_VAR, raising=False)
         issuer = _StubIssuer()
-        seen: list[tuple[str, str | None, str | None]] = []
+        seen: list[tuple[str, str | None, str | None, str | None]] = []
 
-        def complete(prompt: str, token: str | None, server_url: str | None) -> str:
-            seen.append((prompt, token, server_url))
+        def complete(prompt: str, token: str | None, server_url: str | None, document_id: str | None = None) -> str:
+            seen.append((prompt, token, server_url, document_id))
             return "the reply"
 
         service = AiChatService(complete=complete, token_issuer=lambda: issuer)
         service.complete("hello", "account-1")
-        assert seen == [("hello", None, None)]
+        assert seen == [("hello", None, None, None)]
         assert not issued_mints(issuer)
 
     def test_without_an_issuer_the_prompt_sends_without_mcp(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
-        seen: list[tuple[str, str | None, str | None]] = []
+        seen: list[tuple[str, str | None, str | None, str | None]] = []
 
-        def complete(prompt: str, token: str | None, server_url: str | None) -> str:
-            seen.append((prompt, token, server_url))
+        def complete(prompt: str, token: str | None, server_url: str | None, document_id: str | None = None) -> str:
+            seen.append((prompt, token, server_url, document_id))
             return "the reply"
 
         service = AiChatService(complete=complete, token_issuer=lambda: None)
         service.complete("hello", "account-1")
-        assert seen == [("hello", None, None)]
+        assert seen == [("hello", None, None, None)]
 
 
 def issued_mints(issuer: _StubIssuer) -> list[tuple[str, str]]:
     return list(issuer.mints)
 
 
-def server_url_seen(seen: list[tuple[str, str | None, str | None]]) -> str | None:
+def server_url_seen(seen: list[tuple[str, str | None, str | None, str | None]]) -> str | None:
     return seen[0][2]
 
 
-def token_seen(seen: list[tuple[str, str | None, str | None]]) -> str | None:
+def token_seen(seen: list[tuple[str, str | None, str | None, str | None]]) -> str | None:
     return seen[0][1]
 
 
@@ -183,6 +194,19 @@ class TestResponsesCall:
         assert "mcp.example.com/mcp" in instructions
         assert "dockb" in instructions.lower()
         assert "the-per-prompt-token" not in instructions
+        assert "document" not in instructions.lower()
+        assert calls[0]["json"]["input"][0]["content"][0]["text"] == "hi"
+
+    def test_the_instructions_name_the_document_the_user_is_viewing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp", "d1")
+        instructions = str(calls[0]["json"]["instructions"])
+        assert "d1" in instructions
+        assert "document_id" in instructions
+        assert "the-per-prompt-token" not in instructions
+        # the context rides in the instructions, never inside the user's text
         assert calls[0]["json"]["input"][0]["content"][0]["text"] == "hi"
 
     def test_a_whitespace_key_refuses_the_call(self, monkeypatch: pytest.MonkeyPatch) -> None:

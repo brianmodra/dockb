@@ -95,6 +95,14 @@ describe("ApiClient documents", () => {
     expect(call.init.method).toBe("POST");
     expect(call.init.body).toBe(JSON.stringify({ prompt: "hello AI" }));
   });
+
+  it("sends the open document's id with the prompt when one is given", async () => {
+    mockFetch(200, { reply: "a reply" });
+    const client = new ApiClient();
+    await client.sendPrompt("hello AI", "d-1");
+    const call = fetchCalls()[0];
+    expect(call.init.body).toBe(JSON.stringify({ prompt: "hello AI", document_id: "d-1" }));
+  });
 });
 
 describe("ApiClient chapters and lifecycle", () => {

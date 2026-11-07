@@ -113,10 +113,10 @@ export class ApiClient {
   }
 
   /** Post the editor's prompt for the model; the backend holds the OpenAI key. */
-  async sendPrompt(prompt: string): Promise<ChatResponse> {
+  async sendPrompt(prompt: string, documentId?: string | null): Promise<ChatResponse> {
     return request<ChatResponse>(this.url("/ai/chat"), {
       method: "POST",
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, ...(documentId ? { document_id: documentId } : {}) }),
     });
   }
 

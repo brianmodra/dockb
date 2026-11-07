@@ -55,6 +55,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runDeleteDocument: () => void = () => {};
   let runEditDocument: () => void = () => {};
   let runEditChapter: () => void = () => {};
+  let currentDocumentId: () => string | null = () => null;
   const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
@@ -96,7 +97,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       }
       layout.pushMessage(`You asked: ${prompt}`);
       void options.api
-        .sendPrompt(prompt)
+        .sendPrompt(prompt, currentDocumentId())
         .then((response) => {
           console.log(`AI reply: ${response.reply}`);
           layout.pushMessage(`AI said: ${response.reply}`);
@@ -138,6 +139,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       },
     });
     layout.leftPanelEl().append(panel.element);
+    currentDocumentId = () => panel.currentDocumentId();
 
     runDeleteDocument = () => {
       void openDeleteDocumentPicker(options.api!).then((selection) => {

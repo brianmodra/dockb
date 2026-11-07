@@ -21,10 +21,10 @@ class _StubService:  # pylint: disable=too-few-public-methods
     def __init__(self, reply: str = "the reply", error: Exception | None = None) -> None:
         self.reply = reply
         self.error = error
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, str | None]] = []
 
-    def complete(self, prompt: str, account_id: str = "") -> str:
-        self.calls.append((prompt, account_id))
+    def complete(self, prompt: str, account_id: str = "", document_id: str | None = None) -> str:
+        self.calls.append((prompt, account_id, document_id))
         if self.error is not None:
             raise self.error
         return self.reply
@@ -53,7 +53,7 @@ class TestChatRoute:
         resp = self.client.post("/api/ai/chat", json={"prompt": "hello"})
         assert resp.status_code == 200
         assert resp.json() == {"reply": "answer"}
-        assert self.service is not None and self.service.calls == [("hello", "account-0")]
+        assert self.service is not None and self.service.calls == [("hello", "account-0", None)]
 
     def test_without_a_service_answers_503(self) -> None:
         resp = self.client.post("/api/ai/chat", json={"prompt": "hello"})
@@ -79,4 +79,10 @@ class TestChatRoute:
         self._wire(_StubService("answer"), owner="account-9")
         resp = self.client.post("/api/ai/chat", json={"prompt": "hello"})
         assert resp.status_code == 200
-        assert self.service is not None and self.service.calls == [("hello", "account-9")]
+        assert self.service is not None and self.service.calls == [("hello", "account-9", None)]
+
+    def test_the_open_document_rides_with_the_prompt(self) -> None:
+        self._wire(_StubService("answer"))
+        resp = self.client.post("/api/ai/chat", json={"prompt": "hello", "document_id": "d1"})
+        assert resp.status_code == 200
+        assert self.service is not None and self.service.calls == [("hello", "account-0", "d1")]

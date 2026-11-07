@@ -31,6 +31,9 @@ _INSTRUCTIONS = (
     "directly whenever you need the user's manuscript — the endpoint is at "
     "{server_url} and its authorization is carried for you on the tool."
 )
+_DOCUMENT_INSTRUCTIONS = (
+    " The user is viewing the manuscript whose document_id is " + '"{document_id}"; use it as the tools\' document_id argument.'
+)
 
 
 class MissingApiKeyError(RuntimeError):
@@ -48,11 +51,13 @@ class AiChatService:  # pylint: disable=too-few-public-methods
         self._complete = complete if complete is not None else self._default_complete
         self._token_issuer = token_issuer
 
-    def complete(self, prompt: str, account_id: str = "") -> str:
+    def complete(self, prompt: str, account_id: str = "", document_id: str | None = None) -> str:
         """Send *prompt* to the model and return its reply text.
 
         *account_id* scopes the per-prompt MCP bearer token minted for the
         call; without a public MCP URL the prompt is sent without MCP.
+        *document_id* names the manuscript the user has open, so the model is
+        told which document its tool calls should read.
         """
         token: str | None = None
         server_url: str | None = None
@@ -61,16 +66,25 @@ class AiChatService:  # pylint: disable=too-few-public-methods
         if issuer is not None and public_url and public_url.strip():
             token = issuer.mint(uuid.uuid4().hex, account_id)
             server_url = f"{public_url.rstrip('/')}/mcp"
-        return str(self._complete(prompt, token, server_url))
+        return str(self._complete(prompt, token, server_url, document_id))
 
-    def _default_complete(self, prompt: str, token: str | None, server_url: str | None) -> str:
+    def _default_complete(
+        self,
+        prompt: str,
+        token: str | None,
+        server_url: str | None,
+        document_id: str | None = None,
+    ) -> str:
         """One responses call with the configured model; MCP tool when it runs."""
         key = os.environ.get(_KEY_ENV_VAR)
         if not key or not key.strip():
             raise MissingApiKeyError("OPENAI_API_KEY is not set")
         payload: dict[str, Any] = {"model": os.environ.get(_MODEL_ENV_VAR, _DEFAULT_MODEL)}
         if server_url and token:
-            payload["instructions"] = _INSTRUCTIONS.format(label=_MCP_SERVER_LABEL, server_url=server_url)
+            instructions = _INSTRUCTIONS.format(label=_MCP_SERVER_LABEL, server_url=server_url)
+            if document_id:
+                instructions += _DOCUMENT_INSTRUCTIONS.format(document_id=document_id)
+            payload["instructions"] = instructions
             payload["tools"] = [
                 {
                     "type": "mcp",
