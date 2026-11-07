@@ -13,9 +13,11 @@ current order, on the server, and a chapter's POV names one of its document's ch
 title — and inside the text a paragraph's right-click marks it as a quote (Reading or
 Writing), which renders indented and saves through the same chapter save. Above the text sits
 a read-only identity line — the chapter's title, its POV, or a character's name parts — kept
-current with the front matter. A chat line at the bottom of the message panel sends a typed
-prompt to the AI through the server, and the panel's seams resize with the mouse in the
-direction the mouse moves.
+current with the front matter. At the bottom of the window the message panel keeps a rolling
+log of chat prompts and model replies: a typed prompt moves into the log, the model's answer
+appears beneath it as text lines and clickable buttons, and when the answer names a paragraph
+a button opens that chapter and highlights the sentence, all through the server. The panel's
+seams resize with the mouse in the direction the mouse moves.
 
 Read it to run the app, to find which file owns the chapter list, the editor, the chat line,
 login, and the way back out of a session — **File → Sign out** clears what the session owned and

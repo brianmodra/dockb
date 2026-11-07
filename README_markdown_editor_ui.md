@@ -7,7 +7,9 @@ and the dialogs, so someone new can see what the writer sees and why each click 
 including how a writer signs out: the File menu offers to save unsaved work first, then ends the
 session and brings the sign-in screen back rather than closing the window. The edit panel also
 carries an un-editable identity line — a character's name parts, or a chapter's title and its
-point-of-view character — that scrolls with the text and is refreshed from the front matter.
+point-of-view character — that scrolls with the text and is refreshed from the front matter,
+and the message panel under it keeps the chat history with the AI: prompts, replies, and the
+reply's buttons that highlight the paragraphs the model found.
 
 The window only sends text to the server and gets text back. It never touches files. How the files
 and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
@@ -278,7 +280,8 @@ The open questions in earlier revisions have been settled:
   (`README_auth.md`), not a local Electron `appData` file.
 - **Acts** — grouping headers only, not model entities; membership comes from each chapter's `act`
   front-matter attribute, adopted server-side when a chapter is moved.
-- **Message panel** — the console for save results, errors, and delivered diagnostics, plus further
-  message kinds to be designed later.
+- **Message panel** — the console for save results, errors, delivered diagnostics, and the AI
+  chat: prompts move into the rolling log, the model replies below them in the response syntax
+  (`frontend/src/renderer/layout/README_response_area.md`).
 - **Move-mode cancellation** — Esc or a click outside the list.
 - **Menubar** — in-window (HTML), not the native Electron menu.
