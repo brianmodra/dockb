@@ -1,4 +1,4 @@
-import { EditorState, Plugin, PluginKey, type Command } from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, TextSelection, type Command } from "prosemirror-state";
 import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import { Schema, type Node } from "prosemirror-model";
 import { baseKeymap, splitBlock } from "prosemirror-commands";
@@ -473,6 +473,89 @@ export class WysiwygView {
     const types: string[] = [];
     this.innerView.state.doc.forEach((paragraph) => types.push(paragraph.attrs.quoteType ?? ""));
     return types.join("\u241F");
+  }
+
+  /** The position spans of the sentences of one paragraph node, in content coordinates. */
+  private sentenceRanges(paragraph: Node): Array<{ from: number; to: number }> {
+    const ranges: Array<{ from: number; to: number }> = [];
+    let start = 0;
+    let pos = 0;
+    paragraph.forEach((child) => {
+      const childStart = pos;
+      pos += child.nodeSize;
+      const breaks =
+        child.isText &&
+        child.text === " " &&
+        child.marks.some((mark) => mark.type.name === SENTENCE_BREAK)
+          ? true
+          : child.type.name === "hardBreak";
+      if (breaks) {
+        ranges.push({ from: start, to: childStart });
+        start = pos;
+      }
+    });
+    ranges.push({ from: start, to: pos });
+    return ranges.filter((range) => range.from < range.to);
+  }
+
+  /** The text the current selection spans, joined by spaces at paragraph bounds. */
+  selectedText(): string {
+    if (!this.innerView) {
+      return "";
+    }
+    const { from, to } = this.innerView.state.selection;
+    return this.innerView.state.doc.textBetween(from, to, " ");
+  }
+
+  /**
+   * Select a paragraph's sentence — the whole paragraph without an index — as
+   * if the mouse had dragged over it, scrolled into view.
+   *
+   * The paragraph is found by its id (the one carried in the canonical span);
+   * the sentence index counts the non-empty sentence runs, the same order the
+   * wire format's sentences keep. An index past the paragraph's last sentence
+   * selects that last one. Unknown paragraph, unmounted view, or a paragraph
+   * with no sentences answer false and leave the selection alone.
+   */
+  selectSentence(paragraphId: string, sentenceIndex: number | null): boolean {
+    if (!this.innerView) {
+      return false;
+    }
+    const doc = this.innerView.state.doc;
+    let paragraphPos: number | null = null;
+    doc.forEach((node, offset) => {
+      if (
+        paragraphPos === null &&
+        node.type.name === "paragraph" &&
+        node.attrs.id === paragraphId
+      ) {
+        paragraphPos = offset;
+      }
+    });
+    if (paragraphPos === null) {
+      return false;
+    }
+    const paragraph = doc.nodeAt(paragraphPos);
+    if (!paragraph) {
+      return false;
+    }
+    const contentStart = paragraphPos + 1;
+    let from = contentStart;
+    let to = contentStart + paragraph.content.size;
+    if (sentenceIndex !== null) {
+      const ranges = this.sentenceRanges(paragraph);
+      if (ranges.length === 0) {
+        return false;
+      }
+      const clamped = Math.min(Math.max(sentenceIndex, 0), ranges.length - 1);
+      from = contentStart + ranges[clamped].from;
+      to = contentStart + ranges[clamped].to;
+    }
+    const tr = this.innerView.state.tr;
+    tr.setSelection(TextSelection.create(doc, Math.min(from, to), Math.max(from, to)));
+    tr.scrollIntoView();
+    this.innerView.dispatch(tr);
+    return true;
   }
 
   destroy(): void {

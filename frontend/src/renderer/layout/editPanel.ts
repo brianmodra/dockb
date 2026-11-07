@@ -173,6 +173,20 @@ export class EditPanel {
     return this.lastCanonicalText;
   }
 
+  /** The chapter whose document the panel is showing, if any. */
+  currentChapter(): string | null {
+    return this.chapterId;
+  }
+
+  /**
+   * Select one sentence of a paragraph as the WYSIWYG view shows it, so a
+   * reply's highlight button can point the writer at it. The raw view has no
+   * sentences (the canonical file is its content), so there it answers false.
+   */
+  selectSentence(paragraphId: string, sentenceIndex: number | null): boolean {
+    return this.mode === "wysiwyg" && this.wysiwyg.selectSentence(paragraphId, sentenceIndex);
+  }
+
   getLanguage(): string {
     return this.wysiwyg.getLanguage();
   }

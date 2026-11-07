@@ -136,7 +136,7 @@ describe("renderer shell", () => {
       (el) => el.textContent === "Highlight sentence",
     );
     expect(found).not.toBeNull();
-    expect(found?.disabled).toBe(true);
+    expect(found?.disabled).toBe(false);
     expect(chat.hidden).toBe(false);
   });
 
@@ -153,6 +153,66 @@ describe("renderer shell", () => {
     const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
     expect(panel.textContent).toContain("plain prose answer");
     expect(panel.querySelectorAll(".response-line")).toHaveLength(0);
+  });
+
+  it("runs the reply's highlight button: opens the chapter and selects the sentence", async () => {
+    const chapterWire = {
+      type: "chapter",
+      attrs: { id: "c1", title: "Opening 1", act: "" },
+      content: [
+        {
+          type: "paragraph",
+          attrs: { id: "p1" },
+          content: [
+            {
+              type: "sentence",
+              attrs: { id: "s1" },
+              content: [{ type: "text", text: "Rain fell on the plain." }],
+            },
+          ],
+        },
+      ],
+    };
+    const getChapter = vi.fn(async () => chapterWire);
+    const { api, bridge } = localModeApi({
+      getChapter,
+      getChapterDocument: vi.fn(async () => ({
+        content: '<span data-par-id="p1">\nRain fell on the plain.\n</span>',
+        summary: null,
+      })),
+      sendPrompt: vi.fn(
+        async () =>
+          ({
+            reply: JSON.stringify({
+              response: [
+                { button: { label: "Highlight sentence", function: "highlight", args: {
+                  chapter_id: "c1",
+                  paragraph_id: "p1",
+                  sentence_id: "s1",
+                } } },
+              ],
+            }),
+          }) as never,
+      ),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "highlight one";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const button = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']"),
+    ).find((el) => el.textContent === "Highlight sentence")!;
+    button.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(getChapter).toHaveBeenCalledWith("c1");
+    expect(
+      document.querySelector<HTMLElement>("[data-testid='wysiwyg-view']")?.textContent,
+    ).toContain("Rain fell on the plain.");
   });
 
   it("routes a chat failure into the message panel", async () => {

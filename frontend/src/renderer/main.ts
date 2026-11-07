@@ -1,5 +1,6 @@
 import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
+import type { ChapterNode } from "./api/types";
 import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { parseResponseReply } from "./layout/responseArea";
@@ -46,6 +47,21 @@ async function sendImport(
   }
 }
 
+function findSentenceIndex(
+  chapter: ChapterNode,
+  paragraphId: string,
+  sentenceId: string,
+): number | null {
+  for (const paragraph of chapter.content) {
+    if (paragraph.attrs.id !== paragraphId) {
+      continue;
+    }
+    const index = paragraph.content.findIndex((sentence) => sentence.attrs.id === sentenceId);
+    return index === -1 ? null : index;
+  }
+  return null;
+}
+
 export function mountShell(root: HTMLElement, options: MountShellOptions = {}): AppLayout {
   root.replaceChildren();
 
@@ -57,6 +73,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runEditDocument: () => void = () => {};
   let runEditChapter: () => void = () => {};
   let currentDocumentId: () => string | null = () => null;
+  let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
@@ -112,6 +129,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           reportError("AI chat", error, (text) => layout.pushMessage(text));
         });
     },
+    responseFunctions: {
+      highlight: (args) => void runHighlight(args),
+    },
   });
   root.append(layout.element);
 
@@ -146,6 +166,45 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
     currentDocumentId = () => panel.currentDocumentId();
+
+    /**
+     * A reply's highlight button: open the names chapter (saving the dirty open
+     * buffer first), then select the named sentence — the whole paragraph when
+     * no sentence was named — scrolled into view.
+     */
+    runHighlight = async (rawArgs: unknown): Promise<void> => {
+      const args = (typeof rawArgs === "object" && rawArgs !== null ? rawArgs : {}) as {
+        chapter_id?: unknown;
+        paragraph_id?: unknown;
+        sentence_id?: unknown;
+      };
+      const chapterId = typeof args.chapter_id === "string" ? args.chapter_id : null;
+      const paragraphId = typeof args.paragraph_id === "string" ? args.paragraph_id : null;
+      if (!chapterId || !paragraphId || !options.api || !editPanel) {
+        layout.pushMessage("The AI's highlight button is missing its chapter or paragraph.");
+        return;
+      }
+      try {
+        if (editPanel.currentChapter() !== chapterId) {
+          panel.select(chapterId);
+          await editPanel.open(chapterId);
+        }
+        let sentenceIndex: number | null = null;
+        if (typeof args.sentence_id === "string") {
+          const chapter = await options.api.getChapter(chapterId);
+          sentenceIndex = findSentenceIndex(chapter, paragraphId, args.sentence_id);
+          if (sentenceIndex === null) {
+            layout.pushMessage("That sentence is not in the manuscript any more.");
+            return;
+          }
+        }
+        if (!editPanel.selectSentence(paragraphId, sentenceIndex)) {
+          layout.pushMessage("Highlighting works in WYSIWYG chapters.");
+        }
+      } catch (error) {
+        reportError("Highlight", error, (text) => layout.pushMessage(text));
+      }
+    }
 
     runDeleteDocument = () => {
       void openDeleteDocumentPicker(options.api!).then((selection) => {

@@ -169,7 +169,10 @@ DOM as HTML.
   the suggested character's title and prints the warning, staying open; an
   empty name clears. Save/read warnings (an invalid or dangling `pov`) pop a
   warning dialog. Exposes the selected chapter and a reload that keeps the
-  selection.
+  selection. The AI's reply buttons edit in the same panel:
+  `EditPanel.selectSentence` (see `layout/README_response_area.md`) opens the
+  chapter the reply named and selects one of its sentences, or a whole
+  paragraph, in the WYSIWYG view.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a

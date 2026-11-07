@@ -46,6 +46,17 @@ the message log. A button naming no registry function renders disabled.
 the button's `args` value. The renderer supplies it; the args are data, so a reply can never run
 code. Names and their functions are specified with the functions themselves.
 
+## `highlight` — the registry's first function
+
+`highlight(chars?: never)` — its args are `{ "chapter_id": "...", "paragraph_id": "...",
+"sentence_id": "..." }`; the chapter and paragraph ids are required, the sentence id optional.
+It opens the named chapter in the editor when it isn't open already (saving the dirty open
+buffer first, exactly a chapter-row click would), scrolls the paragraph into view, and selects
+the sentence as if the mouse had dragged over it — the whole paragraph when no sentence was
+named. A button missing either required id, a sentence id the manuscript no longer has, or a
+raw-mode editor (the canonical file text, where sentences don't exist as selections) reports why
+it did nothing in the message log instead of silently staying put.
+
 ## Security
 
 The reply arrives from the model, i.e. from outside the editor. It never enters the DOM as
