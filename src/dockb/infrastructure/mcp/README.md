@@ -77,8 +77,8 @@ is parsed, so an unauthenticated request never reaches a handler. Non-HTTP scope
 
 ### `create_mcp_app`
 
-`create_mcp_app(issuer, *, allowed_hosts, chapter_repo, document_repo, search_repo,
-mentions_repo)` returns the application the public listener serves: an MCP server
+`create_mcp_app(issuer, *, allowed_hosts, chapter_repo, document_repo, search_repo)`
+returns the application the public listener serves: an MCP server
 carrying **only the manuscript tools**, mounted so its endpoint is the
 one route at `/mcp`, with the middleware above in front of it and a lifespan that
 starts the MCP session manager. It mounts no manuscript router and serves no

@@ -3,6 +3,8 @@
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
@@ -175,7 +177,6 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
         {"type": "word", "word": "murder"},
         search_repo=search_repo,
         chapter_repo=chapter_repo,
-        document_repo=MagicMock(),
         owner="acct-1",
     )
 
@@ -227,7 +228,6 @@ def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
         },
         search_repo=_StubSearchRepo(rows=[multi]),
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
     assert found[0]["matched_sentence_ids"] == ["s1", "s2"]
@@ -248,7 +248,6 @@ def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
             ],
         },
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
     # the two words live in different sentences here: nothing is marked, and the
@@ -274,61 +273,10 @@ def test_find_paragraphs_marks_a_sentence_whose_text_leaf_is_a_substring() -> No
         {"type": "text", "text": "was discovered"},
         search_repo=_StubSearchRepo(rows=[multi]),
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
     assert found[0]["matched_sentence_ids"] == ["s1"]
     assert found[0]["matched_sentence_indexes"] == [0]
-
-
-def test_sentence_marking_runs_every_lookup_before_the_mentions_job_starts(monkeypatch) -> None:
-    """The mentions job runs on a daemon thread sharing the tool's session.
-
-    The tool asks the database — compiling the character leaves may resolve a
-    name through the repositories — so every lookup must finish before the job
-    is spawned: two threads on one session corrupt the driver's connection
-    (a BufferError in the wild).
-    """
-    from dockb.services import mcp_queries as module
-
-    events: list[str] = []
-    chapter_repo = MagicMock()
-
-    def noting(*_args: Any, **_kwargs: Any) -> dict[str, str]:
-        events.append("resolve")
-        return {"id": "k1", "title": "Karakas"}
-
-    chapter_repo.find_character_by_name.side_effect = noting
-    monkeypatch.setattr(module, "run_mentions_async", lambda job: events.append("job"))
-    search_repo = _StubSearchRepo(
-        directory=[{"id": "k1", "title": "Karakas", "first_name": "K", "surname": "Karakas", "nicknames": ["Adams"]}],
-        rows=[
-            {
-                "id": "p1",
-                "quote_type": "",
-                "index": 0,
-                "chapter_id": "c1",
-                "chapter_title": "Opening 1",
-                "sentences": [{"id": "s1", "text": "Adams closed the door."}],
-            }
-        ],
-    )
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = [{"id": "p1", "state": 1}]
-
-    find_paragraphs_payload(
-        "d1",
-        {"type": "character", "character": "Adams"},
-        search_repo=search_repo,
-        chapter_repo=chapter_repo,
-        document_repo=MagicMock(),
-        owner="acct-1",
-        mentions_repo=mentions_repo,
-    )
-
-    assert "resolve" in events
-    assert events[-1] == "job"
-    assert all(event == "resolve" for event in events[:-1])
 
 
 def test_find_paragraphs_marks_the_sentences_the_search_terms_select() -> None:
@@ -361,7 +309,6 @@ def test_find_paragraphs_marks_the_sentences_the_search_terms_select() -> None:
             rows=[multi],
         ),
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
     assert found[0]["matched_sentence_ids"] == ["s2"]
@@ -387,7 +334,6 @@ def test_find_paragraphs_marks_no_sentence_when_only_characters_were_searched() 
             rows=[multi],
         ),
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
     # a paragraph-wide person verdict cannot name a sentence: highlight the paragraph
@@ -402,7 +348,6 @@ def test_find_paragraphs_refuses_an_unknown_document_before_searching() -> None:
         {"type": "word", "word": "murder"},
         search_repo=search_repo,
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
 
@@ -418,7 +363,6 @@ def test_find_paragraphs_excludes_character_chapters_unless_asked() -> None:
         {"type": "word", "word": "murder"},
         search_repo=search_repo,
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
     )
     find_paragraphs_payload(
@@ -426,7 +370,6 @@ def test_find_paragraphs_excludes_character_chapters_unless_asked() -> None:
         {"type": "word", "word": "murder"},
         search_repo=search_repo,
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
         include_characters=True,
     )
@@ -446,7 +389,6 @@ def test_find_paragraphs_resolves_a_character_through_the_directory() -> None:
         {"type": "character", "character": "Kiral"},
         search_repo=search_repo,
         chapter_repo=chapter_repo,
-        document_repo=MagicMock(),
         owner="acct-1",
     )
 
@@ -470,7 +412,6 @@ def test_find_paragraphs_resolves_a_character_by_title_without_a_name_search() -
         {"type": "character", "character": "karakas"},
         search_repo=search_repo,
         chapter_repo=chapter_repo,
-        document_repo=MagicMock(),
         owner="acct-1",
     )
 
@@ -481,76 +422,37 @@ def test_find_paragraphs_resolves_a_character_by_title_without_a_name_search() -
 def test_find_paragraphs_compiles_the_cache_branch_for_a_resolved_character() -> None:
     """The compiled leaf reads the mentions cache first, inline names second."""
     search_repo = _StubSearchRepo(directory=[{"id": "k1", "title": "Karakas", "first_name": "Karakas", "surname": "", "nicknames": []}])
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = [
-        {"id": "p1", "state": 3, "mentions": ["k1"]},  # the cache says: a mention of k1
-        {"id": "p2", "state": 2, "mentions": []},  # evaluated: mentions nobody
-    ]
 
     find_paragraphs_payload(
         "d1",
         {"type": "character", "character": "Karakas"},
         search_repo=search_repo,
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="acct-1",
-        mentions_repo=mentions_repo,
     )
 
     assert "checked IS NOT NULL AND NOT hasStale AND $p0 IN valid" in search_repo.calls[0]["where"]
     assert "any(n IN $p1 WHERE text =~ n)" in search_repo.calls[0]["where"]
 
 
-def test_find_paragraphs_enqueues_the_evaluation_of_the_un_evaluated() -> None:
-    from dockb.services import mcp_queries
+def test_find_paragraphs_does_not_evaluate_anything() -> None:
+    """A search only reads: it takes no mentions repository and judges nothing.
 
+    The evaluation is the save trigger's or the sweep operator's job — never
+    a search's — so the search no longer knows how to start one.
+    """
     search_repo = _StubSearchRepo()
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = [
-        {"id": "p1", "state": 1, "mentions": []},
-        {"id": "p2", "state": 4, "mentions": []},
-    ]
-    enqueued = []
-    original = mcp_queries.run_mentions_async
-    mcp_queries.run_mentions_async = enqueued.append
 
-    found = find_paragraphs_payload(
-        "d1",
-        {"type": "character", "character": "Karakas"},
-        search_repo=search_repo,
-        chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
-        owner="acct-1",
-        mentions_repo=mentions_repo,
-    )
-
-    mcp_queries.run_mentions_async = original
-    assert len(enqueued) == 1  # the document-wide evaluation is queued
-    assert found == []  # nothing matched: the search itself never waits on the model
-
-
-def test_find_paragraphs_enqueues_nothing_for_a_word_only_search() -> None:
-    from dockb.services import mcp_queries
-
-    search_repo = _StubSearchRepo()
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = [{"id": "p1", "state": 1, "mentions": []}]
-    enqueued = []
-    original = mcp_queries.run_mentions_async
-    mcp_queries.run_mentions_async = enqueued.append
-
-    find_paragraphs_payload(
-        "d1",
-        {"type": "word", "word": "murder"},
-        search_repo=search_repo,
-        chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
-        owner="acct-1",
-        mentions_repo=mentions_repo,
-    )
-
-    mcp_queries.run_mentions_async = original
-    assert not enqueued  # word leaves read no mentions cache, so none is refreshed
+    with pytest.raises(TypeError):  # the mentions_repo argument no longer exists
+        find_paragraphs_payload(  # pylint: disable=unexpected-keyword-arg
+            "d1",
+            {"type": "character", "character": "Karakas"},
+            search_repo=search_repo,
+            chapter_repo=MagicMock(),
+            owner="acct-1",
+            mentions_repo=MagicMock(),
+        )
+    assert not search_repo.calls  # an unbound keyword rejects the call before any search runs
 
 
 def test_find_paragraphs_of_an_unowned_document_is_none() -> None:
@@ -562,7 +464,6 @@ def test_find_paragraphs_of_an_unowned_document_is_none() -> None:
         {"type": "word", "word": "murder"},
         search_repo=search_repo,
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         owner="other",
     )
     assert found is None

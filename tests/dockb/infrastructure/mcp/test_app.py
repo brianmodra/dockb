@@ -37,7 +37,6 @@ def _client(issuer: PromptTokenIssuer) -> TestClient:
             issuer,
             allowed_hosts=["testserver", "testserver:*", "localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*"],
             chapter_repo=MagicMock(),
-            document_repo=MagicMock(),
             search_repo=MagicMock(),
         )
     )
@@ -157,7 +156,6 @@ def test_a_disallowed_host_is_rejected() -> None:
         issuer,
         allowed_hosts=["only.example.com", "only.example.com:*"],
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         search_repo=MagicMock(),
     )
     with TestClient(app, base_url="http://other.example.net") as client:
@@ -173,7 +171,6 @@ async def test_the_manuscript_tools_are_listed_with_a_valid_token() -> None:
         issuer,
         allowed_hosts=["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*", "testserver", "testserver:*"],
         chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
         search_repo=MagicMock(),
     )
 

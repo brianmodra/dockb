@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field
 
 from dockb.infrastructure.mcp.auth import get_account_id
 from dockb.repositories.chapter_repository import ChapterRepository
-from dockb.repositories.document_repository import DocumentRepository
 from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
 from dockb.services.mcp_queries import find_paragraphs_payload, get_chapter_payload
 
@@ -84,9 +83,7 @@ def mount_tools(
     mcp: MCPServer,
     *,
     chapter_repo: ChapterRepository,
-    document_repo: DocumentRepository,
     search_repo: ParagraphSearchRepository,
-    mentions_repo: Any | None = None,
 ) -> None:
     """Register the manuscript tools on *mcp*."""
 
@@ -153,10 +150,8 @@ def mount_tools(
             tree,
             search_repo=search_repo,
             chapter_repo=chapter_repo,
-            document_repo=document_repo,
             owner=account,
             include_characters=include_characters,
-            mentions_repo=mentions_repo,
         )
         if found is None:
             raise ToolError("no such document for this account")

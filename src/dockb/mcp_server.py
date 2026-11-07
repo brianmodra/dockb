@@ -24,9 +24,7 @@ from starlette.types import ASGIApp
 from dockb.app_factory import create_app
 from dockb.composition import (
     get_mcp_chapter_repo,
-    get_mcp_document_repo,
     get_mcp_issuer,
-    get_mcp_mentions_repo,
     get_mcp_search_repo,
     resolve_document_base_dir,
     unwire,
@@ -89,9 +87,7 @@ def build_mcp_app() -> ASGIApp:
         get_mcp_issuer(),
         allowed_hosts=mcp_allowed_hosts(),
         chapter_repo=get_mcp_chapter_repo(),
-        document_repo=get_mcp_document_repo(),
         search_repo=get_mcp_search_repo(),
-        mentions_repo=get_mcp_mentions_repo(),
     )
 
 

@@ -144,7 +144,6 @@ class TestServers:
             issuer,
             allowed_hosts=["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*"],
             chapter_repo=MagicMock(),
-            document_repo=MagicMock(),
             search_repo=MagicMock(),
         )
         loopback_app = Starlette(routes=[Route("/api/health", lambda _request: JSONResponse({"ok": True}))])

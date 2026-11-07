@@ -43,7 +43,6 @@ from dockb.models.sentence import Sentence
 from dockb.passwords import pepper_from
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
-from dockb.repositories.mentions_repository import MentionsRepository
 from dockb.repositories.paragraph_repository import ParagraphRepository
 from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
 from dockb.repositories.sentence_repository import SentenceRepository
@@ -63,8 +62,6 @@ _wired_factory: Any | None = None
 _mcp_issuer: PromptTokenIssuer | None = None
 
 _mcp_chapter_repo: Any | None = None
-_mcp_document_repo: Any | None = None
-_mcp_mentions_repo: Any | None = None
 _mcp_search_repo: Any | None = None
 
 _DOCUMENTS_DIR_NAME = "dockb_chapters_dir"
@@ -88,16 +85,6 @@ def get_mcp_chapter_repo() -> Any:
     return _mcp_chapter_repo
 
 
-def get_mcp_document_repo() -> Any:
-    """Return the document repository the MCP tools read through, or None when unwired."""
-    return _mcp_document_repo
-
-
-def get_mcp_mentions_repo() -> Any:
-    """Return the mentions repository the MCP tools read through, or None when unwired."""
-    return _mcp_mentions_repo
-
-
 def get_mcp_search_repo() -> Any:
     """Return the paragraph-search repository the MCP tools read through, or None when unwired."""
     return _mcp_search_repo
@@ -105,15 +92,11 @@ def get_mcp_search_repo() -> Any:
 
 def set_mcp_repos(
     chapter_repo: Any | None,
-    document_repo: Any | None,
-    mentions_repo: Any | None = None,
     search_repo: Any | None = None,
 ) -> None:
     """Set (or clear) the repositories the MCP tools read through."""
-    global _mcp_chapter_repo, _mcp_document_repo, _mcp_mentions_repo, _mcp_search_repo  # noqa: PLW0603
+    global _mcp_chapter_repo, _mcp_search_repo  # noqa: PLW0603
     _mcp_chapter_repo = chapter_repo
-    _mcp_document_repo = document_repo
-    _mcp_mentions_repo = mentions_repo
     _mcp_search_repo = search_repo
 
 
@@ -259,7 +242,7 @@ def wire(  # pylint: disable=too-many-locals
     set_sent_service(sent_svc)
     set_session_context(ctx)
     set_mcp_issuer(PromptTokenIssuer())
-    set_mcp_repos(repos[Chapter], repos[Document], MentionsRepository(session), ParagraphSearchRepository(session))
+    set_mcp_repos(repos[Chapter], ParagraphSearchRepository(session))
     set_mint_issuer(get_mcp_issuer())
     set_mint_secret(os.environ.get("DOCKB_SECRET_KEY"))
 
@@ -288,7 +271,7 @@ def unwire() -> None:
     set_history_service(None)
     set_import_service(None)
     set_mcp_issuer(None)
-    set_mcp_repos(None, None, None, None)
+    set_mcp_repos(None, None)
     set_mint_issuer(None)
     set_mint_secret(None)
     if _stack is not None:

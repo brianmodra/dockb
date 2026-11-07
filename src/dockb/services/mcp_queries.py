@@ -18,7 +18,6 @@ from typing import Any
 
 from dockb.services.chapter_json import load_chapter_payload
 from dockb.services.criteria_cypher import compile_criteria
-from dockb.services.mentions import MentionsJob, run_mentions_async
 
 Criterion = dict[str, Any]
 
@@ -60,10 +59,8 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
     *,
     search_repo: Any,
     chapter_repo: Any,
-    document_repo: Any,
     owner: str,
     include_characters: bool = False,
-    mentions_repo: Any | None = None,
 ) -> list[dict[str, object]] | None:
     """The paragraphs of *document_id* the criteria tree selects, in reading order.
 
@@ -78,10 +75,10 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
 
     A character criterion is answered in the same query: from the MENTIONS
     cache where the paragraph was evaluated (states 2 and 3), and by tier-1
-    inline name matching otherwise (states 1 and 4). When the document still
-    has unevaluated paragraphs and the tree reads a character leaf, the full
-    evaluation is enqueued as the async job — the answer never waits on the
-    model, and later searches see its verdicts.
+    inline name matching otherwise (states 1 and 4). The search only reads —
+    it never evaluates: the save trigger and the sweep operator decide when
+    the pending paragraphs' verdicts are computed, so an ambiguous name stays
+    unsettled in search answers until then.
     """
     if not search_repo.document_exists(document_id, owner):
         return None
@@ -114,23 +111,6 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
     )
 
     search_answer = [_row_payload(row, criteria) for row in rows]
-
-    states: dict[str, dict[str, Any]] = {}
-    if mentions_repo is not None and _has_character_leaf(criteria):
-        states = {state["id"]: state for state in mentions_repo.paragraph_states(owner, document_id=document_id)}
-        if any(row["state"] in (1, 4) for row in states.values()):
-            # the job runs on a daemon thread sharing this request's session;
-            # it is spawned only when the tool asks the session for no more,
-            # because two threads on one session corrupt the connection.
-            run_mentions_async(
-                MentionsJob(
-                    document_id=document_id,
-                    mentions_repo=mentions_repo,
-                    chapter_repo=chapter_repo,
-                    document_repo=document_repo,
-                    owner=owner,
-                )
-            )
     return search_answer
 
 
@@ -204,12 +184,6 @@ def _selects_sentence(criterion: Criterion, text: str) -> bool:
     if kind == "character":
         return True
     return False
-
-
-def _has_character_leaf(criteria: Criterion) -> bool:
-    if criteria.get("type") == "character":
-        return True
-    return any(_has_character_leaf(child) for child in criteria.get("criteria") or [])
 
 
 def get_chapter_payload(

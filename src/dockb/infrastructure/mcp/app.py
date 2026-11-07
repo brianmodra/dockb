@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -23,7 +22,6 @@ from dockb.infrastructure.mcp.auth import BearerAuthMiddleware
 from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
 from dockb.infrastructure.mcp.tools import mount_tools
 from dockb.repositories.chapter_repository import ChapterRepository
-from dockb.repositories.document_repository import DocumentRepository
 from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
 
 
@@ -32,9 +30,7 @@ def create_mcp_app(  # pylint: disable=too-many-arguments,too-many-positional-ar
     *,
     allowed_hosts: Sequence[str],
     chapter_repo: ChapterRepository,
-    document_repo: DocumentRepository,
     search_repo: ParagraphSearchRepository,
-    mentions_repo: Any | None = None,
 ) -> Starlette:
     """Return the ASGI application the public listener serves.
 
@@ -47,9 +43,7 @@ def create_mcp_app(  # pylint: disable=too-many-arguments,too-many-positional-ar
     mount_tools(
         mcp,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         search_repo=search_repo,
-        mentions_repo=mentions_repo,
     )
     security = TransportSecuritySettings(allowed_hosts=list(allowed_hosts))
     mcp_app = mcp.streamable_http_app(transport_security=security)

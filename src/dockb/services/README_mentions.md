@@ -95,11 +95,11 @@ whole criteria tree into one Cypher query (`services/criteria_cypher.py` and
 reconstructed in the database, and a character criterion is answered there —
 state 2 and 3 paragraphs from their cached verdicts (the MENTIONS
 relationships), state 1 and 4 paragraphs by **tier 1 inline** whole-word name
-matching. The full evaluation, including tier 2 and tier 3, is enqueued as the
-async job whenever the tree reads a character leaf and unevaluated paragraphs
-remain, so the next search sees the model's verdicts. A search therefore never
-waits on the model, never materializes the manuscript into Python, and its
-results self-improve.
+matching. The search is read-only over the verdicts: it takes no mentions
+repository and never starts an evaluation. Ambiguous names stay unsettled in
+search answers until a save trigger or a sweep computes the verdicts. A search
+therefore never calls the model, never materializes the manuscript into
+Python, and never delays: what it answers reflects the cache as it stands.
 
 ## 6. Phase 2 work for later
 
