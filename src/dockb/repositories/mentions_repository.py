@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from neo4j import Session
+from dockb.infrastructure.neo4j.serialized_session import SessionLike
 
 _CHAPTER_STATES_CYPHER = """
 MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
@@ -117,7 +117,7 @@ class MentionsRepository:
     over the session, shaped around the four states.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: SessionLike) -> None:
         self._session = session
 
     def paragraph_states(

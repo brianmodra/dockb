@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from neo4j import Session
+from dockb.infrastructure.neo4j.serialized_session import SessionLike
 
 _MATCH_CYPHER = """
 MATCH (d:Document {id: $document_id, owner: $owner})
@@ -60,7 +60,7 @@ ORDER BY c.title
 class ParagraphSearchRepository:
     """Reads the paragraphs a compiled criteria expression selects, owner-scoped."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: SessionLike) -> None:
         self._session = session
 
     def document_exists(self, document_id: str, owner: str) -> bool:

@@ -1,7 +1,19 @@
 # Database sessions
 
-This package has a SessionFactory, and UnitOfWork class, and also a Repository base class/mixin
-for repository classes in @src/dockb/repositories
+This package has a SessionFactory, a UnitOfWork class, a SerializedSession, and a Repository
+base class/mixin for repository classes in @src/dockb/repositories
+
+## SerializedSession
+
+The application shares one session between every repository of the process — FastAPI's request
+threads, MCP tool calls, and the daemon-thread mentions jobs run through it at the same time —
+and a neo4j session is not thread-safe: two threads interleave the bolt protocol and corrupt the
+connection. `SerializedSession` shells the shared session in a re-entrant lock: one query runs
+start-to-finish (its rows buffered into a list) at a time, `begin_transaction` holds the lock
+across the whole with-block, and unknown attributes reach the raw session unchanged
+(`SessionLike` is what repository annotations accept, so a bare or a serialized session both
+pass). A slow process between two queries — an LLM evaluation, say — holds no lock:
+the lock belongs to each query, never to the caller.
 
 ## SessionFactory
 

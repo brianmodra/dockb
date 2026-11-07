@@ -17,7 +17,7 @@ so there is nothing to inject.
 
 from __future__ import annotations
 
-from neo4j import Session
+from dockb.infrastructure.neo4j.serialized_session import SessionLike
 
 _OWNED_CYPHER = """
 MATCH (n:{label} {{id: $id}})-[:PART_OF*1..3]->(d:Document {{owner: $owner}})
@@ -25,7 +25,7 @@ RETURN count(n) AS owned
 """
 
 
-def owned_node_exists(session: Session, label: str, node_id: str, owner: str) -> bool:
+def owned_node_exists(session: SessionLike, label: str, node_id: str, owner: str) -> bool:
     """Return whether *node_id* hangs under a Document owned by *owner*.
 
     *label* is the node's own label — ``Chapter``, ``Paragraph`` or ``Sentence`` — and

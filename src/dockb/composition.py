@@ -30,6 +30,7 @@ from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.document_store import DocumentStoreFactory
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
 from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
+from dockb.infrastructure.neo4j.serialized_session import SerializedSession
 from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.infrastructure.oauth.factory import providers_from_env
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
@@ -199,7 +200,10 @@ def wire(  # pylint: disable=too-many-locals
         return _ctx
     _stack = ExitStack()
     _wired_factory = session_factory
-    session = _stack.enter_context(session_factory.session())
+    # one session shared by every repository in the process; the serialized
+    # shell keeps its request threads, MCP tool calls, and the daemon-thread
+    # mentions jobs from interleaving on one bolt connection
+    session = SerializedSession(_stack.enter_context(session_factory.session()))
 
     repos: dict[type, Any] = {
         Document: DocumentRepository(session),

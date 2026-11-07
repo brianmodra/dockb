@@ -317,7 +317,7 @@ def test_sentence_marking_runs_every_lookup_before_the_mentions_job_starts(monke
     events: list[str] = []
     chapter_repo = MagicMock()
 
-    def noting(*args: Any, **kwargs: Any) -> dict[str, str]:
+    def noting(*_args: Any, **_kwargs: Any) -> dict[str, str]:
         events.append("resolve")
         return {"id": "k1", "title": "Karakas"}
 

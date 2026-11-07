@@ -4,8 +4,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
-from neo4j import Session
-
+from dockb.infrastructure.neo4j.serialized_session import SessionLike
 from dockb.models.base import DataState, DockbModel
 
 logger = logging.getLogger(__name__)
@@ -20,7 +19,7 @@ class BaseRepository(ABC, Generic[M]):  # pylint: disable=too-few-public-methods
     ``_delete_cypher`` properties and a ``_build_params`` method.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: SessionLike) -> None:
         self._session = session
 
     @staticmethod
