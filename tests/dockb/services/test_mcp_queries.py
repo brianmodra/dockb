@@ -1,5 +1,6 @@
 """The MCP find_paragraphs criteria tree and chapter lookups."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 from dockb.models.base import DataState
@@ -114,109 +115,200 @@ def test_the_nested_example_from_the_contract() -> None:
 # -- the document-level search --------------------------------------------
 
 
-def _search_service(document: Document):
+class _StubSearchRepo:
+    """The search repository: rows to return, and the calls they answered."""
+
+    def __init__(
+        self,
+        rows: list[dict[str, object]] | None = None,
+        directory: list[dict[str, object]] | None = None,
+        exists: bool = True,
+    ) -> None:
+        self.rows = rows if rows is not None else []
+        self.directory = directory or []
+        self.exists = exists
+        self.calls: list[dict[str, Any]] = []
+
+    def document_exists(self, document_id: str, owner: str) -> bool:  # pylint: disable=unused-argument
+        return self.exists
+
+    def character_directory(self, document_id: str, owner: str) -> list[dict[str, object]]:  # pylint: disable=unused-argument
+        return self.directory
+
+    def match_paragraphs(
+        self,
+        document_id: str,
+        owner: str,
+        *,
+        compiled: tuple[str, dict[str, Any]],
+        include_characters: bool,
+    ) -> list[dict[str, object]]:
+        self.calls.append(
+            {
+                "document_id": document_id,
+                "owner": owner,
+                "where": compiled[0],
+                "params": compiled[1],
+                "include_characters": include_characters,
+            }
+        )
+        return self.rows
+
+
+_ROW = {
+    "id": "p1",
+    "quote_type": "reading",
+    "index": 0,
+    "chapter_id": "c1",
+    "chapter_title": "Opening 1",
+    "chapter_index": 0,
+    "sentences": [{"id": "s1", "text": "The murder was discovered at dawn."}],
+}
+
+
+def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
+    search_repo = _StubSearchRepo(rows=[_ROW])
     chapter_repo = MagicMock()
-    chapter_repo.load.return_value = document.chapters[0]
-    chapter_repo.find_document_id.return_value = "d1"
-    chapter_repo.find_character_title.return_value = None
-    document_repo = MagicMock()
-    document_repo.load.return_value = document
-    return chapter_repo, document_repo
-
-
-def test_find_paragraphs_returns_payloads_with_chapter_and_position() -> None:
-    document = _document()
-    chapter_repo, document_repo = _search_service(document)
 
     found = find_paragraphs_payload(
         "d1",
         {"type": "word", "word": "murder"},
+        search_repo=search_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
+        document_repo=MagicMock(),
         owner="acct-1",
     )
 
     assert len(found) == 1
+    assert found[0]["id"] == "p1"
     assert found[0]["chapter_id"] == "c1"
     assert found[0]["chapter_title"] == "Opening 1"
     assert found[0]["index"] == 0
-    assert found[0]["id"] == "p1"
-    assert found[0]["sentences"][0]["text"] == "The murder was discovered at dawn."
+    assert found[0]["quote_type"] == "reading"
+    assert found[0]["sentences"] == [{"id": "s1", "index": 0, "text": "The murder was discovered at dawn."}]
+    # the criteria reached the database compiled: a whole-word regex parameter
+    assert search_repo.calls == [
+        {
+            "document_id": "d1",
+            "owner": "acct-1",
+            "where": "(text =~ $p0)",
+            "params": {"p0": "(?isuU).*\\bmurder\\b.*"},
+            "include_characters": False,
+        }
+    ]
 
 
-def test_find_paragraphs_resolves_a_character_by_name_for_the_match() -> None:
-    document = _document()
-    character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
-    character.first_name = "Kiral"
-    character.surname = "Karakas"
-    character.nicknames = ["Adams"]
-    document.chapters.append(character)
-    chapter_repo, document_repo = _search_service(document)
-    chapter_repo.find_character_by_name.return_value = {"id": "k1", "title": "Karakas"}
+def test_find_paragraphs_refuses_an_unknown_document_before_searching() -> None:
+    search_repo = _StubSearchRepo(exists=False)
 
     found = find_paragraphs_payload(
-        "d1",
-        {"type": "character", "character": "Kiral"},
-        chapter_repo=chapter_repo,
-        document_repo=document_repo,
+        "jeremiah",
+        {"type": "word", "word": "murder"},
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
         owner="acct-1",
     )
 
-    assert [p["id"] for p in found] == ["p2"]
+    assert found is None
+    assert not search_repo.calls  # no search runs against a document nobody owns
 
 
 def test_find_paragraphs_excludes_character_chapters_unless_asked() -> None:
-    document = _document()
-    character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
-    character.paragraphs.append(_paragraph("kp1", "The murder room."))
-    document.chapters.append(character)
-    chapter_repo, document_repo = _search_service(document)
-    criteria = {"type": "word", "word": "murder"}
+    search_repo = _StubSearchRepo()
 
-    default_run = find_paragraphs_payload("d1", criteria, chapter_repo=chapter_repo, document_repo=document_repo, owner="acct-1")
-    with_characters = find_paragraphs_payload(
+    find_paragraphs_payload(
         "d1",
-        criteria,
-        chapter_repo=chapter_repo,
-        document_repo=document_repo,
+        {"type": "word", "word": "murder"},
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    find_paragraphs_payload(
+        "d1",
+        {"type": "word", "word": "murder"},
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
         owner="acct-1",
         include_characters=True,
     )
 
-    assert [p["id"] for p in default_run] == ["p1"]
-    assert [(p["id"], p["chapter_id"]) for p in with_characters] == [("p1", "c1"), ("kp1", "k1")]
+    assert [call["include_characters"] for call in search_repo.calls] == [False, True]
 
 
-def test_find_paragraphs_answers_evaluated_paragraphs_from_the_cache() -> None:
-    document = _document()  # p1: "The murder was discovered at dawn." (no names in text)
-    character = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
-    document.chapters.append(character)
-    chapter_repo, document_repo = _search_service(document)
+def test_find_paragraphs_resolves_a_character_through_the_directory() -> None:
+    search_repo = _StubSearchRepo(
+        directory=[{"id": "k1", "title": "Karakas", "first_name": "Kiral", "surname": "Karakas", "nicknames": ["Adams"]}]
+    )
+    chapter_repo = MagicMock()
+    chapter_repo.find_character_by_name.return_value = {"id": "k1", "title": "Karakas"}
+
+    find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "Kiral"},
+        search_repo=search_repo,
+        chapter_repo=chapter_repo,
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+
+    # the given name matched no directory row, so the name search resolved it
+    chapter_repo.find_character_by_name.assert_called_once_with("d1", ["Kiral"], "acct-1")
+    call = search_repo.calls[0]
+    assert call["params"]["p0"] == "k1"
+    assert call["params"]["p1"] == [
+        "(?isuU).*\\bKiral\\b.*",
+        "(?isuU).*\\bKiral\\ Karakas\\b.*",
+        "(?isuU).*\\bAdams\\b.*",
+    ]
+
+
+def test_find_paragraphs_resolves_a_character_by_title_without_a_name_search() -> None:
+    search_repo = _StubSearchRepo(directory=[{"id": "k1", "title": "Karakas", "first_name": "Karakas", "surname": "", "nicknames": []}])
+    chapter_repo = MagicMock()
+
+    find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "karakas"},
+        search_repo=search_repo,
+        chapter_repo=chapter_repo,
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+
+    chapter_repo.find_character_by_name.assert_not_called()
+    assert search_repo.calls[0]["params"]["p0"] == "k1"
+
+
+def test_find_paragraphs_compiles_the_cache_branch_for_a_resolved_character() -> None:
+    """The compiled leaf reads the mentions cache first, inline names second."""
+    search_repo = _StubSearchRepo(directory=[{"id": "k1", "title": "Karakas", "first_name": "Karakas", "surname": "", "nicknames": []}])
     mentions_repo = MagicMock()
     mentions_repo.paragraph_states.return_value = [
         {"id": "p1", "state": 3, "mentions": ["k1"]},  # the cache says: a mention of k1
         {"id": "p2", "state": 2, "mentions": []},  # evaluated: mentions nobody
-        {"id": "p3", "state": 1, "mentions": []},  # never evaluated
     ]
 
-    found = find_paragraphs_payload(
+    find_paragraphs_payload(
         "d1",
-        {"type": "character", "character": "k1"},
-        chapter_repo=chapter_repo,
-        document_repo=document_repo,
+        {"type": "character", "character": "Karakas"},
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
         owner="acct-1",
         mentions_repo=mentions_repo,
     )
 
-    # state 3 answered from the cache; state 2 stayed out despite its text
-    assert [p["id"] for p in found] == ["p1"]
+    assert "checked IS NOT NULL AND NOT hasStale AND $p0 IN valid" in search_repo.calls[0]["where"]
+    assert "any(n IN $p1 WHERE text =~ n)" in search_repo.calls[0]["where"]
 
 
 def test_find_paragraphs_enqueues_the_evaluation_of_the_un_evaluated() -> None:
     from dockb.services import mcp_queries
 
-    document = _document()
-    chapter_repo, document_repo = _search_service(document)
+    search_repo = _StubSearchRepo()
     mentions_repo = MagicMock()
     mentions_repo.paragraph_states.return_value = [
         {"id": "p1", "state": 1, "mentions": []},
@@ -229,27 +321,52 @@ def test_find_paragraphs_enqueues_the_evaluation_of_the_un_evaluated() -> None:
     found = find_paragraphs_payload(
         "d1",
         {"type": "character", "character": "Karakas"},
-        chapter_repo=chapter_repo,
-        document_repo=document_repo,
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
         owner="acct-1",
         mentions_repo=mentions_repo,
     )
 
     mcp_queries.run_mentions_async = original
     assert len(enqueued) == 1  # the document-wide evaluation is queued
-    assert not found  # no names in these paragraphs' texts: nothing inline matched
+    assert found == []  # nothing matched: the search itself never waits on the model
 
 
-def test_find_paragraphs_of_an_unowned_document_is_empty() -> None:
-    document = _document()
-    chapter_repo, document_repo = _search_service(document)
-    document_repo.load.return_value = None
+def test_find_paragraphs_enqueues_nothing_for_a_word_only_search() -> None:
+    from dockb.services import mcp_queries
+
+    search_repo = _StubSearchRepo()
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = [{"id": "p1", "state": 1, "mentions": []}]
+    enqueued = []
+    original = mcp_queries.run_mentions_async
+    mcp_queries.run_mentions_async = enqueued.append
+
+    find_paragraphs_payload(
+        "d1",
+        {"type": "word", "word": "murder"},
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+    )
+
+    mcp_queries.run_mentions_async = original
+    assert not enqueued  # word leaves read no mentions cache, so none is refreshed
+
+
+def test_find_paragraphs_of_an_unowned_document_is_none() -> None:
+    """An unknown or other-account document is None — distinct from no matches."""
+    search_repo = _StubSearchRepo(exists=False)
 
     found = find_paragraphs_payload(
         "d1",
         {"type": "word", "word": "murder"},
-        chapter_repo=chapter_repo,
-        document_repo=document_repo,
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
         owner="other",
     )
-    assert not found
+    assert found is None

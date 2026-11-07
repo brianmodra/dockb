@@ -24,14 +24,16 @@ from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
 from dockb.infrastructure.mcp.tools import mount_tools
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
+from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
 
 
-def create_mcp_app(
+def create_mcp_app(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     issuer: PromptTokenIssuer,
     *,
     allowed_hosts: Sequence[str],
     chapter_repo: ChapterRepository,
     document_repo: DocumentRepository,
+    search_repo: ParagraphSearchRepository,
     mentions_repo: Any | None = None,
 ) -> Starlette:
     """Return the ASGI application the public listener serves.
@@ -42,7 +44,13 @@ def create_mcp_app(
     manuscript tools read through, owner-scoped to the token's account.
     """
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=mentions_repo)
+    mount_tools(
+        mcp,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        search_repo=search_repo,
+        mentions_repo=mentions_repo,
+    )
     security = TransportSecuritySettings(allowed_hosts=list(allowed_hosts))
     mcp_app = mcp.streamable_http_app(transport_security=security)
 

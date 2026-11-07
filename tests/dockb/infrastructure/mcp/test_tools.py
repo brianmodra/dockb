@@ -1,5 +1,6 @@
 """The MCP tools: mounting, the account subject, and their answers."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +15,44 @@ from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
+
+
+class _StubSearchRepo:
+    """The search repository: rows to return, and the calls they answered."""
+
+    def __init__(self, rows: list[dict[str, Any]] | None = None, exists: bool = True) -> None:
+        self.rows = rows if rows is not None else []
+        self.exists = exists
+        self.calls: list[dict[str, Any]] = []
+
+    def document_exists(self, document_id: str, owner: str) -> bool:  # pylint: disable=unused-argument
+        return self.exists
+
+    def character_directory(self, document_id: str, owner: str) -> list[dict[str, object]]:  # pylint: disable=unused-argument
+        return []
+
+    def match_paragraphs(  # pylint: disable=unused-argument
+        self,
+        document_id: str,
+        owner: str,
+        *,
+        compiled: tuple[str, dict[str, Any]],
+        include_characters: bool,
+    ) -> list[dict[str, object]]:
+        self.calls.append({"where": compiled[0], "params": compiled[1], "include_characters": include_characters})
+        return self.rows
+
+
+def _murder_row() -> dict[str, Any]:
+    return {
+        "id": "p1",
+        "quote_type": "reading",
+        "index": 0,
+        "chapter_id": "c1",
+        "chapter_title": "Opening 1",
+        "chapter_index": 0,
+        "sentences": [{"id": "s1", "text": "The murder was discovered."}],
+    }
 
 
 def _chapter_document() -> Document:
@@ -33,7 +72,7 @@ def _chapter_document() -> Document:
 def repos():
     mentions_repo = MagicMock()
     mentions_repo.paragraph_states.return_value = []
-    return_fixture = {"mentions": mentions_repo}
+    return_fixture = {"mentions": mentions_repo, "search": _StubSearchRepo()}
     chapter_repo = MagicMock()
     chapter_repo.load.return_value = None
     chapter_repo.find_document_id.return_value = "d1"
@@ -43,31 +82,151 @@ def repos():
     document_repo.load.return_value = _chapter_document()
     return_fixture["chapter"] = chapter_repo
     return_fixture["document"] = document_repo
-    return (chapter_repo, document_repo, mentions_repo)
+    return (chapter_repo, document_repo, return_fixture["search"], mentions_repo)
+
+
+def _mount(repos, search_repo) -> MCPServer:
+    chapter_repo, document_repo, _search, mentions_repo = repos
+    mcp = MCPServer("DockB")
+    mount_tools(
+        mcp,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        search_repo=search_repo,
+        mentions_repo=mentions_repo,
+    )
+    return mcp
 
 
 @pytest.mark.asyncio
 async def test_mounting_registers_both_tools() -> None:
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=MagicMock(), document_repo=MagicMock(), mentions_repo=MagicMock())
+    mount_tools(
+        mcp,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        search_repo=_StubSearchRepo(),
+        mentions_repo=MagicMock(),
+    )
 
     names = [tool.name for tool in await mcp.list_tools()]
     assert names == ["get_chapter", "find_paragraphs"]
 
 
 @pytest.mark.asyncio
-async def test_each_tool_call_and_its_answer_are_logged(repos, caplog) -> None:
-    chapter_repo, document_repo, mentions_repo = repos
-    chapter_repo.load.return_value = _chapter_document().chapters[0]
+async def test_find_paragraphs_schema_describes_the_criteria_tree() -> None:
+    """The caller sees the leaf shapes, the and/or group, and each required key."""
     mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=mentions_repo)
+    mount_tools(
+        mcp,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        search_repo=_StubSearchRepo(),
+        mentions_repo=MagicMock(),
+    )
+
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    criteria = tools["find_paragraphs"].input_schema["properties"]["criteria"]
+    defs = tools["find_paragraphs"].input_schema["$defs"]
+
+    mapping = criteria["discriminator"]["mapping"]
+    assert set(mapping) == {"word", "text", "character", "criteria"}
+
+    word_def = defs[mapping["word"].rsplit("/", 1)[-1]]
+    assert set(word_def["required"]) == {"type", "word"}
+
+    text_def = defs[mapping["text"].rsplit("/", 1)[-1]]
+    assert set(text_def["required"]) == {"type", "text"}
+
+    character_def = defs[mapping["character"].rsplit("/", 1)[-1]]
+    assert set(character_def["required"]) == {"type", "character"}
+
+    group_def = defs[mapping["criteria"].rsplit("/", 1)[-1]]
+    assert set(group_def["required"]) == {"type", "op", "criteria"}
+    assert group_def["properties"]["op"]["enum"] == ["and", "or"]
+    assert group_def["properties"]["criteria"]["type"] == "array"
+
+    # and the description steers a single-word search away from the text leaf
+    assert "single word" in tools["find_paragraphs"].description
+
+
+@pytest.mark.asyncio
+async def test_find_paragraphs_refuses_a_criteria_outside_the_tree(repos) -> None:
+    """A shape with no leaf behind it is an error the caller can read and correct."""
+    mcp = _mount(repos, _StubSearchRepo())
+    token = _account_id.set("acct-1")
+
+    with pytest.raises(ToolError, match="criteria"):
+        await mcp.call_tool("find_paragraphs", {"document_id": "d1", "criteria": {"words": ["murdered"]}})
+    _account_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_find_paragraphs_answers_a_nested_criteria_tree(repos) -> None:
+    """The tree reaches the database compiled: groups nest, leaves become parameters."""
+    _chapter, _document, search_repo, _mentions = repos
+    mcp = _mount(repos, search_repo)
+    token = _account_id.set("acct-1")
+
+    found = await mcp.call_tool(
+        "find_paragraphs",
+        {
+            "document_id": "d1",
+            "criteria": {
+                "type": "criteria",
+                "op": "and",
+                "criteria": [
+                    {"type": "text", "text": "murder"},
+                    {"type": "word", "word": "discovered"},
+                ],
+            },
+        },
+    )
+    assert found.is_error is False
+    assert search_repo.calls[0]["where"] == "((toLower(text) CONTAINS $p0) AND (text =~ $p1))"
+
+    either = await mcp.call_tool(
+        "find_paragraphs",
+        {
+            "document_id": "d1",
+            "criteria": {
+                "type": "criteria",
+                "op": "or",
+                "criteria": [
+                    {"type": "word", "word": "zebra"},
+                    {"type": "word", "word": "discovered"},
+                ],
+            },
+        },
+    )
+    assert either.is_error is False
+    assert search_repo.calls[1]["where"] == "((text =~ $p0) OR (text =~ $p1))"
+    _account_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_find_paragraphs_refuses_an_unknown_document(repos) -> None:
+    """A guessed document id is an error the caller can read, not a silent empty answer."""
+    mcp = _mount(repos, _StubSearchRepo(exists=False))
+    token = _account_id.set("acct-1")
+
+    with pytest.raises(ToolError, match="no such document"):
+        await mcp.call_tool("find_paragraphs", {"document_id": "jeremiah", "criteria": {"type": "word", "word": "murder"}})
+    _account_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_each_tool_call_and_its_answer_are_logged(repos, caplog) -> None:
+    _chapter, _document, search_repo, _mentions = repos
+    chapter_repo = repos[0]
+    chapter_repo.load.return_value = _chapter_document().chapters[0]
+    search_repo.rows = [_murder_row()]
+    mcp = _mount(repos, search_repo)
     token = _account_id.set("acct-1")
 
     with caplog.at_level("INFO", logger="dockb.infrastructure.mcp.tools"):
         await mcp.call_tool("get_chapter", {"chapter_id": "c1"})
-        await mcp.call_tool(
-            "find_paragraphs", {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}}
-        )
+        await mcp.call_tool("find_paragraphs", {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}})
 
     messages = [record.getMessage() for record in caplog.records]
     assert any("get_chapter" in message and "c1" in message for message in messages)
@@ -78,10 +237,9 @@ async def test_each_tool_call_and_its_answer_are_logged(repos, caplog) -> None:
 
 @pytest.mark.asyncio
 async def test_get_chapter_answers_for_the_tokens_account(repos) -> None:
-    chapter_repo, document_repo, _mentions = repos
+    chapter_repo, _document, _search, _mentions = repos
     chapter_repo.load.return_value = _chapter_document().chapters[0]
-    mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=MagicMock())
+    mcp = _mount(repos, _StubSearchRepo())
     token = _account_id.set("acct-1")
 
     chapter = await mcp.call_tool("get_chapter", {"chapter_id": "c1"})
@@ -93,9 +251,7 @@ async def test_get_chapter_answers_for_the_tokens_account(repos) -> None:
 
 @pytest.mark.asyncio
 async def test_get_chapter_without_a_bound_account_is_refused(repos) -> None:
-    chapter_repo, document_repo, _mentions = repos
-    mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=MagicMock())
+    mcp = _mount(repos, _StubSearchRepo())
 
     with pytest.raises(ToolError, match="account"):
         await mcp.call_tool("get_chapter", {"chapter_id": "c1"})
@@ -103,10 +259,9 @@ async def test_get_chapter_without_a_bound_account_is_refused(repos) -> None:
 
 @pytest.mark.asyncio
 async def test_get_chapter_resolves_a_title_within_a_document(repos) -> None:
-    chapter_repo, document_repo, _mentions = repos
+    chapter_repo, _document, _search, _mentions = repos
     chapter_repo.load.return_value = _chapter_document().chapters[0]
-    mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=MagicMock())
+    mcp = _mount(repos, _StubSearchRepo())
     token = _account_id.set("acct-1")
 
     chapter = await mcp.call_tool("get_chapter", {"document_id": "d1", "title": "Opening 1"})
@@ -118,10 +273,11 @@ async def test_get_chapter_resolves_a_title_within_a_document(repos) -> None:
 
 @pytest.mark.asyncio
 async def test_find_paragraphs_answers_the_selection(repos) -> None:
-    chapter_repo, document_repo, mentions_repo = repos
+    _chapter, _document, search_repo, _mentions = repos
+    chapter_repo = repos[0]
     chapter_repo.load.return_value = _chapter_document().chapters[0]
-    mcp = MCPServer("DockB")
-    mount_tools(mcp, chapter_repo=chapter_repo, document_repo=document_repo, mentions_repo=mentions_repo)
+    search_repo.rows = [_murder_row()]
+    mcp = _mount(repos, search_repo)
     token = _account_id.set("acct-1")
 
     found = await mcp.call_tool("find_paragraphs", {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}})
@@ -137,9 +293,7 @@ async def test_find_paragraphs_answers_the_selection(repos) -> None:
         "find_paragraphs",
         {"document_id": "d1", "criteria": {"type": "word", "word": "murder"}, "include_characters": True},
     )
-    # the flag reached the search: the second call loaded the document again
-    # with it, and neither call raised (validated parameters)
-    assert document_repo.load.call_count == 2
-    # and the mentions cache was consulted for the character criterion
-    assert mentions_repo.paragraph_states.called
+    # the flag reached the search: the second call searched with it, and neither
+    # call raised (validated parameters)
+    assert [call["include_characters"] for call in search_repo.calls] == [False, True]
     _account_id.reset(token)

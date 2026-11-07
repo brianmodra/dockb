@@ -89,8 +89,17 @@ simply stays un-evaluated and is retried by the next trigger.
 ## 5. How a search uses it
 
 `find_paragraphs` (the MCP tool; it also takes `include_characters`, which
-brings the character chapters' own paragraphs into the search) with a character
-criterion reads the cache first: state 2 and 3 paragraphs are answered from the graph alone. State 1 and 4 paragraphs are evaluated **tier 1 inline** (cheap, deterministic) and their tier-1 matches are included in that answer; the full evaluation, including tier 2 and tier 3, is enqueued as the async job, so the next search sees the model's verdicts. A search therefore never waits on the model, and its results self-improve.
+brings the character chapters' own paragraphs into the search) compiles its
+whole criteria tree into one Cypher query (`services/criteria_cypher.py` and
+`repositories/paragraph_search_repository.py`): every paragraph's text is
+reconstructed in the database, and a character criterion is answered there —
+state 2 and 3 paragraphs from their cached verdicts (the MENTIONS
+relationships), state 1 and 4 paragraphs by **tier 1 inline** whole-word name
+matching. The full evaluation, including tier 2 and tier 3, is enqueued as the
+async job whenever the tree reads a character leaf and unevaluated paragraphs
+remain, so the next search sees the model's verdicts. A search therefore never
+waits on the model, never materializes the manuscript into Python, and its
+results self-improve.
 
 ## 6. Phase 2 work for later
 

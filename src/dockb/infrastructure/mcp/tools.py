@@ -12,19 +12,64 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import BaseModel, Field
 
 from dockb.infrastructure.mcp.auth import get_account_id
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
+from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
 from dockb.services.mcp_queries import find_paragraphs_payload, get_chapter_payload
 
 logger = logging.getLogger(__name__)
 
 _RESPONSE_LOG_LIMIT = 2000
+
+
+class WordCriterion(BaseModel):
+    """A leaf that matches when the paragraph contains the word as a whole word, case-insensitively."""
+
+    type: Literal["word"]
+    word: str = Field(description="The word to match as a whole word, case-insensitively.")
+
+
+class TextCriterion(BaseModel):
+    """A leaf that matches when the paragraph contains the text as a substring, case-insensitively."""
+
+    type: Literal["text"]
+    text: str = Field(description="The text to match as a substring, case-insensitively. Prefer a word leaf when matching a single word.")
+
+
+class CharacterCriterion(BaseModel):
+    """A leaf that matches when the paragraph mentions a person of the story.
+
+    Proper names go here, not in word leaves: the character is matched as the
+    person — by character-chapter id, chapter title, or name — so surname
+    mentions and nicknames find them too.
+    """
+
+    type: Literal["character"]
+    character: str = Field(description="A person of the story, by character-chapter id, chapter title, or proper name.")
+
+
+class CriteriaGroup(BaseModel):
+    """A node that combines its children: `op` "and" matches when every child
+    matches, "or" when any child does."""
+
+    type: Literal["criteria"]
+    op: Literal["and", "or"] = Field(description='"and" demands every child match; "or" any one of them.')
+    criteria: list["CriteriaTree"] = Field(description="The children this group combines.")
+
+
+CriteriaTree = Annotated[
+    WordCriterion | TextCriterion | CharacterCriterion | CriteriaGroup,
+    Field(discriminator="type"),
+]
+
+CriteriaGroup.model_rebuild()
 
 
 def _logged(value: Any) -> str:
@@ -40,6 +85,7 @@ def mount_tools(
     *,
     chapter_repo: ChapterRepository,
     document_repo: DocumentRepository,
+    search_repo: ParagraphSearchRepository,
     mentions_repo: Any | None = None,
 ) -> None:
     """Register the manuscript tools on *mcp*."""
@@ -78,34 +124,37 @@ def mount_tools(
 
     def find_paragraphs(
         document_id: str,
-        criteria: dict[str, Any],
+        criteria: CriteriaTree,
         include_characters: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         """The paragraphs of one document a criteria tree selects.
 
-        The tree: `{"type": "criteria", "op": "and"|"or", "criteria": [...]}`
-        nodes over leaves — `{"type": "word", "word": "murder"}` (whole word),
-        `{"type": "text", "text": "..."}` (substring), or
-        `{"type": "character", "character": "Karakas"}` (a person of the story:
-        by character-chapter id, title, or name matched as the POV field
-        matches them). The and-node demands every child; the or-node any. Each
-        matching paragraph carries the chapter id it belongs to and its
-        position there, with its full text.
+        The tree is a *CriteriaTree*: leaves — `{"type": "word", "word":
+        "murder"}` (whole word), `{"type": "text", "text": "..."}` (substring),
+        or `{"type": "character", "character": "Karakas"}` (a person of the
+        story, proper names included) — over `{"type": "criteria", "op":
+        "and"|"or", "criteria": [...]}` groups. The and-group demands every
+        child; the or-group any. Each matching paragraph carries the chapter id
+        it belongs to and its position there, with its full text.
         """
         account = _account()
+        tree = criteria.model_dump()
         logger.info(
             "MCP find_paragraphs <- %s",
-            _logged({"document_id": document_id, "criteria": criteria, "include_characters": include_characters}),
+            _logged({"document_id": document_id, "criteria": tree, "include_characters": include_characters}),
         )
         found = find_paragraphs_payload(
             document_id,
-            criteria,
+            tree,
+            search_repo=search_repo,
             chapter_repo=chapter_repo,
             document_repo=document_repo,
             owner=account,
             include_characters=include_characters,
             mentions_repo=mentions_repo,
         )
+        if found is None:
+            raise ToolError("no such document for this account")
         # A bare top-level array is not a valid structured output root (the JSON
         # schema the protocol requires wants an object), so the paragraphs ride
         # in a one-key object.
@@ -125,9 +174,15 @@ def mount_tools(
         find_paragraphs,
         name="find_paragraphs",
         description=(
-            "Find paragraphs of one document by a nested criteria tree over words, text "
-            "substrings, and story characters; answers {paragraphs: [...]}, every match "
-            "carrying its chapter id, position, and full text. Manuscript chapters only, "
-            "unless include_characters is true."
+            "Find paragraphs of one document by a nested criteria tree; answers {paragraphs: [...]}, "
+            "every match carrying its chapter id, position, and full text. Manuscript chapters only, "
+            'unless include_characters is true. The leaves: {"type": "word", "word": ...} (whole '
+            'word), {"type": "text", "text": ...} (substring), and {"type": "character", '
+            '"character": ...} — proper names of the story\'s people go in a character leaf, never in '
+            "a word leaf. A single word goes in a word leaf — use a text leaf only for phrases and "
+            'fragments of several words. Combine leaves with {"type": "criteria", "op": "and"|"or", '
+            '"criteria": [...]}, where "and" demands every child and "or" any: e.g. the paragraph '
+            'where Karakas finds out Arthurton was murdered is an "and" over character Karakas, '
+            "character Arthurton, and word murdered."
         ),
     )
