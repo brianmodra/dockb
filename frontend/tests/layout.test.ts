@@ -308,6 +308,48 @@ describe("AppLayout", () => {
     expect(area.textContent).toBe("");
   });
 
+  it("grows the busy panel to show every prompt line and the spinner line", () => {
+    const onPrompt = vi.fn();
+    const layout = new AppLayout({ onPrompt });
+    document.body.append(layout.element);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    const log = layout.element.querySelector<HTMLElement>('[data-testid="message-log"]')!;
+    const panel = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    expect(parseInt(panel.style.height, 10)).toBe(24);
+    chat.value = "one\ntwo\nthree";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    layout.beginResponse();
+    expect(parseInt(panel.style.height, 10)).toBe(88);
+    expect(log.hidden).toBe(false);
+    expect(chat.hidden).toBe(true);
+  });
+
+  it("leaves an already-tall panel alone while the model is busy", () => {
+    const onPrompt = vi.fn();
+    const layout = new AppLayout({ onPrompt });
+    document.body.append(layout.element);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    const panel = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    drag(bottomHandle(layout), 100, 500, 0, -100);
+    const before = panel.style.height;
+    chat.value = "hello";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    layout.beginResponse();
+    expect(panel.style.height).toBe(before);
+  });
+
+  it("grows the panel to fit a whole reply, capped at half the window", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    Object.defineProperty(window, "innerHeight", { value: 200, configurable: true });
+    const panel = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    layout.beginResponse();
+    layout.showResponse(
+      Array.from({ length: 10 }, (_, i) => ({ text: `line ${i}` })),
+    );
+    expect(parseInt(panel.style.height, 10)).toBe(100);
+  });
+
   it("shows the dirty indicator when there are unsaved changes", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);

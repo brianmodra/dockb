@@ -179,12 +179,13 @@ export class EditPanel {
   }
 
   /**
-   * Select one sentence of a paragraph as the WYSIWYG view shows it, so a
-   * reply's highlight button can point the writer at it. The raw view has no
-   * sentences (the canonical file is its content), so there it answers false.
+   * Select one or more sentences of a paragraph as the WYSIWYG view shows it,
+   * so a reply's highlight button can point the writer at them. No sentence
+   * named selects the whole paragraph. The raw view has no sentences (the
+   * canonical file is its content), so there it answers false.
    */
-  selectSentence(paragraphId: string, sentenceIndex: number | null): boolean {
-    return this.mode === "wysiwyg" && this.wysiwyg.selectSentence(paragraphId, sentenceIndex);
+  selectSentences(paragraphId: string, sentenceIndexes: number[] | null): boolean {
+    return this.mode === "wysiwyg" && this.wysiwyg.selectSentences(paragraphId, sentenceIndexes);
   }
 
   getLanguage(): string {

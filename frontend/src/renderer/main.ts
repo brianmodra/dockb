@@ -47,17 +47,18 @@ async function sendImport(
   }
 }
 
-function findSentenceIndex(
+function findSentenceIndexes(
   chapter: ChapterNode,
   paragraphId: string,
-  sentenceId: string,
-): number | null {
+  sentenceIds: string[],
+): number[] | null {
   for (const paragraph of chapter.content) {
     if (paragraph.attrs.id !== paragraphId) {
       continue;
     }
-    const index = paragraph.content.findIndex((sentence) => sentence.attrs.id === sentenceId);
-    return index === -1 ? null : index;
+    return sentenceIds
+      .map((id) => paragraph.content.findIndex((sentence) => sentence.attrs.id === id))
+      .filter((index) => index !== -1);
   }
   return null;
 }
@@ -168,18 +169,22 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     currentDocumentId = () => panel.currentDocumentId();
 
     /**
-     * A reply's highlight button: open the names chapter (saving the dirty open
-     * buffer first), then select the named sentence — the whole paragraph when
-     * no sentence was named — scrolled into view.
+     * A reply's highlight button: open the named chapter (saving the dirty open
+     * buffer first), then select the named sentences — the whole paragraph when
+     * none were named — scrolled into view.
      */
     runHighlight = async (rawArgs: unknown): Promise<void> => {
       const args = (typeof rawArgs === "object" && rawArgs !== null ? rawArgs : {}) as {
         chapter_id?: unknown;
         paragraph_id?: unknown;
-        sentence_id?: unknown;
+        sentence_ids?: unknown;
       };
       const chapterId = typeof args.chapter_id === "string" ? args.chapter_id : null;
       const paragraphId = typeof args.paragraph_id === "string" ? args.paragraph_id : null;
+      const sentenceIds =
+        Array.isArray(args.sentence_ids) && args.sentence_ids.every((id) => typeof id === "string")
+          ? (args.sentence_ids as string[])
+          : [];
       if (!chapterId || !paragraphId || !options.api || !editPanel) {
         layout.pushMessage("The AI's highlight button is missing its chapter or paragraph.");
         return;
@@ -189,16 +194,20 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           panel.select(chapterId);
           await editPanel.open(chapterId);
         }
-        let sentenceIndex: number | null = null;
-        if (typeof args.sentence_id === "string") {
+        let sentenceIndexes: number[] | null = null;
+        if (sentenceIds.length > 0) {
           const chapter = await options.api.getChapter(chapterId);
-          sentenceIndex = findSentenceIndex(chapter, paragraphId, args.sentence_id);
-          if (sentenceIndex === null) {
-            layout.pushMessage("That sentence is not in the manuscript any more.");
+          sentenceIndexes = findSentenceIndexes(chapter, paragraphId, sentenceIds);
+          if (sentenceIndexes === null) {
+            layout.pushMessage("That paragraph is not in the manuscript any more.");
+            return;
+          }
+          if (sentenceIndexes.length === 0) {
+            layout.pushMessage("Those sentences are not in the manuscript any more.");
             return;
           }
         }
-        if (!editPanel.selectSentence(paragraphId, sentenceIndex)) {
+        if (!editPanel.selectSentences(paragraphId, sentenceIndexes)) {
           layout.pushMessage("Highlighting works in WYSIWYG chapters.");
         }
       } catch (error) {

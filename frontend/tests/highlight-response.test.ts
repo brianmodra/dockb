@@ -29,10 +29,18 @@ describe("WysiwygView sentence selection", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
     view.setContent(BUFFER);
-    expect(view.selectSentence("p1", 0)).toBe(true);
+    expect(view.selectSentences("p1", [0])).toBe(true);
     expect(view.selectedText()).toBe("Rain fell on the plain.");
-    expect(view.selectSentence("p1", 1)).toBe(true);
+    expect(view.selectSentences("p1", [1])).toBe(true);
     expect(view.selectedText()).toBe("Karakas closed the door.");
+  });
+
+  it("selects several sentences as one span over them", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent(BUFFER);
+    expect(view.selectSentences("p1", [1, 0])).toBe(true);
+    expect(view.selectedText()).toBe("Rain fell on the plain. Karakas closed the door.");
   });
 
   it("scrolls the whole selected paragraph into view inside the editor's scroller", () => {
@@ -46,7 +54,7 @@ describe("WysiwygView sentence selection", () => {
         scrolled.push([paragraph, options]);
       };
     }
-    view.selectSentence("p2", null);
+    view.selectSentences("p2", null);
     expect(scrolled).toEqual([[paragraphs[1], { block: "nearest" }]]);
   });
 
@@ -54,15 +62,15 @@ describe("WysiwygView sentence selection", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
     view.setContent(BUFFER);
-    view.selectSentence("p1", 0);
+    view.selectSentences("p1", [0]);
     expect(document.activeElement).toBe(view.element.querySelector(".ProseMirror"));
   });
 
-  it("selects a whole paragraph when no sentence index is given", () => {
+  it("selects a whole paragraph when no sentence indexes are given", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
     view.setContent(BUFFER);
-    expect(view.selectSentence("p1", null)).toBe(true);
+    expect(view.selectSentences("p1", [])).toBe(true);
     expect(view.selectedText()).toBe("Rain fell on the plain. Karakas closed the door.");
   });
 
@@ -70,16 +78,16 @@ describe("WysiwygView sentence selection", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
     view.setContent(BUFFER);
-    view.selectSentence("p1", 0);
-    expect(view.selectSentence("missing", 0)).toBe(false);
+    view.selectSentences("p1", [0]);
+    expect(view.selectSentences("missing", [0])).toBe(false);
     expect(view.selectedText()).toBe("Rain fell on the plain.");
   });
 
-  it("clamps an out-of-range sentence index to the paragraph's last sentence", () => {
+  it("clamps out-of-range sentence indexes to the paragraph's last sentence", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
     view.setContent(BUFFER);
-    expect(view.selectSentence("p1", 9)).toBe(true);
+    expect(view.selectSentences("p1", [9])).toBe(true);
     expect(view.selectedText()).toBe("Karakas closed the door.");
   });
 });
@@ -94,12 +102,12 @@ describe("EditPanel sentence selection", () => {
     expect(panel.currentChapter()).toBe("c1");
   });
 
-  it("selects a sentence in the open chapter without dirtying the buffer", async () => {
+  it("selects sentences in the open chapter without dirtying the buffer", async () => {
     const api = fakeApi({ getChapterDocument: vi.fn(async () => doc(BUFFER)) });
     const panel = new EditPanel({ api });
     document.body.append(panel.element);
     await panel.load("c1");
-    expect(panel.selectSentence("p2", 0)).toBe(true);
+    expect(panel.selectSentences("p2", [0])).toBe(true);
     expect(panel.isDirty()).toBe(false);
   });
 
@@ -109,6 +117,6 @@ describe("EditPanel sentence selection", () => {
     document.body.append(panel.element);
     await panel.load("c1");
     panel.setMode("raw");
-    expect(panel.selectSentence("p1", 0)).toBe(false);
+    expect(panel.selectSentences("p1", [0])).toBe(false);
   });
 });

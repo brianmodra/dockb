@@ -27,6 +27,9 @@ const MIN_MESSAGE_HEIGHT = 24;
 const CHAT_LINE_HEIGHT = 18;
 const CHAT_VERTICAL_PADDING = 4;
 const CHAT_LINE_UNIT = CHAT_LINE_HEIGHT + CHAT_VERTICAL_PADDING;
+const LOG_LINE_HEIGHT = 20;
+const SPINNER_HEIGHT = 24;
+const RESPONSE_LINE_HEIGHT = 20;
 
 export class AppLayout {
   readonly element: HTMLElement;
@@ -48,6 +51,7 @@ export class AppLayout {
   private readonly messageLog: HTMLElement;
   private responseArea: ResponseArea;
   private readonly chatLine: HTMLTextAreaElement;
+  private lastPromptLines = 1;
   private leftWidth = DEFAULT_LEFT_WIDTH;
   private rightWidth = MIN_RIGHT_WIDTH;
   private messageHeight = MIN_MESSAGE_HEIGHT;
@@ -94,6 +98,7 @@ export class AppLayout {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         if (text !== "") {
+          this.lastPromptLines = chat.value.split("\n").length;
           this.pushMessage(chat.value);
           chat.value = "";
           this.setChatHeight();
@@ -155,10 +160,7 @@ export class AppLayout {
       menubar.element,
       mainRow,
       this.seam("resize-handle-h-bottom", "horizontal", (delta) => {
-        this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, this.messageHeight - delta);
-        this.messagePanel.style.height = `${this.messageHeight}px`;
-        this.setChatHeight();
-        this.options.onWidthsChange?.(this.panelWidths());
+        this.applyMessageHeight(this.messageHeight - delta);
       }),
       this.messagePanel,
     );
@@ -246,10 +248,17 @@ export class AppLayout {
 
   /**
    * Collapse the chat box and stand up the spinner strip while a prompt is in
-   * flight; the reply (or the failure) decides what comes next.
+   * flight; the reply (or the failure) decides what comes next. A panel too
+   * small to show the submitted prompt's lines and the spinner line grows to
+   * fit both; a taller panel keeps its writer-set height.
    */
   beginResponse(): void {
     this.chatLine.hidden = true;
+    const needed =
+      Math.max(1, this.lastPromptLines) * LOG_LINE_HEIGHT + SPINNER_HEIGHT + CHAT_VERTICAL_PADDING;
+    if (needed > this.messageHeight) {
+      this.applyMessageHeight(needed);
+    }
     this.responseArea.showSpinner();
     this.updateResponseGeometry();
   }
@@ -257,12 +266,32 @@ export class AppLayout {
   showResponse(objects: ResponseObject[]): void {
     this.chatLine.hidden = false;
     this.responseArea.show(objects);
+    // A panel too small for the whole reply grows to fit it — capped at half
+    // the window, past which the strip scrolls instead of the panel running
+    // away. Text lines wrap, so this is a floor estimate.
+    const lines = Math.max(1, objects.length);
+    const needed =
+      Math.max(1, this.lastPromptLines) * LOG_LINE_HEIGHT +
+      lines * RESPONSE_LINE_HEIGHT +
+      CHAT_LINE_UNIT +
+      CHAT_VERTICAL_PADDING;
+    const cap = Math.max(MIN_MESSAGE_HEIGHT, Math.floor(window.innerHeight / 2));
+    if (needed > this.messageHeight) {
+      this.applyMessageHeight(Math.min(needed, cap));
+    }
     this.updateResponseGeometry();
   }
 
   cancelResponse(): void {
     this.chatLine.hidden = false;
     this.responseArea.clear();
+  }
+
+  private applyMessageHeight(height: number): void {
+    this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, Math.round(height));
+    this.messagePanel.style.height = `${this.messageHeight}px`;
+    this.setChatHeight();
+    this.options.onWidthsChange?.(this.panelWidths());
   }
 
   private setChatHeight(): void {

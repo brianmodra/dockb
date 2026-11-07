@@ -169,6 +169,11 @@ describe("renderer shell", () => {
               attrs: { id: "s1" },
               content: [{ type: "text", text: "Rain fell on the plain." }],
             },
+            {
+              type: "sentence",
+              attrs: { id: "s2" },
+              content: [{ type: "text", text: "Karakas closed the door." }],
+            },
           ],
         },
       ],
@@ -177,7 +182,7 @@ describe("renderer shell", () => {
     const { api, bridge } = localModeApi({
       getChapter,
       getChapterDocument: vi.fn(async () => ({
-        content: '<span data-par-id="p1">\nRain fell on the plain.\n</span>',
+        content: '<span data-par-id="p1">\nRain fell on the plain.\nKarakas closed the door.\n</span>',
         summary: null,
       })),
       sendPrompt: vi.fn(
@@ -188,7 +193,7 @@ describe("renderer shell", () => {
                 { button: { label: "Highlight sentence", function: "highlight", args: {
                   chapter_id: "c1",
                   paragraph_id: "p1",
-                  sentence_id: "s1",
+                  sentence_ids: ["s2"],
                 } } },
               ],
             }),

@@ -508,16 +508,17 @@ export class WysiwygView {
   }
 
   /**
-   * Select a paragraph's sentence — the whole paragraph without an index — as
-   * if the mouse had dragged over it, scrolled into view.
+   * Select a paragraph's sentences — the whole paragraph with none named — as
+   * if the mouse had dragged over them, scrolled into view.
    *
    * The paragraph is found by its id (the one carried in the canonical span);
-   * the sentence index counts the non-empty sentence runs, the same order the
-   * wire format's sentences keep. An index past the paragraph's last sentence
-   * selects that last one. Unknown paragraph, unmounted view, or a paragraph
-   * with no sentences answer false and leave the selection alone.
+   * the sentence indexes count the non-empty sentence runs, the same order the
+   * wire format's sentences keep. One selection only, so the named sentences
+   * become one span over all of them. An index past the paragraph's last
+   * sentence selects that last one. Unknown paragraph, unmounted view, or a
+   * paragraph with no sentences answer false and leave the selection alone.
    */
-  selectSentence(paragraphId: string, sentenceIndex: number | null): boolean {
+  selectSentences(paragraphId: string, sentenceIndexes: number[] | null): boolean {
     if (!this.innerView) {
       return false;
     }
@@ -542,14 +543,16 @@ export class WysiwygView {
     const contentStart = paragraphPos + 1;
     let from = contentStart;
     let to = contentStart + paragraph.content.size;
-    if (sentenceIndex !== null) {
+    if (sentenceIndexes !== null && sentenceIndexes.length > 0) {
       const ranges = this.sentenceRanges(paragraph);
       if (ranges.length === 0) {
         return false;
       }
-      const clamped = Math.min(Math.max(sentenceIndex, 0), ranges.length - 1);
-      from = contentStart + ranges[clamped].from;
-      to = contentStart + ranges[clamped].to;
+      const clamped = sentenceIndexes.map((index) =>
+        ranges[Math.min(Math.max(index, 0), ranges.length - 1)],
+      );
+      from = contentStart + Math.min(...clamped.map((range) => range.from));
+      to = contentStart + Math.max(...clamped.map((range) => range.to));
     }
     const tr = this.innerView.state.tr;
     tr.setSelection(TextSelection.create(doc, Math.min(from, to), Math.max(from, to)));
