@@ -213,6 +213,39 @@ describe("AppLayout", () => {
     expect(chat.value).toBe("");
   });
 
+  it("moves the submitted prompt into the log as its newest line and keeps focus", () => {
+    const onPrompt = vi.fn();
+    const layout = new AppLayout({ onPrompt });
+    document.body.append(layout.element);
+    layout.pushMessage("earlier line");
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    const log = layout.element.querySelector<HTMLElement>('[data-testid="message-log"]')!;
+    chat.value = "who wrote this?";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    const lines = Array.from(log.querySelectorAll(".message-line")).map((n) => n.textContent);
+    expect(lines).toEqual(["earlier line", "who wrote this?"]);
+    expect(chat.value).toBe("");
+    expect(document.activeElement).toBe(chat);
+  });
+
+  it("keeps the log scrolled to its newest line", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const log = layout.element.querySelector<HTMLElement>('[data-testid="message-log"]')!;
+    Object.defineProperty(log, "scrollHeight", { value: 400, configurable: true });
+    layout.pushMessage("last line");
+    expect(log.scrollTop).toBe(400);
+  });
+
+  it("lays a pushed multi-line message out as one log line per text line", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.pushMessage("a reply\nover several\nlines");
+    const log = layout.element.querySelector<HTMLElement>('[data-testid="message-log"]')!;
+    const lines = Array.from(log.querySelectorAll(".message-line")).map((n) => n.textContent);
+    expect(lines).toEqual(["a reply", "over several", "lines"]);
+  });
+
   it("ignores an empty or whitespace-only chat prompt and shift-enter", () => {
     const onPrompt = vi.fn();
     const layout = new AppLayout({ onPrompt });

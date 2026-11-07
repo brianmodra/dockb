@@ -67,10 +67,9 @@ describe("renderer shell", () => {
     expect(label?.textContent).toBe("brian");
   });
 
-  it("sends the chat prompt through the client, echoes it, and shows the reply", async () => {
+  it("sends the chat prompt through the client, logs the prompt into the panel, and shows the reply", async () => {
     const sendPrompt = vi.fn(async () => ({ reply: "an answer" }));
     const { api, bridge } = localModeApi({ sendPrompt });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     mountShell(document.body, { api: api as never, bridge: bridge as never });
     await new Promise((r) => setTimeout(r, 0));
 
@@ -78,11 +77,12 @@ describe("renderer shell", () => {
     chat.value = "where should I start?";
     chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
-    expect(panel.textContent).toContain("You asked: where should I start?");
+    expect(panel.textContent).toContain("where should I start?");
+    expect(panel.textContent).not.toContain("You asked:");
     expect(sendPrompt).toHaveBeenCalledWith("where should I start?", null);
     await new Promise((r) => setTimeout(r, 0));
-    expect(log).toHaveBeenCalledWith("AI reply: an answer");
-    expect(panel.textContent).toContain("AI said: an answer");
+    expect(panel.textContent).toContain("an answer");
+    expect(panel.textContent).not.toContain("AI said:");
   });
 
   it("sends the open document's id with the chat prompt", async () => {
@@ -92,7 +92,6 @@ describe("renderer shell", () => {
       listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
       sendPrompt,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     mountShell(document.body, { api: api as never, bridge: bridge as never });
     await new Promise((r) => setTimeout(r, 0));
 
@@ -101,7 +100,6 @@ describe("renderer shell", () => {
     chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
     expect(sendPrompt).toHaveBeenCalledWith("where should I start?", "d1");
-    expect(log).toHaveBeenCalledWith("AI reply: an answer");
   });
 
   it("routes a chat failure into the message panel", async () => {

@@ -91,8 +91,10 @@ export class AppLayout {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         if (text !== "") {
+          this.pushMessage(chat.value);
           chat.value = "";
           this.setChatHeight();
+          chat.focus();
           this.options.onPrompt?.(text);
         }
       }
@@ -165,10 +167,16 @@ export class AppLayout {
   }
 
   pushMessage(text: string): void {
-    const line = document.createElement("div");
-    line.className = "message-line";
-    line.textContent = text;
-    this.messageLog.append(line);
+    for (const line of text.split("\n")) {
+      if (line === "") {
+        continue;
+      }
+      const entry = document.createElement("div");
+      entry.className = "message-line";
+      entry.textContent = line;
+      this.messageLog.append(entry);
+    }
+    this.messageLog.scrollTop = this.messageLog.scrollHeight;
   }
 
   setMode(mode: Mode): void {
