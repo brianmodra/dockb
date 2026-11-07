@@ -4,8 +4,10 @@
 
 This module renders the model's answer to an editor prompt inside the message panel. It exists
 because the reply is more than prose: the model can answer with lines of text and clickable
-controls, and a control must reach named editor functions with plain data — never executable
-code. This document states the reply syntax and what the panel shows while the answer is awaited.
+controls — a control opening the paragraph it names — and a control must reach named editor
+functions with plain data, never executable code. This document states the panel's spinner and
+sizing behaviour, the reply syntax, the `highlight` function, and the guard that keeps outside
+text out of the DOM.
 
 ## The panel strip
 
