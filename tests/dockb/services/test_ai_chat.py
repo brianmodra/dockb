@@ -220,7 +220,9 @@ class TestResponsesCall:
         assert '"highlight"' in instructions
         assert "chapter_id" in instructions
         assert "paragraph_id" in instructions
-        assert "sentence_id" in instructions
+        assert "sentence_ids" in instructions
+        # the tool marks the sentences it found; the button passes those ids on
+        assert "matched_sentence_ids" in instructions
 
     def test_the_response_syntax_is_taught_even_without_an_open_document(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")

@@ -14,6 +14,7 @@ the graph should evaluate.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from dockb.services.chapter_json import load_chapter_payload
@@ -126,11 +127,22 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
                     owner=owner,
                 )
             )
-    return [_row_payload(row) for row in rows]
+    return [_row_payload(row, criteria, resolve) for row in rows]
 
 
-def _row_payload(row: dict[str, Any]) -> dict[str, object]:
-    """One search row as the tools' paragraph payload, its sentences in order."""
+def _row_payload(
+    row: dict[str, Any],
+    criteria: Criterion,
+    resolve: Callable[[str], tuple[str, list[str]] | None],
+) -> dict[str, object]:
+    """One search row as the tools' paragraph payload, its sentences in order.
+
+    The sentences the criteria tree selects all by themselves are marked — the
+    model can name their ids in a highlight button, and hand the reader the
+    exact sentence instead of a paragraph to hunt through. An "and" spanning
+    sentences marks nothing: each condition matching a different sentence
+    cannot be located, so the whole paragraph is the honest answer.
+    """
     return {
         "id": row["id"],
         "index": row["index"],
@@ -138,7 +150,59 @@ def _row_payload(row: dict[str, Any]) -> dict[str, object]:
         "chapter_title": row["chapter_title"],
         "quote_type": row["quote_type"],
         "sentences": [{"id": sentence["id"], "index": order, "text": sentence["text"]} for order, sentence in enumerate(row["sentences"])],
+        "matched_sentence_ids": _marked_sentence_ids(criteria, row["sentences"], resolve),
     }
+
+
+def _marked_sentence_ids(
+    criteria: Criterion,
+    sentences: list[dict[str, Any]],
+    resolve: Callable[[str], tuple[str, list[str]] | None],
+) -> list[str]:
+    """The id of every sentence whose own text the criteria tree selects."""
+    names: dict[str, list[str]] = {}
+
+    def skim(reference: str) -> list[str]:
+        """The spellings a character's name may take, reference included.
+
+        The directory answers first names and pairs, and the reference the
+        caller used — the model's term for the person — is often the wording
+        the prose repeats, so it counts as its own spelling.
+        """
+        if reference not in names:
+            answer = resolve(reference)
+            resolved = answer[1] if answer is not None else []
+            names[reference] = [*(candidate for candidate in resolved if candidate), reference]
+        return names[reference]
+
+    return [sentence["id"] for sentence in sentences if _selects_sentence(criteria, str(sentence["text"]), skim)]
+
+
+def _selects_sentence(
+    criterion: Criterion,
+    text: str,
+    skim: Callable[[str], list[str] | None],
+) -> bool:
+    """Whether one sentence's own text satisfies the criteria tree.
+
+    A character leaf is answered by proper-name occurrence here — the MENTIONS
+    cache is paragraph-wide, so it cannot tell which sentence the person was in.
+    """
+    kind = criterion.get("type")
+    if kind == "criteria":
+        children = criterion.get("criteria") or []
+        matched = [_selects_sentence(child, text, skim) for child in children]
+        if criterion.get("op") == "and":
+            return all(matched)
+        return any(matched)
+    if kind == "word":
+        return _mentions_whole_word(text, str(criterion.get("word", "")))
+    if kind == "text":
+        return str(criterion.get("text", "")).lower() in text.lower()
+    if kind == "character":
+        names = skim(str(criterion.get("character", ""))) or []
+        return any(_mentions_whole_word(text, name) for name in names)
+    return False
 
 
 def _has_character_leaf(criteria: Criterion) -> bool:

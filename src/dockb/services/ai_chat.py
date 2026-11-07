@@ -39,10 +39,12 @@ _RESPONSE_SYNTAX_INSTRUCTIONS = (
     ' "response syntax" instead of prose: {"response": [{"text": "one point per item"},'
     ' {"button": {"label": "Show me this paragraph", "function": "highlight",'
     ' "args": {"chapter_id": "<the chapter id>", "paragraph_id": "<the paragraph id>",'
-    ' "sentence_id": "<optional: one sentence>"}}}]} — one "text" item per claim, and one'
+    ' "sentence_ids": ["<sentence ids to show>"]}}}]} — one "text" item per claim, and one'
     " highlight button per found paragraph, its args carrying that paragraph's chapter id and"
-    " paragraph id, and its sentence id only when a single sentence should be named. Chapter and"
-    " paragraph ids are required; a reply without JSON shows the reader plain text."
+    " paragraph id, and sentence_ids listing exactly the ids that answer put in"
+    ' "matched_sentence_ids": pass a sentence id for every sentence that answer marked, and an'
+    " empty list when it marked none (the whole paragraph shows then). Chapter and paragraph ids"
+    " are required; a reply without JSON shows the reader plain text."
 )
 
 

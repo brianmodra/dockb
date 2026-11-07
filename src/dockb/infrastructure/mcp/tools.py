@@ -135,7 +135,10 @@ def mount_tools(
         story, proper names included) — over `{"type": "criteria", "op":
         "and"|"or", "criteria": [...]}` groups. The and-group demands every
         child; the or-group any. Each matching paragraph carries the chapter id
-        it belongs to and its position there, with its full text.
+        it belongs to and its position there, with its full text and its
+        sentences — including "matched_sentence_ids", the ids of the sentences
+        the tree selects from the paragraph's own text (empty when the criteria
+        span sentences, so a reader can only be shown the paragraph).
         """
         account = _account()
         tree = criteria.model_dump()
@@ -175,7 +178,9 @@ def mount_tools(
         name="find_paragraphs",
         description=(
             "Find paragraphs of one document by a nested criteria tree; answers {paragraphs: [...]}, "
-            "every match carrying its chapter id, position, and full text. Manuscript chapters only, "
+            "every match carrying its chapter id, position, full text, its sentences, and "
+            "matched_sentence_ids - the sentences the criteria select in that paragraph's own "
+            "text (empty when the criteria span sentences). Manuscript chapters only, "
             'unless include_characters is true. The leaves: {"type": "word", "word": ...} (whole '
             'word), {"type": "text", "text": ...} (substring), and {"type": "character", '
             '"character": ...} — proper names of the story\'s people go in a character leaf, never in '

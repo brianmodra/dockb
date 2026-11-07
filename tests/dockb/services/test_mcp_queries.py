@@ -186,6 +186,8 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
     assert found[0]["index"] == 0
     assert found[0]["quote_type"] == "reading"
     assert found[0]["sentences"] == [{"id": "s1", "index": 0, "text": "The murder was discovered at dawn."}]
+    # the search's own sentence is marked, so the model can name it in a button
+    assert found[0]["matched_sentence_ids"] == ["s1"]
     # the criteria reached the database compiled: a whole-word regex parameter
     assert search_repo.calls == [
         {
@@ -196,6 +198,111 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
             "include_characters": False,
         }
     ]
+
+
+def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
+    multi = {
+        "id": "p2",
+        "quote_type": "",
+        "index": 1,
+        "chapter_id": "c1",
+        "chapter_title": "Opening 1",
+        "sentences": [
+            {"id": "s1", "text": "Karakas closed the door."},
+            {"id": "s2", "text": "The murder was discovered at dawn."},
+            {"id": "s3", "text": "Jael laughed last month."},
+        ],
+    }
+
+    found = find_paragraphs_payload(
+        "d1",
+        {
+            "type": "criteria",
+            "op": "or",
+            "criteria": [
+                {"type": "word", "word": "Karakas"},
+                {"type": "word", "word": "murder"},
+            ],
+        },
+        search_repo=_StubSearchRepo(rows=[multi]),
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    assert found[0]["matched_sentence_ids"] == ["s1", "s2"]
+
+    def found_with(*args: Any, **kwargs: Any) -> Any:
+        kwargs["search_repo"] = _StubSearchRepo(rows=[multi])
+        return find_paragraphs_payload(*args, **kwargs)
+
+    found = found_with(
+        "d1",
+        {
+            "type": "criteria",
+            "op": "and",
+            "criteria": [
+                {"type": "word", "word": "Karakas"},
+                {"type": "word", "word": "murder"},
+            ],
+        },
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    # the two words live in different sentences here: nothing is marked, and the
+    # model then names no sentences, highlighting the whole paragraph
+    assert found[0]["matched_sentence_ids"] == []
+
+
+def test_find_paragraphs_marks_a_sentence_whose_text_leaf_is_a_substring() -> None:
+    multi = {
+        "id": "p2",
+        "quote_type": "",
+        "index": 1,
+        "chapter_id": "c1",
+        "chapter_title": "Opening 1",
+        "sentences": [
+            {"id": "s1", "text": "Something was Discovered in the dark."},
+            {"id": "s2", "text": "It rained."},
+        ],
+    }
+    found = find_paragraphs_payload(
+        "d1",
+        {"type": "text", "text": "was discovered"},
+        search_repo=_StubSearchRepo(rows=[multi]),
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    assert found[0]["matched_sentence_ids"] == ["s1"]
+
+
+def test_find_paragraphs_marks_sentences_by_the_characters_it_resolves() -> None:
+    multi = {
+        "id": "p2",
+        "quote_type": "",
+        "index": 1,
+        "chapter_id": "c1",
+        "chapter_title": "Opening 1",
+        "sentences": [
+            {"id": "s1", "text": "Karakas closed the door."},
+            {"id": "s2", "text": "Nobody was at home."},
+        ],
+    }
+    search_repo = _StubSearchRepo(
+        directory=[{"id": "k1", "title": "Karakas", "first_name": "Kiral", "surname": "Karakas", "nicknames": []}],
+        rows=[multi],
+    )
+    found = find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "Karakas"},
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    assert search_repo.character_directory(document_id="d1", owner="acct-1")  # the directory is a stub
+    assert found[0]["matched_sentence_ids"] == ["s1"]
 
 
 def test_find_paragraphs_refuses_an_unknown_document_before_searching() -> None:
