@@ -215,3 +215,36 @@ def test_the_sweep_logs_each_mention_and_a_chapter_summary(wired, caplog):
     messages = [record.message for record in caplog.records]
     assert any("Karakas" in m and "Opening 1" in m and "paragraph 0" in m for m in messages)
     assert any("summary" in m.lower() and "Karakas" in m and "Opening 1" in m for m in messages)
+
+
+def test_help_is_a_command_that_prints_the_command_and_its_arguments(capsys):
+    code = cli.main(["help"])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "evaluate the document's pending mention verdicts" in out
+    assert "--owner" in out
+    assert "--full" in out
+    assert "--no-ai" in out
+
+
+def test_an_unknown_command_explains_what_the_choices_do(capsys):
+    code = cli.main(["hlep"])
+
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "hlep" in err
+    assert "sweep" in err
+    assert "evaluate the document's pending mention verdicts" in err
+    assert "--owner" in err
+
+
+def test_the_sweep_help_describes_its_flags_and_the_states(capsys):
+    code = cli.main(["sweep", "--help"])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "re-evaluate every paragraph" in out
+    assert "leave those candidates un-evaluated" in out
+    assert "state" in out
+    assert "stale" in out

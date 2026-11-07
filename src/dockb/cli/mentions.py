@@ -33,7 +33,82 @@ from dockb.services.mentions import evaluate_chapter_tier1, evaluate_chapter_tie
 
 _STATE_NAMES = {1: "never evaluated", 2: "no mentions", 3: "mentions", 4: "stale"}
 
+_SWEEP_SUMMARY = "evaluate the document's pending mention verdicts"
+
 logger = logging.getLogger(__name__)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """The mentions CLI's parser: one verb, described wherever help appears."""
+    parser = argparse.ArgumentParser(prog="dockb mentions", description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sweep = sub.add_parser(
+        "sweep",
+        help=_SWEEP_SUMMARY,
+        description=(
+            "Evaluate one document's paragraphs whose mention verdict is missing"
+            " (state 1) or stale (state 4) — the characters a paragraph names, first"
+            " by name matching (tier 1), then by an LLM pass over the candidates tier"
+            " 1 left pending (tier 2). Each verdict is stamped as it is judged, so an"
+            " interrupted sweep resumes by running again."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "States: 1 never evaluated, 2 judged - no mentions, 3 judged - mentions found,"
+            " 4 stale (the paragraph's text or a character's identity changed after the last judgement).\n"
+            "examples:\n"
+            "  dockb mentions sweep Linchpin --owner brian            # by document title\n"
+            "  dockb mentions sweep d1 --owner brian --full           # by id, re-evaluate everything\n"
+            "  dockb mentions sweep Linchpin --owner brian --no-ai    # tier 1 only, no model calls"
+        ),
+    )
+    sweep.add_argument("document", help="the document's id, or its title")
+    sweep.add_argument(
+        "--owner",
+        required=True,
+        help="the account the document belongs to, as its username or user id",
+    )
+    sweep.add_argument(
+        "--full",
+        action="store_true",
+        help="re-evaluate every paragraph, ignoring existing MENTIONS",
+    )
+    sweep.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="when the pipeline would call the model, log a warning and leave those candidates un-evaluated",
+    )
+    return parser
+
+
+def _choice_summary(parser: argparse.ArgumentParser) -> str:
+    """A stderr block listing the choices a bad command line could have made."""
+    sub = parser._subparsers._group_actions[0]  # type: ignore[union-attr]  # pylint: disable=protected-access
+    choices = list(getattr(sub, "_choices_actions", []))
+    width = max((len(str(action.metavar or action.dest)) for action in choices), default=0)
+    lines = ["", "commands:"]
+    lines += [f"  {str(action.metavar or action.dest).ljust(width)}  {action.help}" for action in choices]
+    for name, child in sub.choices.items():  # type: ignore[union-attr]  # pylint: disable=protected-access
+        lines += ["", f"options for '{name}':", *_option_summary(child)]
+    lines += ["", "Run 'dockb mentions <command> --help' for a command's own options."]
+    return "\n".join(lines)
+
+
+def _option_summary(child: argparse.ArgumentParser) -> list[str]:
+    """The child command's flags, aligned, with what each is for."""
+    lines: list[str] = []
+    width = 0
+    entries: list[tuple[str, str | None]] = []
+    for option in child._actions:  # argparse internals  # pylint: disable=protected-access
+        if option.dest == "help" or not option.option_strings:
+            continue
+        flags = ", ".join(option.option_strings)
+        label = option.metavar or (option.dest.upper() if option.const is None else None)
+        text = f"  {flags + ((' ' + str(label)) if label else '')}"
+        entries.append((text, option.help))
+        width = max(width, len(text))
+    lines += [f"{text.ljust(width)}  {gloss}" for text, gloss in entries]
+    return lines
 
 
 def _build(stack: ExitStack) -> tuple[ChapterRepository, DocumentRepository, MentionsRepository]:
@@ -99,18 +174,29 @@ def _resolve_document(document_ref: str, owner: str, document_repo: DocumentRepo
 
 def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-locals
     """Run the sweep over one document, printing the per-chapter state counts."""
-    parser = argparse.ArgumentParser(prog="dockb mentions", description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
-    sweep = sub.add_parser("sweep", help="evaluate the document's pending mention verdicts")
-    sweep.add_argument("document", help="the document's id, or its title")
-    sweep.add_argument("--owner", required=True, help="the account the document belongs to, as its username or user id")
-    sweep.add_argument("--full", action="store_true", help="re-evaluate every paragraph, ignoring existing MENTIONS")
-    sweep.add_argument(
-        "--no-ai",
-        action="store_true",
-        help="when the pipeline would call the model, log a warning and leave those candidates un-evaluated",
-    )
-    args = parser.parse_args(argv)
+    parser = _build_parser()
+    if argv and argv[0] == "help":
+        parser.print_help()
+        sub = parser._subparsers._group_actions[0]  # type: ignore[union-attr]  # pylint: disable=protected-access
+        for name, child in sub.choices.items():  # type: ignore[union-attr]  # pylint: disable=protected-access
+            options = _option_summary(child)
+            if options:
+                print(f"\noptions for '{name}':")
+                print("\n".join(options))
+        return 0
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exit_error:
+        code = exit_error.code if isinstance(exit_error.code, int) else 2
+        if code == 2:
+            # argparse only says which choices exist; say what they are for
+            print(_choice_summary(parser), file=sys.stderr)
+        return code
+    except argparse.ArgumentError as error:
+        # a subparser's bad command line surfaces here rather than as an exit
+        print(f"{parser.prog}: error: {error}", file=sys.stderr)
+        print(_choice_summary(parser), file=sys.stderr)
+        return 2
 
     owner = account_id_for(args.owner)
     with ExitStack() as stack:

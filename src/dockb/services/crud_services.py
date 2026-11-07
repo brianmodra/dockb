@@ -10,6 +10,8 @@ when content is provided.  Without a session context, content changes
 commit synchronously.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import logging
