@@ -39,14 +39,13 @@ _RESPONSE_SYNTAX_INSTRUCTIONS = (
     ' "response syntax" instead of prose: {"response": [{"text": "one point per item"},'
     ' {"button": {"label": "Show me this paragraph", "function": "highlight",'
     ' "args": {"chapter_id": "<the chapter id>", "paragraph_id": "<the paragraph id>",'
-    ' "sentence_ids": ["<sentence ids to show>"], "sentence_indexes": [<same count of'
-    ' positions>]}}}]} — one "text" item per claim, and one highlight button per found'
-    " paragraph, its args carrying that paragraph's chapter id and paragraph id, and"
-    ' "sentence_ids" listing exactly the ids that answer put in "matched_sentence_ids", with'
-    ' "sentence_indexes" the equally many positions from "matched_sentence_indexes" — both in'
-    " the same order; pass an empty pair of lists when the answer marked none (the whole"
-    " paragraph shows then). Chapter and paragraph ids are required; a reply without JSON shows"
-    " the reader plain text."
+    ' "sentence_indices": [<sentence positions> | []]}}}]} — one "text" item per claim, and one'
+    " highlight button per found paragraph, its args carrying that paragraph's chapter id and"
+    ' paragraph id, and "sentence_indices" holding exactly the positions that answer put in'
+    ' "matched_sentence_indexes" (first sentence of the paragraph is 0), the same count in the'
+    " same order; an empty list shows the whole paragraph, which is what the tool marked none"
+    " for. Pass the sentence positions, never their ids. Chapter and paragraph ids are required;"
+    " a reply without JSON shows the reader plain text."
 )
 
 

@@ -1,6 +1,5 @@
 import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
-import type { ChapterNode } from "./api/types";
 import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { parseResponseReply } from "./layout/responseArea";
@@ -45,22 +44,6 @@ async function sendImport(
   } catch (error) {
     reportError("Import", error, (text) => layout.pushMessage(text));
   }
-}
-
-function findSentenceIndexes(
-  chapter: ChapterNode,
-  paragraphId: string,
-  sentenceIds: string[],
-): number[] | null {
-  for (const paragraph of chapter.content) {
-    if (paragraph.attrs.id !== paragraphId) {
-      continue;
-    }
-    return sentenceIds
-      .map((id) => paragraph.content.findIndex((sentence) => sentence.attrs.id === id))
-      .filter((index) => index !== -1);
-  }
-  return null;
 }
 
 export function mountShell(root: HTMLElement, options: MountShellOptions = {}): AppLayout {
@@ -171,65 +154,40 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     /**
      * A reply's highlight button: open the named chapter (saving the dirty open
      * buffer first), then select the named sentences — the whole paragraph when
-     * none were named — scrolled into view. The reply's `sentence_indexes`
-     * spare the second whole-chapter read; when they are missing or don't
-     * match the ids, the ids are mapped from the chapter's own wire, fetched
-     * beside the open rather than after it.
+     * the reply carries no usable `sentence_indices` positions — scrolled into
+     * view. The positions come from the tool's own marks, so no second
+     * chapter read is ever needed.
      */
     runHighlight = async (rawArgs: unknown): Promise<void> => {
       const args = (typeof rawArgs === "object" && rawArgs !== null ? rawArgs : {}) as {
         chapter_id?: unknown;
         paragraph_id?: unknown;
-        sentence_ids?: unknown;
-        sentence_indexes?: unknown;
+        sentence_indices?: unknown;
       };
       const chapterId = typeof args.chapter_id === "string" ? args.chapter_id : null;
       const paragraphId = typeof args.paragraph_id === "string" ? args.paragraph_id : null;
-      // a string instead of an array is accepted as a one-entry list; junk
-      // inside the array is skipped, not treated as "highlight nothing"
-      const sentenceIds = (Array.isArray(args.sentence_ids)
-        ? args.sentence_ids
-        : [args.sentence_ids]
-      ).filter((id) => typeof id === "string");
-      const listedIndexes =
-        Array.isArray(args.sentence_indexes) && sentenceIds.length === args.sentence_indexes.length
-          ? args.sentence_indexes
-          : [];
-      const straightToSentence =
-        sentenceIds.length > 0 &&
-        listedIndexes.length === sentenceIds.length &&
-        listedIndexes.filter((n) => typeof n === "number").length === sentenceIds.length;
+      // a lone number instead of an array is accepted as a one-entry list;
+      // junk inside the array is skipped, not treated as "highlight nothing"
+      const sentenceIndexes = (Array.isArray(args.sentence_indices)
+        ? args.sentence_indices
+        : [args.sentence_indices]
+      )
+        .filter((index) => typeof index === "number" && Number.isFinite(index))
+        .map(Math.trunc);
       if (!chapterId || !paragraphId || !options.api || !editPanel) {
         layout.pushMessage("The AI's highlight button is missing its chapter or paragraph.");
         return;
       }
       try {
-        const openTask: Promise<void> | null =
-          editPanel.currentChapter() === chapterId ? null : editPanel.open(chapterId);
-        if (openTask !== null) {
+        if (editPanel.currentChapter() !== chapterId) {
           panel.select(chapterId);
+          await editPanel.open(chapterId);
         }
-        const wireTask = sentenceIds.length > 0 && !straightToSentence
-          ? options.api.getChapter(chapterId)
-          : null;
-        await Promise.all([openTask, wireTask].filter(Boolean));
-        let sentenceIndexes: number[] | null = null;
-        if (sentenceIds.length > 0) {
-          if (straightToSentence) {
-            sentenceIndexes = (listedIndexes as number[]).map(Math.trunc);
-          } else {
-            sentenceIndexes = findSentenceIndexes(await wireTask!, paragraphId, sentenceIds);
-          }
-          if (sentenceIndexes === null) {
-            layout.pushMessage("That paragraph is not in the manuscript any more.");
-            return;
-          }
-          if (sentenceIndexes.length === 0) {
-            layout.pushMessage("Those sentences are not in the manuscript any more.");
-            return;
-          }
-        }
-        if (!editPanel.selectSentences(paragraphId, sentenceIndexes)) {
+        const selected = editPanel.selectSentences(
+          paragraphId,
+          sentenceIndexes.length > 0 ? sentenceIndexes : null,
+        );
+        if (!selected) {
           layout.pushMessage("Highlighting works in WYSIWYG chapters.");
         }
       } catch (error) {

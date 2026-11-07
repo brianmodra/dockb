@@ -136,10 +136,11 @@ def mount_tools(
         "and"|"or", "criteria": [...]}` groups. The and-group demands every
         child; the or-group any. Each matching paragraph carries the chapter id
         it belongs to and its position there, with its full text and its
-        sentences — including "matched_sentence_ids", the ids of the sentences
-        whose own text the tree's word and text leaves select. Character
-        leaves judge paragraphs, not sentences, so a tree of them alone marks
-        nothing and the paragraph is what a reader is shown.
+        sentences, each carrying its 0-based index within the paragraph — and
+        "matched_sentence_indices", the positions of the sentences whose own
+        text the tree's word and text leaves select. Character leaves judge
+        paragraphs, not sentences, so a tree of them alone marks nothing and
+        the paragraph is what a reader is shown.
         """
         account = _account()
         tree = criteria.model_dump()
@@ -179,10 +180,11 @@ def mount_tools(
         name="find_paragraphs",
         description=(
             "Find paragraphs of one document by a nested criteria tree; answers {paragraphs: [...]}, "
-            "every match carrying its chapter id, position, full text, its sentences, and "
-            "matched_sentence_ids - the sentences whose own text the word and text leaves "
-            "select (empty when the tree has only character leaves, so highlight the "
-            "paragraph). Manuscript chapters only, "
+            "every match carrying its chapter id, position, full text, its sentences (each with "
+            "its 0-based index within the paragraph), and matched_sentence_indices - the "
+            "positions of the sentences whose own text the word and text leaves select (empty "
+            "when the tree has only character leaves, so highlight the paragraph). Manuscript "
+            "chapters only, "
             'unless include_characters is true. The leaves: {"type": "word", "word": ...} (whole '
             'word), {"type": "text", "text": ...} (substring), and {"type": "character", '
             '"character": ...} — proper names of the story\'s people go in a character leaf, never in '

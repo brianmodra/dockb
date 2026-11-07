@@ -220,11 +220,10 @@ class TestResponsesCall:
         assert '"highlight"' in instructions
         assert "chapter_id" in instructions
         assert "paragraph_id" in instructions
-        assert "sentence_ids" in instructions
-        # the tool marks the sentences it found; the button passes those ids on
-        assert "matched_sentence_ids" in instructions
-        # the ids also carry their position, so the editor need not reload the chapter
-        assert "sentence_indexes" in instructions
+        # the button carries the sentences' positions, not their ids
+        assert "sentence_indices" in instructions
+        assert "sentence_ids" not in instructions
+        # the tool marks the sentences it found; the button passes those positions on
         assert "matched_sentence_indexes" in instructions
 
     def test_the_response_syntax_is_taught_even_without_an_open_document(self, monkeypatch: pytest.MonkeyPatch) -> None:
