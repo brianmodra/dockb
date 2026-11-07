@@ -4,7 +4,7 @@
 
 This note is the contract between DockB's editor and the server. It lists the requests the editor may send, the shape of each reply, and what the server refuses. Grammar details stay on the server and are not part of this contract. Every manuscript route is gated on a session and scoped to the account that signed in, so a request never carries an owner and one account's ids mean nothing to another; the few endpoints that answer without a session are listed as such, and are the login flow itself.
 
-It also describes the two ways a document gets into the graph. `POST /api/documents` and the chapter/paragraph/sentence routes carry ordinary editor edits. `POST /api/import` instead takes a whole document directory as a multipart upload and runs the same directory walker the command line uses, so a manuscript can be brought in without naming a path on the server. Because an upload is untrusted, that route has its own path and size rules, and it is where a document's owner comes from the session rather than the request. A third route steps outside the manuscript: `POST /api/ai/chat` sends the editor's prompt to the model over the Responses API, attaching DockB's MCP server as a tool with a per-prompt bearer token when the public MCP URL is configured.
+It also describes the two ways a document gets into the graph. `POST /api/documents` and the chapter/paragraph/sentence routes carry ordinary editor edits. `POST /api/import` instead takes a whole document directory as a multipart upload and runs the same directory walker the command line uses, so a manuscript can be brought in without naming a path on the server. Because an upload is untrusted, that route has its own path and size rules, and it is where a document's owner comes from the session rather than the request. A third route steps outside the manuscript: `POST /api/ai/chat` sends the editor's prompt to the model over the Responses API, attaching DockB's MCP server as a tool with a per-prompt bearer token when the public MCP URL is configured. The request also carries the id of the document the editor has open, and the call's instructions name it so the model uses it as the tools' document_id.
 
 Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff, and it is also served the editor shell itself from `/editor/`, which is why the window and the API share an origin and one session cookie. Whole-chapter operations live beside the CRUD: renumbering a document's chapters, and naming a chapter's point-of-view character (applied, suggested, or cleared).
 
@@ -758,7 +758,7 @@ Note that a paragraph split can include sentence splits, and a sentence operatio
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/ai/chat` | Send the editor's prompt to the model; returns the reply |
+| `POST` | `/api/ai/chat` | Send the editor's prompt, and the open document's id, to the model; returns the reply |
 
 Session-gated like every editor route. Not a manuscript mutation, so the reply is a bare
 payload rather than the status envelope: `{ "reply": "..." }`. The body is
