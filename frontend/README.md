@@ -115,8 +115,11 @@ its 10px floor.
   and reporting failures to it.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
   of the same canonical buffer; dirty = buffer vs last canonical, where the
-  quote types count too (`quoteSignature`), so a quote-only change is still
-  saved. Right-click inside a WYSIWYG paragraph opens **Edit ▸ Quote** —
+  quote types count too (  `quoteSignature`), so a quote-only change is still
+  saved. The canonical side's signature is read from the same paragraphs the
+  loaded doc has — a file's trailing newline shows as an empty final paragraph
+  there too — so a freshly loaded writer-canonical file is clean and switching
+  chapters does not save it. Right-click inside a WYSIWYG paragraph opens **Edit ▸ Quote** —
   None / Reading / Writing, ticked when every affected paragraph agrees; the
   affected paragraphs are the selection's, or the pointer's when nothing is
   selected — and a quoted paragraph renders

@@ -458,6 +458,30 @@ describe("EditPanel", () => {
     expect(panel.isDirty()).toBe(false);
   });
 
+  it("does not save an untouched chapter whose canonical file ends with a newline", async () => {
+    const canonicalFile = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1" data-quote-type="reading">',
+      "Chapter text.",
+      "</span>",
+      "",
+    ].join("\n");
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc(canonicalFile)) });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(panel.isDirty()).toBe(false);
+
+    await panel.open("c2");
+
+    expect(api.saveChapterDocument).not.toHaveBeenCalled();
+  });
+
   it("sends the canonical text with span ids to the backend when saving an unchanged canonical file", async () => {
     const canonicalFile = [
       "---",

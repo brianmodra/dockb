@@ -90,11 +90,17 @@ function extractSpanAttrs(buffer: string): SpanAttrs {
   return { ids, quoteTypes };
 }
 
+/** The per-paragraph quote types of *doc*, in order — the dirty check's comparison. */
+function signatureFromDoc(doc: Node): string {
+  const types: string[] = [];
+  doc.forEach((paragraph) => types.push(paragraph.attrs.quoteType ?? ""));
+  return types.join("\u241F");
+}
+
 /** The canonical *buffer*'s per-paragraph quote types, in order — see `WysiwygView.quoteSignature`. */
 export function quoteSignatureOf(buffer: string): string {
-  return extractSpanAttrs(buffer)
-    .quoteTypes.map((quote) => quote ?? "")
-    .join("\u241F");
+  const { ids, quoteTypes } = extractSpanAttrs(buffer);
+  return signatureFromDoc(bufferToDocWithIds(chapterBody(buffer), ids, quoteTypes));
 }
 
 /**
@@ -470,9 +476,7 @@ export class WysiwygView {
     if (!this.innerView) {
       return "";
     }
-    const types: string[] = [];
-    this.innerView.state.doc.forEach((paragraph) => types.push(paragraph.attrs.quoteType ?? ""));
-    return types.join("\u241F");
+    return signatureFromDoc(this.innerView.state.doc);
   }
 
   /** The position spans of the sentences of one paragraph node, in content coordinates. */

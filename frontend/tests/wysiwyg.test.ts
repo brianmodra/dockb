@@ -25,6 +25,7 @@ import {
   docToCanonical,
   docToString,
   findHeadingLines,
+  quoteSignatureOf,
   uniformQuoteType,
 } from "../src/renderer/layout/wysiwyg";
 import MarkdownIt from "markdown-it";
@@ -371,6 +372,35 @@ describe("WysiwygView canonical round trip", () => {
     view.setContent('<span data-par-id="p-1">\nOne.\nTwo.\n</span>\n\n<span data-par-id="p-2">\nThree.\n</span>');
 
     expect(view.plainContent()).toBe("One.\nTwo.\n\nThree.");
+  });
+
+  it("compares the quote signature like the loaded doc for a canonical file ending in a newline", () => {
+    const buffer = [
+      "---",
+      "id: c1",
+      "title: Opening 1",
+      "---",
+      "",
+      '<span data-par-id="p-1" data-quote-type="reading">',
+      "Quoted.",
+      "</span>",
+      "",
+      '<span data-par-id="p-2">',
+      "Plain.",
+      "</span>",
+      "",
+    ].join("\n");
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent(buffer);
+
+    expect(view.plainContent()).toBe(chapterBody(buffer));
+    expect(view.quoteSignature().split("\u241F").filter(Boolean)).toEqual(["reading"]);
+    expect(view.quoteSignature()).toBe(quoteSignatureOf(buffer));
+
+    const first = view.element.querySelector("p")!;
+    view.setQuoteTypeAtPositions(view.paragraphPositions(first), "writing");
+    expect(view.quoteSignature()).not.toBe(quoteSignatureOf(buffer));
   });
 
   it("lets a duplicated paragraph id fall back to a new (span-free) paragraph", () => {
