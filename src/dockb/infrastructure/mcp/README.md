@@ -2,27 +2,21 @@
 
 ## Executive Summary
 
-This package holds the mint-and-verify pair for the per-prompt bearer token that
-authenticates OpenAI's infrastructure when it calls the MCP server. There is no
-credential store, no signing key and no admin CLI: each prompt's secret is born
-in memory, sits in a map keyed by the token's expiry, and dies with its entry,
-so a leaked token is useless once that window passes and nothing secret is left
-on disk.
+This package authenticates OpenAI's infrastructure against DockB's MCP server with a
+per-prompt bearer token that exists only in memory: each prompt's secret is born when
+the editor sends a chat prompt, is bound to the signed-in account, and dies when its
+expiry passes or the process restarts. There is no credential store, no signing key
+and no admin CLI, so a leaked token is useless once its window passes and nothing
+secret is left on disk.
 
-`PromptTokenIssuer` mints the token and resolves a presented one to its prompt or
-rejects it; `BearerAuthMiddleware` and `create_mcp_app` put that verification in
-front of an MCP endpoint carrying the two manuscript tools (`tools.py`), and the
-runner one level up (`src/dockb/mcp_server.py`) serves that application
-alongside the manuscript API on one event loop. Read this for what the token looks like, what makes one valid,
-the account it is bound to, the two tools it unlocks (a chapter's paragraphs;
-a paragraph search whose criteria tree compiles into one Cypher query — word,
-text, and character leaves over and/or group nodes matched entirely in the
-database, with an unknown or other-account document refused rather than
-answered empty, and character criteria answered from the mention cache
-`services/README_mentions.md` describes), and the shape of the
-public application; the threat model, the two-listener split
-and why this is a MAC rather than a signature are in `README_mcp_auth.md` at the
-repository root.
+The package also carries the two manuscript tools the token unlocks (`tools.py`): one
+returns a chapter's paragraphs; the other searches paragraphs by a criteria tree —
+word, text, and character leaves over and/or group nodes — that compiles into a single
+Cypher query answered entirely in the database, refusing an unknown or other-account
+document instead of answering empty. Read this for what the token looks like, what
+makes one valid, the account it is bound to, and how the tools read one account's
+books; the threat model, the two-listener split and why this is a MAC rather than a
+signature are in `README_mcp_auth.md` at the repository root.
 
 ## Package Structure
 
@@ -83,8 +77,9 @@ is parsed, so an unauthenticated request never reaches a handler. Non-HTTP scope
 
 ### `create_mcp_app`
 
-`create_mcp_app(issuer, *, allowed_hosts)` returns the application the public
-listener serves: an MCP server with **no tools**, mounted so its endpoint is the
+`create_mcp_app(issuer, *, allowed_hosts, chapter_repo, document_repo, search_repo,
+mentions_repo)` returns the application the public listener serves: an MCP server
+carrying **only the manuscript tools**, mounted so its endpoint is the
 one route at `/mcp`, with the middleware above in front of it and a lifespan that
 starts the MCP session manager. It mounts no manuscript router and serves no
 editor shell, so nothing the tunnel forwards can reach the manuscript API. The

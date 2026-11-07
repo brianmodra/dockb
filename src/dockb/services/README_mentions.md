@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so next time the same question is asked, it is easy and quick to answer.
+This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so next time the same question is asked, it is easy and quick to answer. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit.
 
-The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, that "Tobi" is Tobias Mordecai, and that "Mordecai" alone is ambiguous between two characters, Ian and Tobias. A name search alone cannot tell those apart.
+The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, that "Tobi" is Tobias Mordecai, and that "Mordecai" alone is ambiguous between two characters, Ian and Tobias. A name search alone cannot tell those apart, so deterministic name matching answers what it can and the model judges the rest, asynchronously, while the search reads the settled verdicts straight from the graph.
 
 ## 1. The graph: a MENTIONS relationship, and four paragraph states
 
