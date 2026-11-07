@@ -2,28 +2,22 @@
 
 ## Executive Summary
 
-This is DockB's desktop editor. It is a window that talks only to the server: sign in, open a
+This is DockB's desktop editor: a window that talks only to the server to sign in, open a
 document, edit a chapter, or import a whole document from a folder on disk. It never writes files
-itself — an import reads a directory the user picks and hands it to the server, which does the
-writing. The window does not even load its own interface from disk; the backend serves it, so the
-app and the API share an origin and the signed-in session reaches every route. Besides editing,
-the chapter list's right-click menu renames, moves, renumbers, and assigns a point-of-view
-character to chapters — renumbering rewrites every act chapter's number, from 1 or 0, in the
-current order, on the server, and a chapter's POV names one of its document's characters by
-title — and inside the text a paragraph's right-click marks it as a quote (Reading or
-Writing), which renders indented and saves through the same chapter save. Above the text sits
-a read-only identity line — the chapter's title, its POV, or a character's name parts — kept
-current with the front matter. At the bottom of the window the message panel keeps a rolling
-log of chat prompts and model replies: a typed prompt moves into the log, the model's answer
-appears beneath it as text lines and clickable buttons, and when the answer names a paragraph
-a button opens that chapter and highlights the sentence, all through the server. The panel's
-seams resize with the mouse in the direction the mouse moves.
+itself — an import reads the directory the user picks and hands it to the server, which does the
+writing — and the backend even serves the interface, so the app and API share an origin and the
+signed-in session reaches every route. The chapter list's right-click menu renames, moves,
+renumbers, and assigns a point-of-view character; inside the text a paragraph's right-click marks
+it as a quote; a read-only identity line tracks the front matter; and the message panel logs chat
+prompts and replies, whose buttons can open a named chapter and highlight its sentences. The raw
+and WYSIWYG views edit the same canonical buffer, and the dirty check compares that buffer against
+the last canonical text (quote types included), so merely switching chapters never saves an
+untouched file.
 
-Read it to run the app, to find which file owns the chapter list, the editor, the chat line,
-login, and the way back out of a session — **File → Sign out** clears what the session owned and
-returns to the sign-in gate instead of closing the window — and to see how a folder on disk becomes
-a document. How the window should look is in `../README_markdown_editor_ui.md`; what the AI chat
-line sends and receives is in `../src/dockb/controllers/README_API.md`.
+Read it to run the app, to find which file owns the chapter list, editor, chat line, login, and
+sign-out, and to see how a folder on disk becomes a document. How the window should look is in
+`../README_markdown_editor_ui.md`; what the AI chat line sends and receives is in
+`../src/dockb/controllers/README_API.md`.
 
 ## API client and session
 
