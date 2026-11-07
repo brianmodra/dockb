@@ -305,6 +305,55 @@ def test_find_paragraphs_marks_sentences_by_the_characters_it_resolves() -> None
     assert found[0]["matched_sentence_ids"] == ["s1"]
 
 
+def test_sentence_marking_runs_every_lookup_before_the_mentions_job_starts(monkeypatch) -> None:
+    """The mentions job runs on a daemon thread sharing the tool's session.
+
+    The sentence marker asks the database while it marks, so it must finish
+    before the job is spawned: two threads running one session corrupts the
+    driver's connection (a BufferError in the wild).
+    """
+    from dockb.services import mcp_queries as module
+
+    events: list[str] = []
+    chapter_repo = MagicMock()
+
+    def noting(*args: Any, **kwargs: Any) -> dict[str, str]:
+        events.append("resolve")
+        return {"id": "k1", "title": "Karakas"}
+
+    chapter_repo.find_character_by_name.side_effect = noting
+    monkeypatch.setattr(module, "run_mentions_async", lambda job: events.append("job"))
+    search_repo = _StubSearchRepo(
+        directory=[{"id": "k1", "title": "Karakas", "first_name": "K", "surname": "Karakas", "nicknames": ["Adams"]}],
+        rows=[
+            {
+                "id": "p1",
+                "quote_type": "",
+                "index": 0,
+                "chapter_id": "c1",
+                "chapter_title": "Opening 1",
+                "sentences": [{"id": "s1", "text": "Adams closed the door."}],
+            }
+        ],
+    )
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = [{"id": "p1", "state": 1}]
+
+    find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "Adams"},
+        search_repo=search_repo,
+        chapter_repo=chapter_repo,
+        document_repo=MagicMock(),
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+    )
+
+    assert "resolve" in events
+    assert events[-1] == "job"
+    assert all(event == "resolve" for event in events[:-1])
+
+
 def test_find_paragraphs_refuses_an_unknown_document_before_searching() -> None:
     search_repo = _StubSearchRepo(exists=False)
 

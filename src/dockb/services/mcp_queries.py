@@ -114,10 +114,15 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
         include_characters=include_characters,
     )
 
+    search_answer = [_row_payload(row, criteria, resolve) for row in rows]
+
     states: dict[str, dict[str, Any]] = {}
     if mentions_repo is not None and _has_character_leaf(criteria):
         states = {state["id"]: state for state in mentions_repo.paragraph_states(owner, document_id=document_id)}
         if any(row["state"] in (1, 4) for row in states.values()):
+            # the job runs on a daemon thread sharing this request's session;
+            # it is spawned only when the tool asks the session for no more,
+            # because two threads on one session corrupt the connection.
             run_mentions_async(
                 MentionsJob(
                     document_id=document_id,
@@ -127,7 +132,7 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
                     owner=owner,
                 )
             )
-    return [_row_payload(row, criteria, resolve) for row in rows]
+    return search_answer
 
 
 def _row_payload(
