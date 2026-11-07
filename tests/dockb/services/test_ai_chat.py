@@ -226,6 +226,30 @@ class TestResponsesCall:
         # the tool marks the sentences it found; the button passes those positions on
         assert "matched_sentence_indexes" in instructions
 
+    def test_the_instructions_treat_a_found_paragraph_as_a_candidate_to_verify(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A word/name match is not an answer: the model must read the paragraph and judge it."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"]).lower()
+        assert "candidate list, not an answer" in instructions
+        assert "read each returned paragraph's sentences" in instructions
+        assert "actually states" in instructions
+        assert "if none answer" in instructions
+
+    def test_the_instructions_describe_related_paragraphs_without_claiming_an_answer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A related paragraph is reported as related, and a summary stays question-independent."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"]).lower()
+        assert "related but does not answer" in instructions
+        assert "do not phrase it as an answer to the question" in instructions
+        assert "assume the question's premise" in instructions
+        assert "independent of the question" in instructions
+
     def test_the_response_syntax_is_taught_even_without_an_open_document(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")

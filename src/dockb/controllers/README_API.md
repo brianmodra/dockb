@@ -772,8 +772,13 @@ signed-in account (`README_mcp_auth.md` §2–§4); the token never enters
 model-visible text. The same instructions teach the model the editor's
 response syntax, so a find_paragraphs answer comes back as
 `{"response": [{"text": ...}, {"button": {...}}]}` (the renderer's
-`README_response_area.md` specifies the shape) instead of prose. When the URL
-is unset the prompt is sent without MCP, and without the syntax instruction.
+`README_response_area.md` specifies the shape) instead of prose. They also tell
+the model that a tool match only shares the searched words and names: it must
+read each returned paragraph and include only those that actually state the
+answer, describe a related-but-non-answering paragraph as such rather than
+claiming it answers, and keep each `text` item a neutral description of the
+paragraph that does not assume the question's premise. When the URL is unset
+the prompt is sent without MCP, and without the syntax instruction.
 Errors: `422` for an empty prompt, `503` when the service is
 unwired or the key is missing, `502` when the model call fails.
 

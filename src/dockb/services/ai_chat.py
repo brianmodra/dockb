@@ -36,16 +36,27 @@ _DOCUMENT_INSTRUCTIONS = (
 )
 _RESPONSE_SYNTAX_INSTRUCTIONS = (
     " When your answer is built on the find_paragraphs tool, reply in JSON using the editor's"
-    ' "response syntax" instead of prose: {"response": [{"text": "one point per item"},'
+    ' "response syntax" instead of prose: {"response": [{"text": "what this paragraph says"},'
     ' {"button": {"label": "Show me this paragraph", "function": "highlight",'
     ' "args": {"chapter_id": "<the chapter id>", "paragraph_id": "<the paragraph id>",'
-    ' "sentence_indices": [<sentence positions> | []]}}}]} — one "text" item per claim, and one'
-    " highlight button per found paragraph, its args carrying that paragraph's chapter id and"
-    ' paragraph id, and "sentence_indices" holding exactly the positions that answer put in'
-    ' "matched_sentence_indexes" (first sentence of the paragraph is 0), the same count in the'
-    " same order; an empty list shows the whole paragraph, which is what the tool marked none"
-    " for. Pass the sentence positions, never their ids. Chapter and paragraph ids are required;"
-    " a reply without JSON shows the reader plain text."
+    ' "sentence_indices": [<sentence positions> | []]}}}]} — one "text" item per paragraph, and one'
+    " highlight button for every paragraph you present as an answer, its args carrying that"
+    ' paragraph\'s chapter id and paragraph id, and "sentence_indices" holding exactly the positions'
+    ' that answer put in "matched_sentence_indexes" (first sentence of the paragraph is 0), the same'
+    " count in the same order; an empty list shows the whole paragraph, which is what the tool"
+    " marked none for. Pass the sentence positions, never their ids. Chapter and paragraph ids are"
+    " required; a reply without JSON shows the reader plain text."
+    " A find_paragraphs result is a candidate list, not an answer: it matches the words and names"
+    " you searched for, not the meaning of the question. Read each returned paragraph's sentences"
+    " and decide whether it actually states what the user asked. Include a paragraph only when it"
+    " answers; when one is related but does not answer, say so plainly (this paragraph is related"
+    " but does not answer the question) rather than presenting it as the answer. If none answer,"
+    " say that plainly."
+    ' Each "text" item is a neutral, factual description of what one included paragraph says on its'
+    " own. Do not phrase it as an answer to the question, assume the question's premise, or add"
+    " events, causes, knowledge, or feelings the paragraph does not state. Attribute a fact to a"
+    " person only when the paragraph does. Keep the description independent of the question: a"
+    " reader must not be able to infer what was asked from it."
 )
 
 

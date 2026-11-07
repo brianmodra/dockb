@@ -136,7 +136,12 @@ async def test_find_paragraphs_schema_describes_the_criteria_tree() -> None:
     assert group_def["properties"]["criteria"]["type"] == "array"
 
     # and the description steers a single-word search away from the text leaf
-    assert "single word" in tools["find_paragraphs"].description
+    description = tools["find_paragraphs"].description
+    assert "single word" in description
+    # a match shares words and names; the description must not give a worked
+    # example that reads as "this match is the paragraph where the answer is"
+    assert "finds out" not in description
+    assert "candidate" in description
 
 
 @pytest.mark.asyncio

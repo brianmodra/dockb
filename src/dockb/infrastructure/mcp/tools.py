@@ -185,8 +185,10 @@ def mount_tools(
             '"character": ...} — proper names of the story\'s people go in a character leaf, never in '
             "a word leaf. A single word goes in a word leaf — use a text leaf only for phrases and "
             'fragments of several words. Combine leaves with {"type": "criteria", "op": "and"|"or", '
-            '"criteria": [...]}, where "and" demands every child and "or" any: e.g. the paragraph '
-            'where Karakas finds out Arthurton was murdered is an "and" over character Karakas, '
-            "character Arthurton, and word murdered."
+            '"criteria": [...]}, where "and" demands every child and "or" any. A match only shares '
+            "the searched words and names: it is a candidate, not proof that the paragraph answers "
+            "the question, so read the returned text before relying on it. For example, an "
+            '"and" over a character, another character, and a word returns every paragraph that '
+            "mentions both people and the word somewhere."
         ),
     )
