@@ -81,8 +81,10 @@ simply stays un-evaluated and is retried by the next trigger.
 
 ## 4. What triggers an evaluation
 
-- **A manuscript chapter save** enqueues an async **MentionsJob** (the existing job queue, after the CommitJob, because it reads the tokens the commit persisted) scoped to that chapter: it evaluates the chapter's state 1 and state 4 paragraphs.
-- **A character chapter save that changed the identity properties** enqueues a **document-wide** MentionsJob (the auto-fix: the ambiguity set is document-wide, so the scope is too).
+The only triggers are chapter saves and the sweep CLI — a search never evaluates. The auto triggers go through **`mentions_scheduler.py`**, which keeps *at most one running evaluation per chapter*: when a chapter's job is already running, a newer trigger cancels it (cooperatively, at the pipeline's checkpoints — an already-sent model batch may finish, but its verdicts are discarded) and the running worker then starts a fresh job built from the newest state. An editing burst therefore costs at most one immediate run plus one successor per chapter, and the latest state is always evaluated eventually.
+
+- **A manuscript chapter save** schedules one **MentionsJob** for that chapter, run on a daemon thread after the save returns (it reads what the commit persisted): it evaluates the chapter's state 1 and state 4 paragraphs.
+- **A character chapter save that changed the identity properties** schedules a MentionsJob **per chapter of the document** (the auto-fix: the ambiguity set is document-wide, so the scope is too; the per-chapter split is what lets the scheduler coalesce them).
 - **The sweep CLI** — `dockb mentions sweep <document-title-or-id>` — is the operator's manual, once-per-book backfill (and the retry after an outage).
   Default: the document's state 1 and 4 paragraphs, resumable by construction (each paragraph is stamped as it is judged, so an interrupted sweep just continues). `--full`: re-evaluate every paragraph, ignoring existing MENTIONS. It prints per-chapter state counts before, and anything left pending after; it does not run at startup and is never automatic.
 

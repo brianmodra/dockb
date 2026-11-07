@@ -84,13 +84,14 @@ def _ambiguity(document: Document) -> dict[str, list[str]]:
     return owners
 
 
-def evaluate_chapter_tier1(
+def evaluate_chapter_tier1(  # pylint: disable=too-many-positional-arguments,too-many-arguments
     chapter_id: str,
     *,
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
     document_repo: Any,
+    cancel: threading.Event | None = None,
 ) -> None:
     """Evaluate a chapter's state-1 and state-4 paragraphs, tier 1.
 
@@ -99,13 +100,18 @@ def evaluate_chapter_tier1(
     match on an ambiguous entry is left **unstamped** — tier 2, the model,
     must judge it first — but its unambiguous verdicts are written so a
     search can already see them.
+
+    *cancel*, when set between paragraphs, ends the pass: nothing further is
+    stamped and the rollup is left for the successor run.
     """
     pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo, document_repo)
-    if pending is None or chapter is None:
+    if pending is None or chapter is None or _stop_requested(cancel):
         return
 
     now = datetime.now(timezone.utc).isoformat()
     for paragraph_id in pending:
+        if _stop_requested(cancel):
+            return
         paragraph = next((p for p in chapter.paragraphs if p.id == paragraph_id), None)
         if paragraph is None:
             continue
@@ -117,6 +123,8 @@ def evaluate_chapter_tier1(
                 mentions_repo.stamp(paragraph_id, verdicts, owner=owner)
         else:
             mentions_repo.stamp(paragraph_id, verdicts, owner=owner, checked_at=now)
+    if _stop_requested(cancel):
+        return
     _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
 
@@ -283,6 +291,7 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     complete: Any = None,
     nlp: Any = None,
     no_ai: bool = False,
+    cancel: threading.Event | None = None,
 ) -> None:
     """Evaluate a chapter's pending paragraphs (tier 2): the model judges the
     ambiguous evidence.
@@ -293,9 +302,14 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     mentions as `method: "model"`, rejections as a no-mentions verdict. A
     candidate the model could not answer leaves its paragraph un-stamped for
     the next trigger to retry.
+
+    *cancel* marks the pass superseded: checked before the batch is sent (an
+    unanswered document costs nothing), and again before each paragraph's
+    verdicts are stamped, so what a still-flying batch comes back with is
+    discarded rather than written.
     """
     pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo, document_repo)
-    if pending is None or chapter is None:
+    if pending is None or chapter is None or _stop_requested(cancel):
         return
 
     api_key = os.environ.get(_KEY_ENV_VAR)
@@ -325,6 +339,9 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
                 }
             )
 
+    if not candidates or _stop_requested(cancel):
+        return
+
     if no_ai and candidates:
         logger.warning(
             "The model was needed to judge %d ambiguous mention candidate(s), "
@@ -333,9 +350,31 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
         )
         return
     verdicts = judge_ambiguous(candidates, complete=complete)
+    if _stamps_tier2_verdicts(per_paragraph, verdicts, mentions_repo=mentions_repo, owner=owner, cancel=cancel):
+        return
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
+
+def _stamps_tier2_verdicts(
+    per_paragraph: dict[str, tuple[list[dict[str, Any]], list[Chapter]]],
+    verdicts: dict[str, bool | None],
+    *,
+    mentions_repo: Any,
+    owner: str,
+    cancel: threading.Event | None,
+) -> bool:
+    """Stamp the model's verdicts per paragraph; say whether the run was cancelled.
+
+    Each paragraph whose candidates all settled is stamped — mentions as
+    `method: "model"`, rejections as a no-mentions verdict — and one the
+    model could not answer stays un-stamped for the next trigger to retry.
+    A post-answer cancellation still discards the rest: the verdicts were
+    computed for a state the chapter has left behind.
+    """
     now = datetime.now(timezone.utc).isoformat()
     for paragraph_id, (settled, waiting) in per_paragraph.items():
+        if _stop_requested(cancel):
+            return True
         settled = list(settled)
         unresolved = False
         for character in waiting:
@@ -349,7 +388,7 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
                 mentions_repo.stamp(paragraph_id, settled, owner=owner)
         else:
             mentions_repo.stamp(paragraph_id, settled, owner=owner, checked_at=now)
-    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    return _stop_requested(cancel)
 
 
 def _settle_by_ner(
@@ -414,15 +453,25 @@ def _openai_complete(prompt: str) -> str:
     return str(payload["choices"][0]["message"]["content"])
 
 
-class MentionsJob:  # pylint: disable=too-few-public-methods
-    """The evaluation of one chapter's (or one document's) pending paragraphs.
+def _stop_requested(cancel: threading.Event | None) -> bool:
+    """Whether *cancel* has been asked to stop (never for a None cancel)."""
+    return cancel is not None and cancel.is_set()
 
-    Carries the scope and the repositories; `run` does the work (tier 1, then
-    tier 2 for what tier 1 left pending). It is a plain object rather than a
-    JobQueue job: the queue a chapter save could use is not wired in
-    production, and a mentions evaluation wants no ordering guarantees beyond
-    "after the commit" — which the caller guarantees by only constructing it
-    after the save returned.
+
+class MentionsJob:  # pylint: disable=too-few-public-methods
+    """The evaluation of one chapter's pending paragraphs.
+
+    Carries the chapter's scope and the repositories; `run` does the work
+    (tier 1, then tier 2 for what tier 1 left pending). It is a plain object
+    rather than a JobQueue job: the queue a chapter save could use is not
+    wired in production, and a mentions evaluation wants no ordering
+    guarantees beyond "after the commit" — which the caller guarantees by
+    only constructing it after the save returned. One chapter per job; a
+    document-wide trigger schedules one job per chapter (the scheduler
+    coalesces runs for the same chapter).
+
+    *cancel* is the scheduler's cooperative stop signal — the job checks it
+    at its own checkpoints and leaves the rest to a successor run.
     """
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -432,49 +481,63 @@ class MentionsJob:  # pylint: disable=too-few-public-methods
         chapter_repo: Any,
         document_repo: Any,
         owner: str,
-        chapter_id: str | None = None,
-        document_id: str | None = None,
+        chapter_id: str,
+        cancel: threading.Event | None = None,
     ) -> None:
         self.chapter_id = chapter_id
-        self.document_id = document_id
         self._repos = (mentions_repo, chapter_repo, document_repo)
         self._owner = owner
+        self.cancel = cancel
 
     def run(self) -> None:
-        """Evaluate every pending paragraph in the job's scope, both tiers."""
+        """Evaluate every pending paragraph of the job's chapter, both tiers."""
         mentions_repo, chapter_repo, document_repo = self._repos
-        if self.chapter_id is not None:
-            chapter_ids: list[str] = [self.chapter_id]
-        elif self.document_id is not None:
-            chapter_ids = _document_chapter_ids(self.document_id, owner=self._owner, document_repo=document_repo)
-        else:
-            return
-        for chapter_id in chapter_ids:
-            _evaluate_chapter(
-                chapter_id,
-                owner=self._owner,
-                mentions_repo=mentions_repo,
-                chapter_repo=chapter_repo,
-                document_repo=document_repo,
-            )
+        _evaluate_chapter(
+            self.chapter_id,
+            owner=self._owner,
+            mentions_repo=mentions_repo,
+            chapter_repo=chapter_repo,
+            document_repo=document_repo,
+            cancel=self.cancel,
+        )
 
 
-def run_mentions_async(job: MentionsJob) -> None:
-    """Run *job* on a one-shot daemon thread: the caller never waits on it."""
-    threading.Thread(target=job.run, daemon=True).start()
+def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    chapter_id: str,
+    *,
+    owner: str,
+    mentions_repo: Any,
+    chapter_repo: Any,
+    document_repo: Any,
+    cancel: threading.Event | None = None,
+) -> None:
+    """Both tiers for one chapter's pending paragraphs, then the chapter rollup.
 
-
-def _document_chapter_ids(document_id: str, *, owner: str, document_repo: Any) -> list[str]:
-    document: Document | None = document_repo.load(document_id, owner)
-    if document is None:
-        return []
-    return [chapter.id for chapter in document.chapters]
-
-
-def _evaluate_chapter(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_repo: Any, document_repo: Any) -> None:
-    """Both tiers for one chapter's pending paragraphs, then the chapter rollup."""
-    evaluate_chapter_tier1(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
-    evaluate_chapter_tier2(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    *cancel* is checked at the pipeline's own checkpoints — a superseded
+    evaluation stops stamping and leaves the rest to its successor run.
+    """
+    if _stop_requested(cancel):
+        return
+    evaluate_chapter_tier1(
+        chapter_id,
+        owner=owner,
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        cancel=cancel,
+    )
+    if _stop_requested(cancel):
+        return
+    evaluate_chapter_tier2(
+        chapter_id,
+        owner=owner,
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        cancel=cancel,
+    )
+    if _stop_requested(cancel):
+        return
     _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
 

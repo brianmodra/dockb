@@ -17,6 +17,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
 from dockb.exceptions import (
@@ -39,7 +40,8 @@ from dockb.models.sentence import Sentence
 from dockb.services.chapter_front_matter import set_pov as apply_set_pov
 from dockb.services.chapter_renumber import plan_renumber
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
-from dockb.services.mentions import MentionsJob, run_mentions_async
+from dockb.services.mentions import MentionsJob
+from dockb.services.mentions_scheduler import MentionsScheduler
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
 from dockb.timing import measure
@@ -267,7 +269,7 @@ def _crosses_category(members: list[dict[str, str | int]], mover: Chapter, after
     return following is None or _row_category(following) != mover_category
 
 
-class ChapterService:
+class ChapterService:  # pylint: disable=too-many-instance-attributes
     """CRUD operations for Chapter entities."""
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -279,6 +281,7 @@ class ChapterService:
         nlp: Language | None = None,
         mentions_repo: Any | None = None,
         session_context: SessionContext | None = None,
+        mentions_scheduler: MentionsScheduler | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
@@ -286,6 +289,7 @@ class ChapterService:
         self._document_store_factory = document_store_factory
         self._nlp = nlp
         self._mentions_repo = mentions_repo
+        self._mentions_scheduler = mentions_scheduler or MentionsScheduler()
         self._session_context = session_context
         self._save_locks: dict[str, threading.Lock] = {}
         self._save_users: dict[str, int] = {}
@@ -387,13 +391,11 @@ class ChapterService:
     def save_document(self, chapter_id: str, content: str, *, owner: str) -> ChapterSaveResult | None:
         """Save a chapter: write *content* to its owned file, rehydrate the graph, git-snap.
 
-        The chapter's ``id``/``title`` (and its ``act``/``category`` when set)
-        are forced
-        into the file's front matter — the server, not the editor, owns
-        identity. The returned ``content`` is the canonical span-form text and
-        ``summary`` records what changed. Returns ``None`` for a missing
-        chapter, a chapter *owner* does not own, an orphan, or when no store / nlp is
-        configured (the endpoint reports 404).
+        The chapter's ``id``/``title`` (and its ``act``/``category`` when set) are forced
+        into the file's front matter — the server, not the editor, owns identity. The
+        returned ``content`` is the canonical span-form text and ``summary`` records what
+        changed. Returns ``None`` for a missing chapter, a chapter *owner* does not own,
+        an orphan, or when no store / nlp is configured (the endpoint reports 404).
         """
         store = self._store(owner)
         if store is None or self._nlp is None or self._document_repo is None:
@@ -440,12 +442,13 @@ class ChapterService:
         before_identity: tuple[str, str, tuple[str, ...], tuple[str, ...]],
         owner: str,
     ) -> None:
-        """Queue the mention evaluation the save made necessary, on a daemon thread.
+        """Schedule the mention evaluation the save made necessary, per chapter.
 
-        A manuscript save scopes the job to its chapter; a character save that
-        changed the identity properties scopes it to the whole document — the
-        ambiguity of a shared name is decided by every character's name set.
-        A character save that changed no identity triggers nothing.
+        A manuscript save schedules its own chapter; a character save whose identity
+        changed schedules every chapter of the document (the ambiguity of a shared
+        name is decided by every character's name set); anything else schedules nothing.
+        One evaluation runs per chapter at a time — a newer save cancels the
+        superseded one and queues the fresh state.
         """
         if self._mentions_repo is None:
             return
@@ -453,15 +456,21 @@ class ChapterService:
         identity_changed = ch.category == "Character" and after_identity != before_identity
         if ch.category == "Character" and not identity_changed:
             return
-        job = MentionsJob(
-            chapter_id=None if identity_changed else ch.id,
-            document_id=document_id if identity_changed else None,
-            mentions_repo=self._mentions_repo,
-            chapter_repo=self._chapter_repo,
-            document_repo=self._document_repo,
-            owner=owner,
-        )
-        run_mentions_async(job)
+        if identity_changed:
+            document = self._document_repo.load(document_id, owner) if self._document_repo is not None else None
+            chapter_ids = [chapter.id for chapter in document.chapters] if document is not None else []
+        else:
+            chapter_ids = [ch.id]
+        for chapter_id in chapter_ids:
+            job = partial(
+                MentionsJob,
+                chapter_id=chapter_id,
+                mentions_repo=self._mentions_repo,
+                chapter_repo=self._chapter_repo,
+                document_repo=self._document_repo,
+                owner=owner,
+            )
+            self._mentions_scheduler.schedule(chapter_id, job)
 
     def open_document(self, chapter_id: str, *, owner: str) -> str | None:
         """Read a chapter's owned file as canonical text, reconciling it first.

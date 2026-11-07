@@ -10,9 +10,8 @@ from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token
-from dockb.services import crud_services as crud_services_module
 from dockb.services.crud_services import ChapterService
-from dockb.services.mentions import evaluate_chapter_tier1, run_mentions_async
+from dockb.services.mentions import evaluate_chapter_tier1
 
 _OWNER = "acct-1"
 
@@ -159,11 +158,8 @@ def test_states_2_and_3_paragraphs_are_not_touched() -> None:
     assert sorted(stamped_ids) == ["p2", "p4"]
 
 
-def test_a_chapter_save_triggers_a_chapter_scoped_evaluation(monkeypatch) -> None:
+def test_a_job_evaluates_its_scoped_chapter() -> None:
     from dockb.services import mentions as mentions_module
-
-    triggered = []
-    monkeypatch.setattr(mentions_module, "run_mentions_async", lambda *args: triggered.append(args[0]))
 
     chapter = _character("k1", "Jeremiah", first_name="Jeremiah")
     document = Document(id="d1", state=DataState.SYNC)
@@ -219,20 +215,7 @@ def test_the_job_logs_the_mentions_found_for_the_finished_chapter(caplog) -> Non
     assert any("Mentions for chapter 'Opening 1': 2" in record.message for record in caplog.records)
 
 
-def test_run_mentions_async_runs_the_job_on_a_daemon_thread() -> None:
-    import threading
-
-    done = threading.Event()
-    job = MagicMock()
-    job.run.side_effect = done.set
-
-    run_mentions_async(job)
-
-    assert done.wait(5)
-    assert job.run.called
-
-
-def _save_service(tmp_path, chapter, mentions_repo, nlp):
+def _save_service(tmp_path, chapter, mentions_repo, nlp, scheduler=None):
     chapter_repo = MagicMock()
     chapter_repo.load.return_value = chapter
     chapter_repo.find_document_id.return_value = "d1"
@@ -251,58 +234,46 @@ def _save_service(tmp_path, chapter, mentions_repo, nlp):
         document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
         nlp=nlp,
         mentions_repo=mentions_repo,
+        mentions_scheduler=scheduler,
     )
     return service, chapter_repo, doc_repo, store
 
 
-def test_a_manuscript_save_triggers_a_chapter_scoped_mentions_job(tmp_path, monkeypatch, nlp) -> None:
-    chapter = Chapter(id="c1", title="Opening 1", act="Act I", state=DataState.SYNC)
-    paragraph = Paragraph(id="p1", state=DataState.SYNC)
-    sentence = Sentence(state=DataState.SYNC)
-    sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
-    paragraph.sentences.append(sentence)
-    chapter.paragraphs.append(paragraph)
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = []
-    mentions_repo.stamp.side_effect = None
-    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, mentions_repo, nlp)
-    triggered = []
-    monkeypatch.setattr(crud_services_module, "run_mentions_async", triggered.append)
+def test_a_manuscript_save_schedules_its_own_chapter(tmp_path, nlp) -> None:
+    chapter = _text_chapter("c1", "Opening 1", act="Act I")
+    scheduler = _RecordingScheduler()
+    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, MagicMock(), nlp, scheduler)
 
     service.save_document("c1", '---\nid: c1\n---\n\n<span data-par-id="p1">\nBody.\n</span>', owner="acct-1")
 
-    assert len(triggered) == 1
-    assert triggered[0].chapter_id == "c1"
-    assert triggered[0].document_id is None
+    assert [chapter_id for chapter_id, _make in scheduler.scheduled] == ["c1"]
+    job = scheduler.scheduled[0][1]()  # the factory builds the job the run evaluates
+    assert job.chapter_id == "c1"
 
 
-def test_a_character_identity_change_triggers_a_document_scoped_job(tmp_path, monkeypatch, nlp) -> None:
-    chapter = Chapter(id="k1", title="Jeremiah", category="Character", state=DataState.SYNC)
-    paragraph = Paragraph(id="p1", state=DataState.SYNC)
-    sentence = Sentence(state=DataState.SYNC)
-    sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
-    paragraph.sentences.append(sentence)
-    chapter.paragraphs.append(paragraph)
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = []
-    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, mentions_repo, nlp)
-    # the saved file's front matter renames the character's surname
-    triggered = []
-    monkeypatch.setattr(crud_services_module, "run_mentions_async", triggered.append)
+def test_a_character_identity_change_schedules_every_chapter_of_the_document(tmp_path, nlp) -> None:
+    """The ambiguity set is document-wide, so every chapter's verdicts are re-judged."""
+    ker = _text_chapter("k1", "Jeremiah", category="Character")
+    first = _text_chapter("c1", "Opening 1", act="Act I")
+    second = _text_chapter("c2", "Opening 2", act="Act I")
+    scheduler = _RecordingScheduler()
+    service, _chapter_repo, doc_repo, _store = _save_service(tmp_path, ker, MagicMock(), nlp, scheduler)
+    doc_repo.load.return_value.chapters.extend([first, second])  # the book has both manuscript chapters
 
     content = (
         "---\nid: k1\ntitle: Jeremiah\ncategory: Character\n"
         "first_name: Jeremiah\nsurname: Adams\n---\n\n"
-        '<span data-par-id="p1">\nBody.\n</span>'
+        '<span data-par-id="p-k1">\nBody.\n</span>'
     )
     service.save_document("k1", content, owner="acct-1")
 
-    assert len(triggered) == 1
-    assert triggered[0].document_id == "d1"
-    assert triggered[0].chapter_id is None
+    assert sorted(chapter_id for chapter_id, _make in scheduler.scheduled) == ["c1", "c2", "k1"]
+    for chapter_id, make_job in scheduler.scheduled:
+        job = make_job()
+        assert job.chapter_id == chapter_id  # one job per chapter, no document-wide batch
 
 
-def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, monkeypatch, nlp) -> None:
+def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, nlp) -> None:
     chapter = Chapter(id="k1", title="Jeremiah", category="Character", state=DataState.SYNC)
     chapter.first_name = "Jeremiah"
     paragraph = Paragraph(id="p1", state=DataState.SYNC)
@@ -310,11 +281,8 @@ def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, mon
     sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
     paragraph.sentences.append(sentence)
     chapter.paragraphs.append(paragraph)
-    mentions_repo = MagicMock()
-    mentions_repo.paragraph_states.return_value = []
-    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, mentions_repo, nlp)
-    triggered = []
-    monkeypatch.setattr(crud_services_module, "run_mentions_async", triggered.append)
+    scheduler = _RecordingScheduler()
+    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, chapter, MagicMock(), nlp, scheduler)
 
     content = (
         "---\nid: k1\ntitle: Jeremiah\ncategory: Character\n"
@@ -322,7 +290,7 @@ def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, mon
     )
     service.save_document("k1", content, owner="acct-1")
 
-    assert not triggered
+    assert not scheduler.scheduled
 
 
 def test_a_longer_adjacent_run_beats_the_defeated_shorter_match() -> None:
@@ -405,3 +373,71 @@ def test_the_evaluation_refreshes_the_chapters_mention_rollup() -> None:
     evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
 
     mentions_repo.stamp_chapter.assert_called_once_with("c1", ["k1"], owner=_OWNER)
+
+
+def test_a_cancelled_job_evaluates_nothing() -> None:
+    import threading
+
+    from dockb.services import mentions as mentions_module
+
+    mentions_repo, chapter_repo, document_repo, _document = _fixture([{"id": "p2", "state": 1}])
+
+    job = mentions_module.MentionsJob(
+        chapter_id="c1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner=_OWNER,
+    )
+    job.cancel = threading.Event()
+    job.cancel.set()
+    job.run()
+
+    mentions_repo.paragraph_states.assert_not_called()  # cancelled before it read anything
+
+
+def test_a_job_cancelled_between_paragraphs_stamps_nothing_more() -> None:
+    import threading
+
+    from dockb.services import mentions as mentions_module
+
+    mentions_repo, chapter_repo, document_repo, _document = _fixture([{"id": "p2", "state": 1}, {"id": "p4", "state": 1}])
+    job = mentions_module.MentionsJob(
+        chapter_id="c1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        owner=_OWNER,
+    )
+    job.cancel = threading.Event()
+
+    def cancel_after_first_stamp(*_args, **_kwargs):
+        job.cancel.set()
+
+    mentions_repo.stamp.side_effect = cancel_after_first_stamp
+    job.run()
+
+    stamped_ids = [call.args[0] for call in mentions_repo.stamp.call_args_list]
+    assert stamped_ids == ["p2"]  # p4's paragraph is left for the successor run
+    mentions_repo.stamp_chapter.assert_not_called()  # a cancelled run refreshes no rollup
+
+
+class _RecordingScheduler:  # pylint: disable=too-few-public-methods
+    """A scheduler stand-in that records what the save triggers scheduled."""
+
+    def __init__(self) -> None:
+        self.scheduled: list[tuple[str, object]] = []  # (chapter_id, make_job)
+
+    def schedule(self, chapter_id: str, make_job) -> None:
+        self.scheduled.append((chapter_id, make_job))
+
+
+def _text_chapter(chapter_id: str, title: str, act: str = "", category: str = "Chapter") -> Chapter:
+    """A chapter whose one paragraph carries the default body text."""
+    chapter = Chapter(id=chapter_id, title=title, act=act, category=category, state=DataState.SYNC)
+    paragraph = Paragraph(id=f"p-{chapter_id}", state=DataState.SYNC)
+    sentence = Sentence(state=DataState.SYNC)
+    sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
+    paragraph.sentences.append(sentence)
+    chapter.paragraphs.append(paragraph)
+    return chapter

@@ -226,6 +226,7 @@ class TestWireServices:
 
         assert get_doc_service() is not None
         assert get_ch_service() is not None
+        assert get_ch_service()._mentions_repo is not None  # the save trigger evaluates mentions for real
         assert get_para_service() is not None
         assert get_sent_service() is not None
 

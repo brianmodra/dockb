@@ -299,3 +299,48 @@ def test_no_nlp_goes_straight_to_the_model(monkeypatch) -> None:
 
     stamped = mentions_repo.stamp.call_args
     assert stamped is not None and stamped.kwargs["checked_at"]
+
+
+def test_a_cancelled_job_never_calls_the_model(monkeypatch) -> None:
+    import threading
+
+    from dockb.services.mentions import evaluate_chapter_tier2
+
+    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+
+    evaluate_chapter_tier2(
+        "c1",
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        cancel=threading.Event(),
+    )
+
+    mentions_repo.stamp.assert_not_called()
+
+
+def test_a_cancel_after_the_model_answers_stamps_nothing(monkeypatch) -> None:
+    """The verdicts an already-flying batch returns are discarded, not stamped."""
+    import threading
+
+    from dockb.services.mentions import evaluate_chapter_tier2
+
+    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    cancel = threading.Event()
+
+    def answer_then_cancel(_prompt: str) -> str:
+        cancel.set()
+        return '{"1": true, "2": false}'
+
+    evaluate_chapter_tier2(
+        "c1",
+        owner="acct-1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        document_repo=document_repo,
+        complete=answer_then_cancel,
+        cancel=cancel,
+    )
+
+    mentions_repo.stamp.assert_not_called()

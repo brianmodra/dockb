@@ -43,6 +43,7 @@ from dockb.models.sentence import Sentence
 from dockb.passwords import pepper_from
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.document_repository import DocumentRepository
+from dockb.repositories.mentions_repository import MentionsRepository
 from dockb.repositories.paragraph_repository import ParagraphRepository
 from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
 from dockb.repositories.sentence_repository import SentenceRepository
@@ -215,6 +216,7 @@ def wire(  # pylint: disable=too-many-locals
         document_repo=repos[Document],
         document_store_factory=document_store_factory,
         nlp=nlp,
+        mentions_repo=MentionsRepository(session),
     )
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])
     sent_svc = SentenceService(uow_factory=uow_factory, sentence_repo=repos[Sentence])
