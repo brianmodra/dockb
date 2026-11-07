@@ -51,9 +51,12 @@ code. Names and their functions are specified with the functions themselves.
 ## `highlight` — the registry's first function
 
 `highlight` — its args are `{ "chapter_id": "...", "paragraph_id": "...",
-"sentence_ids": ["...", ...] }`; the chapter and paragraph ids are required, and
-`sentence_ids` names the tool-marked sentences to show (an empty list, or no
-field at all, shows the whole paragraph). It opens the named chapter in the editor when it isn't
+"sentence_ids": ["...", ...], "sentence_indexes": [0, ...] }`; the chapter and
+paragraph ids are required, and `sentence_ids` with `sentence_indexes` name the
+tool-marked sentences and their positions within the paragraph (an empty pair —
+or none at all — shows the whole paragraph; the indexes must match the ids so
+the editor can select straight from them and never re-read the chapter wire,
+which it reads only when the reply's positions are unusable). It opens the named chapter in the editor when it isn't
 open already (saving the dirty open buffer first, exactly a chapter-row click would), scrolls the
 paragraph into view, and selects the named sentences as one span as if the mouse had dragged over
 them. While the model is busy the message panel grows just enough to show the submitted prompt's
