@@ -223,6 +223,9 @@ class TestResponsesCall:
         assert "sentence_ids" in instructions
         # the tool marks the sentences it found; the button passes those ids on
         assert "matched_sentence_ids" in instructions
+        # the ids also carry their position, so the editor need not reload the chapter
+        assert "sentence_indexes" in instructions
+        assert "matched_sentence_indexes" in instructions
 
     def test_the_response_syntax_is_taught_even_without_an_open_document(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")

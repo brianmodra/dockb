@@ -188,6 +188,7 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
     assert found[0]["sentences"] == [{"id": "s1", "index": 0, "text": "The murder was discovered at dawn."}]
     # the search's own sentence is marked, so the model can name it in a button
     assert found[0]["matched_sentence_ids"] == ["s1"]
+    assert found[0]["matched_sentence_indexes"] == [0]
     # the criteria reached the database compiled: a whole-word regex parameter
     assert search_repo.calls == [
         {
@@ -230,6 +231,7 @@ def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
         owner="acct-1",
     )
     assert found[0]["matched_sentence_ids"] == ["s1", "s2"]
+    assert found[0]["matched_sentence_indexes"] == [0, 1]
 
     def found_with(*args: Any, **kwargs: Any) -> Any:
         kwargs["search_repo"] = _StubSearchRepo(rows=[multi])
@@ -252,6 +254,7 @@ def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
     # the two words live in different sentences here: nothing is marked, and the
     # model then names no sentences, highlighting the whole paragraph
     assert found[0]["matched_sentence_ids"] == []
+    assert found[0]["matched_sentence_indexes"] == []
 
 
 def test_find_paragraphs_marks_a_sentence_whose_text_leaf_is_a_substring() -> None:
@@ -275,42 +278,16 @@ def test_find_paragraphs_marks_a_sentence_whose_text_leaf_is_a_substring() -> No
         owner="acct-1",
     )
     assert found[0]["matched_sentence_ids"] == ["s1"]
-
-
-def test_find_paragraphs_marks_sentences_by_the_characters_it_resolves() -> None:
-    multi = {
-        "id": "p2",
-        "quote_type": "",
-        "index": 1,
-        "chapter_id": "c1",
-        "chapter_title": "Opening 1",
-        "sentences": [
-            {"id": "s1", "text": "Karakas closed the door."},
-            {"id": "s2", "text": "Nobody was at home."},
-        ],
-    }
-    search_repo = _StubSearchRepo(
-        directory=[{"id": "k1", "title": "Karakas", "first_name": "Kiral", "surname": "Karakas", "nicknames": []}],
-        rows=[multi],
-    )
-    found = find_paragraphs_payload(
-        "d1",
-        {"type": "character", "character": "Karakas"},
-        search_repo=search_repo,
-        chapter_repo=MagicMock(),
-        document_repo=MagicMock(),
-        owner="acct-1",
-    )
-    assert search_repo.character_directory(document_id="d1", owner="acct-1")  # the directory is a stub
-    assert found[0]["matched_sentence_ids"] == ["s1"]
+    assert found[0]["matched_sentence_indexes"] == [0]
 
 
 def test_sentence_marking_runs_every_lookup_before_the_mentions_job_starts(monkeypatch) -> None:
     """The mentions job runs on a daemon thread sharing the tool's session.
 
-    The sentence marker asks the database while it marks, so it must finish
-    before the job is spawned: two threads running one session corrupts the
-    driver's connection (a BufferError in the wild).
+    The tool asks the database — compiling the character leaves may resolve a
+    name through the repositories — so every lookup must finish before the job
+    is spawned: two threads on one session corrupt the driver's connection
+    (a BufferError in the wild).
     """
     from dockb.services import mcp_queries as module
 
@@ -352,6 +329,69 @@ def test_sentence_marking_runs_every_lookup_before_the_mentions_job_starts(monke
     assert "resolve" in events
     assert events[-1] == "job"
     assert all(event == "resolve" for event in events[:-1])
+
+
+def test_find_paragraphs_marks_the_sentences_the_search_terms_select() -> None:
+    """Character leaves are paragraph-wide: the search's own words pick the sentences."""
+    multi = {
+        "id": "p2",
+        "quote_type": "",
+        "index": 1,
+        "chapter_id": "c1",
+        "chapter_title": "Opening 1",
+        "sentences": [
+            {"id": "s1", "text": "He closed the door softly."},
+            {"id": "s2", "text": "The dream was over by dawn."},
+            {"id": "s3", "text": "Neither spoke again that hour."},
+        ],
+    }
+    found = find_paragraphs_payload(
+        "d1",
+        {
+            "type": "criteria",
+            "op": "and",
+            "criteria": [
+                {"type": "character", "character": "Karakas"},
+                {"type": "character", "character": "Jael"},
+                {"type": "text", "text": "dream"},
+            ],
+        },
+        search_repo=_StubSearchRepo(
+            directory=[{"id": "k1", "title": "Karakas", "first_name": "K", "surname": "Karakas", "nicknames": []}],
+            rows=[multi],
+        ),
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    assert found[0]["matched_sentence_ids"] == ["s2"]
+
+
+def test_find_paragraphs_marks_no_sentence_when_only_characters_were_searched() -> None:
+    multi = {
+        "id": "p2",
+        "quote_type": "",
+        "index": 1,
+        "chapter_id": "c1",
+        "chapter_title": "Opening 1",
+        "sentences": [
+            {"id": "s1", "text": "Karakas closed the door."},
+            {"id": "s2", "text": "Nobody was at home."},
+        ],
+    }
+    found = find_paragraphs_payload(
+        "d1",
+        {"type": "character", "character": "Karakas"},
+        search_repo=_StubSearchRepo(
+            directory=[{"id": "k1", "title": "Karakas", "first_name": "K", "surname": "Karakas", "nicknames": []}],
+            rows=[multi],
+        ),
+        chapter_repo=MagicMock(),
+        document_repo=MagicMock(),
+        owner="acct-1",
+    )
+    # a paragraph-wide person verdict cannot name a sentence: highlight the paragraph
+    assert found[0]["matched_sentence_ids"] == []
 
 
 def test_find_paragraphs_refuses_an_unknown_document_before_searching() -> None:
