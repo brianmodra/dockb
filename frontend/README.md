@@ -108,7 +108,9 @@ its 10px floor.
   (without Shift, non-empty) submits the prompt: the typed text moves into the
   log as its newest line, the box clears and keeps focus, and `main.ts` sends
   it via `ApiClient.sendPrompt` (`POST /api/ai/chat`, key held server-side),
-  appending the model's reply to the same log and reporting failures to it.
+  appending the model's reply to the same log (a reply in the response syntax is
+  shown in the response area instead; see `src/renderer/layout/README_response_area.md`),
+  and reporting failures to it.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
   of the same canonical buffer; dirty = buffer vs last canonical, where the
   quote types count too (`quoteSignature`), so a quote-only change is still

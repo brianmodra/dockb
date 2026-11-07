@@ -1,4 +1,5 @@
 import { ResizeHandle } from "./ResizeHandle";
+import { ResponseArea, type ResponseFunctions, type ResponseObject } from "./responseArea";
 import { buildMenubar, type Mode } from "./menubar";
 
 export interface AppLayoutOptions {
@@ -15,6 +16,7 @@ export interface AppLayoutOptions {
   onSignOut?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
   onPrompt?: (prompt: string) => void;
+  responseFunctions?: ResponseFunctions;
 }
 
 const MIN_LEFT_WIDTH = 120;
@@ -44,6 +46,7 @@ export class AppLayout {
   private readonly rightPanel: HTMLElement;
   private readonly messagePanel: HTMLElement;
   private readonly messageLog: HTMLElement;
+  private responseArea: ResponseArea;
   private readonly chatLine: HTMLTextAreaElement;
   private leftWidth = DEFAULT_LEFT_WIDTH;
   private rightWidth = MIN_RIGHT_WIDTH;
@@ -124,7 +127,8 @@ export class AppLayout {
     messageLog.dataset.testid = "message-log";
     messageLog.className = "message-log";
     this.messageLog = messageLog;
-    this.messagePanel.append(this.messageLog, this.chatLine);
+    this.responseArea = new ResponseArea({ functions: options.responseFunctions });
+    this.messagePanel.append(this.messageLog, this.responseArea.element, this.chatLine);
 
     this.messagePanel.style.height = `${this.messageHeight}px`;
     this.setChatHeight();
@@ -240,19 +244,50 @@ export class AppLayout {
     return Math.ceil((scrollHeight - CHAT_VERTICAL_PADDING) / CHAT_LINE_HEIGHT);
   }
 
+  /**
+   * Collapse the chat box and stand up the spinner strip while a prompt is in
+   * flight; the reply (or the failure) decides what comes next.
+   */
+  beginResponse(): void {
+    this.chatLine.hidden = true;
+    this.responseArea.showSpinner();
+    this.updateResponseGeometry();
+  }
+
+  showResponse(objects: ResponseObject[]): void {
+    this.chatLine.hidden = false;
+    this.responseArea.show(objects);
+    this.updateResponseGeometry();
+  }
+
+  cancelResponse(): void {
+    this.chatLine.hidden = false;
+    this.responseArea.clear();
+  }
+
   private setChatHeight(): void {
     const oneLine = this.isOneLinePanel();
     this.messageLog.hidden = oneLine;
     if (oneLine) {
       this.chatLine.style.height = `${this.messageHeight}px`;
-      return;
+    } else {
+      const panel = this.messageHeight;
+      const needed = Math.max(this.measuredChatLines(), this.chatLine.value.split("\n").length);
+      const defaultLines = Math.max(1, Math.round(panel / 3 / CHAT_LINE_UNIT));
+      const maxLines = Math.max(1, Math.floor((panel - MIN_MESSAGE_HEIGHT) / CHAT_LINE_UNIT));
+      const lines = Math.min(Math.max(needed, defaultLines), maxLines);
+      this.chatLine.style.height = `${lines * CHAT_LINE_UNIT}px`;
     }
-    const panel = this.messageHeight;
-    const needed = Math.max(this.measuredChatLines(), this.chatLine.value.split("\n").length);
-    const defaultLines = Math.max(1, Math.round(panel / 3 / CHAT_LINE_UNIT));
-    const maxLines = Math.max(1, Math.floor((panel - MIN_MESSAGE_HEIGHT) / CHAT_LINE_UNIT));
-    const lines = Math.min(Math.max(needed, defaultLines), maxLines);
-    this.chatLine.style.height = `${lines * CHAT_LINE_UNIT}px`;
+    this.updateResponseGeometry();
+  }
+
+  /**
+   * The response strip fills whatever panel height the chat box still needs:
+   * the whole panel while the chat box is collapsed, panel-minus-chat otherwise.
+   */
+  private updateResponseGeometry(): void {
+    const chat = this.chatLine.hidden ? 0 : parseInt(this.chatLine.style.height, 10) || 0;
+    this.responseArea.element.style.maxHeight = `${Math.max(0, this.messageHeight - chat)}px`;
   }
 
   private seam(

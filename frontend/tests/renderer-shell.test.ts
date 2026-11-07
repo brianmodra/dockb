@@ -102,6 +102,59 @@ describe("renderer shell", () => {
     expect(sendPrompt).toHaveBeenCalledWith("where should I start?", "d1");
   });
 
+  it("shows the spinner while the model is replying, then the reply in the response area", async () => {
+    let settle: (reply: string) => void = () => undefined;
+    const sendPrompt = vi.fn(
+      () =>
+        new Promise<{ reply: string }>((resolve) => {
+          settle = (reply) => resolve({ reply });
+        }),
+    );
+    const { api, bridge } = localModeApi({ sendPrompt });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "find sentences about rain";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
+    expect(area.querySelector("[data-testid='response-spinner']")).not.toBeNull();
+    expect(chat.hidden).toBe(true);
+
+    settle(
+      JSON.stringify({
+        response: [
+          { text: "Two paragraphs match." },
+          { button: { label: "Highlight sentence", function: "highlight", args: { chapter_id: "c1" } } },
+        ],
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(area.textContent).toContain("Two paragraphs match.");
+    const found = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
+      (el) => el.textContent === "Highlight sentence",
+    );
+    expect(found).not.toBeNull();
+    expect(found?.disabled).toBe(true);
+    expect(chat.hidden).toBe(false);
+  });
+
+  it("pushes a reply that is not response syntax into the log as plain text", async () => {
+    const { api, bridge } = localModeApi({ sendPrompt: vi.fn(async () => ({ reply: "plain prose answer" })) });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "who wrote this?";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
+    expect(panel.textContent).toContain("plain prose answer");
+    expect(panel.querySelectorAll(".response-line")).toHaveLength(0);
+  });
+
   it("routes a chat failure into the message panel", async () => {
     const sendPrompt = vi.fn(async () => {
       throw new ApiError(503, "ai_key_missing: OPENAI_API_KEY is not set");

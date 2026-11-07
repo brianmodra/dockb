@@ -262,6 +262,52 @@ describe("AppLayout", () => {
     expect(chat.value).toBe("draft text");
   });
 
+  it("collapses the chat box and shows the response spinner while the model is working", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.beginResponse();
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    const panel = layout.element.querySelector<HTMLElement>('[data-testid="panel-message"]')!;
+    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    expect(chat.hidden).toBe(true);
+    expect(area.hidden).toBe(false);
+    expect(area.querySelector('[data-testid="response-spinner"]')).not.toBeNull();
+    const ids = Array.from(panel.children).map((n) => (n as HTMLElement).dataset.testid);
+    expect(ids).toEqual(["message-log", "panel-response", "chat-line"]);
+  });
+
+  it("shows the parsed reply in the response area and brings the chat box back under it", () => {
+    const highlight = vi.fn();
+    const layout = new AppLayout({ responseFunctions: { highlight } });
+    document.body.append(layout.element);
+    layout.beginResponse();
+    layout.showResponse([
+      { text: "Hello world!" },
+      { button: { label: "Highlight sentence", function: "highlight", args: { chapter_id: "c1" } } },
+    ]);
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    expect(chat.hidden).toBe(false);
+    expect(area.textContent).toContain("Hello world!");
+    const found = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
+      (el) => el.textContent === "Highlight sentence",
+    )!;
+    found.click();
+    expect(highlight).toHaveBeenCalledWith({ chapter_id: "c1" });
+  });
+
+  it("drops the response area and restores the chat box when the prompt fails", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.beginResponse();
+    layout.cancelResponse();
+    const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
+    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    expect(chat.hidden).toBe(false);
+    expect(area.hidden).toBe(true);
+    expect(area.textContent).toBe("");
+  });
+
   it("shows the dirty indicator when there are unsaved changes", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);

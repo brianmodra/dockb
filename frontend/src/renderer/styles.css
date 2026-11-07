@@ -503,6 +503,21 @@ body {
   min-height: 0;
 }
 
+.response-area {
+  flex: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.response-line {
+  white-space: normal;
+}
+
+.response-spinner {
+  white-space: nowrap;
+  color: #8a8a86;
+}
+
 .chat-line {
   flex: none;
   resize: none;

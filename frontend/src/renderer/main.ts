@@ -2,6 +2,7 @@ import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
 import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
+import { parseResponseReply } from "./layout/responseArea";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
@@ -95,12 +96,19 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       if (!options.api) {
         return;
       }
+      layout.beginResponse();
       void options.api
         .sendPrompt(prompt, currentDocumentId())
         .then((response) => {
-          layout.pushMessage(response.reply);
+          const parsed = parseResponseReply(response.reply);
+          if (parsed === null) {
+            layout.pushMessage(response.reply);
+          } else {
+            layout.showResponse(parsed);
+          }
         })
         .catch((error) => {
+          layout.cancelResponse();
           reportError("AI chat", error, (text) => layout.pushMessage(text));
         });
     },

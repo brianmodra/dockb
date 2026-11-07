@@ -192,10 +192,14 @@ underlies cursor/view recovery after a save (`README_markdown_redesign.md` §5).
 A strip under the edit panel showing one line by default: the **chat box** alone. Dragging the
 horizontal seam makes it taller, revealing a **scrollback console** of earlier messages above the
 chat box. Its role is the console: save results (canonicalized, change summary), errors, and
-delivered diagnostics — plus the AI chat history and the model's response area, to follow. The
-chat box is always a whole number of text lines high (about one third of the panel by default,
-growing automatically as its typed text needs more lines); the console scrolls when more
-messages exist than the panel shows.
+delivered diagnostics — plus the AI chat history: a submitted prompt moves into the log as its
+newest line and the model's reply follows it. From the first submit the panel holds a third
+strip, the **response area**, between the log and the chat box: a spinner while the prompt is in
+flight (the chat box collapses meanwhile), then the reply in the response syntax with its text
+lines and buttons. The chat box is always a whole number of text lines high (about one third of
+the panel by default, growing automatically as its typed text needs more lines); the console and
+the response area scroll when their content outgrows the panel. `frontend/src/renderer/layout/README_response_area.md`
+specifies the response syntax.
 
 ## 7. Right panel (decided shape, no role yet)
 
