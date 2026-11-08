@@ -35,17 +35,19 @@ _DOCUMENT_INSTRUCTIONS = (
     " The user is viewing the manuscript whose document_id is " + '"{document_id}"; use it as the tools\' document_id argument.'
 )
 _RESPONSE_SYNTAX_INSTRUCTIONS = (
-    " When your answer is built on the find_paragraphs tool, reply in JSON using the editor's"
-    ' "response syntax" instead of prose: {"response": [{"text": "what this paragraph says"},'
+    " Reply with only the editor's response-syntax JSON object — no prose, no markdown, no"
+    ' code fences. The object is {"response": [{"text": "what this paragraph says"},'
     ' {"button": {"label": "Show me this paragraph", "function": "highlight",'
     ' "args": {"chapter_id": "<the chapter id>", "paragraph_id": "<the paragraph id>",'
-    ' "sentence_indices": [<sentence positions> | []]}}}]} — one "text" item per paragraph, and one'
+    ' "sentence_indices": [<sentence positions> | []]}}}]}. A text-only answer is'
+    ' {"response": [{"text": "..."}]}. The response array must never be empty: when nothing'
+    ' answers, include a text item that says so. Use one "text" item per paragraph, and one'
     " highlight button for every paragraph you present as an answer, its args carrying that"
     ' paragraph\'s chapter id and paragraph id, and "sentence_indices" holding exactly the positions'
     ' that answer put in "matched_sentence_indexes" (first sentence of the paragraph is 0), the same'
     " count in the same order; an empty list shows the whole paragraph, which is what the tool"
     " marked none for. Pass the sentence positions, never their ids. Chapter and paragraph ids are"
-    " required; a reply without JSON shows the reader plain text."
+    " required."
     " A find_paragraphs result is a candidate list, not an answer: it matches the words and names"
     " you searched for, not the meaning of the question. Read each returned paragraph's sentences"
     " and decide whether it actually states what the user asked. Include a paragraph only when it"
@@ -58,6 +60,56 @@ _RESPONSE_SYNTAX_INSTRUCTIONS = (
     " person only when the paragraph does. Keep the description independent of the question: a"
     " reader must not be able to infer what was asked from it."
 )
+_RESPONSE_SCHEMA_NAME = "response_syntax"
+_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["response"],
+    "properties": {
+        "response": {
+            "type": "array",
+            "items": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["text"],
+                        "properties": {"text": {"type": "string"}},
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["button"],
+                        "properties": {
+                            "button": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["label", "function", "args"],
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "function": {"type": "string", "enum": ["highlight"]},
+                                    "args": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": ["chapter_id", "paragraph_id", "sentence_indices"],
+                                        "properties": {
+                                            "chapter_id": {"type": "string"},
+                                            "paragraph_id": {"type": "string"},
+                                            "sentence_indices": {
+                                                "type": "array",
+                                                "items": {"type": "integer"},
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        },
+                    },
+                ]
+            },
+        }
+    },
+}
 
 
 class MissingApiKeyError(RuntimeError):
@@ -119,6 +171,14 @@ class AiChatService:  # pylint: disable=too-few-public-methods
                     "require_approval": "never",
                 }
             ]
+            payload["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": _RESPONSE_SCHEMA_NAME,
+                    "strict": True,
+                    "schema": _RESPONSE_SCHEMA,
+                }
+            }
         payload["input"] = [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}]
         response = httpx2.post(
             "https://api.openai.com/v1/responses",

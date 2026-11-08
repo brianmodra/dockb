@@ -765,20 +765,27 @@ payload rather than the status envelope: `{ "reply": "..." }`. The body is
 `{ "prompt": "..." }`, sent to the model as-is (the signed-in account is bound
 to the call's MCP access, not sent by the client). The
 `OPENAI_API_KEY` lives only on the server; the model is `DOCKB_CHAT_MODEL`
-(default `gpt-4o-mini`). When `DOCKB_MCP_PUBLIC_URL` is set, the call carries
-DockB's MCP server as a Responses-API tool with a per-prompt bearer token in
-the tool's `authorization` field, minted for this prompt and scoped to the
-signed-in account (`README_mcp_auth.md` §2–§4); the token never enters
-model-visible text. The same instructions teach the model the editor's
-response syntax, so a find_paragraphs answer comes back as
-`{"response": [{"text": ...}, {"button": {...}}]}` (the renderer's
-`README_response_area.md` specifies the shape) instead of prose. They also tell
-the model that a tool match only shares the searched words and names: it must
+(default `gpt-4o-mini`). When `DOCKB_MCP_PUBLIC_URL` is set and the per-prompt
+issuer is wired, the call carries DockB's MCP server as a Responses-API tool
+with a per-prompt bearer token in the tool's `authorization` field, minted for
+this prompt and scoped to the signed-in account (`README_mcp_auth.md` §2–§4);
+the token never enters model-visible text. The call also sets the Responses
+API's structured-output `text.format` to a strict `json_schema`, so the model
+can reply only in the editor's response syntax: an object `{"response": [...]}`
+whose items are `{"text": ...}` or a `highlight` button `{"button": {"label":
+..., "function": "highlight", "args": {"chapter_id": ..., "paragraph_id": ...,
+"sentence_indices": [...]}}}`. A plain answer is therefore a single text item
+rather than prose. The instructions say the same: reply with only this JSON, no
+prose or code fences, at least one item. They also teach the model that a
+find_paragraphs answer comes back as `{"response": [{"text": ...}, {"button":
+{...}}]}` (the renderer's `README_response_area.md` specifies the shape). They
+then tell it that a tool match only shares the searched words and names: it must
 read each returned paragraph and include only those that actually state the
 answer, describe a related-but-non-answering paragraph as such rather than
 claiming it answers, and keep each `text` item a neutral description of the
-paragraph that does not assume the question's premise. When the URL is unset
-the prompt is sent without MCP, and without the syntax instruction.
+paragraph that does not assume the question's premise. When either the URL or
+the issuer is missing, the prompt is sent without MCP and without the syntax
+instruction or the structured output, so the reply may be prose.
 Errors: `422` for an empty prompt, `503` when the service is
 unwired or the key is missing, `502` when the model call fails.
 

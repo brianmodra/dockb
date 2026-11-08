@@ -43,6 +43,11 @@ be an object carrying a `text` string or a `button` object with string `label` a
 the message log and restoring the chat box (`cancelResponse`), so the spinner does not linger
 after a plain-prose answer. A button naming no registry function renders disabled.
 
+When the server attaches its MCP tool to a chat turn, it constrains the reply with the Responses
+API's strict structured outputs to the object form above, so a plain answer arrives as a single
+`text` item. The bare-array form is still accepted because a reply without MCP is unconstrained,
+and a refusal or malformed reply still falls back to plain text.
+
 ## The function registry
 
 `AppLayoutOptions.responseFunctions` maps the names a reply may name to functions that receive

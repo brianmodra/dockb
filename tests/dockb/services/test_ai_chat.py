@@ -259,6 +259,65 @@ class TestResponsesCall:
         assert '"highlight"' in instructions
         assert "document" not in instructions.lower()
 
+    def test_the_mcp_call_forces_response_syntax_as_structured_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        text_format = calls[0]["json"]["text"]["format"]
+        assert text_format["type"] == "json_schema"
+        assert text_format["name"] == "response_syntax"
+        assert text_format["strict"] is True
+        schema = text_format["schema"]
+        assert schema["type"] == "object"
+        assert schema["required"] == ["response"]
+        assert schema["additionalProperties"] is False
+        response = schema["properties"]["response"]
+        assert response["type"] == "array"
+        items = response["items"]
+        assert len(items["anyOf"]) == 2
+        branches = {tuple(branch["required"]): branch for branch in items["anyOf"]}
+        assert set(branches) == {("text",), ("button",)}
+        assert branches[("text",)]["properties"]["text"] == {"type": "string"}
+        assert branches[("text",)]["additionalProperties"] is False
+        assert branches[("button",)]["additionalProperties"] is False
+        button = branches[("button",)]["properties"]["button"]
+        assert button["properties"]["function"] == {"type": "string", "enum": ["highlight"]}
+        assert button["required"] == ["label", "function", "args"]
+        assert button["additionalProperties"] is False
+        args = button["properties"]["args"]
+        assert args["required"] == ["chapter_id", "paragraph_id", "sentence_indices"]
+        assert args["additionalProperties"] is False
+        assert args["properties"]["sentence_indices"] == {"type": "array", "items": {"type": "integer"}}
+
+    def test_structured_output_needs_both_the_url_and_a_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", None, "https://mcp.example.com/mcp")
+        assert "text" not in calls[0]["json"]
+        assert "instructions" not in calls[0]["json"]
+
+    def test_without_mcp_the_call_does_not_force_structured_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.delenv(_PUBLIC_URL_ENV_VAR, raising=False)
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", None, None)
+        assert "text" not in calls[0]["json"]
+
+    def test_the_response_syntax_instructions_demand_only_json(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"]).lower()
+        assert "reply with only" in instructions
+        assert "no prose" in instructions
+        assert "code fences" in instructions
+        assert '{"response": [{"text"' in instructions
+        assert "never be empty" in instructions
+        assert "a reply without json shows the reader plain text" not in instructions
+
     def test_a_whitespace_key_refuses_the_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "   ")
         with pytest.raises(MissingApiKeyError):
