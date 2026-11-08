@@ -294,6 +294,7 @@ function headingDecorations(md: ReturnType<typeof MarkdownIt>): Plugin<Decoratio
 
 export interface WysiwygViewOptions {
   onChange?: (content: string) => void;
+  onSelectionChange?: () => void;
 }
 
 export interface SelectionPoint {
@@ -494,10 +495,14 @@ export class WysiwygView {
       this.innerView = new EditorView(this.element, {
         state,
         dispatchTransaction: (tr) => {
+          const prevSelection = this.innerView!.state.selection;
           const newState = this.innerView!.state.apply(tr);
           this.innerView!.updateState(newState);
           if (tr.docChanged) {
             this.options.onChange?.(docToString(newState.doc));
+          }
+          if (!newState.selection.eq(prevSelection)) {
+            this.options.onSelectionChange?.();
           }
         },
       });

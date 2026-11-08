@@ -85,7 +85,9 @@ shows the two buttons from `Remove quote`, `Quote read`, and `Quote written` tha
 Because the button click happens later, `quote` identifies the paragraphs by their canonical ids
 (falling back to their document-order index when an unsaved paragraph has no id yet, so merely
 right-clicking never dirties the buffer) rather than by document positions that an intervening edit
-would shift. Choosing a button applies the quote type in one transaction and clears the strip.
+would shift. Choosing a button applies the quote type in one transaction and clears the strip;
+changing the selection or loading another chapter while the quote prompt is open clears the strip
+as well, while an AI reply in the strip stays open across chapter loads and highlights.
 
 ## Security
 

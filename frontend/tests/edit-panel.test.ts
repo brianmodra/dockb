@@ -323,6 +323,25 @@ describe("EditPanel", () => {
     expect(panel.content()).not.toContain("data-quote-type");
   });
 
+  it("notifies onSelectionChange when the selection changes or another chapter loads", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>'),
+      ),
+    });
+    const onSelectionChange = vi.fn();
+    const panel = new EditPanel({ api, onSelectionChange });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    onSelectionChange.mockClear();
+
+    selectInPanel(panel, 1, 5);
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+
+    await panel.load("c2");
+    expect(onSelectionChange).toHaveBeenCalledTimes(2);
+  });
+
   it("open saves the dirty buffer before loading another chapter", async () => {
     const api = fakeApi({
       getChapterDocument: vi.fn(async () => doc("Second")),

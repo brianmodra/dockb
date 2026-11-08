@@ -384,6 +384,98 @@ describe("renderer shell", () => {
     expect(panel.textContent).toContain("Quoting works in WYSIWYG chapters.");
   });
 
+  it("closes the right-click quote prompt when the highlight changes or another chapter loads, while keeping an AI reply open", async () => {
+    const getChapterDocument = vi.fn(async (chapterId: string) => ({
+      content:
+        chapterId === "c1"
+          ? '<span data-par-id="p1">\nRain fell on the plain.\nKarakas closed the door.\n</span>'
+          : '<span data-par-id="p2">\nAnother chapter.\n</span>',
+      summary: null,
+    }));
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [
+        { id: "c1", title: "Chapter 1", act: "", index: 0 },
+        { id: "c2", title: "Chapter 2", act: "", index: 1 },
+      ]),
+      getChapterDocument,
+      sendPrompt: vi.fn(
+        async () =>
+          ({
+            reply: JSON.stringify({
+              response: [
+                {
+                  button: {
+                    label: "Highlight first",
+                    function: "highlight",
+                    args: { chapter_id: "c1", paragraph_id: "p1", sentence_indices: [0] },
+                  },
+                },
+                {
+                  button: {
+                    label: "Highlight second",
+                    function: "highlight",
+                    args: { chapter_id: "c1", paragraph_id: "p1", sentence_indices: [1] },
+                  },
+                },
+              ],
+            }),
+          }) as never,
+      ),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "highlight both";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
+    const firstHighlight = () =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']")).find(
+        (el) => el.textContent === "Highlight first",
+      )!;
+    const secondHighlight = () =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']")).find(
+        (el) => el.textContent === "Highlight second",
+      )!;
+
+    // Clicking an AI highlight button loads c1 and selects a sentence without closing the AI reply.
+    firstHighlight().click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(area.hidden).toBe(false);
+    secondHighlight().click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(area.hidden).toBe(false);
+
+    // Right-clicking the highlighted text replaces the strip with the quote prompt.
+    const paragraph = () => document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!;
+    paragraph().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(area.hidden).toBe(false);
+    expect(area.textContent).toContain("What do you want to do with this unquoted text:");
+
+    // Changing the highlight in the editor closes the right-click quote prompt.
+    const pm = document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] .ProseMirror")!;
+    const range = document.createRange();
+    range.setStart(pm.querySelector("p")!.firstChild!, 0);
+    range.setEnd(pm.querySelector("p")!.firstChild!, 4);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+    expect(area.hidden).toBe(true);
+
+    // Right-click the new selection to reopen the quote prompt, then load another chapter from the left panel.
+    paragraph().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(area.hidden).toBe(false);
+
+    const chapterRows = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='chapter-row']"));
+    chapterRows.find((row) => row.textContent?.includes("Chapter 2"))!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(area.hidden).toBe(true);
+  });
+
   it("routes a chat failure into the message panel", async () => {
     const sendPrompt = vi.fn(async () => {
       throw new ApiError(503, "ai_key_missing: OPENAI_API_KEY is not set");

@@ -577,4 +577,19 @@ describe("WysiwygView quoted paragraphs", () => {
 
     expect(view.content()).toBe('<span data-par-id="p-1">\nPlain.\n</span>');
   });
+
+  it("notifies onSelectionChange when the selection moves or collapses", () => {
+    const onSelectionChange = vi.fn();
+    const view = new WysiwygView({ onSelectionChange });
+    view.setContent('<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>');
+
+    select(view, 1, 5);
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+
+    select(view, 7, 11);
+    expect(onSelectionChange).toHaveBeenCalledTimes(2);
+
+    select(view, 7, 7);
+    expect(onSelectionChange).toHaveBeenCalledTimes(3);
+  });
 });

@@ -23,6 +23,7 @@ export interface EditPanelOptions {
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSelectionActions?: (context: SelectionContext) => void;
+  onSelectionChange?: () => void;
 }
 
 export class EditPanel {
@@ -33,6 +34,7 @@ export class EditPanel {
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSelectionActions?: (context: SelectionContext) => void;
+  onSelectionChange?: () => void;
   private view: EditorView;
   private readonly wysiwyg: WysiwygView;
   private readonly rawHost: HTMLElement;
@@ -51,6 +53,7 @@ export class EditPanel {
     this.onWarning = options.onWarning;
     this.onDirtyChange = options.onDirtyChange;
     this.onSelectionActions = options.onSelectionActions;
+    this.onSelectionChange = options.onSelectionChange;
 
     this.element = document.createElement("div");
     this.element.className = "edit-panel";
@@ -91,7 +94,10 @@ export class EditPanel {
       ],
     });
     this.view = new EditorView({ state, parent: this.rawHost });
-    this.wysiwyg = new WysiwygView({ onChange: () => this.notifyDirty() });
+    this.wysiwyg = new WysiwygView({
+      onChange: () => this.notifyDirty(),
+      onSelectionChange: () => this.onSelectionChange?.(),
+    });
     this.wysiwygHost.append(this.wysiwyg.element);
     this.wysiwygHost.addEventListener("contextmenu", (event) => this.openParagraphMenu(event));
     this.applyMode();
@@ -181,6 +187,7 @@ export class EditPanel {
     this.lastCanonicalText = null;
     this.replaceDoc("");
     this.notifyDirty();
+    this.onSelectionChange?.();
   }
 
   isDirty(): boolean {
@@ -269,6 +276,7 @@ export class EditPanel {
       this.replaceDoc(response.content);
       this.notifyDirty();
       this.updateHeader();
+      this.onSelectionChange?.();
       for (const warning of response.warnings ?? []) {
         this.onWarning?.(warning);
       }

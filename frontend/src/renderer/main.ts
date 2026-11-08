@@ -59,6 +59,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   let runQuote: (rawArgs: unknown) => void = () => {};
+  let selectionPromptOpen = false;
   const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
@@ -98,10 +99,12 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       if (!options.api) {
         return;
       }
+      selectionPromptOpen = false;
       layout.beginResponse();
       void options.api
         .sendPrompt(prompt, currentDocumentId())
         .then((response) => {
+          selectionPromptOpen = false;
           const parsed = parseResponseReply(response.reply);
           if (parsed === null) {
             layout.cancelResponse();
@@ -111,6 +114,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           }
         })
         .catch((error) => {
+          selectionPromptOpen = false;
           layout.cancelResponse();
           reportError("AI chat", error, (text) => layout.pushMessage(text));
         });
@@ -131,7 +135,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     editPanel.onDirtyChange = (dirty) => layout.setDirty(dirty);
     editPanel.onWarning = (text) => void warningModal("POV warning", text);
     editPanel.onSelectionActions = (context) => {
+      selectionPromptOpen = true;
       layout.showResponse(selectionActionObjects(context));
+    };
+    editPanel.onSelectionChange = () => {
+      if (selectionPromptOpen) {
+        selectionPromptOpen = false;
+        layout.cancelResponse();
+      }
     };
     layout.editPanelEl().append(editPanel.element);
 
@@ -202,6 +213,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     runQuote = (rawArgs: unknown): void => {
+      selectionPromptOpen = false;
       layout.cancelResponse();
       if (!editPanel || !editPanel.applyQuote(rawArgs)) {
         layout.pushMessage("Quoting works in WYSIWYG chapters.");
