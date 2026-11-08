@@ -247,6 +247,143 @@ describe("renderer shell", () => {
     ).toContain("Rain fell on the plain.");
   });
 
+  it("shows quote buttons in the response area on right-clicking selected text, applies the choice, and clears the strip", async () => {
+    const getChapterDocument = vi.fn(async () => ({
+      content: '<span data-par-id="p1">\nRain fell on the plain.\nKarakas closed the door.\n</span>',
+      summary: null,
+    }));
+    const { api, bridge } = localModeApi({
+      getChapterDocument,
+      sendPrompt: vi.fn(
+        async () =>
+          ({
+            reply: JSON.stringify({
+              response: [
+                {
+                  button: {
+                    label: "Highlight sentence",
+                    function: "highlight",
+                    args: { chapter_id: "c1", paragraph_id: "p1", sentence_indices: [1] },
+                  },
+                },
+              ],
+            }),
+          }) as never,
+      ),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "highlight one";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const highlightButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']"),
+    ).find((el) => el.textContent === "Highlight sentence")!;
+    highlightButton.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const paragraph = document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!;
+    paragraph.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+
+    const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
+    expect(area.hidden).toBe(false);
+    expect(area.textContent).toContain(
+      'What do you want to do with this unquoted text: "Karakas closed the door."',
+    );
+    const buttons = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map(
+      (el) => el.textContent,
+    );
+    expect(buttons).toEqual(["Quote read", "Quote written"]);
+
+    const quoteRead = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
+      (el) => el.textContent === "Quote read",
+    )!;
+    quoteRead.click();
+
+    expect(
+      document.querySelector("[data-testid='wysiwyg-view'] p.quoted[data-quote-type='reading']"),
+    ).not.toBeNull();
+    expect(area.hidden).toBe(true);
+
+    document
+      .querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!
+      .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(area.hidden).toBe(false);
+    expect(area.textContent).toContain(
+      'What do you want to do with this quoted as read text: "Karakas closed the door."',
+    );
+    const nextButtons = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map(
+      (el) => el.textContent,
+    );
+    expect(nextButtons).toEqual(["Remove quote", "Quote written"]);
+
+    const removeQuote = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
+      (el) => el.textContent === "Remove quote",
+    )!;
+    removeQuote.click();
+
+    expect(document.querySelector("[data-testid='wysiwyg-view'] p.quoted")).toBeNull();
+    expect(area.hidden).toBe(true);
+  });
+
+  it("reports in the message log when a quote button cannot apply in raw mode", async () => {
+    const getChapterDocument = vi.fn(async () => ({
+      content: '<span data-par-id="p1">\nRain fell on the plain.\n</span>',
+      summary: null,
+    }));
+    const { api, bridge } = localModeApi({
+      getChapterDocument,
+      sendPrompt: vi.fn(
+        async () =>
+          ({
+            reply: JSON.stringify({
+              response: [
+                {
+                  button: {
+                    label: "Highlight paragraph",
+                    function: "highlight",
+                    args: { chapter_id: "c1", paragraph_id: "p1" },
+                  },
+                },
+              ],
+            }),
+          }) as never,
+      ),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
+    chat.value = "highlight one";
+    chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']"))
+      .find((el) => el.textContent === "Highlight paragraph")!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const paragraph = document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!;
+    paragraph.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+
+    document.querySelector<HTMLButtonElement>("[data-testid='menu-Mode']")!.click();
+    Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='menu-Mode-dropdown'] button"))
+      .find((el) => el.textContent?.includes("Raw"))!
+      .click();
+
+    const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
+    Array.from(area.querySelectorAll<HTMLButtonElement>("button"))
+      .find((el) => el.textContent === "Quote read")!
+      .click();
+
+    expect(area.hidden).toBe(true);
+    const panel = document.querySelector<HTMLElement>("[data-testid='panel-message']")!;
+    expect(panel.textContent).toContain("Quoting works in WYSIWYG chapters.");
+  });
+
   it("routes a chat failure into the message panel", async () => {
     const sendPrompt = vi.fn(async () => {
       throw new ApiError(503, "ai_key_missing: OPENAI_API_KEY is not set");

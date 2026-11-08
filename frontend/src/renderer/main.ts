@@ -2,7 +2,7 @@ import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
 import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
-import { parseResponseReply } from "./layout/responseArea";
+import { parseResponseReply, selectionActionObjects } from "./layout/responseArea";
 import { EditPanel } from "./layout/editPanel";
 import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
@@ -58,6 +58,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runEditChapter: () => void = () => {};
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
+  let runQuote: (rawArgs: unknown) => void = () => {};
   const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
@@ -116,6 +117,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     },
     responseFunctions: {
       highlight: (args) => void runHighlight(args),
+      quote: (args) => runQuote(args),
     },
   });
   root.append(layout.element);
@@ -128,6 +130,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     editPanel.onMessage = (text) => layout.pushMessage(text);
     editPanel.onDirtyChange = (dirty) => layout.setDirty(dirty);
     editPanel.onWarning = (text) => void warningModal("POV warning", text);
+    editPanel.onSelectionActions = (context) => {
+      layout.showResponse(selectionActionObjects(context));
+    };
     layout.editPanelEl().append(editPanel.element);
 
     const panel = new LeftPanel({
@@ -194,7 +199,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       } catch (error) {
         reportError("Highlight", error, (text) => layout.pushMessage(text));
       }
-    }
+    };
+
+    runQuote = (rawArgs: unknown): void => {
+      layout.cancelResponse();
+      if (!editPanel || !editPanel.applyQuote(rawArgs)) {
+        layout.pushMessage("Quoting works in WYSIWYG chapters.");
+      }
+    };
 
     runDeleteDocument = () => {
       void openDeleteDocumentPicker(options.api!).then((selection) => {

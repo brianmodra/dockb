@@ -1,3 +1,5 @@
+import type { SelectionContext } from "./wysiwyg";
+
 export interface ResponseButton {
   label: string;
   function: string;
@@ -54,6 +56,70 @@ export function parseResponseReply(reply: string): ResponseObject[] | null {
     return null;
   }
   return objects.every(isResponseObject) ? objects : null;
+}
+
+const SELECTION_SNIPPET_LIMIT = 40;
+
+const QUOTE_CHOICES: ReadonlyArray<{ quoteType: string; label: string }> = [
+  { quoteType: "", label: "Remove quote" },
+  { quoteType: "reading", label: "Quote read" },
+  { quoteType: "writing", label: "Quote written" },
+];
+
+function quoteStateLabel(quoteType: string): string {
+  if (quoteType === "reading") {
+    return "quoted as read";
+  }
+  if (quoteType === "writing") {
+    return "quoted as written";
+  }
+  return "unquoted";
+}
+
+/**
+ * Build the response-area objects for a right-clicked text selection: a line
+ * naming its current quote state and a 40-character snippet of the text,
+ * followed by the two quote actions that would change it.
+ */
+export function selectionActionObjects(context: SelectionContext): ResponseObject[] {
+  const collapsed = context.text.replace(/\s+/g, " ");
+  const snippet =
+    collapsed.length > SELECTION_SNIPPET_LIMIT
+      ? `${collapsed.slice(0, SELECTION_SNIPPET_LIMIT)}…`
+      : collapsed;
+  const state = quoteStateLabel(context.quoteType);
+  const start = {
+    paragraph_id: context.start.paragraphId,
+    paragraph_index: context.start.paragraphIndex,
+    sentence_index: context.start.sentenceIndex,
+    offset: context.start.offset,
+  };
+  const end = {
+    paragraph_id: context.end.paragraphId,
+    paragraph_index: context.end.paragraphIndex,
+    sentence_index: context.end.sentenceIndex,
+    offset: context.end.offset,
+  };
+  const buttons: ResponseObject[] = QUOTE_CHOICES.filter(
+    (choice) => choice.quoteType !== context.quoteType,
+  ).map((choice) => ({
+    button: {
+      label: choice.label,
+      function: "quote",
+      args: {
+        quote_type: choice.quoteType,
+        paragraph_ids: context.paragraphIds,
+        paragraph_indexes: context.paragraphIndexes,
+        start,
+        end,
+        text: context.text,
+      },
+    },
+  }));
+  return [
+    { text: `What do you want to do with this ${state} text: "${snippet}"` },
+    ...buttons,
+  ];
 }
 
 /**

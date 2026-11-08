@@ -73,6 +73,17 @@ raw-mode editor (the canonical file text, where sentences don't exist as
 selections) reports why it did nothing in the message log instead of silently
 staying put.
 
+## `quote` — selected-text quote actions in the strip
+
+Right-clicking selected WYSIWYG text reuses the same response strip: `selectionActionObjects`
+builds a prompt line `What do you want to do with this <state> text: "<snippet>"` (`unquoted`,
+`quoted as read`, or `quoted as written`, with the collapsed text truncated after 40 characters
+plus `…`) followed by the two buttons from `Remove quote`, `Quote read`, and `Quote written` that
+do not match the current state. Each button calls `quote` with `{ quote_type, paragraph_ids,
+paragraph_indexes, start, end, text }`; `quote` clears the strip and delegates to
+`EditPanel.applyQuote`, which marks or clears the touched paragraphs by id (or index when an
+unsaved paragraph has no id yet) and logs why if the editor is in raw mode.
+
 ## Security
 
 The reply arrives from the model, i.e. from outside the editor. It never enters the DOM as
