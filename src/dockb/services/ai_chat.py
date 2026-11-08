@@ -59,10 +59,8 @@ _RESPONSE_SYNTAX_INSTRUCTIONS = (
     " (the paragraph's position in that chapter) is an earlier paragraph. Consider the candidates in"
     " that order, skip any that do not actually answer, and present only the earliest paragraph that"
     " does. Search manuscript chapters only for such a question, leaving include_characters false."
-    " Do not call get_chapter to read a whole chapter when verifying find_paragraphs candidates:"
-    " each candidate already carries its sentences. When a candidate's surrounding paragraphs are"
-    " needed to tell who is speaking or acting, pass start_index and end_index to get_chapter"
-    " for a small window around that paragraph's index instead of reading the whole chapter."
+    " Call find_paragraphs once for the question (searching again only if the first call returns"
+    " no paragraphs), and judge each candidate solely from the sentences find_paragraphs returns."
     ' Each "text" item is a neutral, factual description of what one included paragraph says on its'
     " own. Do not phrase it as an answer to the question, assume the question's premise, or add"
     " events, causes, knowledge, or feelings the paragraph does not state. Attribute a fact to a"
@@ -178,6 +176,7 @@ class AiChatService:  # pylint: disable=too-few-public-methods
                     "server_url": server_url,
                     "authorization": token,
                     "require_approval": "never",
+                    "allowed_tools": ["find_paragraphs"],
                 }
             ]
             payload["text"] = {
@@ -196,9 +195,32 @@ class AiChatService:  # pylint: disable=too-few-public-methods
             timeout=120.0,
         )
         _raise_for_status(response)
-        reply = _reply_from(response.json())
+        body = response.json()
+        reply = _reply_from(body)
+        if not reply.strip():
+            detail = _incomplete_detail(body)
+            logger.warning("OpenAI responses call produced no reply: %s", detail)
+            raise RuntimeError(detail)
         logger.info("AI reply: %s", reply)
         return reply
+
+
+def _incomplete_detail(payload: Any) -> str:
+    """Describe why a 200 Responses-API payload produced no output_text."""
+    if isinstance(payload, dict):
+        status = str(payload.get("status") or "").strip()
+        details = payload.get("incomplete_details")
+        reason = str(details.get("reason") or "").strip() if isinstance(details, dict) else ""
+        if status and reason:
+            return f"{status} ({reason})"
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = str(error.get("message") or "").strip()
+            if message:
+                return message
+        if status and status != "completed":
+            return status
+    return "empty model reply"
 
 
 def _raise_for_status(response: Any) -> None:

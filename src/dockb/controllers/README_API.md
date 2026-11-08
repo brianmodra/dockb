@@ -766,26 +766,26 @@ to the call's MCP access, not sent by the client). The
 (default `gpt-4o-mini`). When `DOCKB_MCP_PUBLIC_URL` is set and the per-prompt
 issuer is wired, the call carries DockB's MCP server as a Responses-API tool
 with a per-prompt bearer token in the tool's `authorization` field, minted for
-this prompt and scoped to the signed-in account (`README_mcp_auth.md` §2–§4);
+this prompt and scoped to the signed-in account (`README_mcp_auth.md` §2–§4),
+and restricted to `find_paragraphs` (`allowed_tools`);
 the token never enters model-visible text. The reply is constrained to the
 editor's response syntax (the renderer's `README_response_area.md` specifies the
 shape), so a plain answer arrives as a single text item instead of prose, and
 every paragraph presented as an answer carries a `highlight` button. The
 instructions also tell the model that a tool match only shares the searched
-words and names: it must read each returned paragraph, include only those that
-actually state the answer, describe a related-but-non-answering paragraph as
-such, and keep each `text` item a neutral description of the paragraph that does
+words and names: it calls `find_paragraphs` once, judges each returned paragraph
+solely from its sentences, includes only those that
+actually state the answer, describes a related-but-non-answering paragraph as
+such, and keeps each `text` item a neutral description of the paragraph that does
 not assume the question's premise. For a first-or-earliest-occurrence question
 it presents only the earliest paragraph that actually answers — lower chapter
 position first, then lower paragraph position within that chapter — rather than
-the first tool match, searches manuscript chapters only, and verifies candidates
-from their own sentences (or a narrow `start_index`..`end_index` chapter slice)
-rather than pulling whole chapters. When either the URL or the issuer is missing,
+the first tool match, and searches manuscript chapters only. When either the URL or the issuer is missing,
 the prompt is sent without MCP, without the syntax constraint, and without the
 syntax instruction, so the reply may be prose.
 Errors: `422` for an empty prompt, `503` when the service is
-unwired or the key is missing, `502` when the model call fails (carrying the
-provider's error code and message when present).
+unwired or the key is missing, `502` when the model call fails or ends without a
+reply (carrying the provider's error or incomplete reason when present).
 
 ### Import
 

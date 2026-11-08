@@ -184,6 +184,7 @@ class TestResponsesCall:
         assert tool["server_url"] == "https://mcp.example.com/mcp"
         assert tool["authorization"] == "the-per-prompt-token"
         assert tool["require_approval"] == "never"
+        assert tool["allowed_tools"] == ["find_paragraphs"]
 
     def test_the_instructions_describe_the_mcp_server_but_never_hold_the_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -335,19 +336,55 @@ class TestResponsesCall:
         assert "never be empty" in instructions
         assert "a reply without json shows the reader plain text" not in instructions
 
-    def test_the_instructions_forbid_pulling_a_whole_chapter_to_verify_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Verifying find_paragraphs candidates uses their own sentences or a small start_index/end_index window."""
+    def test_the_instructions_restrict_search_to_find_paragraphs_sentences(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Candidates are judged solely from find_paragraphs' sentences, without repeating the search."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
         calls = self._post_capture(monkeypatch)
         AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
         instructions = str(calls[0]["json"]["instructions"]).lower()
-        assert "do not call get_chapter to read a whole chapter" in instructions
-        assert "start_index and end_index" in instructions
+        assert "call find_paragraphs once" in instructions
+        assert "solely from the sentences" in instructions
+        assert "get_chapter" not in instructions
 
 
 class TestResponsesErrorHandling:
     """Failed Responses-API calls log and surface the provider's error detail."""
+
+    def test_an_incomplete_or_empty_model_reply_logs_and_raises(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+        class IncompleteResponse:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict[str, Any]:
+                return {
+                    "status": "incomplete",
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                    "output": [{"type": "mcp_call"}],
+                }
+
+        monkeypatch.setattr("dockb.services.ai_chat.httpx2.post", lambda *_, **__: IncompleteResponse())
+        with caplog.at_level("WARNING", logger="dockb.services.ai_chat"):
+            with pytest.raises(RuntimeError, match=r"incomplete \(max_output_tokens\)"):
+                AiChatService()._default_complete("hi", None, None)
+        assert "incomplete (max_output_tokens)" in caplog.text
+
+        class EmptyResponse:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict[str, Any]:
+                return {"status": "completed", "output": []}
+
+        monkeypatch.setattr("dockb.services.ai_chat.httpx2.post", lambda *_, **__: EmptyResponse())
+        with caplog.at_level("WARNING", logger="dockb.services.ai_chat"):
+            with pytest.raises(RuntimeError, match="empty model reply"):
+                AiChatService()._default_complete("hi", None, None)
+        assert "empty model reply" in caplog.text
 
     def test_an_openai_error_logs_and_raises_the_response_error_message(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
