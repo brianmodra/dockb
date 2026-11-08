@@ -2,13 +2,17 @@
 
 ## Executive Summary
 
-This module renders the model's answer to an editor prompt inside the message panel. A reply is
-more than prose: it can carry lines of text and clickable controls that open the paragraph they
-name, so the module parses the response syntax, renders it without letting outside text into the
-DOM as markup, and passes a control's plain-data arguments to a named editor function. When the
-server attaches its manuscript tools to a chat turn it also constrains the model to that syntax,
-so a plain answer arrives as a single text line; without them, or on a refusal, the reply falls
-back to plain text.
+This module renders interactive prompts and answers inside the message panel's response strip. It
+serves two flows through the same strip and function registry: the model's structured reply to a
+chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
+sentences, and the editor's own prompt when the writer right-clicks selected text, which offers
+buttons to mark or clear the touched paragraphs' quote type. In both flows, outside or selected
+text never enters the DOM as markup, and each button passes plain-data arguments to a registered
+editor function.
+
+When the server attaches its manuscript tools to a chat turn it constrains the model to the
+response syntax, so a plain answer arrives as a single text line; without them, or on a refusal,
+the reply falls back to the message log and restores the chat box.
 
 ## The panel strip
 
@@ -75,14 +79,13 @@ staying put.
 
 ## `quote` — selected-text quote actions in the strip
 
-Right-clicking selected WYSIWYG text reuses the same response strip: `selectionActionObjects`
-builds a prompt line `What do you want to do with this <state> text: "<snippet>"` (`unquoted`,
-`quoted as read`, or `quoted as written`, with the collapsed text truncated after 40 characters
-plus `…`) followed by the two buttons from `Remove quote`, `Quote read`, and `Quote written` that
-do not match the current state. Each button calls `quote` with `{ quote_type, paragraph_ids,
-paragraph_indexes, start, end, text }`; `quote` clears the strip and delegates to
-`EditPanel.applyQuote`, which marks or clears the touched paragraphs by id (or index when an
-unsaved paragraph has no id yet) and logs why if the editor is in raw mode.
+Right-clicking selected WYSIWYG text reuses the response strip to ask what to do with the
+selection (`unquoted`, `quoted as read`, or `quoted as written`, with a 40-character snippet) and
+shows the two buttons from `Remove quote`, `Quote read`, and `Quote written` that would change it.
+Because the button click happens later, `quote` identifies the paragraphs by their canonical ids
+(falling back to their document-order index when an unsaved paragraph has no id yet, so merely
+right-clicking never dirties the buffer) rather than by document positions that an intervening edit
+would shift. Choosing a button applies the quote type in one transaction and clears the strip.
 
 ## Security
 

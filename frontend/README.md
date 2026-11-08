@@ -7,12 +7,12 @@ document, edit a chapter, or import a whole document from a folder on disk. It n
 itself — an import reads the directory the user picks and hands it to the server, which does the
 writing — and the backend even serves the interface, so the app and API share an origin and the
 signed-in session reaches every route. The chapter list's right-click menu renames, moves,
-renumbers, and assigns a point-of-view character; inside the text a paragraph's right-click marks
-it as a quote; a read-only identity line tracks the front matter; and the message panel logs chat
-prompts and replies, whose buttons can open a named chapter and highlight its sentences. The raw
-and WYSIWYG views edit the same canonical buffer, and the dirty check compares that buffer against
-the last canonical text (quote types included), so merely switching chapters never saves an
-untouched file.
+renumbers, and assigns a point-of-view character; a read-only identity line tracks the front
+matter; and the message panel's response strip answers both AI chat prompts (opening a named
+chapter and highlighting its sentences) and right-clicks on selected text (marking or clearing a
+paragraph's quote type). The raw and WYSIWYG views edit the same canonical buffer, and the dirty
+check compares that buffer against the last canonical text (quote types included), so merely
+switching chapters never saves an untouched file.
 
 Read it to run the app, to find which file owns the chapter list, editor, chat line, login, and
 sign-out, and to see how a folder on disk becomes a document. How the window should look is in
@@ -113,14 +113,11 @@ its 10px floor.
   saved. The canonical side's signature is read from the same paragraphs the
   loaded doc has — a file's trailing newline shows as an empty final paragraph
   there too — so a freshly loaded writer-canonical file is clean and switching
-  chapters does not save it. Right-clicking selected WYSIWYG text captures the
-  selection's context (text, touched paragraph ids and indexes, uniform quote
-  type, and start/end sentence and offset) and hands it to `onSelectionActions`
-  so the response area can offer quote buttons for the touched paragraphs; with
-  nothing selected the browser menu is left alone. `applyQuote` sets or clears
-  those paragraphs' quote type by id (falling back to index when an unsaved
-  paragraph has no id yet), and a quoted paragraph renders indented (`4ch`) and
-  its span carries `data-quote-type` in the canonical text. While a save
+  chapters does not save it. Right-clicking selected WYSIWYG text hands the
+  selection's context to the response strip to offer quote actions for the
+  touched paragraphs (see `layout/README_response_area.md`), while an empty
+  selection leaves the browser menu alone; a quoted paragraph renders indented
+  (`4ch`) and its span carries `data-quote-type` in the canonical text. While a save
   or load is in flight the panel is greyed (`is-busy`) and frozen: clicks turn
   away, both editors read contenteditable=false, and focus leaves the buffer,
   until the operation completes or fails. The raw view
