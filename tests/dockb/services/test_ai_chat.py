@@ -335,6 +335,65 @@ class TestResponsesCall:
         assert "never be empty" in instructions
         assert "a reply without json shows the reader plain text" not in instructions
 
+    def test_the_instructions_forbid_pulling_a_whole_chapter_to_verify_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifying find_paragraphs candidates uses their own sentences or a small start_index/end_index window."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"]).lower()
+        assert "do not call get_chapter to read a whole chapter" in instructions
+        assert "start_index and end_index" in instructions
+
+
+class TestResponsesErrorHandling:
+    """Failed Responses-API calls log and surface the provider's error detail."""
+
+    def test_an_openai_error_logs_and_raises_the_response_error_message(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+        class ErrorResponse:
+            text = '{"error":{"message":"Context length exceeded","code":"context_length_exceeded"}}'
+
+            def raise_for_status(self) -> None:
+                raise RuntimeError("400 Bad Request")
+
+            def json(self) -> dict[str, Any]:
+                return {
+                    "error": {
+                        "message": "Context length exceeded",
+                        "code": "context_length_exceeded",
+                    }
+                }
+
+        monkeypatch.setattr("dockb.services.ai_chat.httpx2.post", lambda *_, **__: ErrorResponse())
+        with caplog.at_level("WARNING", logger="dockb.services.ai_chat"):
+            with pytest.raises(RuntimeError, match="context_length_exceeded: Context length exceeded"):
+                AiChatService()._default_complete("hi", None, None)
+        assert "context_length_exceeded: Context length exceeded" in caplog.text
+
+    def test_a_non_json_error_body_falls_back_to_the_response_text(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+        class PlainErrorResponse:
+            text = "  upstream gateway timeout  "
+
+            def raise_for_status(self) -> None:
+                raise RuntimeError("502 Bad Gateway")
+
+            def json(self) -> dict[str, Any]:
+                raise ValueError("not json")
+
+        monkeypatch.setattr("dockb.services.ai_chat.httpx2.post", lambda *_, **__: PlainErrorResponse())
+        with caplog.at_level("WARNING", logger="dockb.services.ai_chat"):
+            with pytest.raises(RuntimeError, match="upstream gateway timeout"):
+                AiChatService()._default_complete("hi", None, None)
+        assert "upstream gateway timeout" in caplog.text
+
     def test_a_whitespace_key_refuses_the_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "   ")
         with pytest.raises(MissingApiKeyError):
