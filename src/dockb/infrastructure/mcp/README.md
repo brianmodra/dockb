@@ -10,14 +10,15 @@ and no admin CLI, so a leaked token is useless once its window passes and nothin
 secret is left on disk.
 
 The package also carries the two manuscript tools the token unlocks (`tools.py`): one
-returns a chapter's paragraphs; the other compiles a search criteria tree — word, text
-and character leaves over and/or group nodes — into a single Cypher query answered
-entirely in the database, reading the stored mention verdicts rather than judging any
-paragraph, and refusing an unknown or other-account document instead of answering
-empty. Read this for what the token looks like, what makes one valid, the account it
-is bound to, and how the tools read one account's books; the threat model, the
-two-listener split and why this is a MAC rather than a signature are in
-`README_mcp_auth.md` at the repository root.
+returns a chapter's paragraphs (or an inclusive `start_index`..`end_index` slice so a
+caller checking context around one paragraph never has to pull the whole chapter); the
+other compiles a search criteria tree — word, text and character leaves over and/or
+group nodes — into a single Cypher query answered entirely in the database, reading
+the stored mention verdicts rather than judging any paragraph, and refusing an unknown
+or other-account document instead of answering empty. Read this for what the token
+looks like, what makes one valid, the account it is bound to, and how the tools read
+one account's books; the threat model, the two-listener split and why this is a MAC
+rather than a signature are in `README_mcp_auth.md` at the repository root.
 
 ## Package Structure
 

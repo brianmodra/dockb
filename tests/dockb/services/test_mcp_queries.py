@@ -11,7 +11,11 @@ from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
-from dockb.services.mcp_queries import evaluate_criteria, find_paragraphs_payload
+from dockb.services.mcp_queries import (
+    evaluate_criteria,
+    find_paragraphs_payload,
+    get_chapter_payload,
+)
 
 
 def _token(text: str) -> Token:
@@ -472,3 +476,34 @@ def test_find_paragraphs_of_an_unowned_document_is_none() -> None:
         owner="other",
     )
     assert found is None
+
+
+def test_get_chapter_payload_slices_paragraphs_by_inclusive_index_range() -> None:
+    """start_index and end_index filter to that inclusive window while keeping each paragraph's chapter index."""
+    chapter_repo = MagicMock()
+    chapter_repo.load.return_value = _document().chapters[0]
+    chapter_repo.find_document_id.return_value = "d1"
+    chapter_repo.find_character_title.return_value = None
+
+    window = get_chapter_payload(
+        chapter_id="c1",
+        start_index=1,
+        end_index=2,
+        chapter_repo=chapter_repo,
+        owner="acct-1",
+    )
+
+    assert window is not None
+    paragraphs = window["paragraphs"]
+    assert isinstance(paragraphs, list)
+    assert [(par["id"], par["index"]) for par in paragraphs] == [("p2", 1), ("p3", 2)]
+
+    single = get_chapter_payload(
+        chapter_id="c1",
+        start_index=1,
+        end_index=1,
+        chapter_repo=chapter_repo,
+        owner="acct-1",
+    )
+    assert single is not None
+    assert [(par["id"], par["index"]) for par in single["paragraphs"]] == [("p2", 1)]

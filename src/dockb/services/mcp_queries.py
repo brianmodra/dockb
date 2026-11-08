@@ -187,18 +187,22 @@ def _selects_sentence(criterion: Criterion, text: str) -> bool:
     return False
 
 
-def get_chapter_payload(
+def get_chapter_payload(  # pylint: disable=too-many-arguments
     *,
     chapter_id: str | None = None,
     document_id: str | None = None,
     title: str | None = None,
+    start_index: int | None = None,
+    end_index: int | None = None,
     chapter_repo: Any,
     owner: str,
 ) -> dict[str, object] | None:
     """A chapter by id, or by title within a document — the tools' chapter shape.
 
     A title is only unique within a document, so a title without a document
-    resolves to nothing. Returns None when the chapter is absent or *owner*
+    resolves to nothing. When *start_index* or *end_index* is given, only
+    paragraphs in that inclusive 0-based range are returned, each keeping its
+    chapter-wide ``index``. Returns None when the chapter is absent or *owner*
     does not own it.
     """
     resolved = chapter_id
@@ -207,4 +211,13 @@ def get_chapter_payload(
         resolved = str(found) if found else None
     if resolved is None:
         return None
-    return load_chapter_payload(resolved, chapter_repo=chapter_repo, owner=owner)
+    payload = load_chapter_payload(resolved, chapter_repo=chapter_repo, owner=owner)
+    if payload is not None and (start_index is not None or end_index is not None):
+        paragraphs = payload.get("paragraphs")
+        if isinstance(paragraphs, list):
+            payload["paragraphs"] = [
+                par
+                for par in paragraphs
+                if (start_index is None or int(par["index"]) >= start_index) and (end_index is None or int(par["index"]) <= end_index)
+            ]
+    return payload

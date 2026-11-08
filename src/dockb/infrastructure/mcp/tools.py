@@ -97,20 +97,38 @@ def mount_tools(
         chapter_id: str | None = None,
         document_id: str | None = None,
         title: str | None = None,
+        start_index: int | None = None,
+        end_index: int | None = None,
     ) -> dict[str, Any]:
         """A chapter as paragraphs: by chapter id, or by title within a document.
 
         Each paragraph carries its properties (id, quote type), its position,
         and its sentences — each sentence its properties and its text as the
-        canonical markdown line. Unknown id, or a title without a document (or
-        that names no chapter of the account's), is an error.
+        canonical markdown line. Optional *start_index* and *end_index*
+        (0-based inclusive paragraph positions) return only that slice of
+        paragraphs while keeping each paragraph's chapter-wide ``index``.
+        Unknown id, or a title without a document (or that names no chapter of
+        the account's), is an error.
         """
         account = _account()
-        logger.info("MCP get_chapter <- %s", _logged({"chapter_id": chapter_id, "document_id": document_id, "title": title}))
+        logger.info(
+            "MCP get_chapter <- %s",
+            _logged(
+                {
+                    "chapter_id": chapter_id,
+                    "document_id": document_id,
+                    "title": title,
+                    "start_index": start_index,
+                    "end_index": end_index,
+                }
+            ),
+        )
         payload = get_chapter_payload(
             chapter_id=chapter_id,
             document_id=document_id,
             title=title,
+            start_index=start_index,
+            end_index=end_index,
             chapter_repo=chapter_repo,
             owner=account,
         )
@@ -170,7 +188,9 @@ def mount_tools(
         name="get_chapter",
         description=(
             "One chapter of one of this account's books: its paragraphs, each with its "
-            "properties and its sentences' text as written in the markdown."
+            "properties and its sentences' text as written in the markdown. Pass optional "
+            "0-based inclusive start_index and end_index to read a window of paragraphs "
+            "rather than the whole chapter."
         ),
     )
     mcp.add_tool(

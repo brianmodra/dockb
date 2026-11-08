@@ -283,6 +283,36 @@ async def test_get_chapter_resolves_a_title_within_a_document(repos) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_chapter_slices_paragraphs_with_start_and_end_index(repos) -> None:
+    chapter_repo, _search = repos
+    doc = _chapter_document()
+    chapter_model = doc.chapters[0]
+    for par_id in ("p2", "p3"):
+        par = Paragraph(id=par_id, state=DataState.SYNC)
+        sent = Sentence(state=DataState.SYNC)
+        sent.tokens.append(Token(text="Later.", trailing_ws=" ", state=DataState.SYNC))
+        par.sentences.append(sent)
+        chapter_model.paragraphs.append(par)
+    chapter_repo.load.return_value = chapter_model
+    mcp = _mount(repos, _StubSearchRepo())
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    assert "start_index" in tools["get_chapter"].input_schema["properties"]
+    assert "end_index" in tools["get_chapter"].input_schema["properties"]
+    assert "start_index" in tools["get_chapter"].description
+
+    token = _account_id.set("acct-1")
+    result = await mcp.call_tool(
+        "get_chapter",
+        {"chapter_id": "c1", "start_index": 1, "end_index": 1},
+    )
+    _account_id.reset(token)
+
+    assert result.is_error is False
+    paragraphs = result.structured_content["paragraphs"]
+    assert [(par["id"], par["index"]) for par in paragraphs] == [("p2", 1)]
+
+
+@pytest.mark.asyncio
 async def test_find_paragraphs_answers_the_selection(repos) -> None:
     _chapter, search_repo = repos
     chapter_repo = repos[0]

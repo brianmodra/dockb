@@ -778,11 +778,14 @@ such, and keep each `text` item a neutral description of the paragraph that does
 not assume the question's premise. For a first-or-earliest-occurrence question
 it presents only the earliest paragraph that actually answers — lower chapter
 position first, then lower paragraph position within that chapter — rather than
-the first tool match, and searches manuscript chapters only. When either the URL or the issuer is missing,
+the first tool match, searches manuscript chapters only, and verifies candidates
+from their own sentences (or a narrow `start_index`..`end_index` chapter slice)
+rather than pulling whole chapters. When either the URL or the issuer is missing,
 the prompt is sent without MCP, without the syntax constraint, and without the
 syntax instruction, so the reply may be prose.
 Errors: `422` for an empty prompt, `503` when the service is
-unwired or the key is missing, `502` when the model call fails.
+unwired or the key is missing, `502` when the model call fails (carrying the
+provider's error code and message when present).
 
 ### Import
 
