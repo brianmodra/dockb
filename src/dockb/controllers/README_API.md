@@ -2,11 +2,9 @@
 
 ## Executive Summary
 
-This note is the contract between DockB's editor and the server. It lists the requests the editor may send, the shape of each reply, and what the server refuses. Grammar details stay on the server and are not part of this contract. Every manuscript route is gated on a session and scoped to the account that signed in, so a request never carries an owner and one account's ids mean nothing to another; the few endpoints that answer without a session are listed as such, and are the login flow itself.
+This note is the contract between DockB's editor and the server: the requests the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, how every route is gated to the signed-in account, and the errors the editor handles. Read it before adding a screen or a route.
 
-It also describes the two ways a document gets into the graph. `POST /api/documents` and the chapter/paragraph/sentence routes carry ordinary editor edits. `POST /api/import` instead takes a whole document directory as a multipart upload and runs the same directory walker the command line uses, so a manuscript can be brought in without naming a path on the server. Because an upload is untrusted, that route has its own path and size rules, and it is where a document's owner comes from the session rather than the request. A third route steps outside the manuscript: `POST /api/ai/chat` sends the editor's prompt to the model over the Responses API, attaching DockB's MCP server as a tool with a per-prompt bearer token when the public MCP URL is configured. The request also carries the id of the document the editor has open, and the call's instructions name it so the model uses it as the tools' document_id; the same instructions teach the model to answer document searches in the editor's response syntax, which renders as text lines and clickable buttons.
-
-Read it before adding a screen or a route. The editor sends what changed in the document, not a raw character-by-character diff, and it is also served the editor shell itself from `/editor/`, which is why the window and the API share an origin and one session cookie. Whole-chapter operations live beside the CRUD: renumbering a document's chapters, and naming a chapter's point-of-view character (applied, suggested, or cleared).
+It also covers the routes that go beyond editing one element: importing a whole document directory, renumbering chapters, setting a point-of-view character, reading history, and sending an AI chat prompt. The AI route is the exception to the manuscript contract: the server gives the model read-only tools over the manuscript and constrains the reply to the editor's response syntax, so the answer renders as text lines and clickable buttons rather than prose.
 
 ## Core Principle
 
@@ -769,23 +767,17 @@ to the call's MCP access, not sent by the client). The
 issuer is wired, the call carries DockB's MCP server as a Responses-API tool
 with a per-prompt bearer token in the tool's `authorization` field, minted for
 this prompt and scoped to the signed-in account (`README_mcp_auth.md` §2–§4);
-the token never enters model-visible text. The call also sets the Responses
-API's structured-output `text.format` to a strict `json_schema`, so the model
-can reply only in the editor's response syntax: an object `{"response": [...]}`
-whose items are `{"text": ...}` or a `highlight` button `{"button": {"label":
-..., "function": "highlight", "args": {"chapter_id": ..., "paragraph_id": ...,
-"sentence_indices": [...]}}}`. A plain answer is therefore a single text item
-rather than prose. The instructions say the same: reply with only this JSON, no
-prose or code fences, at least one item. They also teach the model that a
-find_paragraphs answer comes back as `{"response": [{"text": ...}, {"button":
-{...}}]}` (the renderer's `README_response_area.md` specifies the shape). They
-then tell it that a tool match only shares the searched words and names: it must
-read each returned paragraph and include only those that actually state the
-answer, describe a related-but-non-answering paragraph as such rather than
-claiming it answers, and keep each `text` item a neutral description of the
-paragraph that does not assume the question's premise. When either the URL or
-the issuer is missing, the prompt is sent without MCP and without the syntax
-instruction or the structured output, so the reply may be prose.
+the token never enters model-visible text. The reply is constrained to the
+editor's response syntax (the renderer's `README_response_area.md` specifies the
+shape), so a plain answer arrives as a single text item instead of prose, and
+every paragraph presented as an answer carries a `highlight` button. The
+instructions also tell the model that a tool match only shares the searched
+words and names: it must read each returned paragraph, include only those that
+actually state the answer, describe a related-but-non-answering paragraph as
+such, and keep each `text` item a neutral description of the paragraph that does
+not assume the question's premise. When either the URL or the issuer is missing,
+the prompt is sent without MCP, without the syntax constraint, and without the
+syntax instruction, so the reply may be prose.
 Errors: `422` for an empty prompt, `503` when the service is
 unwired or the key is missing, `502` when the model call fails.
 

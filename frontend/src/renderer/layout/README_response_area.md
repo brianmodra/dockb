@@ -2,12 +2,13 @@
 
 ## Executive Summary
 
-This module renders the model's answer to an editor prompt inside the message panel. It exists
-because the reply is more than prose: the model can answer with lines of text and clickable
-controls — a control opening the paragraph it names — and a control must reach named editor
-functions with plain data, never executable code. This document states the panel's spinner and
-sizing behaviour, the reply syntax, the `highlight` function, and the guard that keeps outside
-text out of the DOM.
+This module renders the model's answer to an editor prompt inside the message panel. A reply is
+more than prose: it can carry lines of text and clickable controls that open the paragraph they
+name, so the module parses the response syntax, renders it without letting outside text into the
+DOM as markup, and passes a control's plain-data arguments to a named editor function. When the
+server attaches its manuscript tools to a chat turn it also constrains the model to that syntax,
+so a plain answer arrives as a single text line; without them, or on a refusal, the reply falls
+back to plain text.
 
 ## The panel strip
 
