@@ -87,7 +87,7 @@ The only triggers are chapter saves and the sweep CLI — a search never evaluat
 - **A manuscript chapter save** schedules one **MentionsJob** for that chapter: it evaluates the chapter's state 1 and state 4 paragraphs.
 - **A character chapter save that changed the identity properties** schedules a MentionsJob **per chapter of the document** (the ambiguity set is document-wide, so the scope is too).
 - **The sweep CLI** — `dockb mentions sweep <document-title-or-id>` — is the operator's manual, once-per-book backfill (and the retry after an outage).
-  Default: the document's state 1 and 4 paragraphs, resumable by construction (each paragraph is stamped as it is judged, so an interrupted sweep just continues). `--full`: re-evaluate every paragraph, ignoring existing MENTIONS. It prints per-chapter state counts before, and anything left pending after; it does not run at startup and is never automatic.
+  Default: the document's state 1 and 4 paragraphs, resumable by construction (each paragraph is stamped as it is judged, so an interrupted sweep just continues). `--full`: re-evaluate every paragraph, ignoring existing MENTIONS. It prints per-chapter state counts before, and anything left **pending** after — pending meaning still state 1 or 4, i.e. no verdict was reached. A complete sweep leaves nothing pending except when the model could not answer (`OPENAI_API_KEY` missing, a network failure, or `--no-ai`), which those paragraphs are retried by the next sweep; it does not run at startup and is never automatic.
 
 ## 5. How a search uses it
 

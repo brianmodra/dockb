@@ -23,7 +23,8 @@ from dockb.infrastructure.neo4j.serialized_session import SessionLike
 _CHAPTER_STATES_CYPHER = """
 MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
 OPTIONAL MATCH (p)-[m:MENTIONS]->(target:Chapter)
-WITH p, pr.index AS index, collect({character_id: target.id, stale: coalesce(m.stale, false)}) AS mentions
+WITH p, pr.index AS index,
+     collect(CASE WHEN target IS NULL THEN null ELSE {character_id: target.id, stale: coalesce(m.stale, false)} END) AS mentions
 RETURN
   p.id AS id,
   index,
@@ -34,7 +35,8 @@ RETURN
 _DOCUMENT_STATES_CYPHER = """
 MATCH (p:Paragraph)-[pr:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {id: $document_id, owner: $owner})
 OPTIONAL MATCH (p)-[m:MENTIONS]->(target:Chapter)
-WITH p, pr.index AS index, collect({character_id: target.id, stale: coalesce(m.stale, false)}) AS mentions
+WITH p, pr.index AS index,
+     collect(CASE WHEN target IS NULL THEN null ELSE {character_id: target.id, stale: coalesce(m.stale, false)} END) AS mentions
 RETURN
   p.id AS id,
   index,
@@ -100,12 +102,12 @@ _STAMP_CYPHER = """
 MATCH (p:Paragraph {id: $paragraph_id})-[:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {owner: $owner})
 OPTIONAL MATCH (p)-[m:MENTIONS]->()
 DELETE m
+WITH DISTINCT p
+SET p.mentions_checked_at = $checked_at
 WITH p
 UNWIND $verdicts AS verdict
 MATCH (c:Chapter {id: verdict.character_id, category: 'Character'})
 CREATE (p)-[:MENTIONS {method: verdict.method, confidence: verdict.confidence}]->(c)
-WITH DISTINCT p
-SET p.mentions_checked_at = $checked_at
 """
 
 
