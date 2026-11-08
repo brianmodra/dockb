@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TextSelection } from "prosemirror-state";
 import type { DocumentContentResponse } from "../src/renderer/api/types";
 import { EditPanel, type EditPanelApi } from "../src/renderer/layout/editPanel";
+import type { WysiwygView } from "../src/renderer/layout/wysiwyg";
 
 function doc(content: string, warnings: string[] = [], summary: DocumentContentResponse["summary"] = null): DocumentContentResponse {
   return { content, summary, warnings };
@@ -14,6 +16,12 @@ function fakeApi(overrides: Partial<EditPanelApi> = {}): EditPanelApi {
     ),
     ...overrides,
   };
+}
+
+function selectInPanel(panel: EditPanel, from: number, to: number): void {
+  const wysiwyg = (panel as unknown as { wysiwyg: WysiwygView }).wysiwyg;
+  const doc = wysiwyg.view.state.doc;
+  wysiwyg.view.dispatch(wysiwyg.view.state.tr.setSelection(TextSelection.create(doc, from, to)));
 }
 
 afterEach(() => {
@@ -204,40 +212,115 @@ describe("EditPanel", () => {
     expect(panel.element.querySelector(".ProseMirror")!.getAttribute("contenteditable")).not.toBe("false");
   });
 
-  it("quotes a paragraph from its right-click menu", async () => {
+  it("offers the selected text's actions on right-click without a menu", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>'),
+      ),
+    });
+    const onSelectionActions = vi.fn();
+    const panel = new EditPanel({ api, onSelectionActions });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    selectInPanel(panel, 3, 9);
+    const paragraph = panel.element.querySelector("p")!;
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    paragraph.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onSelectionActions).toHaveBeenCalledTimes(1);
+    expect(onSelectionActions.mock.calls[0][0]).toMatchObject({
+      paragraphIds: ["p-1", "p-2"],
+      paragraphIndexes: [0, 1],
+      quoteType: "",
+      text: "e. Tw",
+    });
+    expect(document.querySelector("[data-testid='context-menu']")).toBeNull();
+  });
+
+  it("leaves the browser menu alone when no text is selected", async () => {
     const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("Body text.")) });
-    const panel = new EditPanel({ api });
+    const onSelectionActions = vi.fn();
+    const panel = new EditPanel({ api, onSelectionActions });
     document.body.append(panel.element);
     await panel.load("c1");
 
     const paragraph = panel.element.querySelector("p")!;
-    paragraph.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    paragraph.dispatchEvent(event);
 
-    const menu = document.querySelector("[data-testid='context-menu']");
-    expect(menu).not.toBeNull();
-    const title = menu!.querySelector<HTMLElement>(".context-title");
-    expect(title!.textContent).toBe("Edit");
-    expect(title!.tagName).not.toBe("BUTTON");
+    expect(event.defaultPrevented).toBe(false);
+    expect(onSelectionActions).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-testid='context-menu']")).toBeNull();
+  });
 
-    const quoteItem = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
-      (n) => n.textContent === "Quote",
-    )!;
-    quoteItem.click();
-    // Nothing is quoted yet, so "None" is the highlighted choice.
-    const none = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
-      (n) => n.textContent === "None" && n.classList.contains("is-checked"),
-    );
-    expect(none).not.toBeUndefined();
+  it("quotes and unquotes the named paragraphs from a response-area action", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc('<span data-par-id="p-1">\nOne.\n</span>')),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
 
-    const reading = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
-      (n) => n.textContent === "Reading",
-    )!;
-    reading.click();
-
-    await vi.waitFor(() =>
-      expect(panel.content()).toContain('data-quote-type="reading"'),
-    );
+    expect(
+      panel.applyQuote({ quote_type: "reading", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+    ).toBe(true);
+    expect(panel.content()).toContain('data-quote-type="reading"');
     expect(panel.isDirty()).toBe(true);
+
+    expect(
+      panel.applyQuote({ quote_type: "", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+    ).toBe(true);
+    expect(panel.content()).not.toContain("data-quote-type");
+  });
+
+  it("falls back to the paragraph index when a quoted paragraph has no id", async () => {
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("One.\n\nTwo.")) });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(
+      panel.applyQuote({ quote_type: "writing", paragraph_ids: [null, null], paragraph_indexes: [1] }),
+    ).toBe(true);
+
+    const blocks = panel.content().split("\n\n");
+    expect(blocks[0]).toBe("One.");
+    expect(blocks[1]).toMatch(/data-quote-type="writing"/);
+  });
+
+  it("refuses a quote action with an unknown type or a malformed identity", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc('<span data-par-id="p-1">\nOne.\n</span>')),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(
+      panel.applyQuote({ quote_type: "read", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+    ).toBe(false);
+    expect(
+      panel.applyQuote({ quote_type: "reading", paragraph_ids: [7], paragraph_indexes: [0] }),
+    ).toBe(false);
+    expect(panel.applyQuote(null)).toBe(false);
+    expect(panel.content()).not.toContain("data-quote-type");
+  });
+
+  it("refuses a quote action in the raw view", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc('<span data-par-id="p-1">\nOne.\n</span>')),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    panel.setMode("raw");
+
+    expect(
+      panel.applyQuote({ quote_type: "reading", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+    ).toBe(false);
+    expect(panel.content()).not.toContain("data-quote-type");
   });
 
   it("open saves the dirty buffer before loading another chapter", async () => {

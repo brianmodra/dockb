@@ -7,8 +7,12 @@ import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
 import { characterHeaderText, frontMatterFields, manuscriptHeaderText } from "./characterHeader";
-import { WysiwygView, chapterBody, quoteSignatureOf, uniformQuoteType } from "./wysiwyg";
-import { openContextMenu } from "./contextMenu";
+import {
+  WysiwygView,
+  chapterBody,
+  quoteSignatureOf,
+  type SelectionContext,
+} from "./wysiwyg";
 import type { Mode } from "./menubar";
 
 export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDocument">;
@@ -18,6 +22,7 @@ export interface EditPanelOptions {
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSelectionActions?: (context: SelectionContext) => void;
 }
 
 export class EditPanel {
@@ -27,6 +32,7 @@ export class EditPanel {
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSelectionActions?: (context: SelectionContext) => void;
   private view: EditorView;
   private readonly wysiwyg: WysiwygView;
   private readonly rawHost: HTMLElement;
@@ -44,6 +50,7 @@ export class EditPanel {
     this.onMessage = options.onMessage;
     this.onWarning = options.onWarning;
     this.onDirtyChange = options.onDirtyChange;
+    this.onSelectionActions = options.onSelectionActions;
 
     this.element = document.createElement("div");
     this.element.className = "edit-panel";
@@ -90,33 +97,47 @@ export class EditPanel {
     this.applyMode();
   }
 
-  /** Right-click inside a paragraph: the Edit ▸ Quote pulldown for the selection's paragraphs. */
+  /**
+   * Right-click with a selection: hand the selected text's context to the
+   * caller, which offers the quote actions in the response area. With no
+   * selection the browser's own menu is left alone.
+   */
   private openParagraphMenu(event: MouseEvent): void {
-    event.preventDefault();
-    const positions = this.wysiwyg.paragraphPositions(event.target);
-    if (positions.length === 0) {
+    const context = this.wysiwyg.selectionContext();
+    if (context === null) {
       return;
     }
-    const types = positions.map((pos) => this.wysiwyg.quoteTypeAt(pos));
-    const uniform = uniformQuoteType(types);
-    const setQuote = (quoteType: string): void => {
-      this.wysiwyg.setQuoteTypeAtPositions(positions, quoteType);
-    };
-    openContextMenu(
-      event.clientX,
-      event.clientY,
-      [
-        {
-          label: "Quote",
-          children: [
-            { label: "None", checked: uniform === "", onSelect: () => setQuote("") },
-            { label: "Reading", checked: uniform === "reading", onSelect: () => setQuote("reading") },
-            { label: "Writing", checked: uniform === "writing", onSelect: () => setQuote("writing") },
-          ],
-        },
-      ],
-      { title: "Edit" },
-    );
+    event.preventDefault();
+    this.onSelectionActions?.(context);
+  }
+
+  /**
+   * Apply a quote action chosen from the response area: set, change, or clear
+   * the quote type of the named paragraphs. The args come from outside the
+   * editor, so the type and identities are checked before anything changes.
+   */
+  applyQuote(rawArgs: unknown): boolean {
+    if (this.mode !== "wysiwyg" || typeof rawArgs !== "object" || rawArgs === null) {
+      return false;
+    }
+    const args = rawArgs as Record<string, unknown>;
+    const quoteType = args.quote_type;
+    if (quoteType !== "" && quoteType !== "reading" && quoteType !== "writing") {
+      return false;
+    }
+    if (!Array.isArray(args.paragraph_ids) || args.paragraph_ids.length === 0) {
+      return false;
+    }
+    if (!args.paragraph_ids.every((id) => id === null || typeof id === "string")) {
+      return false;
+    }
+    const ids = args.paragraph_ids as Array<string | null>;
+    const indexes = Array.isArray(args.paragraph_indexes)
+      ? args.paragraph_indexes.map((value) =>
+          typeof value === "number" && Number.isInteger(value) ? value : Number.NaN,
+        )
+      : [];
+    return this.wysiwyg.setQuoteTypeByIds(ids, indexes, quoteType);
   }
 
   setMode(mode: Mode): void {

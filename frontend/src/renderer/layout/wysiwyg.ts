@@ -103,19 +103,6 @@ export function quoteSignatureOf(buffer: string): string {
   return signatureFromDoc(bufferToDocWithIds(chapterBody(buffer), ids, quoteTypes));
 }
 
-/**
- * The one quote type every *types* shares, or null when they disagree.
- *
- * A pulldown can only tick one entry: an empty list counts as `""` (nothing
- * quoted), a disagreement as null (nothing ticked).
- */
-export function uniformQuoteType(types: string[]): string | null {
-  if (types.length === 0) {
-    return "";
-  }
-  return types.every((type) => type === types[0]) ? types[0] : null;
-}
-
 export function chapterBody(buffer: string): string {
   const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
   const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
@@ -384,34 +371,6 @@ export class WysiwygView {
   }
 
   /**
-   * The document positions opening each paragraph a right-click acts on.
-   *
-   * A selection — even one spanning paragraphs — names every paragraph it
-   * touches; an empty selection falls back to the paragraph the pointer is on.
-   */
-  paragraphPositions(target: EventTarget | null): number[] {
-    if (!this.innerView) {
-      return [];
-    }
-    const { from, to, empty } = this.innerView.state.selection;
-    if (empty) {
-      const pos = this.paragraphPosFromDom(target);
-      return pos === null ? [] : [pos];
-    }
-    const positions: number[] = [];
-    let offset = 0;
-    this.innerView.state.doc.forEach((node, localStart) => {
-      const contentStart = offset + 1;
-      const contentEnd = offset + node.nodeSize - 1;
-      if (contentEnd > from && contentStart < to) {
-        positions.push(localStart);
-      }
-      offset += node.nodeSize;
-    });
-    return positions;
-  }
-
-  /**
    * The selected text and where it starts and ends: the paragraph ids and
    * indexes it touches, each endpoint's sentence and character offset, and the
    * quote type they share. Empty selection, unmounted view, or a selection that
@@ -471,40 +430,6 @@ export class WysiwygView {
     return index === -1 ? Math.max(ranges.length - 1, 0) : index;
   }
 
-  /** The quote type of the paragraph at *pos* ("" when it is not a quote). */
-  quoteTypeAt(pos: number): string {
-    const node = this.view.state.doc.nodeAt(pos);
-    return node?.type.name === "paragraph" ? (node.attrs.quoteType ?? "") : "";
-  }
-
-  /**
-   * Set the quote type of every paragraph at *positions*, in one transaction.
-   *
-   * A paragraph that has no id yet — brand-new, never saved — gains one now:
-   * the quote type lives in the canonical span, so without an id there would
-   * be nothing to carry it. One transaction keeps the whole marking one undo
-   * step and one save-worthy change.
-   */
-  setQuoteTypeAtPositions(positions: number[], quoteType: string): boolean {
-    if (positions.length === 0) {
-      return false;
-    }
-    const tr = this.view.state.tr;
-    for (const pos of positions) {
-      const node = this.view.state.doc.nodeAt(pos);
-      if (!node || node.type.name !== "paragraph") {
-        continue;
-      }
-      tr.setNodeMarkup(pos, null, {
-        id: node.attrs.id ?? crypto.randomUUID(),
-        quoteType,
-        blanksBefore: node.attrs.blanksBefore,
-      });
-    }
-    this.view.dispatch(tr);
-    return true;
-  }
-
   /**
    * Set the quote type of the paragraphs named by *ids* (falling back to
    * *indexes* when an id is null, as on a paragraph not yet saved), in one
@@ -554,24 +479,6 @@ export class WysiwygView {
     });
     this.innerView.dispatch(tr);
     return true;
-  }
-
-  /** The document position that opens the paragraph *target* sits in, if any. */
-  private paragraphPosFromDom(target: EventTarget | null): number | null {
-    if (!this.innerView || !(target instanceof Element)) {
-      return null;
-    }
-    const dom = target.closest("p");
-    if (!dom || !this.innerView.dom.contains(dom)) {
-      return null;
-    }
-    try {
-      const pos = this.innerView.posAtDOM(dom, 0);
-      const $pos = this.innerView.state.doc.resolve(pos);
-      return $pos.depth >= 1 ? $pos.before(1) : null;
-    } catch {
-      return null;
-    }
   }
 
   setContent(buffer: string): void {
