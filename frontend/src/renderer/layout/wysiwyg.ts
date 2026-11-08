@@ -309,6 +309,45 @@ export interface WysiwygViewOptions {
   onChange?: (content: string) => void;
 }
 
+export interface SelectionPoint {
+  paragraphId: string | null;
+  paragraphIndex: number;
+  sentenceIndex: number;
+  offset: number;
+}
+
+/** The editor state a selected-text action needs, captured when it is chosen. */
+export interface SelectionContext {
+  text: string;
+  paragraphIds: Array<string | null>;
+  paragraphIndexes: number[];
+  quoteType: string;
+  start: SelectionPoint;
+  end: SelectionPoint;
+}
+
+interface ParagraphSpan {
+  node: Node;
+  pos: number;
+  index: number;
+  contentStart: number;
+  contentEnd: number;
+}
+
+function paragraphSpans(doc: Node): ParagraphSpan[] {
+  const spans: ParagraphSpan[] = [];
+  doc.forEach((node, offset) => {
+    spans.push({
+      node,
+      pos: offset,
+      index: spans.length,
+      contentStart: offset + 1,
+      contentEnd: offset + node.nodeSize - 1,
+    });
+  });
+  return spans;
+}
+
 export class WysiwygView {
   readonly element: HTMLElement;
   private readonly options: WysiwygViewOptions;
@@ -372,6 +411,66 @@ export class WysiwygView {
     return positions;
   }
 
+  /**
+   * The selected text and where it starts and ends: the paragraph ids and
+   * indexes it touches, each endpoint's sentence and character offset, and the
+   * quote type they share. Empty selection, unmounted view, or a selection that
+   * names no paragraph answer null.
+   */
+  selectionContext(): SelectionContext | null {
+    if (!this.innerView) {
+      return null;
+    }
+    const { from, to, empty } = this.innerView.state.selection;
+    if (empty) {
+      return null;
+    }
+    const doc = this.innerView.state.doc;
+    const spans = paragraphSpans(doc);
+    const touched = spans.filter(
+      (span) => span.contentEnd > from && span.contentStart < to,
+    );
+    if (touched.length === 0) {
+      return null;
+    }
+    const startSpan = this.paragraphAt(spans, from) ?? touched[0];
+    const endSpan = this.paragraphAt(spans, to) ?? touched[touched.length - 1];
+    const quoteTypes = touched.map((span) => span.node.attrs.quoteType ?? "");
+    return {
+      text: doc.textBetween(from, to, " "),
+      paragraphIds: touched.map((span) => span.node.attrs.id ?? null),
+      paragraphIndexes: touched.map((span) => span.index),
+      quoteType: quoteTypes.every((type) => type === quoteTypes[0]) ? quoteTypes[0] : "",
+      start: this.selectionPoint(startSpan, from),
+      end: this.selectionPoint(endSpan, to),
+    };
+  }
+
+  private paragraphAt(spans: ParagraphSpan[], pos: number): ParagraphSpan | null {
+    return (
+      spans.find((span) => pos >= span.contentStart && pos <= span.contentEnd) ??
+      spans.find((span) => span.contentStart > pos) ??
+      spans[spans.length - 1] ??
+      null
+    );
+  }
+
+  private selectionPoint(span: ParagraphSpan, pos: number): SelectionPoint {
+    const offset = Math.min(Math.max(pos - span.contentStart, 0), span.node.content.size);
+    return {
+      paragraphId: span.node.attrs.id ?? null,
+      paragraphIndex: span.index,
+      sentenceIndex: this.sentenceIndexAt(span.node, offset),
+      offset,
+    };
+  }
+
+  private sentenceIndexAt(paragraph: Node, offset: number): number {
+    const ranges = this.sentenceRanges(paragraph);
+    const index = ranges.findIndex((range) => offset >= range.from && offset <= range.to);
+    return index === -1 ? Math.max(ranges.length - 1, 0) : index;
+  }
+
   /** The quote type of the paragraph at *pos* ("" when it is not a quote). */
   quoteTypeAt(pos: number): string {
     const node = this.view.state.doc.nodeAt(pos);
@@ -403,6 +502,57 @@ export class WysiwygView {
       });
     }
     this.view.dispatch(tr);
+    return true;
+  }
+
+  /**
+   * Set the quote type of the paragraphs named by *ids* (falling back to
+   * *indexes* when an id is null, as on a paragraph not yet saved), in one
+   * transaction. A paragraph that has no id gains one now, because the quote
+   * type lives in the canonical span.
+   */
+  setQuoteTypeByIds(
+    ids: Array<string | null>,
+    indexes: number[],
+    quoteType: string,
+  ): boolean {
+    if (!this.innerView || ids.length === 0) {
+      return false;
+    }
+    const doc = this.innerView.state.doc;
+    const spans = paragraphSpans(doc);
+    const targets = new Set<number>();
+    ids.forEach((id, index) => {
+      const byId = id === null ? undefined : spans.find((span) => span.node.attrs.id === id);
+      const indexValue = indexes[index];
+      const byIndex =
+        typeof indexValue === "number" &&
+        Number.isInteger(indexValue) &&
+        indexValue >= 0 &&
+        indexValue < spans.length
+          ? spans[indexValue]
+          : undefined;
+      const target = byId ?? byIndex;
+      if (target) {
+        targets.add(target.pos);
+      }
+    });
+    if (targets.size === 0) {
+      return false;
+    }
+    const tr = this.innerView.state.tr;
+    targets.forEach((pos) => {
+      const node = doc.nodeAt(pos);
+      if (!node || node.type.name !== "paragraph") {
+        return;
+      }
+      tr.setNodeMarkup(pos, null, {
+        id: node.attrs.id ?? crypto.randomUUID(),
+        quoteType,
+        blanksBefore: node.attrs.blanksBefore,
+      });
+    });
+    this.innerView.dispatch(tr);
     return true;
   }
 

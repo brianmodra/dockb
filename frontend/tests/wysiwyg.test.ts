@@ -26,11 +26,15 @@ import {
   docToString,
   findHeadingLines,
   quoteSignatureOf,
-  uniformQuoteType,
 } from "../src/renderer/layout/wysiwyg";
 import MarkdownIt from "markdown-it";
 
 const md = new MarkdownIt();
+
+function select(view: WysiwygView, from: number, to: number): void {
+  const doc = view.view.state.doc;
+  view.view.dispatch(view.view.state.tr.setSelection(TextSelection.create(doc, from, to)));
+}
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -398,8 +402,7 @@ describe("WysiwygView canonical round trip", () => {
     expect(view.quoteSignature().split("\u241F").filter(Boolean)).toEqual(["reading"]);
     expect(view.quoteSignature()).toBe(quoteSignatureOf(buffer));
 
-    const first = view.element.querySelector("p")!;
-    view.setQuoteTypeAtPositions(view.paragraphPositions(first), "writing");
+    expect(view.setQuoteTypeByIds(["p-1"], [0], "writing")).toBe(true);
     expect(view.quoteSignature()).not.toBe(quoteSignatureOf(buffer));
   });
 
@@ -467,50 +470,111 @@ describe("WysiwygView quoted paragraphs", () => {
     void paragraph;
   });
 
-  it("acts on the pointer's paragraph when the selection is empty", () => {
+  it("reports the start and end sentence and offset of a selection", () => {
     const view = new WysiwygView();
-    view.setContent(
-      '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\nPlain text.',
-    );
-    const [quotedP, plainP] = view.element.querySelectorAll("p");
+    view.setContent('<span data-par-id="p-1">\nOne two.\nThree four.\n</span>');
+    // content starts at document position 1; select from inside "two" to inside
+    // the second sentence, crossing the sentence break.
+    select(view, 1 + 4, 1 + 12);
 
-    // The pointer's paragraph: the quoted one keeps its type, the plain one is span-less.
-    expect(view.quoteTypeAt(view.paragraphPositions(quotedP)[0])).toBe("reading");
-    expect(view.quoteTypeAt(view.paragraphPositions(plainP)[0])).toBe("");
+    const context = view.selectionContext();
 
-    expect(view.setQuoteTypeAtPositions(view.paragraphPositions(plainP), "writing")).toBe(true);
-
-    const rendered = view.content();
-    expect(rendered).toContain('<span data-par-id="p-1" data-quote-type="reading">');
-    const written = rendered.split("\n\n").find((block) => block.includes('data-quote-type="writing"'));
-    expect(written).not.toBeUndefined();
-    expect(written!).toMatch(/<span data-par-id="[^"]+" data-quote-type="writing">/);
+    expect(context).not.toBeNull();
+    expect(context!.paragraphIds).toEqual(["p-1"]);
+    expect(context!.paragraphIndexes).toEqual([0]);
+    expect(context!.start).toEqual({
+      paragraphId: "p-1",
+      paragraphIndex: 0,
+      sentenceIndex: 0,
+      offset: 4,
+    });
+    expect(context!.end).toEqual({
+      paragraphId: "p-1",
+      paragraphIndex: 0,
+      sentenceIndex: 1,
+      offset: 12,
+    });
+    expect(context!.text).toBe("two. Thr");
   });
 
-  it("acts on every paragraph the selection spans, not just the one under the pointer", () => {
+  it("names every paragraph a selection spans with its id and index", () => {
     const view = new WysiwygView();
     view.setContent(
       '<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>\n\n<span data-par-id="p-3">\nThree.\n</span>',
     );
-    const doc = view.view.state.doc;
-    // Select from the middle of "One." to the middle of "Three.".
-    const p3Start = doc.content.size - doc.child(2).nodeSize + 1;
-    view.view.dispatch(
-      view.view.state.tr.setSelection(TextSelection.create(doc, 3, p3Start + 3)),
-    );
+    // Each paragraph node is 6 wide; select from "One." to inside "Three.".
+    select(view, 3, 16);
 
-    const positions = view.paragraphPositions(null);
+    const context = view.selectionContext();
 
-    expect(positions.length).toBe(3);
-    view.setQuoteTypeAtPositions(positions, "reading");
-    const blocks = view.content().split("\n\n");
-    expect(blocks.filter((block) => block.includes('data-quote-type="reading"'))).toHaveLength(3);
+    expect(context).not.toBeNull();
+    expect(context!.paragraphIds).toEqual(["p-1", "p-2", "p-3"]);
+    expect(context!.paragraphIndexes).toEqual([0, 1, 2]);
+    expect(context!.start).toMatchObject({ paragraphId: "p-1", paragraphIndex: 0, offset: 2 });
+    expect(context!.end).toMatchObject({ paragraphId: "p-3", paragraphIndex: 2, offset: 3 });
+    expect(context!.text).toBe("e. Two. Thr");
   });
 
-  it("ticks the pulldown's one choice only when every affected paragraph agrees", () => {
-    expect(uniformQuoteType(["reading", "reading"])).toBe("reading");
-    expect(uniformQuoteType(["reading", ""])).toBeNull();
-    expect(uniformQuoteType(["", ""])).toBe("");
-    expect(uniformQuoteType([])).toBe("");
+  it("returns null when nothing is selected", () => {
+    const view = new WysiwygView();
+    view.setContent("Plain text.");
+
+    expect(view.selectionContext()).toBeNull();
+  });
+
+  it("reports a uniform quote type and treats a mixed selection as unquoted", () => {
+    const view = new WysiwygView();
+    view.setContent(
+      '<span data-par-id="p-1" data-quote-type="reading">\nOne.\n</span>\n\n<span data-par-id="p-2" data-quote-type="reading">\nTwo.\n</span>\n\n<span data-par-id="p-3">\nThree.\n</span>',
+    );
+    select(view, 3, 9);
+    expect(view.selectionContext()!.quoteType).toBe("reading");
+
+    select(view, 3, 16);
+    expect(view.selectionContext()!.quoteType).toBe("");
+  });
+
+  it("quotes the named paragraphs, matching ids before indexes", () => {
+    const view = new WysiwygView();
+    view.setContent(
+      '<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>',
+    );
+
+    expect(view.setQuoteTypeByIds(["p-2"], [0], "writing")).toBe(true);
+
+    const blocks = view.content().split("\n\n");
+    expect(blocks[0]).toBe('<span data-par-id="p-1">\nOne.\n</span>');
+    expect(blocks[1]).toBe('<span data-par-id="p-2" data-quote-type="writing">\nTwo.\n</span>');
+  });
+
+  it("falls back to the paragraph index when an unsaved paragraph has no id", () => {
+    const view = new WysiwygView();
+    view.setContent("One.\n\nTwo.");
+    select(view, 1, 9);
+
+    expect(view.selectionContext()!.paragraphIds).toEqual([null, null]);
+    expect(view.setQuoteTypeByIds([null, null], [1], "reading")).toBe(true);
+
+    const blocks = view.content().split("\n\n");
+    expect(blocks[0]).toBe("One.");
+    expect(blocks[1]).toMatch(/<span data-par-id="[^"]+" data-quote-type="reading">\nTwo.\n<\/span>/);
+  });
+
+  it("assigns an id to a paragraph that had none when quoting it", () => {
+    const view = new WysiwygView();
+    view.setContent("Plain.");
+
+    expect(view.setQuoteTypeByIds([null], [0], "reading")).toBe(true);
+
+    expect(view.content()).toMatch(/<span data-par-id="[^"]+" data-quote-type="reading">\nPlain.\n<\/span>/);
+  });
+
+  it("clears the quote type when asked for the empty one", () => {
+    const view = new WysiwygView();
+    view.setContent('<span data-par-id="p-1" data-quote-type="reading">\nPlain.\n</span>');
+
+    expect(view.setQuoteTypeByIds(["p-1"], [0], "")).toBe(true);
+
+    expect(view.content()).toBe('<span data-par-id="p-1">\nPlain.\n</span>');
   });
 });
