@@ -54,6 +54,11 @@ _RESPONSE_SYNTAX_INSTRUCTIONS = (
     " answers; when one is related but does not answer, say so plainly (this paragraph is related"
     " but does not answer the question) rather than presenting it as the answer. If none answer,"
     " say that plainly."
+    " When the question asks for the first or earliest occurrence of something, the candidate list is"
+    " in reading order: lower chapter_index is an earlier chapter, and within a chapter lower index"
+    " (the paragraph's position in that chapter) is an earlier paragraph. Consider the candidates in"
+    " that order, skip any that do not actually answer, and present only the earliest paragraph that"
+    " does. Search manuscript chapters only for such a question, leaving include_characters false."
     ' Each "text" item is a neutral, factual description of what one included paragraph says on its'
     " own. Do not phrase it as an answer to the question, assume the question's premise, or add"
     " events, causes, knowledge, or feelings the paragraph does not state. Attribute a fact to a"

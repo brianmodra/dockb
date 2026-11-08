@@ -775,7 +775,10 @@ instructions also tell the model that a tool match only shares the searched
 words and names: it must read each returned paragraph, include only those that
 actually state the answer, describe a related-but-non-answering paragraph as
 such, and keep each `text` item a neutral description of the paragraph that does
-not assume the question's premise. When either the URL or the issuer is missing,
+not assume the question's premise. For a first-or-earliest-occurrence question
+it presents only the earliest paragraph that actually answers — lower chapter
+position first, then lower paragraph position within that chapter — rather than
+the first tool match, and searches manuscript chapters only. When either the URL or the issuer is missing,
 the prompt is sent without MCP, without the syntax constraint, and without the
 syntax instruction, so the reply may be prose.
 Errors: `422` for an empty prompt, `503` when the service is

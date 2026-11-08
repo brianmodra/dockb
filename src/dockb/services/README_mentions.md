@@ -102,6 +102,12 @@ matching. The search is read-only over the verdicts and never evaluates, so
 an ambiguous name stays unsettled in search answers until a save trigger or
 a sweep computes it.
 
+Matches come back in reading order: `chapter_index` is the chapter's position
+in the document and `index` the paragraph's position within it, and every row
+carries both. The earliest occurrence of something is therefore the first row
+that actually answers when compared by `chapter_index` and then `index`, not
+merely the list's first element.
+
 ## 6. Phase 2 work for later
 
 - **Precision on homographs**: a character nicknamed "Rose" matches the flower. Tier 3 weeds out the obvious ones; a real person-resolution (spaCy NER or the model with the whole document's cast in context) is a later refinement and only touches the pipeline's judgement step.

@@ -132,8 +132,11 @@ def mount_tools(
         story, proper names included) — over `{"type": "criteria", "op":
         "and"|"or", "criteria": [...]}` groups. The and-group demands every
         child; the or-group any. Each matching paragraph carries the chapter id
-        it belongs to and its position there, with its full text and its
-        sentences, each carrying its 0-based index within the paragraph — and
+        it belongs to, that chapter's `chapter_index` (its position in the
+        document), and the paragraph's own `index` (its position within the
+        chapter); matches come in reading order (chapter_index, then index). It
+        also carries its full text and its sentences, each carrying its 0-based
+        index within the paragraph — and
         "matched_sentence_indices", the positions of the sentences whose own
         text the tree's word and text leaves select. Character leaves judge
         paragraphs, not sentences, so a tree of them alone marks nothing and
@@ -175,8 +178,10 @@ def mount_tools(
         name="find_paragraphs",
         description=(
             "Find paragraphs of one document by a nested criteria tree; answers {paragraphs: [...]}, "
-            "every match carrying its chapter id, position, full text, its sentences (each with "
-            "its 0-based index within the paragraph), and matched_sentence_indices - the "
+            "in reading order, every match carrying its chapter id, chapter_index (the chapter's "
+            "position in the document), index (its position within the chapter), full text, its "
+            "sentences (each with its 0-based index within the paragraph), and "
+            "matched_sentence_indices - the "
             "positions of the sentences whose own text the word and text leaves select (empty "
             "when the tree has only character leaves, so highlight the paragraph). Manuscript "
             "chapters only, "

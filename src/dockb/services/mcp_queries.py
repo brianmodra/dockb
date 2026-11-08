@@ -126,6 +126,7 @@ def _row_payload(row: dict[str, Any], criteria: Criterion) -> dict[str, object]:
         "index": row["index"],
         "chapter_id": row["chapter_id"],
         "chapter_title": row["chapter_title"],
+        "chapter_index": row["chapter_index"],
         "quote_type": row["quote_type"],
         "sentences": [{"id": sentence["id"], "index": order, "text": sentence["text"]} for order, sentence in enumerate(row["sentences"])],
         "matched_sentence_ids": _marked_sentence_ids(criteria, row["sentences"]),

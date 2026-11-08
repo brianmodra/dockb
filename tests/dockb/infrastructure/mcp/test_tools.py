@@ -50,7 +50,7 @@ def _murder_row() -> dict[str, Any]:
         "index": 0,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
-        "chapter_index": 0,
+        "chapter_index": 4,
         "sentences": [{"id": "s1", "text": "The murder was discovered."}],
     }
 
@@ -142,6 +142,23 @@ async def test_find_paragraphs_schema_describes_the_criteria_tree() -> None:
     # example that reads as "this match is the paragraph where the answer is"
     assert "finds out" not in description
     assert "candidate" in description
+
+
+@pytest.mark.asyncio
+async def test_find_paragraphs_description_states_the_reading_order() -> None:
+    """The caller is told how to compare matches: chapter position, then paragraph position."""
+    mcp = MCPServer("DockB")
+    mount_tools(
+        mcp,
+        chapter_repo=MagicMock(),
+        search_repo=_StubSearchRepo(),
+    )
+
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    description = tools["find_paragraphs"].description
+
+    assert "reading order" in description
+    assert "chapter_index" in description
 
 
 @pytest.mark.asyncio
@@ -282,6 +299,7 @@ async def test_find_paragraphs_answers_the_selection(repos) -> None:
     assert len(paragraphs) == 1
     assert paragraphs[0]["id"] == "p1"
     assert paragraphs[0]["chapter_id"] == "c1"
+    assert paragraphs[0]["chapter_index"] == 4
 
     await mcp.call_tool(
         "find_paragraphs",

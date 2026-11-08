@@ -238,6 +238,23 @@ class TestResponsesCall:
         assert "actually states" in instructions
         assert "if none answer" in instructions
 
+    def test_the_instructions_pick_the_earliest_answering_paragraph(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A first/earliest question takes the lowest chapter_index, then the lowest index."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"]).lower()
+        assert "first or earliest occurrence" in instructions
+        assert "reading order" in instructions
+        assert "lower chapter_index" in instructions
+        assert "lower index" in instructions
+        assert "the paragraph's position" in instructions
+        assert "skip any that do not actually answer" in instructions
+        assert "earliest paragraph that does" in instructions
+        assert "manuscript chapters only" in instructions
+        assert "leaving include_characters false" in instructions
+
     def test_the_instructions_describe_related_paragraphs_without_claiming_an_answer(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A related paragraph is reported as related, and a summary stays question-independent."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")

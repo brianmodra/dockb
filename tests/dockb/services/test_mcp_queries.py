@@ -163,7 +163,7 @@ _ROW = {
     "index": 0,
     "chapter_id": "c1",
     "chapter_title": "Opening 1",
-    "chapter_index": 0,
+    "chapter_index": 3,
     "sentences": [{"id": "s1", "text": "The murder was discovered at dawn."}],
 }
 
@@ -185,6 +185,7 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
     assert found[0]["chapter_id"] == "c1"
     assert found[0]["chapter_title"] == "Opening 1"
     assert found[0]["index"] == 0
+    assert found[0]["chapter_index"] == 3
     assert found[0]["quote_type"] == "reading"
     assert found[0]["sentences"] == [{"id": "s1", "index": 0, "text": "The murder was discovered at dawn."}]
     # the search's own sentence is marked, so the model can name it in a button
@@ -209,6 +210,7 @@ def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
+        "chapter_index": 0,
         "sentences": [
             {"id": "s1", "text": "Karakas closed the door."},
             {"id": "s2", "text": "The murder was discovered at dawn."},
@@ -263,6 +265,7 @@ def test_find_paragraphs_marks_a_sentence_whose_text_leaf_is_a_substring() -> No
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
+        "chapter_index": 0,
         "sentences": [
             {"id": "s1", "text": "Something was Discovered in the dark."},
             {"id": "s2", "text": "It rained."},
@@ -287,6 +290,7 @@ def test_find_paragraphs_marks_the_sentences_the_search_terms_select() -> None:
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
+        "chapter_index": 0,
         "sentences": [
             {"id": "s1", "text": "He closed the door softly."},
             {"id": "s2", "text": "The dream was over by dawn."},
@@ -321,6 +325,7 @@ def test_find_paragraphs_marks_no_sentence_when_only_characters_were_searched() 
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
+        "chapter_index": 0,
         "sentences": [
             {"id": "s1", "text": "Karakas closed the door."},
             {"id": "s2", "text": "Nobody was at home."},
