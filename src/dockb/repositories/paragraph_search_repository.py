@@ -52,7 +52,8 @@ _DIRECTORY_CYPHER = """
 MATCH (c:Chapter)-[:PART_OF]->(d:Document {id: $document_id, owner: $owner})
 WHERE c.category = 'Character'
 RETURN c.id AS id, c.title AS title, c.first_name AS first_name,
-       c.surname AS surname, c.nicknames AS nicknames
+       c.middle_names AS middle_names, c.surname AS surname,
+       c.nicknames AS nicknames
 ORDER BY c.title
 """
 
@@ -76,7 +77,8 @@ class ParagraphSearchRepository:
         """The document's character chapters: id, title, and the name fields.
 
         A handful of small rows — everything a character reference needs to
-        resolve (by id, title, or name) without loading the manuscript.
+        resolve (by id, title, or name) and every name form it is known by,
+        without loading the manuscript.
         """
         records = list(self._session.run(_DIRECTORY_CYPHER, {"document_id": document_id, "owner": owner}))
         return [
@@ -84,6 +86,7 @@ class ParagraphSearchRepository:
                 "id": str(record["id"]),
                 "title": str(record.get("title") or ""),
                 "first_name": str(record.get("first_name") or ""),
+                "middle_names": list(record.get("middle_names") or []),
                 "surname": str(record.get("surname") or ""),
                 "nicknames": list(record.get("nicknames") or []),
             }

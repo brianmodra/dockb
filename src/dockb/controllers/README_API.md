@@ -767,7 +767,7 @@ to the call's MCP access, not sent by the client). The
 issuer is wired, the call carries DockB's MCP server as a Responses-API tool
 with a per-prompt bearer token in the tool's `authorization` field, minted for
 this prompt and scoped to the signed-in account (`README_mcp_auth.md` §2–§4),
-and restricted to `find_paragraphs` (`allowed_tools`);
+and restricted to `find_paragraphs` and `get_character_name` (`allowed_tools`);
 the token never enters model-visible text. The reply is constrained to the
 editor's response syntax (the renderer's `README_response_area.md` specifies the
 shape), so a plain answer arrives as a single text item instead of prose, and
@@ -777,7 +777,10 @@ words and names: it calls `find_paragraphs` once, judges each returned paragraph
 solely from its sentences, includes only those that
 actually state the answer, describes a related-but-non-answering paragraph as
 such, and keeps each `text` item a neutral description of the paragraph that does
-not assume the question's premise. For a first-or-earliest-occurrence question
+not assume the question's premise. For each person it puts in a character
+criterion it first calls `get_character_name` for that person's first name,
+middle names, surname, and nicknames, so it knows every way the person is named.
+For a first-or-earliest-occurrence question
 it presents only the earliest paragraph that actually answers — lower chapter
 position first, then lower paragraph position within that chapter — rather than
 the first tool match, and searches manuscript chapters only. When either the URL or the issuer is missing,

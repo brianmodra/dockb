@@ -102,6 +102,12 @@ matching. The search is read-only over the verdicts and never evaluates, so
 an ambiguous name stays unsettled in search answers until a save trigger or
 a sweep computes it.
 
+`get_character_name` (the MCP tool) answers the other half of a character
+criterion: for the same reference — a character-chapter id, chapter title, or
+proper name — it returns the person's `first_name`, `middle_names`, `surname`,
+and `nicknames`, so a caller knows every way that person is named before it
+searches.
+
 Matches come back in reading order: `chapter_index` is the chapter's position
 in the document and `index` the paragraph's position within it, and every row
 carries both.

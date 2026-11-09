@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from dockb.infrastructure.mcp.auth import get_account_id
 from dockb.repositories.chapter_repository import ChapterRepository
 from dockb.repositories.paragraph_search_repository import ParagraphSearchRepository
-from dockb.services.mcp_queries import find_paragraphs_payload, get_chapter_payload
+from dockb.services.mcp_queries import find_paragraphs_payload, get_chapter_payload, get_character_name_payload
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +183,33 @@ def mount_tools(
         logger.info("MCP find_paragraphs -> %s", _logged(answer))
         return answer
 
+    def get_character_name(document_id: str, character: str) -> dict[str, Any]:
+        """The names one character of one document is known by.
+
+        *character* is a character-chapter id, a chapter title, or a proper
+        name — the same reference a `find_paragraphs` character leaf takes. The
+        answer carries the character's `id` and chapter `title`, then the name
+        parts a reader sees: `first_name`, `middle_names`, `surname`, and
+        `nicknames`. An unknown document, or a reference that names no
+        character of it, is an error.
+        """
+        account = _account()
+        logger.info(
+            "MCP get_character_name <- %s",
+            _logged({"document_id": document_id, "character": character}),
+        )
+        payload = get_character_name_payload(
+            document_id,
+            character,
+            search_repo=search_repo,
+            chapter_repo=chapter_repo,
+            owner=account,
+        )
+        if payload is None:
+            raise ToolError("no such document or character for this account")
+        logger.info("MCP get_character_name -> %s", _logged(payload))
+        return payload
+
     mcp.add_tool(
         get_chapter,
         name="get_chapter",
@@ -191,6 +218,18 @@ def mount_tools(
             "properties and its sentences' text as written in the markdown. Pass optional "
             "0-based inclusive start_index and end_index to read a window of paragraphs "
             "rather than the whole chapter."
+        ),
+    )
+    mcp.add_tool(
+        get_character_name,
+        name="get_character_name",
+        description=(
+            "The names one character of one of this account's documents is known by: "
+            "first_name, middle_names, surname, and nicknames, plus the character's id and "
+            "chapter title. Pass document_id and the same character reference a find_paragraphs "
+            "character leaf takes (character-chapter id, chapter title, or proper name). Call it "
+            "for every character you put in a find_paragraphs character leaf, so you know all "
+            "the ways that person is named."
         ),
     )
     mcp.add_tool(
@@ -208,7 +247,9 @@ def mount_tools(
             'unless include_characters is true. The leaves: {"type": "word", "word": ...} (whole '
             'word), {"type": "text", "text": ...} (substring), and {"type": "character", '
             '"character": ...} — proper names of the story\'s people go in a character leaf, never in '
-            "a word leaf. A single word goes in a word leaf — use a text leaf only for phrases and "
+            "a word leaf. Before putting a person in a character leaf, call get_character_name for "
+            "that person so you know all the ways they are named. A single word goes in a word "
+            "leaf — use a text leaf only for phrases and "
             'fragments of several words. Combine leaves with {"type": "criteria", "op": "and"|"or", '
             '"criteria": [...]}, where "and" demands every child and "or" any. A match only shares '
             "the searched words and names: it is a candidate, not proof that the paragraph answers "

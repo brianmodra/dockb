@@ -125,14 +125,33 @@ class TestDocumentExists:
 class TestCharacterDirectory:
 
     def test_lists_the_documents_character_chapters(self, repo, session) -> None:
-        session.run.return_value = [{"id": "k1", "title": "Karakas", "first_name": "Karakas", "surname": "Benhur", "nicknames": ["Rak"]}]
+        session.run.return_value = [
+            {
+                "id": "k1",
+                "title": "Karakas",
+                "first_name": "Karakas",
+                "middle_names": ["Ilyana"],
+                "surname": "Benhur",
+                "nicknames": ["Rak"],
+            }
+        ]
 
         directory = repo.character_directory("d1", _OWNER)
 
-        assert directory == [{"id": "k1", "title": "Karakas", "first_name": "Karakas", "surname": "Benhur", "nicknames": ["Rak"]}]
+        assert directory == [
+            {
+                "id": "k1",
+                "title": "Karakas",
+                "first_name": "Karakas",
+                "middle_names": ["Ilyana"],
+                "surname": "Benhur",
+                "nicknames": ["Rak"],
+            }
+        ]
         cypher, params = extract_call(session)
         assert "Document {id: $document_id, owner: $owner}" in cypher
         assert "'Character'" in cypher
+        assert "c.middle_names" in cypher
         assert params == {"document_id": "d1", "owner": _OWNER}
 
     def test_an_empty_directory_comes_back_empty(self, repo, session) -> None:

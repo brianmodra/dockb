@@ -53,6 +53,28 @@ def _mentions_whole_word(text: str, candidate: str) -> bool:
     return re.search(rf"\b{re.escape(candidate)}\b", text, re.IGNORECASE) is not None
 
 
+def _resolve_character(
+    directory: list[dict[str, Any]],
+    reference: str,
+    document_id: str,
+    chapter_repo: Any,
+    owner: str,
+) -> dict[str, Any] | None:
+    """The directory row a character reference answers to, or None.
+
+    A reference is a character-chapter id, a chapter title, or a proper name
+    (resolved by ``find_character_by_name``).
+    """
+    row = next((entry for entry in directory if entry["id"] == reference), None)
+    if row is None:
+        wanted = reference.lower()
+        row = next((entry for entry in directory if entry["title"].lower() == wanted), None)
+    if row is None:
+        match = chapter_repo.find_character_by_name(document_id, reference.split(), owner)
+        row = next((entry for entry in directory if match is not None and entry["id"] == match["id"]), None)
+    return row
+
+
 def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     document_id: str,
     criteria: Criterion,
@@ -86,13 +108,7 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
 
     def resolve(reference: str) -> tuple[str, list[str]] | None:
         """The character-chapter id and names a reference answers to, or None."""
-        row = next((entry for entry in directory if entry["id"] == reference), None)
-        if row is None:
-            wanted = reference.lower()
-            row = next((entry for entry in directory if entry["title"].lower() == wanted), None)
-        if row is None:
-            match = chapter_repo.find_character_by_name(document_id, reference.split(), owner)
-            row = next((entry for entry in directory if match is not None and entry["id"] == match["id"]), None)
+        row = _resolve_character(directory, reference, document_id, chapter_repo, owner)
         if row is None:
             return None
         first = row["first_name"]
@@ -112,6 +128,43 @@ def find_paragraphs_payload(  # pylint: disable=too-many-arguments,too-many-posi
 
     search_answer = [_row_payload(row, criteria) for row in rows]
     return search_answer
+
+
+def get_character_name_payload(
+    document_id: str,
+    character: str,
+    *,
+    search_repo: Any,
+    chapter_repo: Any,
+    owner: str,
+) -> dict[str, object] | None:
+    """The names a character of *document_id* is known by, or None.
+
+    *character* is the same reference a character criterion takes — a
+    character-chapter id, a chapter title, or a proper name. An unknown or
+    other-account document, and a reference that names no character of it, both
+    answer None, so the tool boundary can tell the caller its reference was
+    wrong rather than answering an empty set of names.
+    """
+    if not search_repo.document_exists(document_id, owner):
+        return None
+    row = _resolve_character(
+        search_repo.character_directory(document_id, owner),
+        character,
+        document_id,
+        chapter_repo,
+        owner,
+    )
+    if row is None:
+        return None
+    return {
+        "id": str(row["id"]),
+        "title": str(row["title"]),
+        "first_name": str(row["first_name"]),
+        "middle_names": list(row.get("middle_names") or []),
+        "surname": str(row["surname"]),
+        "nicknames": list(row["nicknames"] or []),
+    }
 
 
 def _row_payload(row: dict[str, Any], criteria: Criterion) -> dict[str, object]:

@@ -9,10 +9,12 @@ expiry passes or the process restarts. There is no credential store, no signing 
 and no admin CLI, so a leaked token is useless once its window passes and nothing
 secret is left on disk.
 
-The package also carries the two manuscript tools the token unlocks (`tools.py`): one
+The package also carries the three manuscript tools the token unlocks (`tools.py`): one
 returns a chapter's paragraphs (or an inclusive `start_index`..`end_index` slice so a
-caller checking context around one paragraph never has to pull the whole chapter); the
-other compiles a search criteria tree — word, text and character leaves over and/or
+caller checking context around one paragraph never has to pull the whole chapter); one
+names a character — first name, middle names, surname, and nicknames — by the same
+reference a character criterion takes, so a caller knows every way a person is named;
+the last compiles a search criteria tree — word, text and character leaves over and/or
 group nodes — into a single Cypher query answered entirely in the database, reading
 the stored mention verdicts rather than judging any paragraph, and refusing an unknown
 or other-account document instead of answering empty. Read this for what the token

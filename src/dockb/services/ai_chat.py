@@ -20,7 +20,7 @@ import httpx2
 logger = logging.getLogger(__name__)
 
 _MODEL_ENV_VAR = "DOCKB_CHAT_MODEL"
-_DEFAULT_MODEL = "gpt-4o-mini"
+_DEFAULT_MODEL = "gpt-5.4"
 _KEY_ENV_VAR = "OPENAI_API_KEY"
 _PUBLIC_URL_ENV_VAR = "DOCKB_MCP_PUBLIC_URL"
 
@@ -48,17 +48,27 @@ _RESPONSE_SYNTAX_INSTRUCTIONS = (
     " count in the same order; an empty list shows the whole paragraph, which is what the tool"
     " marked none for. Pass the sentence positions, never their ids. Chapter and paragraph ids are"
     " required."
+    ' When the question mentions a proper noun in the query, you must include this as a criteria of type "character".'
+    " For each person you use as a character criteria in find_paragraphs, also call get_character_name"
+    " for that person to learn the various ways they are named — first name, middle names, surname,"
+    " and nicknames."
+    ' When matching a single word, use criteria type "word", rather than "text".'
+    ' "text" is for substrings or multiple words.'
+    " A very simple criterial list will likely result in a response which will be too large to work with,"
+    " so try to always have at least two criteria in a call to find_paragraps."
     " A find_paragraphs result is a candidate list, not an answer: it matches the words and names"
     " you searched for, not the meaning of the question. Read each returned paragraph's sentences"
-    " and decide whether it actually states what the user asked. Include a paragraph only when it"
-    " answers; when one is related but does not answer, say so plainly (this paragraph is related"
-    " but does not answer the question) rather than presenting it as the answer. If none answer,"
-    " say that plainly."
+    " and decide whether it answers what the user asked."
+    " When one is related but does not answer, say so plainly (this paragraph is related"
+    " but not exactly) rather than presenting it as the answer."
+    " When the question asks for the first or earliest occurrence of something, don't expect the word"
+    ' "first" or "earliest" or similar to occur in the sentences returned. When the user asks'
+    " for the first occurrence, they mean you should return only one paragraph."
     " When the question asks for the first or earliest occurrence of something, the candidate list is"
     " in reading order: lower chapter_index is an earlier chapter, and within a chapter lower index"
     " (the paragraph's position in that chapter) is an earlier paragraph. Consider the candidates in"
     " that order, skip any that do not actually answer, and present only the earliest paragraph that"
-    " does. Search manuscript chapters only for such a question, leaving include_characters false."
+    " does. When calling find_paragraps, leave include_characters false."
     " Call find_paragraphs once for the question (searching again only if the first call returns"
     " no paragraphs), and judge each candidate solely from the sentences find_paragraphs returns."
     ' Each "text" item is a neutral, factual description of what one included paragraph says on its'
@@ -176,7 +186,7 @@ class AiChatService:  # pylint: disable=too-few-public-methods
                     "server_url": server_url,
                     "authorization": token,
                     "require_approval": "never",
-                    "allowed_tools": ["find_paragraphs"],
+                    "allowed_tools": ["find_paragraphs", "get_character_name"],
                 }
             ]
             payload["text"] = {

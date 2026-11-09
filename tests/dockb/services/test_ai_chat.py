@@ -184,7 +184,7 @@ class TestResponsesCall:
         assert tool["server_url"] == "https://mcp.example.com/mcp"
         assert tool["authorization"] == "the-per-prompt-token"
         assert tool["require_approval"] == "never"
-        assert tool["allowed_tools"] == ["find_paragraphs"]
+        assert tool["allowed_tools"] == ["find_paragraphs", "get_character_name"]
 
     def test_the_instructions_describe_the_mcp_server_but_never_hold_the_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -236,8 +236,8 @@ class TestResponsesCall:
         instructions = str(calls[0]["json"]["instructions"]).lower()
         assert "candidate list, not an answer" in instructions
         assert "read each returned paragraph's sentences" in instructions
-        assert "actually states" in instructions
-        assert "if none answer" in instructions
+        assert "decide whether it answers" in instructions
+        assert "related but does not answer" in instructions
 
     def test_the_instructions_pick_the_earliest_answering_paragraph(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A first/earliest question takes the lowest chapter_index, then the lowest index."""
@@ -253,8 +253,7 @@ class TestResponsesCall:
         assert "the paragraph's position" in instructions
         assert "skip any that do not actually answer" in instructions
         assert "earliest paragraph that does" in instructions
-        assert "manuscript chapters only" in instructions
-        assert "leaving include_characters false" in instructions
+        assert "leave include_characters false" in instructions
 
     def test_the_instructions_describe_related_paragraphs_without_claiming_an_answer(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A related paragraph is reported as related, and a summary stays question-independent."""
@@ -335,6 +334,20 @@ class TestResponsesCall:
         assert '{"response": [{"text"' in instructions
         assert "never be empty" in instructions
         assert "a reply without json shows the reader plain text" not in instructions
+
+    def test_the_instructions_ask_for_each_characters_names_before_searching(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A character criterion needs the name forms, so the model calls get_character_name first."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv(_PUBLIC_URL_ENV_VAR, "https://mcp.example.com")
+        calls = self._post_capture(monkeypatch)
+        AiChatService()._default_complete("hi", "the-per-prompt-token", "https://mcp.example.com/mcp")
+        instructions = str(calls[0]["json"]["instructions"]).lower()
+        assert "get_character_name" in instructions
+        assert "character criteria" in instructions
+        assert "first name" in instructions
+        assert "middle names" in instructions
+        assert "surname" in instructions
+        assert "nicknames" in instructions
 
     def test_the_instructions_restrict_search_to_find_paragraphs_sentences(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Candidates are judged solely from find_paragraphs' sentences, without repeating the search."""

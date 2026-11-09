@@ -15,6 +15,7 @@ from dockb.services.mcp_queries import (
     evaluate_criteria,
     find_paragraphs_payload,
     get_chapter_payload,
+    get_character_name_payload,
 )
 
 
@@ -476,6 +477,93 @@ def test_find_paragraphs_of_an_unowned_document_is_none() -> None:
         owner="other",
     )
     assert found is None
+
+
+_CHARACTER_ROW = {
+    "id": "k1",
+    "title": "Karakas",
+    "first_name": "Kiral",
+    "middle_names": ["Ilyana"],
+    "surname": "Karakas",
+    "nicknames": ["Adams"],
+}
+
+
+def test_get_character_name_answers_every_name_part_by_id() -> None:
+    search_repo = _StubSearchRepo(directory=[_CHARACTER_ROW])
+
+    names = get_character_name_payload(
+        "d1",
+        "k1",
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        owner="acct-1",
+    )
+
+    assert names == _CHARACTER_ROW
+
+
+def test_get_character_name_resolves_a_title_without_a_name_search() -> None:
+    search_repo = _StubSearchRepo(directory=[_CHARACTER_ROW])
+    chapter_repo = MagicMock()
+
+    names = get_character_name_payload(
+        "d1",
+        "karakas",
+        search_repo=search_repo,
+        chapter_repo=chapter_repo,
+        owner="acct-1",
+    )
+
+    assert names == _CHARACTER_ROW
+    chapter_repo.find_character_by_name.assert_not_called()
+
+
+def test_get_character_name_resolves_a_proper_name_through_the_name_search() -> None:
+    search_repo = _StubSearchRepo(directory=[_CHARACTER_ROW])
+    chapter_repo = MagicMock()
+    chapter_repo.find_character_by_name.return_value = {"id": "k1", "title": "Karakas"}
+
+    names = get_character_name_payload(
+        "d1",
+        "Kiral",
+        search_repo=search_repo,
+        chapter_repo=chapter_repo,
+        owner="acct-1",
+    )
+
+    assert names == _CHARACTER_ROW
+    chapter_repo.find_character_by_name.assert_called_once_with("d1", ["Kiral"], "acct-1")
+
+
+def test_get_character_name_of_an_unknown_character_is_none() -> None:
+    search_repo = _StubSearchRepo(directory=[_CHARACTER_ROW])
+    chapter_repo = MagicMock()
+    chapter_repo.find_character_by_name.return_value = None
+
+    names = get_character_name_payload(
+        "d1",
+        "Nobody",
+        search_repo=search_repo,
+        chapter_repo=chapter_repo,
+        owner="acct-1",
+    )
+
+    assert names is None
+
+
+def test_get_character_name_of_an_unowned_document_is_none() -> None:
+    search_repo = _StubSearchRepo(directory=[_CHARACTER_ROW], exists=False)
+
+    names = get_character_name_payload(
+        "d1",
+        "k1",
+        search_repo=search_repo,
+        chapter_repo=MagicMock(),
+        owner="other",
+    )
+
+    assert names is None
 
 
 def test_get_chapter_payload_slices_paragraphs_by_inclusive_index_range() -> None:

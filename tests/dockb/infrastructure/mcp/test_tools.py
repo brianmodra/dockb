@@ -20,16 +20,22 @@ from dockb.models.token import Token
 class _StubSearchRepo:
     """The search repository: rows to return, and the calls they answered."""
 
-    def __init__(self, rows: list[dict[str, Any]] | None = None, exists: bool = True) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]] | None = None,
+        exists: bool = True,
+        directory: list[dict[str, object]] | None = None,
+    ) -> None:
         self.rows = rows if rows is not None else []
         self.exists = exists
+        self.directory = directory or []
         self.calls: list[dict[str, Any]] = []
 
     def document_exists(self, document_id: str, owner: str) -> bool:  # pylint: disable=unused-argument
         return self.exists
 
     def character_directory(self, document_id: str, owner: str) -> list[dict[str, object]]:  # pylint: disable=unused-argument
-        return []
+        return self.directory
 
     def match_paragraphs(  # pylint: disable=unused-argument
         self,
@@ -92,7 +98,7 @@ def _mount(repos, search_repo) -> MCPServer:
 
 
 @pytest.mark.asyncio
-async def test_mounting_registers_both_tools() -> None:
+async def test_mounting_registers_the_manuscript_tools() -> None:
     mcp = MCPServer("DockB")
     mount_tools(
         mcp,
@@ -101,7 +107,7 @@ async def test_mounting_registers_both_tools() -> None:
     )
 
     names = [tool.name for tool in await mcp.list_tools()]
-    assert names == ["get_chapter", "find_paragraphs"]
+    assert names == ["get_chapter", "get_character_name", "find_paragraphs"]
 
 
 @pytest.mark.asyncio
@@ -310,6 +316,56 @@ async def test_get_chapter_slices_paragraphs_with_start_and_end_index(repos) -> 
     assert result.is_error is False
     paragraphs = result.structured_content["paragraphs"]
     assert [(par["id"], par["index"]) for par in paragraphs] == [("p2", 1)]
+
+
+@pytest.mark.asyncio
+async def test_get_character_name_answers_the_name_parts(repos) -> None:
+    _chapter, _search = repos
+    search_repo = _StubSearchRepo(
+        directory=[
+            {
+                "id": "k1",
+                "title": "Karakas",
+                "first_name": "Kiral",
+                "middle_names": ["Ilyana"],
+                "surname": "Karakas",
+                "nicknames": ["Adams"],
+            }
+        ]
+    )
+    mcp = _mount(repos, search_repo)
+    token = _account_id.set("acct-1")
+
+    result = await mcp.call_tool("get_character_name", {"document_id": "d1", "character": "Karakas"})
+    _account_id.reset(token)
+
+    assert result.is_error is False
+    assert result.structured_content == {
+        "id": "k1",
+        "title": "Karakas",
+        "first_name": "Kiral",
+        "middle_names": ["Ilyana"],
+        "surname": "Karakas",
+        "nicknames": ["Adams"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_character_name_refuses_an_unknown_character(repos) -> None:
+    mcp = _mount(repos, _StubSearchRepo())
+    token = _account_id.set("acct-1")
+
+    with pytest.raises(ToolError, match="no such document or character"):
+        await mcp.call_tool("get_character_name", {"document_id": "d1", "character": "Nobody"})
+    _account_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_get_character_name_without_a_bound_account_is_refused(repos) -> None:
+    mcp = _mount(repos, _StubSearchRepo())
+
+    with pytest.raises(ToolError, match="account"):
+        await mcp.call_tool("get_character_name", {"document_id": "d1", "character": "k1"})
 
 
 @pytest.mark.asyncio

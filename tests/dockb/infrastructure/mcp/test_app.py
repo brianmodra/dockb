@@ -184,4 +184,4 @@ async def test_the_manuscript_tools_are_listed_with_a_valid_token() -> None:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
                 tools = (await session.list_tools()).tools
-                assert sorted(tool.name for tool in tools) == ["find_paragraphs", "get_chapter"]
+                assert sorted(tool.name for tool in tools) == ["find_paragraphs", "get_chapter", "get_character_name"]

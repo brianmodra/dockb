@@ -109,7 +109,7 @@ class TestBuildMcpApp:
                         async with ClientSession(streams[0], streams[1]) as session:
                             await session.initialize()
                             tool_names = sorted(tool.name for tool in (await session.list_tools()).tools)
-                assert tool_names == ["find_paragraphs", "get_chapter"]
+                assert tool_names == ["find_paragraphs", "get_chapter", "get_character_name"]
         finally:
             set_mcp_issuer(None)
 
@@ -176,7 +176,7 @@ class TestServers:
                     async with ClientSession(streams[0], streams[1]) as session:
                         await session.initialize()
                         tool_names = sorted(tool.name for tool in (await session.list_tools()).tools)
-                assert tool_names == ["find_paragraphs", "get_chapter"]
+                assert tool_names == ["find_paragraphs", "get_chapter", "get_character_name"]
         finally:
             loopback.should_exit = True
             public.should_exit = True
