@@ -409,6 +409,15 @@ describe("EditPanel", () => {
     expect(panel.element.querySelector(".ProseMirror")?.getAttribute("lang")).toBe("fr");
   });
 
+  it("turns off the browser's native spellchecker in the raw editor", async () => {
+    const api = fakeApi();
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(panel.element.querySelector(".cm-content")?.getAttribute("spellcheck")).toBe("false");
+  });
+
   it("clears the loaded chapter so save becomes a no-op", async () => {
     const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("# Title\n\nBody")) });
     const panel = new EditPanel({ api });

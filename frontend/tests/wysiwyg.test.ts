@@ -292,6 +292,14 @@ describe("WysiwygView", () => {
     expect(view.getLanguage()).toBe("en-US");
   });
 
+  it("turns off the browser's native spellchecker on the editable", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent("hello");
+
+    expect(view.element.querySelector(".ProseMirror")?.getAttribute("spellcheck")).toBe("false");
+  });
+
   it("setLanguage writes the lang attribute onto the editable", () => {
     const view = new WysiwygView();
     document.body.append(view.element);

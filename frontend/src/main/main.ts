@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from "electron";
+import { app, BrowserWindow, Menu, session } from "electron";
 import * as path from "path";
 import { registerOpenExternal, registerQuit } from "./ipc";
 
@@ -31,6 +31,7 @@ export function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      spellcheck: false,
     },
   });
 
@@ -43,6 +44,7 @@ export function createWindow(): BrowserWindow {
 }
 
 export function onAppReady(): void {
+  session.defaultSession.setSpellCheckerEnabled(false);
   Menu.setApplicationMenu(null);
   registerOpenExternal();
   registerQuit();

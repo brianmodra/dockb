@@ -99,9 +99,10 @@ message console at 24px minimum height), and the right panel starts at its 10px 
   **Quit**.
 - **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". One item, **Language…**: opens
-  a dialog listing spellcheck languages (scrollable, current one marked, Cancel/Apply); choosing
-  one sets the `lang` attribute on the WYSIWYG editable so the browser's native spelling uses
-  that dictionary.
+  a dialog listing the proofreading languages the backend checker supports (scrollable, current
+  one marked, Cancel/Apply); choosing one sets the language used for backend spelling and
+  grammar checks and the WYSIWYG editable's `lang` attribute. The browser's own spellchecker is
+  turned off, so the `lang` attribute no longer selects a native dictionary.
 
 The menu bar is drawn in-window (HTML), not the native Electron menu, so its styling is ours and
 stays identical across platforms; the native menu is removed at startup
@@ -154,9 +155,11 @@ it restructures the document or the knowledge graph.
 The Raw MD view is CodeMirror 6 (`@codemirror/lang-markdown`). The WYSIWYG view is ProseMirror
 holding the canonical text as a paragraph-per-line document, with markdown-it heading detection
 fed to node decorations — so Mode toggling never serializes text back out and the round trip is
-byte-stable by construction. Spellcheck is the browser's native engine: the WYSIWYG editable
-carries a `lang` attribute (default `en-US`), which the Settings → Language… dialog (§3) rewrites
-to select the dictionary. Span-aware highlighting of the inline HTML (`data-par-id`,
+byte-stable by construction. Spelling and grammar are checked by the backend (LanguageTool over
+`POST /api/check`), not by the browser: native spellchecking is disabled, and the WYSIWYG
+editable's `lang` attribute (default `en-US`) is the checker language plus accessibility
+metadata, rewritten by the Settings → Language… dialog (§3). Span-aware highlighting of the
+inline HTML (`data-par-id`,
 `data-triple`, `data-spo`) and remark-lint / NLP diagnostics in the edit panel are still planned
 (`README_markdown_redesign.md` §7). This supersedes the earlier open option "markdown-it + HTML,
 or TipTap": TipTap was rejected because it is a structured-document (serializer-out) editor.

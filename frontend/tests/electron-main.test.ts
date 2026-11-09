@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { BrowserWindow, app, ipcMain, Menu } = vi.hoisted(() => {
+const { BrowserWindow, app, ipcMain, Menu, session } = vi.hoisted(() => {
   const instances: Array<Record<string, unknown>> = [];
   const BrowserWindow = vi.fn(() => {
     const win: Record<string, unknown> = {
@@ -20,11 +20,12 @@ const { BrowserWindow, app, ipcMain, Menu } = vi.hoisted(() => {
     },
     Menu: { setApplicationMenu: vi.fn() },
     ipcMain: { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn() },
+    session: { defaultSession: { setSpellCheckerEnabled: vi.fn() } },
     instances,
   };
 });
 
-vi.mock("electron", () => ({ app, BrowserWindow, ipcMain, Menu }));
+vi.mock("electron", () => ({ app, BrowserWindow, ipcMain, Menu, session }));
 
 import { createWindow, editorUrl, onAppReady } from "../src/main/main";
 import type { BrowserWindow as BrowserWindowType } from "electron";
@@ -47,13 +48,24 @@ describe("electron main", () => {
     const options = BrowserWindow.mock.calls[0][0] as {
       width: number;
       height: number;
-      webPreferences: { preload: string; contextIsolation: boolean; nodeIntegration: boolean };
+      webPreferences: {
+        preload: string;
+        contextIsolation: boolean;
+        nodeIntegration: boolean;
+        spellcheck: boolean;
+      };
     };
     expect(options.width).toBeGreaterThanOrEqual(800);
     expect(options.height).toBeGreaterThanOrEqual(600);
     expect(options.webPreferences.preload).toContain("preload");
     expect(options.webPreferences.contextIsolation).toBe(true);
     expect(options.webPreferences.nodeIntegration).toBe(false);
+    expect(options.webPreferences.spellcheck).toBe(false);
+  });
+
+  it("turns off Electron's session spellchecker before opening a window", () => {
+    onAppReady();
+    expect(session.defaultSession.setSpellCheckerEnabled).toHaveBeenCalledWith(false);
   });
 
   it("loads the vite dev server when it is running", async () => {

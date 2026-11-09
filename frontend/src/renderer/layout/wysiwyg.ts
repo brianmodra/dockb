@@ -494,6 +494,7 @@ export class WysiwygView {
       });
       this.innerView = new EditorView(this.element, {
         state,
+        attributes: { spellcheck: "false" },
         dispatchTransaction: (tr) => {
           const prevSelection = this.innerView!.state.selection;
           const newState = this.innerView!.state.apply(tr);

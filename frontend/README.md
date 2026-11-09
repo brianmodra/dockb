@@ -138,8 +138,11 @@ its 10px floor.
   and the blank-line paragraph delimiter shows as a single line gap. Paragraphs
   carry their preceding blank-line count in `blanksBefore`, so
   `bufferToDoc`/`docToString` round-trip the buffer byte-for-byte until an
-  edit. The editable carries a `lang` attribute (default `en-US`), rewritten by
-  the Settings → Language… dialog, which selects the browser spellcheck dictionary.
+  edit. Native browser spellchecking is off; the editable carries a `lang`
+  attribute (default `en-US`) for accessibility, and the Settings → Language…
+  dialog selects the language the backend proofreader checks against (the
+  endpoint and diagnostics are described in `../README_markdown_editor_ui.md`
+  §5 and `../src/dockb/controllers/README_API.md`).
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
@@ -174,8 +177,9 @@ DOM as HTML.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
-  scrollable spellcheck-language list with Cancel/Apply; the chosen code is
-  applied via `EditPanel.setLanguage`.
+  scrollable proofreading-language list with Cancel/Apply; the chosen code is
+  applied via `EditPanel.setLanguage` and passed to backend checks. The browser's
+  native spellchecker is disabled in both the Electron session and the editables.
 - `spinner.ts` — `createSpinner()` builds the animated Lucide `loader-circle` icon
   (`spinning-loader` class) for any busy state; the response area's wait line uses it.
   Response buttons use the shared `.btn` classes from `styles.css`.
