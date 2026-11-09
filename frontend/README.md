@@ -176,6 +176,9 @@ DOM as HTML.
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
   scrollable spellcheck-language list with Cancel/Apply; the chosen code is
   applied via `EditPanel.setLanguage`.
+- `spinner.ts` — `createSpinner()` builds the animated Lucide `loader-circle` icon
+  (`spinning-loader` class) for any busy state; the response area's wait line uses it.
+  Response buttons use the shared `.btn` classes from `styles.css`.
 - `state/` — app-state persistence, start-up restore, and the one unsaved-buffer prompt shared by
   quit and sign-out.
 

@@ -1,3 +1,4 @@
+import { createSpinner } from "./spinner";
 import type { SelectionContext } from "./wysiwyg";
 
 export interface ResponseButton {
@@ -169,6 +170,7 @@ export class ResponseArea {
   private button(spec: ResponseButton): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
+    button.className = "btn btn--secondary";
     button.textContent = spec.label;
     const handler = this.functions[spec.function];
     if (handler) {
@@ -186,7 +188,7 @@ export class ResponseArea {
     spinner.className = "response-spinner";
     spinner.dataset.testid = "response-spinner";
     spinner.setAttribute("aria-busy", "true");
-    spinner.textContent = "⌛ waiting for the model";
+    spinner.append(createSpinner(), "waiting for the model");
     area.append(spinner);
     area.hidden = false;
   }

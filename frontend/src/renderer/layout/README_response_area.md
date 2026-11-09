@@ -18,9 +18,13 @@ the reply falls back to the message log and restores the chat box.
 
 The message panel stacks the message log, the response area, and the chat box. When a prompt is
 submitted (`main.ts` → `AppLayout.beginResponse`), the chat box collapses and the strip shows a
-one-line busy spinner until the reply arrives. Charging a reply (`AppLayout.showResponse`) sizes
-the strip to the response — larger than the panel and the strip scrolls instead — and the chat
-box comes back beneath it, empty and focused for the next prompt. A failed prompt
+one-line busy spinner — the Lucide `loader-circle` icon from `spinner.ts`'s `createSpinner()`,
+animated by the shared `spinning-loader` CSS — until the reply arrives. Any other part of the
+renderer can reuse `createSpinner()` for its own busy state. Reply buttons carry the shared
+`btn btn--secondary` classes so they share the rounded, coloured button styling in `styles.css`.
+Charging a reply (`AppLayout.showResponse`) sizes the strip to the response — larger than the
+panel and the strip scrolls instead — and the chat box comes back beneath it, empty and focused
+for the next prompt. A failed prompt
 (`AppLayout.cancelResponse`) drops the strip and restores the chat box; the failure is reported
 into the message log as any other error.
 

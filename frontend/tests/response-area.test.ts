@@ -29,7 +29,18 @@ describe("ResponseArea", () => {
     document.body.append(area.element);
     area.showSpinner();
     expect(area.element.hidden).toBe(false);
-    expect(area.element.querySelector('[data-testid="response-spinner"]')).not.toBeNull();
+    const spinner = area.element.querySelector('[data-testid="response-spinner"]');
+    expect(spinner).not.toBeNull();
+    expect(spinner!.querySelector("svg.spinning-loader")).not.toBeNull();
+    expect(spinner!.textContent).toBe("waiting for the model");
+    expect(spinner!.textContent).not.toContain("⌛");
+  });
+
+  it("styles response buttons with the shared button classes", () => {
+    const area = new ResponseArea({ functions: { highlight: vi.fn() } });
+    document.body.append(area.element);
+    area.show([{ button: { label: "Highlight sentence", function: "highlight" } }]);
+    expect(button(area, "Highlight sentence").className).toBe("btn btn--secondary");
   });
 
   it("renders a reply: each text object on its own wrapping line, each button after them", () => {
