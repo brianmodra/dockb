@@ -25,6 +25,7 @@ from dockb.controllers.imports import set_import_service
 from dockb.controllers.mcp_mint import set_mint_issuer, set_mint_secret
 from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
+from dockb.controllers.proofreading import get_proofreading_service, set_proofreading_service
 from dockb.controllers.sentences import set_sent_service
 from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.document_store import DocumentStoreFactory
@@ -52,6 +53,7 @@ from dockb.services.auth_service import AuthService
 from dockb.services.crud_services import ChapterService, DocumentService, ParagraphService, SentenceService
 from dockb.services.history_service import HistoryService
 from dockb.services.import_service import ImportService
+from dockb.services.proofreading import DEFAULT_LANGUAGE, ProofreadingService
 from dockb.services.session_context import SessionContext
 
 _stack: ExitStack | None = None
@@ -162,6 +164,22 @@ def _build_auth_service(document_base_dir: Path) -> AuthService:
     )
 
 
+def _build_proofreading_service() -> ProofreadingService:
+    """Build the proofreading service from the environment.
+
+    The LanguageTool engine starts lazily on the first check, so constructing the
+    service costs nothing and keeps a disabled or misconfigured engine from
+    blocking startup. Turning it off stays observable: the route answers 503
+    rather than pretending the paragraph is clean.
+    """
+    enabled = os.environ.get("DOCKB_PROOFREADING_ENABLED", "true").strip().lower()
+    language = os.environ.get("DOCKB_PROOFREADING_LANGUAGE") or DEFAULT_LANGUAGE
+    return ProofreadingService(
+        enabled=enabled not in {"0", "false", "no", "off"},
+        default_language=language,
+    )
+
+
 def wire(  # pylint: disable=too-many-locals
     session_factory: Any,
     *,
@@ -238,6 +256,7 @@ def wire(  # pylint: disable=too-many-locals
             token_issuer=get_mcp_issuer,
         )
     )
+    set_proofreading_service(_build_proofreading_service())
     set_doc_service(doc_svc)
     set_ch_service(ch_svc)
     set_para_service(para_svc)
@@ -264,6 +283,10 @@ def wire(  # pylint: disable=too-many-locals
 def unwire() -> None:
     """Clear all route-level DI globals and release resources."""
     global _ctx, _stack, _wired_factory  # noqa: PLW0603
+    proofreading = get_proofreading_service()
+    if proofreading is not None:
+        proofreading.close()
+    set_proofreading_service(None)
     set_auth_service(None)
     set_doc_service(None)
     set_ch_service(None)

@@ -415,7 +415,7 @@ whatever client renders the spans.
 ## 7. Syntax checking and diagnostics (decided)
 
 A chapter's *syntax* is checked in two layers, both **interactive only**: remark-lint in the editor
-for structure, and backend prose/NLP validation for prose. Neither is part of the synchronous save
+for structure, and backend LanguageTool validation for prose. Neither is part of the synchronous save
 path (see **Synchronous save-and-rehydrate** above): saves stay a lean canonicalizing
 `apply_chapter_file()` pass, and nothing the user does while typing is written to the file, sent
 through the save endpoint, or folded into the canonical text. Diagnostics are view-only decorations
@@ -439,19 +439,24 @@ never writes to the file or git. Positions map onto the canonical text through t
 language extension and render as diagnostics on the sentence text as displayed, in the source mode
 and the WYSIWYG view alike. The editor flags; it derives and rewrites nothing.
 
-### Prose and NLP validation in the backend (decided)
+### Prose validation in the backend (decided)
 
-Prose/NLP validation is an interactive feature over the same chapter text, computed by the backend:
+Prose validation is an interactive feature over one paragraph at a time, computed by the backend:
 
-- spaCy sentence segmentation — the same segmentation hydration applies — keys every diagnostic to
-  the originating sentence, so a flag stays attached to its sentence text whichever view displays
-  it.
-- Diagnostics are delivered over the retained async notifications channel, debounced as the user
-  types; they are not part of the save request, the save response, or the canonical text. The
-  backend remains the only writer of record and diagnostics never touch files or git.
-- The checks are spaCy/proselint assertions on sentence text — unterminated or fragmentary
-  sentences, sentence length, terminology consistency, flagged overused words. They are opinions,
-  not mutations.
+- The engine is LanguageTool, for spelling, grammar and style. The server manages the engine
+  (an optional `DOCKB_LANGUAGETOOL_URL` points it at an existing LanguageTool server instead).
+- The editor sends the paragraph text, the focused sentence's offsets, the language and the
+  document through an authenticated, stateless `POST /api/check`; the answer is every diagnostic
+  for that paragraph, with paragraph-relative offsets. The client drops a reply whose paragraph
+  text has already moved.
+- The server applies the document's effective glossary — the stored glossary plus the document's
+  character names — to suppress spelling diagnostics for accepted names. It never adds those
+  words to LanguageTool's shared user dictionary.
+- Diagnostics are debounced as the user types; they are not part of the save request, the save
+  response, or the canonical text. The backend remains the only writer of record and diagnostics
+  never touch files or git.
+- Findings are opinions, not mutations; severity separates spelling/grammar warnings from style
+  information.
 
 This is deliberately distinct from the canonicalized `data-spo` semantics (see **Semantic spans
 inline in the text** above): curated semantics serialize into the file as spans; validation
@@ -461,12 +466,12 @@ untouched by validation depth.
 Consequences:
 
 - Save latency is unaffected by validation depth: both layers run off the save path.
-- Sentences are the shared anchor both views project, so diagnostics attach to sentence text *as
-  displayed* — inline markers and squiggles on the sentence text, in the WYSIWYG view and the source
-  mode alike.
+- The paragraph is the shared anchor both views project, and the focused sentence is an offset span
+  within it. Diagnostics carry paragraph-relative offsets, so both views can render them on the
+  sentence text *as displayed*.
 - No new writer of record and no format addition; the save/git/hydration invariants are unchanged.
-- A diagnostic that arrives after the text has moved must not point at the wrong sentence; the
-  anchoring semantics are listed in **Open questions** below.
+- A diagnostic that arrives after the text has moved is stale: the client drops replies for a
+  paragraph or sentence that changed since the request. Diagnostics never point at the wrong text.
 
 ## 8. Sequence of implementation
 
@@ -514,7 +519,7 @@ Concretely:
   semantics render as styled/clickable spans already present in the text (`data-triple` /
   `data-spo`, etc.). Structure is linted in-editor with remark-lint (`maximum-line-length` and
   `no-inline-html` disabled for the span format); backend
-  prose/NLP diagnostics render sentence-anchored in both views. Both layers are interactive only,
+  LanguageTool diagnostics render sentence-anchored in both views. Both layers are interactive only,
   never part of a save. The editor talks to the API
   only — it never touches files, git, services, or repositories.
 - **Sync engine (on the backend):** owns the markdown files + git repo, applies
@@ -555,6 +560,3 @@ These must be settled before/while building, not deferred silently:
    backslash-newline.
 5. **Span re-derivation on sentence re-split** — confirm how the rehydrator emits/re-emits spans
    when a sentence splits/merges, and that this is scoped and idempotent.
-6. **Diagnostic anchoring while typing** — debounced interactive diagnostics arrive after the text
-   has moved; define whether stale diagnostics are dropped, re-keyed to the latest segmentation, or
-   held until the next pass, so a flag never points at the wrong sentence.

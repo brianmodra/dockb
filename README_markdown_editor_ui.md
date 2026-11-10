@@ -142,8 +142,8 @@ stays identical across platforms; the native menu is removed at startup
 The central panel, taking up most of the window. It renders the current chapter's canonical text in
 the selected Mode (WYSIWYG | Raw MD) and is where the interactive syntax checking from
 `README_markdown_redesign.md` §7 is displayed: remark-lint structure diagnostics and backend
-prose/NLP diagnostics, anchored to the sentence text as displayed, in both views, never part of a
-save.
+LanguageTool diagnostics, anchored to the sentence text as displayed, in both views, never part of
+a save.
 
 Both views edit the **same canonical document**: the text is the model, and toggling Mode changes
 rendering, not the document behind the editor. The WYSIWYG is an editing surface, *not* a semantic
@@ -160,7 +160,7 @@ byte-stable by construction. Spelling and grammar are checked by the backend (La
 editable's `lang` attribute (default `en-US`) is the checker language plus accessibility
 metadata, rewritten by the Settings → Language… dialog (§3). Span-aware highlighting of the
 inline HTML (`data-par-id`,
-`data-triple`, `data-spo`) and remark-lint / NLP diagnostics in the edit panel are still planned
+`data-triple`, `data-spo`) and remark-lint / LanguageTool diagnostics in the edit panel are still planned
 (`README_markdown_redesign.md` §7). This supersedes the earlier open option "markdown-it + HTML,
 or TipTap": TipTap was rejected because it is a structured-document (serializer-out) editor.
 

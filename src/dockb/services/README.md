@@ -51,6 +51,23 @@ the files move through the store's `renumber_chapters` and its single git commit
 route is `POST /api/chapters/renumber` with the document id, answering the
 `{id, old_title, new_title}` list of what changed.
 
+### Proofreading
+
+`ProofreadingService` (`services/proofreading.py`) answers `POST /api/check` for one paragraph
+with LanguageTool spelling, grammar and style diagnostics. The engine starts lazily per language
+on the first check and is stopped on `unwire`; it is reached only here, so the manuscript text
+never leaves the process unless an operator points `DOCKB_LANGUAGETOOL_URL` at an external
+server. Checks are cached briefly, serialized on one lock because the LanguageTool client is not
+thread-safe, and never write the graph, the file, or a snapshot. Diagnostics carry
+paragraph-relative offsets, the rule, category, severity, message and replacements; the route
+maps an empty or oversized paragraph and an unsupported language to `422`, a disabled or
+unreachable engine to `503`, and a failed check to `502`.
+
+The route hands the service the paragraph text and the focused sentence's offsets. When the
+glossary work lands, it also supplies the document's effective glossary so accepted character
+names are filtered out of spelling diagnostics instead of being added to LanguageTool's shared
+user dictionary.
+
 ## Character mentions
 
 The paragraph-to-character mention pipeline (candidates, the model's judgement,

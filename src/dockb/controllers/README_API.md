@@ -161,8 +161,8 @@ Every endpoint below the root is authenticated, except the ones needed to obtain
 session. The gate is `get_current_user`
 (`src/dockb/controllers/auth.py`), applied as a router-level dependency in
 `src/dockb/app_factory.py` to the documents, chapters, paragraphs, sentences,
-history, notifications, and imports routers. `app_state` carries the same gate on
-its own routes because each needs the resolved username.
+history, notifications, imports, AI and proofreading routers. `app_state` carries
+the same gate on its own routes because each needs the resolved username.
 
 | Endpoint | Auth |
 | --- | --- |
@@ -751,6 +751,58 @@ Returns an empty `notifications` array if the queue has nothing pending (no bloc
 | `paragraph_split` | `{ chapter_id, changed_paragraphs }` | spaCy detects paragraph boundaries in combined text (bulk import only) |
 
 Note that a paragraph split can include sentence splits, and a sentence operation could cause a paragraph split.
+
+### Proofreading checks
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/check` | Check one paragraph and return its spelling, grammar and style diagnostics |
+
+Session-gated like every editor route. Interactive-only: it reads the text in the request and
+never writes the file, the graph, or a snapshot, so it is not part of the save path.
+
+The body is:
+
+```json
+{
+  "text": "the paragraph text",
+  "language": "en-US",
+  "document_id": "doc-uuid",
+  "paragraph_id": "p-uuid",
+  "focus": { "start": 12, "end": 47 }
+}
+```
+
+`language` is one of the codes the service supports and falls back to
+`DOCKB_PROOFREADING_LANGUAGE` (default `en-US`). `focus` is the sentence the writer is editing,
+as offsets into `text`; diagnostics overlapping it carry `in_focus`. `document_id` and
+`paragraph_id` identify the text so the server can apply that document's glossary, and the
+client can discard a reply that arrived after the text moved.
+
+The reply is a bare payload, not the status envelope:
+
+```json
+{
+  "language": "en-US",
+  "diagnostics": [
+    {
+      "rule_id": "MORFOLOGIK_RULE_EN_US",
+      "category": "TYPOS",
+      "severity": "warning",
+      "message": "Possible spelling mistake found.",
+      "start": 4,
+      "end": 7,
+      "replacements": ["the"],
+      "in_focus": true
+    }
+  ]
+}
+```
+
+Offsets are paragraph-relative, so each view maps them onto the sentence text it displays.
+Spelling diagnostics for the document's glossary and character names are filtered server-side.
+Errors: `422` for an empty or oversized paragraph or an unsupported language, `503` when
+proofreading is disabled or the engine cannot be reached, `502` when a check fails.
 
 ### AI chat
 
