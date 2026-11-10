@@ -50,6 +50,7 @@ class LanguageOption(BaseModel):
 
 
 class LanguagesResponse(BaseModel):
-    """The proofreading languages the editor may choose from."""
+    """The proofreading languages the editor may choose from, and the default."""
 
     languages: list[LanguageOption]
+    default: str

@@ -215,7 +215,7 @@ class TestCheckRoute:
 
         assert resp.status_code == 404
 
-    def test_lists_the_checker_languages(self) -> None:
+    def test_lists_the_checker_languages_with_the_default(self) -> None:
         self._wire(_StubService())
 
         resp = self.client.get("/api/check/languages")
@@ -225,8 +225,19 @@ class TestCheckRoute:
             "languages": [
                 {"code": "en-US", "label": "English (US)"},
                 {"code": "de", "label": "Deutsch"},
-            ]
+            ],
+            "default": "en-US",
         }
+
+    def test_reports_a_configured_default_language(self) -> None:
+        service = _StubService()
+        service.default_language = "en-GB"
+        self._wire(service)
+
+        resp = self.client.get("/api/check/languages")
+
+        assert resp.status_code == 200
+        assert resp.json()["default"] == "en-GB"
 
     def test_languages_without_a_service_answer_503(self) -> None:
         resp = self.client.get("/api/check/languages")

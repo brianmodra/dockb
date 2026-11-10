@@ -57,6 +57,7 @@ def languages(
         raise HTTPException(status_code=503, detail="proofreading_unavailable")
     return LanguagesResponse(
         languages=[LanguageOption(code=code, label=label) for code, label in svc.supported_languages()],
+        default=svc.default_language,
     ).model_dump()
 
 
