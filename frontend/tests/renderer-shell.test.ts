@@ -67,6 +67,47 @@ describe("renderer shell", () => {
     expect(label?.textContent).toBe("brian");
   });
 
+  it("offers the backend's proofreading languages in the settings dialog", async () => {
+    const getProofreadingLanguages = vi.fn(async () => ({
+      languages: [{ code: "xx", label: "Testish" }],
+    }));
+    const { api, bridge } = localModeApi({ getProofreadingLanguages });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    document.querySelector<HTMLElement>('[data-testid="menu-Settings"]')?.click();
+    document
+      .querySelector('[data-testid="menu-item-language"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+
+    expect(getProofreadingLanguages).toHaveBeenCalledTimes(1);
+    const items = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="language-settings-item"]'),
+    ).map((item) => item.textContent);
+    expect(items).toEqual(["Testish"]);
+  });
+
+  it("falls back to the built-in language list when the backend list fails", async () => {
+    const getProofreadingLanguages = vi.fn(async () => {
+      throw new ApiError(503, "proofreading_unavailable");
+    });
+    const { api, bridge } = localModeApi({ getProofreadingLanguages });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    document.querySelector<HTMLElement>('[data-testid="menu-Settings"]')?.click();
+    document
+      .querySelector('[data-testid="menu-item-language"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+
+    const items = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="language-settings-item"]'),
+    ).map((item) => item.textContent);
+    expect(items).toContain("English (US)");
+  });
+
   it("sends the chat prompt through the client, logs the prompt into the panel, and shows the reply", async () => {
     const sendPrompt = vi.fn(async () => ({ reply: "an answer" }));
     const { api, bridge } = localModeApi({ sendPrompt });

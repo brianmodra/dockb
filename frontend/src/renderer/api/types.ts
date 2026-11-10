@@ -199,6 +199,16 @@ export interface ProofreadingCheckResponse {
   diagnostics: ProofreadingDiagnostic[];
 }
 
+/** GET /api/check/languages response — the checker's selectable languages. */
+export interface ProofreadingLanguage {
+  code: string;
+  label: string;
+}
+
+export interface ProofreadingLanguagesResponse {
+  languages: ProofreadingLanguage[];
+}
+
 /** GET / PUT /api/documents/{id}/glossary response. */
 export interface GlossaryResponse {
   words: string[];

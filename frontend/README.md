@@ -153,6 +153,12 @@ its 10px floor.
   and writes *this document's* glossary (`GET`/`PUT /api/documents/{id}/glossary`)
   and re-checks immediately. Cached glossaries are per open document; no word
   reaches LanguageTool's shared dictionary.
+- `rawProofreading.ts` — maps the canonical paragraph under the raw cursor onto
+  the text the writer sees: front matter and span lines are skipped, inline span
+  markup stripped, entities decoded, and sentence line breaks kept. The
+  controller's offsets then become CodeMirror lint markers; right-clicking one
+  opens the same popover, and its replacement edits the canonical buffer in
+  place.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
@@ -187,9 +193,11 @@ DOM as HTML.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
-  scrollable proofreading-language list with Cancel/Apply; the chosen code is
-  applied via `EditPanel.setLanguage` and passed to backend checks. The browser's
-  native spellchecker is disabled in both the Electron session and the editables.
+  scrollable proofreading-language list with Cancel/Apply; the list comes from
+  `GET /api/check/languages`, with the built-in list as the offline fallback. The
+  chosen code is applied via `EditPanel.setLanguage` and passed to backend checks.
+  The browser's native spellchecker is disabled in both the Electron session and
+  the editables.
 - `spinner.ts` — `createSpinner()` builds the animated Lucide `loader-circle` icon
   (`spinning-loader` class) for any busy state; the response area's wait line uses it.
   Response buttons use the shared `.btn` classes from `styles.css`.

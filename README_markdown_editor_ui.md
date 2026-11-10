@@ -99,10 +99,11 @@ message console at 24px minimum height), and the right panel starts at its 10px 
   **Quit**.
 - **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". One item, **Language…**: opens
-  a dialog listing the proofreading languages the backend checker supports (scrollable, current
-  one marked, Cancel/Apply); choosing one sets the language used for backend spelling and
-  grammar checks and the WYSIWYG editable's `lang` attribute. The browser's own spellchecker is
-  turned off, so the `lang` attribute no longer selects a native dictionary.
+  a dialog listing the proofreading languages the backend checker supports (`GET
+  /api/check/languages`; the dialog falls back to its built-in list if that request fails),
+  scrollable, current one marked, Cancel/Apply; choosing one sets the language used for backend
+  spelling and grammar checks and the WYSIWYG editable's `lang` attribute. The browser's own
+  spellchecker is turned off, so the `lang` attribute no longer selects a native dictionary.
 
 The menu bar is drawn in-window (HTML), not the native Electron menu, so its styling is ours and
 stays identical across platforms; the native menu is removed at startup
@@ -173,6 +174,12 @@ save is still the only write to the file — and adding a word stores it in *thi
 glossary (`PUT /api/documents/{id}/glossary`), then re-checks; the word is not added to any
 account-wide or LanguageTool dictionary. Right-clicking selected text that is not a diagnostic
 keeps the existing quote-action menu (§4).
+
+In **Raw MD** the same rule reads the canonical paragraph holding the cursor: front matter and
+the paragraph's span lines are skipped, inline span markup is stripped, HTML entities are
+decoded, and each sentence line keeps the newline the writer sees. Diagnostics map back through
+those offsets onto CodeMirror lint markers; right-clicking a marker opens the same popover, and a
+replacement edits the canonical buffer in place.
 
 **Decorations** are ProseMirror's mechanism for rendering over text without changing it. A
 decoration applies a CSS class, style, or injected DOM element to a range of the flat document

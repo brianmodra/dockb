@@ -606,6 +606,18 @@ describe("ApiClient proofreading", () => {
     );
   });
 
+  it("lists the backend's proofreading languages", async () => {
+    const response = { languages: [{ code: "en-US", label: "English (US)" }] };
+    mockFetch(200, response);
+
+    const result = await new ApiClient().getProofreadingLanguages();
+
+    expect(result).toEqual(response);
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/check/languages");
+    expect(call.init.method).toBeUndefined();
+  });
+
   it("gets a document's glossary", async () => {
     mockFetch(200, { words: ["Karakas"] });
     const result = await new ApiClient().getGlossary("d-1");

@@ -3,11 +3,22 @@ import { EditorView, lineNumbers, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, defaultHighlightStyle, indentOnInput } from "@codemirror/language";
+import {
+  forEachDiagnostic,
+  setDiagnostics as setLintDiagnostics,
+  type Diagnostic as CodeMirrorDiagnostic,
+} from "@codemirror/lint";
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
 import { characterHeaderText, frontMatterFields, manuscriptHeaderText } from "./characterHeader";
 import type { ProofreadingDiagnostic } from "../api/types";
+import {
+  mapRawProofreadingDiagnostics,
+  rawProofreadingParagraphAt,
+  rawProofreadingParagraphFor,
+  rawProofreadingText,
+} from "./rawProofreading";
 import {
   WysiwygView,
   chapterBody,
@@ -52,6 +63,7 @@ export class EditPanel {
   private readonly readOnlyCompartment = new Compartment();
   private busy = false;
   private readonly header: HTMLElement;
+  private rawProofreading = new Map<CodeMirrorDiagnostic, WysiwygDiagnostic>();
 
   constructor(options: EditPanelOptions) {
     this.api = options.api;
@@ -116,6 +128,7 @@ export class EditPanel {
     });
     this.wysiwygHost.append(this.wysiwyg.element);
     this.wysiwygHost.addEventListener("contextmenu", (event) => this.openParagraphMenu(event));
+    this.rawHost.addEventListener("contextmenu", (event) => this.openRawParagraphMenu(event));
     this.applyMode();
   }
 
@@ -137,6 +150,41 @@ export class EditPanel {
     }
     event.preventDefault();
     this.onSelectionActions?.(context);
+  }
+
+  private openRawParagraphMenu(event: MouseEvent): void {
+    if (this.mode !== "raw") {
+      return;
+    }
+    const diagnostic = this.rawDiagnosticAtPoint(event.clientX, event.clientY);
+    if (diagnostic === null) {
+      return;
+    }
+    event.preventDefault();
+    this.onDiagnostic?.(diagnostic, { x: event.clientX, y: event.clientY });
+  }
+
+  private rawDiagnosticAtPoint(x: number, y: number): WysiwygDiagnostic | null {
+    const position = this.view.posAtCoords({ x, y });
+    if (position === null) {
+      return null;
+    }
+    let hit: { diagnostic: CodeMirrorDiagnostic; from: number; to: number } | null = null;
+    forEachDiagnostic(this.view.state, (diagnostic, from, to) => {
+      if (hit === null && position >= from && position <= to) {
+        hit = { diagnostic, from, to };
+      }
+    });
+    if (hit === null) {
+      return null;
+    }
+    const found = hit as { diagnostic: CodeMirrorDiagnostic; from: number; to: number };
+    const meta = this.rawProofreading.get(found.diagnostic);
+    if (!meta) {
+      return null;
+    }
+    const word = rawProofreadingText(this.view.state.doc.sliceString(found.from, found.to));
+    return { ...meta, from: found.from, to: found.to, word };
   }
 
   /**
@@ -242,26 +290,73 @@ export class EditPanel {
   }
 
   proofreadingParagraph(): ProofreadingParagraph | null {
-    return this.mode === "wysiwyg" ? this.wysiwyg.currentProofreadingParagraph() : null;
+    if (this.mode === "raw") {
+      const paragraph = rawProofreadingParagraphAt(
+        this.view.state.doc.toString(),
+        this.view.state.selection.main.head,
+      );
+      return paragraph?.context ?? null;
+    }
+    return this.wysiwyg.currentProofreadingParagraph();
   }
 
   setProofreadingDiagnostics(
     context: ProofreadingParagraph,
     diagnostics: ProofreadingDiagnostic[],
   ): WysiwygDiagnostic[] {
-    return this.mode === "wysiwyg"
-      ? this.wysiwyg.setProofreadingDiagnostics(context, diagnostics)
-      : [];
+    if (this.mode === "raw") {
+      const paragraph = rawProofreadingParagraphFor(this.view.state.doc.toString(), context);
+      if (paragraph === null) {
+        this.clearRawProofreadingDiagnostics();
+        return [];
+      }
+      const mapped = mapRawProofreadingDiagnostics(paragraph, diagnostics);
+      const lintDiagnostics = mapped.map((diagnostic): CodeMirrorDiagnostic => ({
+        from: diagnostic.from,
+        to: diagnostic.to,
+        severity: lintSeverity(diagnostic.severity),
+        message: diagnostic.message,
+        source: diagnostic.rule_id,
+      }));
+      this.rawProofreading = new Map(
+        lintDiagnostics.map((diagnostic, index) => [diagnostic, mapped[index]]),
+      );
+      this.view.dispatch(setLintDiagnostics(this.view.state, lintDiagnostics));
+      return mapped;
+    }
+    return this.wysiwyg.setProofreadingDiagnostics(context, diagnostics);
   }
 
   clearProofreadingDiagnostics(): void {
     this.wysiwyg.clearProofreadingDiagnostics();
+    this.clearRawProofreadingDiagnostics();
   }
 
   applyProofreadingReplacement(diagnostic: WysiwygDiagnostic, replacement: string): boolean {
-    return this.mode === "wysiwyg"
-      ? this.wysiwyg.applyProofreadingReplacement(diagnostic, replacement)
-      : false;
+    if (this.mode === "raw") {
+      const length = this.view.state.doc.length;
+      if (
+        typeof diagnostic.from !== "number" ||
+        typeof diagnostic.to !== "number" ||
+        diagnostic.from < 0 ||
+        diagnostic.to > length ||
+        diagnostic.from >= diagnostic.to ||
+        rawProofreadingText(this.view.state.doc.sliceString(diagnostic.from, diagnostic.to)) !==
+          diagnostic.word
+      ) {
+        return false;
+      }
+      this.view.dispatch({
+        changes: { from: diagnostic.from, to: diagnostic.to, insert: replacement },
+      });
+      return true;
+    }
+    return this.wysiwyg.applyProofreadingReplacement(diagnostic, replacement);
+  }
+
+  private clearRawProofreadingDiagnostics(): void {
+    this.rawProofreading.clear();
+    this.view.dispatch(setLintDiagnostics(this.view.state, []));
   }
 
   getLanguage(): string {
@@ -362,6 +457,7 @@ export class EditPanel {
     this.view.dispatch({
       changes: { from: 0, to: this.view.state.doc.length, insert: text },
     });
+    this.clearRawProofreadingDiagnostics();
     this.onEditActivity?.();
   }
 
@@ -420,6 +516,19 @@ export class EditPanel {
     this.updateHeader();
     this.notifyDirty();
   }
+}
+
+function lintSeverity(severity: string): "error" | "warning" | "info" | "hint" {
+  if (severity === "error") {
+    return "error";
+  }
+  if (severity === "info") {
+    return "info";
+  }
+  if (severity === "hint") {
+    return "hint";
+  }
+  return "warning";
 }
 
 function saveMessage(response: DocumentContentResponse): string {

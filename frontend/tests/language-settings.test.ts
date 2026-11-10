@@ -24,6 +24,44 @@ describe("language settings dialog", () => {
     expect(current?.textContent).toBe("Deutsch");
   });
 
+  it("renders the backend's language list when it is supplied", () => {
+    void openLanguageSettings({
+      current: "xx",
+      languages: [
+        { code: "xx", label: "Testish" },
+        { code: "yy", label: "Other" },
+      ],
+    });
+
+    expect(itemButtons().map((n) => n.textContent)).toEqual(["Testish", "Other"]);
+    const current = document.querySelector<HTMLElement>('[data-testid="language-settings-item"][aria-current="true"]');
+    expect(current?.textContent).toBe("Testish");
+  });
+
+  it("resolves a language chosen from the supplied list", async () => {
+    const opened = openLanguageSettings({
+      languages: [
+        { code: "xx", label: "Testish" },
+        { code: "yy", label: "Other" },
+      ],
+    });
+    clickItem("yy");
+    document.querySelector<HTMLButtonElement>('[data-testid="language-settings-apply"]')!.click();
+
+    await expect(opened).resolves.toBe("yy");
+  });
+
+  it("disables Apply when the current language is not in the supplied list", () => {
+    void openLanguageSettings({
+      current: "fr",
+      languages: [{ code: "xx", label: "Testish" }],
+    });
+
+    const apply = document.querySelector<HTMLButtonElement>('[data-testid="language-settings-apply"]')!;
+    expect(apply.disabled).toBe(true);
+    expect(document.querySelector('[data-testid="language-settings-item"][aria-current="true"]')).toBeNull();
+  });
+
   it("starts with Apply disabled and enables it once a language is chosen", () => {
     void openLanguageSettings();
 

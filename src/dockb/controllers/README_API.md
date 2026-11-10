@@ -756,10 +756,13 @@ Note that a paragraph split can include sentence splits, and a sentence operatio
 
 | Method | Path | Purpose |
 |---|---|---|
+| `GET` | `/api/check/languages` | List the language codes and labels the checker supports |
 | `POST` | `/api/check` | Check one paragraph and return its spelling, grammar and style diagnostics |
 
-Session-gated like every editor route. Interactive-only: it reads the text in the request and
-never writes the file, the graph, or a snapshot, so it is not part of the save path.
+Session-gated like every editor route. Both are interactive-only: they read the request and
+never write the file, the graph, or a snapshot, so they are not part of the save path.
+`GET /api/check/languages` answers `{ "languages": [{ "code": "en-US", "label": "English (US)"
+}, ...] }`, or `503` with `proofreading_unavailable` when proofreading is disabled.
 
 The body is:
 

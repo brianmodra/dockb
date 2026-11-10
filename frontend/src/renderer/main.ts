@@ -8,7 +8,7 @@ import { ProofreadingController } from "./layout/proofreading";
 import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
 import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
-import { openLanguageSettings } from "./layout/languageSettings";
+import { LANGUAGES, openLanguageSettings } from "./layout/languageSettings";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
 import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
@@ -77,11 +77,26 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       void stateController?.saveEditMode(mode);
     },
     onOpenLanguageSettings: () => {
-      void openLanguageSettings({ current: editPanel?.getLanguage() ?? "en-US" }).then((lang) => {
+      void (async () => {
+        let languages = LANGUAGES;
+        if (options.api && typeof options.api.getProofreadingLanguages === "function") {
+          try {
+            const response = await options.api.getProofreadingLanguages();
+            if (response.languages.length > 0) {
+              languages = response.languages;
+            }
+          } catch {
+            // The dialog still works with its built-in list while the backend is away.
+          }
+        }
+        const lang = await openLanguageSettings({
+          current: editPanel?.getLanguage() ?? "en-US",
+          languages,
+        });
         if (lang !== null) {
           editPanel?.setLanguage(lang);
         }
-      });
+      })();
     },
     onSignOut: () => signOut.request(),
     onQuit: () => {

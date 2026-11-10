@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from dockb.controllers.auth import get_current_user, get_owner
 from dockb.controllers.glossary import set_glossary_service
-from dockb.controllers.proofreading import check, set_proofreading_service
+from dockb.controllers.proofreading import check, languages, set_proofreading_service
 from dockb.exceptions import DocumentNotFoundError
 from dockb.services.proofreading import (
     Diagnostic,
@@ -26,6 +26,7 @@ def _make_app() -> FastAPI:
     app.dependency_overrides[get_owner] = lambda: "account-0"
     app.dependency_overrides[get_current_user] = lambda: "abby"
     app.add_api_route("/api/check", check, methods=["POST"])
+    app.add_api_route("/api/check/languages", languages, methods=["GET"])
     return app
 
 
@@ -36,6 +37,9 @@ class _StubService:  # pylint: disable=too-few-public-methods
         self.diagnostics = diagnostics or []
         self.error = error
         self.calls: list[tuple[object, ...]] = []
+
+    def supported_languages(self) -> list[tuple[str, str]]:
+        return [("en-US", "English (US)"), ("de", "Deutsch")]
 
     def check(
         self,
@@ -210,3 +214,20 @@ class TestCheckRoute:
         resp = self.client.post("/api/check", json={"text": "hello", "document_id": "doc-1"})
 
         assert resp.status_code == 404
+
+    def test_lists_the_checker_languages(self) -> None:
+        self._wire(_StubService())
+
+        resp = self.client.get("/api/check/languages")
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "languages": [
+                {"code": "en-US", "label": "English (US)"},
+                {"code": "de", "label": "Deutsch"},
+            ]
+        }
+
+    def test_languages_without_a_service_answer_503(self) -> None:
+        resp = self.client.get("/api/check/languages")
+        assert resp.status_code == 503

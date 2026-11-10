@@ -20,6 +20,7 @@ export const LANGUAGES: LanguageOption[] = [
 
 export interface LanguageSettingsOptions {
   current?: string;
+  languages?: LanguageOption[];
 }
 
 export function openLanguageSettings(options: LanguageSettingsOptions = {}): Promise<string | null> {
@@ -38,6 +39,11 @@ export function openLanguageSettings(options: LanguageSettingsOptions = {}): Pro
     dialog.append(title);
 
     let selected: string | null = options.current ?? null;
+    const languages =
+      options.languages && options.languages.length > 0 ? options.languages : LANGUAGES;
+    if (selected !== null && !languages.some((language) => language.code === selected)) {
+      selected = null;
+    }
 
     const apply = document.createElement("button");
     apply.type = "button";
@@ -48,7 +54,7 @@ export function openLanguageSettings(options: LanguageSettingsOptions = {}): Pro
 
     const list = document.createElement("div");
     list.className = "language-settings-list";
-    for (const lang of LANGUAGES) {
+    for (const lang of languages) {
       const item = document.createElement("button");
       item.type = "button";
       item.className = "language-settings-item";

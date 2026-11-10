@@ -19,6 +19,8 @@ from dockb.controllers.glossary import get_glossary_service
 from dockb.controllers.schemas.proofreading import (
     CheckRequest,
     CheckResponse,
+    LanguageOption,
+    LanguagesResponse,
 )
 from dockb.controllers.schemas.proofreading import (
     Diagnostic as DiagnosticWire,
@@ -44,6 +46,18 @@ def get_proofreading_service() -> Any:
 def set_proofreading_service(service: Any) -> None:
     global _proofreading_service  # noqa: PLW0603
     _proofreading_service = service
+
+
+@router.get("/check/languages")
+def languages(
+    svc: Any = Depends(get_proofreading_service),
+    _user: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    if svc is None:
+        raise HTTPException(status_code=503, detail="proofreading_unavailable")
+    return LanguagesResponse(
+        languages=[LanguageOption(code=code, label=label) for code, label in svc.supported_languages()],
+    ).model_dump()
 
 
 @router.post("/check")

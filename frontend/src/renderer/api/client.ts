@@ -16,6 +16,7 @@ import type {
   PovResponse,
   ProofreadingCheckRequest,
   ProofreadingCheckResponse,
+  ProofreadingLanguagesResponse,
   RenumberResponse,
   Session,
   UserProfile,
@@ -133,6 +134,11 @@ export class ApiClient {
       body: JSON.stringify(body),
       signal,
     });
+  }
+
+  /** Return the proofreading languages the backend accepts. */
+  async getProofreadingLanguages(): Promise<ProofreadingLanguagesResponse> {
+    return request<ProofreadingLanguagesResponse>(this.url("/check/languages"));
   }
 
   /** Return this document's stored accepted words. */
