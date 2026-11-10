@@ -141,10 +141,11 @@ its 10px floor.
   carry their preceding blank-line count in `blanksBefore`, so
   `bufferToDoc`/`docToString` round-trip the buffer byte-for-byte until an
   edit. Native browser spellchecking is off; the editable carries a `lang`
-  attribute (default `en-US`) for accessibility, and the Settings → Language…
-  dialog selects the language the backend proofreader checks against (the
-  endpoint and diagnostics are described in `../README_markdown_editor_ui.md`
-  §5 and `../src/dockb/controllers/README_API.md`).
+  attribute (default `en-US`) for accessibility. On startup the editor asks
+  `GET /api/check/languages` for the backend's `default` and checks against it,
+  and the Settings → Language… dialog switches the language the backend
+  proofreader checks against (the endpoint and diagnostics are described in
+  `../README_markdown_editor_ui.md` §5 and `../src/dockb/controllers/README_API.md`).
 - `proofreading.ts` — `ProofreadingController` debounces backend checks of the
   cursor's paragraph (~500 ms), aborts the previous request, and drops replies
   whose paragraph text or document has changed. It decorates the WYSIWYG text

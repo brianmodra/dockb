@@ -61,7 +61,8 @@ server. Checks are cached briefly, serialized on one lock because the LanguageTo
 thread-safe, and never write the graph, the file, or a snapshot. Diagnostics carry
 paragraph-relative offsets, the rule, category, severity, message and replacements; the route
 maps an empty or oversized paragraph and an unsupported language to `422`, a disabled or
-unreachable engine to `503`, and a failed check to `502`.
+unreachable engine to `503`, and a failed check to `502`. The editor's starting language is the
+resolved `DOCKB_PROOFREADING_LANGUAGE`, advertised by `GET /api/check/languages` as `default`.
 
 The route hands the service the paragraph text, the focused sentence's offsets, and the
 document's effective glossary, so accepted character names are filtered out of spelling

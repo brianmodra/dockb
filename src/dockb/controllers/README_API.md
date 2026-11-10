@@ -762,7 +762,9 @@ Note that a paragraph split can include sentence splits, and a sentence operatio
 Session-gated like every editor route. Both are interactive-only: they read the request and
 never write the file, the graph, or a snapshot, so they are not part of the save path.
 `GET /api/check/languages` answers `{ "languages": [{ "code": "en-US", "label": "English (US)"
-}, ...] }`, or `503` with `proofreading_unavailable` when proofreading is disabled.
+}, ...], "default": "en-US" }`, or `503` with `proofreading_unavailable` when proofreading is
+disabled. `default` is the resolved `DOCKB_PROOFREADING_LANGUAGE` — the language the editor
+starts from before a writer picks another.
 
 The body is:
 
@@ -777,7 +779,8 @@ The body is:
 ```
 
 `language` is one of the codes the service supports and falls back to
-`DOCKB_PROOFREADING_LANGUAGE` (default `en-US`). `focus` is the sentence the writer is editing,
+`DOCKB_PROOFREADING_LANGUAGE` (default `en-US`) when omitted — the same value the `languages`
+endpoint reports as `default`. `focus` is the sentence the writer is editing,
 as offsets into `text`; diagnostics overlapping it carry `in_focus`. `document_id` and
 `paragraph_id` identify the text so the server can apply that document's glossary, and the
 client can discard a reply that arrived after the text moved.
