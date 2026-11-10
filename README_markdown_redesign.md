@@ -9,7 +9,8 @@ rather than a projection, save-and-rehydrate is synchronous rather than a backgr
 chapters are numbered by their file names while character chapters are not — and can be
 renumbered in reading order (from 1, or 0) once moves shuffle them — and each account's
 manuscript lives in its own directory and its own git repository, so no commit can ever span two
-writers.
+writers. Interactive checking follows the same rule: LanguageTool prose diagnostics and remark
+structure checks are view-only, and a paragraph check never writes the file.
 
 Read it when you need the reason, not the current function names. The live behavior is in the code
 and the shorter notes next to it — `src/dockb/infrastructure/document_store/README.md` for the

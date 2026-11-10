@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-This note is the contract between DockB's editor and the server: the requests the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, how every route is gated to the signed-in account, and the errors the editor handles. Read it before adding a screen or a route.
+This note is the contract between DockB's editor and the server: the requests the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, how every route is gated to the signed-in account, and the errors the editor handles. It also covers the routes that go beyond editing one element: importing a whole document directory, renumbering chapters, setting a point-of-view character, reading history, sending an AI chat prompt, and checking one paragraph's spelling, grammar, and style with LanguageTool.
 
-It also covers the routes that go beyond editing one element: importing a whole document directory, renumbering chapters, setting a point-of-view character, reading history, and sending an AI chat prompt. The AI route is the exception to the manuscript contract: the server gives the model read-only tools over the manuscript and constrains the reply to the editor's response syntax, so the answer renders as text lines and clickable buttons rather than prose. A first-or-earliest-occurrence question is answered by the earliest paragraph that actually answers, ordered by chapter and then paragraph position, not by the first tool match.
+The proofreading routes are interactive: the editor sends the paragraph under the cursor and receives diagnostics with paragraph-relative offsets, along with the list of languages the checker supports and the document's stored glossary. Read it before adding a screen or a route.
 
 ## Core Principle
 

@@ -2,12 +2,9 @@
 
 ## Executive Summary
 
-This note is the rulebook for the classes that read and write Neo4j: what gets read (usually one chapter, down to its tokens), what gets written (a sentence and its tokens at a time), and how deletion, ordering, and data states behave. Every document read and write names the account that owns it, and an id belonging to another account reads as absent rather than as an error, so nothing here can be used to confirm that somebody else's manuscript exists.
+This note is the rulebook for the classes that read and write Neo4j: what gets read (usually one chapter, down to its tokens), what gets written (a sentence and its tokens at a time), and how deletion, ordering, and data states behave. Every document read and write names the account that owns it, and an id belonging to another account reads as absent rather than as an error, so nothing here can be used to confirm that somebody else's manuscript exists. The same ownership rule covers the character-name lookup that feeds a document's proofreading glossary.
 
-Read it before adding a repository method. The one performance rule that matters most: chapter-level paths read a document shell — title and chapter ids — never the whole book. The one security rule that matters most: a child id on its own identifies nothing, because ownership lives on the document and every child query reaches its node through it. Three methods deliberately break that rule for one command only, and it says which.
-
-The repository is Neo4j, and it stores the models
-(see [`src/dockb/models/README.md`](../../models/README.md)).
+Read it before adding a repository method. The one performance rule that matters most: chapter-level paths read a document shell — title and chapter ids — never the whole book. The one security rule that matters most: a child id on its own identifies nothing, because ownership lives on the document and every child query reaches its node through it. Three methods deliberately break that rule for one command only, and it says which. The repository is Neo4j, and it stores the models (see [`src/dockb/models/README.md`](../../models/README.md)).
 
 ## Reading the database
 

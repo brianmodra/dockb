@@ -3,10 +3,13 @@
 ## Executive Summary
 
 The backend's server-owned account data, in one SQLite file: the users, their linked
-OAuth provider accounts, and each user's editor state. Accounts are not part of the
-document graph, so they live in their own relational store rather than in Neo4j. For why
-the store is SQLite, why accounts are never merged, and how the no-local-mode and
-account-lifecycle decisions bear on it, see `README_auth.md` at the repository root.
+OAuth provider accounts, each user's editor state, and each document's accepted
+proofreading words. Accounts are not part of the document graph, so they live in
+their own relational store rather than in Neo4j. The glossary rows are keyed by
+username and document id, so one writer's accepted words cannot leak into another
+writer's manuscript. For why the store is SQLite, why accounts are never merged, and
+how the no-local-mode and account-lifecycle decisions bear on it, see `README_auth.md`
+at the repository root.
 
 ## Package Structure
 

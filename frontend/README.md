@@ -3,20 +3,21 @@
 ## Executive Summary
 
 This is DockB's desktop editor: a window that talks only to the server to sign in, open a
-document, edit a chapter, or import a whole document from a folder on disk. It never writes files
-itself — an import reads the directory the user picks and hands it to the server, which does the
-writing — and the backend even serves the interface, so the app and API share an origin and the
-signed-in session reaches every route. The chapter list's right-click menu renames, moves,
-renumbers, and assigns a point-of-view character; a read-only identity line tracks the front
-matter; and the message panel's response strip answers both AI chat prompts (opening a named
-chapter and highlighting its sentences) and right-clicks on selected text (marking or clearing a
-paragraph's quote type). The raw and WYSIWYG views edit the same canonical buffer, and the dirty
-check compares that buffer against the last canonical text (quote types included), so merely
-switching chapters never saves an untouched file.
+document, edit a chapter, import a whole document from a folder on disk, and proofread text. It
+never writes files itself — an import reads the directory the user picks and hands it to the
+server, which does the writing — and the backend even serves the interface, so the app and API
+share an origin and the signed-in session reaches every route. The chapter list's right-click menu
+renames, moves, renumbers, and assigns a point-of-view character; a read-only identity line tracks
+the front matter; and the message panel's response strip answers both AI chat prompts (opening a
+named chapter and highlighting its sentences) and right-clicks on selected text (marking or
+clearing a paragraph's quote type). The raw and WYSIWYG views edit the same canonical buffer, and
+the dirty check compares that buffer against the last canonical text (quote types included), so
+merely switching chapters never saves an untouched file.
 
 Read it to run the app, to find which file owns the chapter list, editor, chat line, login, and
-sign-out, and to see how a folder on disk becomes a document. How the window should look is in
-`../README_markdown_editor_ui.md`; what the AI chat line sends and receives is in
+sign-out, and to see how proofreading squiggles, corrections, the language dialog, and the
+document glossary are wired. How the window should look is in
+`../README_markdown_editor_ui.md`; what the editor sends and receives is in
 `../src/dockb/controllers/README_API.md`.
 
 ## API client and session

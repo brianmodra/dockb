@@ -4,12 +4,11 @@
 
 This is the design of DockB's writing window. It explains the menus, the chapter list, the editor
 and the dialogs, so someone new can see what the writer sees and why each click does what it does —
-including how a writer signs out: the File menu offers to save unsaved work first, then ends the
-session and brings the sign-in screen back rather than closing the window. The edit panel also
-carries an un-editable identity line — a character's name parts, or a chapter's title and its
-point-of-view character — that scrolls with the text and is refreshed from the front matter,
-and the message panel under it keeps the chat history with the AI: prompts, replies, and the
-reply's buttons that highlight the paragraphs the model found.
+including how proofreading works in both the WYSIWYG and raw views: the backend checks the
+paragraph under the cursor, the writer picks a correction from a popover or adds a word to that
+document's glossary, and nothing is written to the file until the writer saves. The File menu
+saves unsaved work before signing out, and the identity line above the text shows a character's
+name parts or a chapter's title and point of view.
 
 The window only sends text to the server and gets text back. It never touches files. How the files
 and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
