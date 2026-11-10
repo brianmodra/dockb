@@ -6,7 +6,8 @@ This is DockB's desktop editor: a window that talks only to the server to sign i
 document, edit a chapter, import a whole document from a folder on disk, and proofread text. It
 never writes files itself — an import reads the directory the user picks and hands it to the
 server, which does the writing — and the backend even serves the interface, so the app and API
-share an origin and the signed-in session reaches every route. The chapter list's right-click menu
+share an origin and the signed-in session reaches every route. Proofreading starts from the
+backend's default language and checks a paragraph at a time. The chapter list's right-click menu
 renames, moves, renumbers, and assigns a point-of-view character; a read-only identity line tracks
 the front matter; and the message panel's response strip answers both AI chat prompts (opening a
 named chapter and highlighting its sentences) and right-clicks on selected text (marking or
