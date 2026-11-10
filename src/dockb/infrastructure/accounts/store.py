@@ -609,8 +609,43 @@ class AccountStore:
         finally:
             connection.close()
 
+    # --------------------------------------------------------------- glossary
 
-_SCHEMA_VERSION = 2
+    def get_glossary(self, username: str, document_id: str) -> list[str]:
+        """Return the accepted words stored for *document_id* under *username*."""
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT word FROM document_glossary
+                 WHERE username = ? AND document_id = ?
+                 ORDER BY word COLLATE NOCASE, word
+                """,
+                (normalize_username(username), document_id),
+            ).fetchall()
+        finally:
+            connection.close()
+        return [str(row["word"]) for row in rows]
+
+    def set_glossary(self, username: str, document_id: str, words: list[str]) -> None:
+        """Replace the accepted words stored for *document_id* under *username*."""
+        username = normalize_username(username)
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    "DELETE FROM document_glossary WHERE username = ? AND document_id = ?",
+                    (username, document_id),
+                )
+                connection.executemany(
+                    "INSERT INTO document_glossary (username, document_id, word) VALUES (?, ?, ?)",
+                    [(username, document_id, word) for word in words],
+                )
+        finally:
+            connection.close()
+
+
+_SCHEMA_VERSION = 3
 
 # Created by name rather than as an inline UNIQUE on the column, so a fresh database and
 # a migrated one hold it under the same name. SQLite cannot add a constraint with ALTER
@@ -674,6 +709,22 @@ def _warn_about_discarded_emails(connection: sqlite3.Connection) -> None:
         )
 
 
+_DOCUMENT_GLOSSARY_MIGRATION = """
+CREATE TABLE IF NOT EXISTS document_glossary (
+    username     TEXT NOT NULL,
+    document_id  TEXT NOT NULL,
+    word         TEXT NOT NULL,
+    PRIMARY KEY (username, document_id, word),
+    FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+);
+"""
+
+
+def _add_document_glossary(connection: sqlite3.Connection) -> None:
+    """Add the per-document proofreading glossary table."""
+    connection.executescript(_DOCUMENT_GLOSSARY_MIGRATION)
+
+
 def _add_password_credentials(connection: sqlite3.Connection) -> None:
     """Add the credential, blocking and deletion columns, and the unique email index.
 
@@ -692,6 +743,7 @@ _MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     # has, and what _SCHEMA below still creates for a new one. It does nothing.
     (1, lambda _connection: None),
     (2, _add_password_credentials),
+    (3, _add_document_glossary),
 )
 
 _SCHEMA = """
@@ -726,6 +778,14 @@ CREATE TABLE IF NOT EXISTS app_state (
     panel_widths       TEXT,
     edit_mode          TEXT,
     updated_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS document_glossary (
+    username     TEXT NOT NULL,
+    document_id  TEXT NOT NULL,
+    word         TEXT NOT NULL,
+    PRIMARY KEY (username, document_id, word),
     FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
 );
 """

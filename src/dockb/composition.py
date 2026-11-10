@@ -20,6 +20,7 @@ from dockb.controllers.ai import set_ai_service
 from dockb.controllers.auth import set_auth_service
 from dockb.controllers.chapters import set_ch_service
 from dockb.controllers.documents import set_doc_service
+from dockb.controllers.glossary import set_glossary_service
 from dockb.controllers.history import set_history_service
 from dockb.controllers.imports import set_import_service
 from dockb.controllers.mcp_mint import set_mint_issuer, set_mint_secret
@@ -51,6 +52,7 @@ from dockb.repositories.sentence_repository import SentenceRepository
 from dockb.services.ai_chat import AiChatService
 from dockb.services.auth_service import AuthService
 from dockb.services.crud_services import ChapterService, DocumentService, ParagraphService, SentenceService
+from dockb.services.glossary_service import GlossaryService
 from dockb.services.history_service import HistoryService
 from dockb.services.import_service import ImportService
 from dockb.services.proofreading import DEFAULT_LANGUAGE, ProofreadingService
@@ -126,8 +128,8 @@ def resolve_document_base_dir(base_dir: Path | None = None) -> Path:
     return base
 
 
-def _build_auth_service(document_base_dir: Path) -> AuthService:
-    """Build the AuthService wired for *document_base_dir*.
+def _secret_key() -> str:
+    """Return the configured secret, loading ``.env`` first.
 
     ``DOCKB_SECRET_KEY`` is required. It signs session cookies, encrypts OAuth refresh
     tokens and peppers password hashes, so an ephemeral substitute would invalidate all
@@ -151,10 +153,18 @@ def _build_auth_service(document_base_dir: Path) -> AuthService:
             "tokens and peppers password hashes. Without it every restart would "
             "invalidate all three."
         )
+    return secret
+
+
+def _build_auth_service(
+    account_store: AccountStore,
+    secret: str,
+) -> AuthService:
+    """Build the AuthService around the shared *account_store* and *secret*."""
     return AuthService(
         providers=providers_from_env(),
         pending_store=PendingLoginStore(),
-        account_store=AccountStore(base_dir=document_base_dir, secret=secret),
+        account_store=account_store,
         session_manager=SessionManager(),
         signer=SessionSigner(
             secret,
@@ -275,7 +285,10 @@ def wire(  # pylint: disable=too-many-locals
 
     auth_base_dir = accounts_base_dir if accounts_base_dir is not None else document_base_dir
     if auth_base_dir is not None:
-        set_auth_service(_build_auth_service(auth_base_dir))
+        secret = _secret_key()
+        account_store = AccountStore(base_dir=auth_base_dir, secret=secret)
+        set_auth_service(_build_auth_service(account_store, secret))
+        set_glossary_service(GlossaryService(account_store, repos[Document], repos[Chapter]))
 
     return ctx
 
@@ -288,6 +301,7 @@ def unwire() -> None:
         proofreading.close()
     set_proofreading_service(None)
     set_auth_service(None)
+    set_glossary_service(None)
     set_doc_service(None)
     set_ch_service(None)
     set_para_service(None)

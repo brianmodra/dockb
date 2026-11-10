@@ -613,3 +613,108 @@ def test_list_users_reports_every_account_including_blocked_and_deleted(tmp_path
     assert listed["brian"]["blocked_at"] is None
     assert listed["alex"]["blocked_at"] is not None
     assert listed["carol"]["deleted_at"] is not None
+
+
+# ---------------------------------------------------------------- glossary
+
+
+_V2_USERS = """
+CREATE TABLE users (
+    id                      TEXT PRIMARY KEY,
+    username                TEXT NOT NULL UNIQUE,
+    email                   TEXT,
+    display_name            TEXT,
+    avatar_url              TEXT,
+    password_hash           TEXT,
+    must_change_password    INTEGER NOT NULL DEFAULT 0,
+    blocked_at              TEXT,
+    last_login_at           TEXT,
+    credentials_changed_at  TEXT,
+    deleted_at              TEXT,
+    created_at              TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+def _v2_database(tmp_path) -> None:
+    connection = sqlite3.connect(tmp_path / "dockb_app.db")
+    try:
+        connection.executescript(_V2_USERS)
+        connection.execute(
+            "INSERT INTO users (id, username, display_name) VALUES ('id-abby', 'abby', 'Abby')",
+        )
+        connection.execute("PRAGMA user_version = 2")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _has_table(tmp_path, name: str) -> bool:
+    connection = sqlite3.connect(tmp_path / "dockb_app.db")
+    try:
+        row = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()
+    finally:
+        connection.close()
+    return row is not None
+
+
+def test_fresh_database_has_the_glossary_table(tmp_path) -> None:
+    _store(tmp_path).get_user("anyone")
+    assert _has_table(tmp_path, "document_glossary")
+    assert _user_version(tmp_path) == _SCHEMA_VERSION
+
+
+def test_migration_from_v2_adds_the_glossary_table(tmp_path) -> None:
+    _v2_database(tmp_path)
+    assert not _has_table(tmp_path, "document_glossary")
+    _store(tmp_path).get_user("abby")
+    assert _has_table(tmp_path, "document_glossary")
+    assert _user_version(tmp_path) == _SCHEMA_VERSION
+
+
+def test_glossary_round_trip(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+
+    store.set_glossary(_USERNAME, "doc-1", ["Karakas", "teh"])
+
+    assert store.get_glossary(_USERNAME, "doc-1") == ["Karakas", "teh"]
+
+
+def test_set_glossary_replaces_the_previous_words(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.set_glossary(_USERNAME, "doc-1", ["old"])
+
+    store.set_glossary(_USERNAME, "doc-1", ["new"])
+
+    assert store.get_glossary(_USERNAME, "doc-1") == ["new"]
+
+
+def test_glossary_is_isolated_by_user(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user("abby", email=_EMAIL, display_name="Abby")
+    store.create_user("brian", email="brian@example.com", display_name="Brian")
+    store.set_glossary("abby", "doc-1", ["abby-word"])
+
+    assert store.get_glossary("brian", "doc-1") == []
+
+
+def test_glossary_is_isolated_by_document(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.set_glossary(_USERNAME, "doc-1", ["one"])
+    store.set_glossary(_USERNAME, "doc-2", ["two"])
+
+    assert store.get_glossary(_USERNAME, "doc-1") == ["one"]
+    assert store.get_glossary(_USERNAME, "doc-2") == ["two"]
+
+
+def test_cascade_delete_removes_the_glossary(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.set_glossary(_USERNAME, "doc-1", ["word"])
+
+    store._connect().execute("DELETE FROM users WHERE username = ?", (_USERNAME,)).connection.commit()
+
+    assert store.get_glossary(_USERNAME, "doc-1") == []

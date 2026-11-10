@@ -640,6 +640,34 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
         assert params["text"] == "kira"
         assert "category: 'Character'" in cypher
 
+    def test_lists_every_character_name_part(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "first_name": "Kiral",
+                "surname": "Karakas",
+                "middle_names": ["Edgar"],
+                "nicknames": ["Kira"],
+            },
+            {
+                "first_name": "",
+                "surname": "Karakas",
+                "middle_names": [],
+                "nicknames": ["K"],
+            },
+        ]
+
+        names = chapter_repo.list_character_names("d-1", _OWNER)
+
+        assert names == ["Edgar", "K", "Karakas", "Kira", "Kiral"]
+        cypher, params = extract_call(neo4j_session)
+        assert "category: 'Character'" in cypher
+        assert params == {"document_id": "d-1", "owner": _OWNER}
+
+    def test_character_names_are_empty_when_the_document_has_none(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        assert chapter_repo.list_character_names("d-1", _OWNER) == []
+
     def test_loads_character_properties_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
             {

@@ -801,8 +801,24 @@ The reply is a bare payload, not the status envelope:
 
 Offsets are paragraph-relative, so each view maps them onto the sentence text it displays.
 Spelling diagnostics for the document's glossary and character names are filtered server-side.
-Errors: `422` for an empty or oversized paragraph or an unsupported language, `503` when
-proofreading is disabled or the engine cannot be reached, `502` when a check fails.
+Errors: `422` for an empty or oversized paragraph or an unsupported language, `404` when the
+document is not owned by the caller, `503` when proofreading is disabled or the engine cannot be
+reached, `502` when a check fails.
+
+### Document glossary
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/documents/{document_id}/glossary` | Return the document's stored accepted words |
+| `PUT` | `/api/documents/{document_id}/glossary` | Replace the document's stored accepted words |
+
+Session-gated like every editor route, and scoped to the signed-in account: a document the caller
+does not own answers `404` just as a missing one does. The body of `PUT` is
+`{ "words": ["Karakas", "teh"] }`; blank entries and case-insensitive duplicates are dropped
+before the row set is replaced. Both routes answer `{ "words": [...] }`, with `GET` returning the
+stored words in case-insensitive order. Character names are deliberately not part of this list:
+they are merged only when `POST /api/check` builds the effective glossary, so a renamed character
+does not leave stale words behind. `503` when the glossary service is unwired.
 
 ### AI chat
 

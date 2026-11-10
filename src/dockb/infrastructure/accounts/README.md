@@ -38,7 +38,7 @@ same way before constructing one.
 
 ## Schema
 
-Three tables, declared in `_SCHEMA` and created on every connection, then brought up to
+Four tables, declared in `_SCHEMA` and created on every connection, then brought up to
 `_SCHEMA_VERSION` by the migrations below.
 
 ### `users`
@@ -115,6 +115,9 @@ because SQLite cannot add a constraint with `ALTER TABLE`. It cannot live in `_S
 either — that runs before the migration, so it would be attempted before the duplicates it
 refuses are gone.
 
+Version 3 added `document_glossary` for accepted proofreading words. The `IF NOT EXISTS` in the
+migration keeps it idempotent even though `_SCHEMA` also declares the table.
+
 ### `app_state`
 
 | Column | Type | Notes |
@@ -127,6 +130,20 @@ refuses are gone.
 
 `set_app_state` replaces the row wholesale, so the three fields are a snapshot rather
 than a merge.
+
+### `document_glossary`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `username` | TEXT | Part of the primary key, and FK to `users.username`, `ON DELETE CASCADE`. |
+| `document_id` | TEXT | Part of the primary key; the document whose text accepts the word. |
+| `word` | TEXT | An accepted spelling, stored as the writer entered it. |
+
+Primary key `(username, document_id, word)`, so one account's glossary cannot leak into another's
+document. `get_glossary` returns the rows in case-insensitive order; `set_glossary` deletes the
+document's rows and inserts the replacement set in one transaction. The service normalizes blanks
+and case-insensitive duplicates before calling the store. Deleting an account cascades its
+glossary rows away with its `users` row.
 
 ## Account lifecycle
 

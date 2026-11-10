@@ -63,10 +63,21 @@ paragraph-relative offsets, the rule, category, severity, message and replacemen
 maps an empty or oversized paragraph and an unsupported language to `422`, a disabled or
 unreachable engine to `503`, and a failed check to `502`.
 
-The route hands the service the paragraph text and the focused sentence's offsets. When the
-glossary work lands, it also supplies the document's effective glossary so accepted character
-names are filtered out of spelling diagnostics instead of being added to LanguageTool's shared
-user dictionary.
+The route hands the service the paragraph text, the focused sentence's offsets, and the
+document's effective glossary, so accepted character names are filtered out of spelling
+diagnostics instead of being added to LanguageTool's shared user dictionary.
+
+### Glossary
+
+`GlossaryService` (`services/glossary_service.py`) owns the per-document accepted-word list and
+the merge used by checks. The stored words live in SQLite under the signed-in username and the
+document id (`AccountStore.get_glossary`/`set_glossary`); every operation first confirms the
+account owns the document through `DocumentRepository.load_shell`, so another account's document
+is indistinguishable from a missing one. `set_words` trims blanks and removes case-insensitive
+duplicates, and GET returns only what was stored. `effective_words` merges those stored words with
+the document's character names from `ChapterRepository.list_character_names` at check time; the
+names are never persisted into the glossary, so editing a character name cannot leave a stale
+word behind. The routes are `GET`/`PUT /api/documents/{document_id}/glossary`.
 
 ## Character mentions
 

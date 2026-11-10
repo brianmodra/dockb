@@ -69,6 +69,12 @@ reason — a caller that can reach a parent by id alone can reach another accoun
 reason as every other method here. Nothing in this layer defaults it, because a
 repository that defaulted to `""` would silently scope to nothing rather than fail.
 
+`ChapterRepository.list_character_names` takes the same account id even though it only
+reads name parts: it follows each Character chapter's `PART_OF` edge to the owned document,
+so it cannot be used to harvest names from another account's manuscript. The names are
+returned deduplicated case-insensitively, because the proofreading glossary only needs the
+set of accepted spellings.
+
 # Writing to the database
 
 This will mostly be a Sentence (and all its Tokens) at a time. Each model object has a unique ID,

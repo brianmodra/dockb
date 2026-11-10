@@ -130,6 +130,13 @@ RETURN c.id AS id, c.title AS title
 LIMIT 1
 """
 
+_LIST_CHARACTER_NAMES_CYPHER = """
+MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+RETURN c.first_name AS first_name, c.surname AS surname,
+       coalesce(c.middle_names, []) AS middle_names,
+       coalesce(c.nicknames, []) AS nicknames
+"""
+
 _RETITLE_CYPHER = """
 UNWIND $entries AS entry
 MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
@@ -267,6 +274,33 @@ class ChapterRepository(BaseRepository[Chapter]):
                 {"document_id": document_id, "text": text.lower(), "owner": owner},
             )
         ]
+
+    def list_character_names(self, document_id: str, owner: str) -> list[str]:
+        """Return every name part of *document_id*'s Character chapters.
+
+        The parts are the first name, middle names, surname and nicknames; the
+        proofreading glossary accepts them as words so a character whose name looks
+        like a misspelling is not flagged.
+        """
+        names: dict[str, str] = {}
+        records = self._session.run(
+            _LIST_CHARACTER_NAMES_CYPHER,
+            {"document_id": document_id, "owner": owner},
+        )
+        for record in records:
+            parts = [
+                record.get("first_name"),
+                record.get("surname"),
+                *(record.get("middle_names") or []),
+                *(record.get("nicknames") or []),
+            ]
+            for part in parts:
+                if not isinstance(part, str):
+                    continue
+                word = part.strip()
+                if word:
+                    names.setdefault(word.casefold(), word)
+        return [names[key] for key in sorted(names)]
 
     def reorder(self, document_id: str, ordered_ids: list[str], owner: str) -> None:
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""

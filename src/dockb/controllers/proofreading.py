@@ -14,7 +14,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dockb.controllers.auth import get_owner
+from dockb.controllers.auth import get_current_user, get_owner
+from dockb.controllers.glossary import get_glossary_service
 from dockb.controllers.schemas.proofreading import (
     CheckRequest,
     CheckResponse,
@@ -22,6 +23,7 @@ from dockb.controllers.schemas.proofreading import (
 from dockb.controllers.schemas.proofreading import (
     Diagnostic as DiagnosticWire,
 )
+from dockb.exceptions import DocumentNotFoundError
 from dockb.services.proofreading import (
     ProofreadingDisabledError,
     ProofreadingError,
@@ -45,13 +47,25 @@ def set_proofreading_service(service: Any) -> None:
 
 
 @router.post("/check")
-def check(  # pylint: disable=unused-argument
+def check(
     body: CheckRequest,
     svc: Any = Depends(get_proofreading_service),
+    glossary: Any = Depends(get_glossary_service),
     owner: str = Depends(get_owner),
+    user: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     if svc is None:
         raise HTTPException(status_code=503, detail="proofreading_unavailable")
+    accepted_words: tuple[str, ...] = ()
+    if glossary is not None:
+        try:
+            accepted_words = glossary.effective_words(
+                body.document_id,
+                owner=owner,
+                username=user,
+            )
+        except DocumentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="document_not_found") from exc
     focus_start = body.focus.start if body.focus is not None else None
     focus_end = body.focus.end if body.focus is not None else None
     try:
@@ -60,6 +74,7 @@ def check(  # pylint: disable=unused-argument
             body.language,
             focus_start=focus_start,
             focus_end=focus_end,
+            accepted_words=accepted_words,
         )
     except ProofreadingDisabledError as exc:
         raise HTTPException(status_code=503, detail=f"proofreading_disabled: {exc}") from exc
