@@ -70,6 +70,7 @@ describe("renderer shell", () => {
   it("offers the backend's proofreading languages in the settings dialog", async () => {
     const getProofreadingLanguages = vi.fn(async () => ({
       languages: [{ code: "xx", label: "Testish" }],
+      default: "xx",
     }));
     const { api, bridge } = localModeApi({ getProofreadingLanguages });
     mountShell(document.body, { api: api as never, bridge: bridge as never });
@@ -81,7 +82,7 @@ describe("renderer shell", () => {
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await tick();
 
-    expect(getProofreadingLanguages).toHaveBeenCalledTimes(1);
+    expect(getProofreadingLanguages).toHaveBeenCalledTimes(2);
     const items = Array.from(
       document.querySelectorAll<HTMLElement>('[data-testid="language-settings-item"]'),
     ).map((item) => item.textContent);

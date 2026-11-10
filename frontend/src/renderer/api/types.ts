@@ -207,6 +207,7 @@ export interface ProofreadingLanguage {
 
 export interface ProofreadingLanguagesResponse {
   languages: ProofreadingLanguage[];
+  default: string;
 }
 
 /** GET / PUT /api/documents/{id}/glossary response. */

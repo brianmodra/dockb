@@ -13,6 +13,7 @@ import { openImportDialog, showImportSummaries, type ImportSelection } from "./l
 import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
+import { defaultProofreadingLanguage } from "./state/language";
 import { quitApp, confirmUnsaved } from "./state/quit";
 import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
@@ -463,6 +464,10 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
 
   async function startUp(): Promise<void> {
     const savedState = await controller.load();
+    const language = await defaultProofreadingLanguage(api);
+    if (language !== null) {
+      editPanel.setLanguage(language);
+    }
     await runStartup({
       savedState,
       restoreView: (panelWidths, editMode) =>
