@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TextSelection } from "prosemirror-state";
 import type { DocumentContentResponse } from "../src/renderer/api/types";
 import { EditPanel, type EditPanelApi } from "../src/renderer/layout/editPanel";
-import type { WysiwygView } from "../src/renderer/layout/wysiwyg";
+import type { WysiwygDiagnostic, WysiwygView } from "../src/renderer/layout/wysiwyg";
 
 function doc(content: string, warnings: string[] = [], summary: DocumentContentResponse["summary"] = null): DocumentContentResponse {
   return { content, summary, warnings };
@@ -237,6 +237,44 @@ describe("EditPanel", () => {
       text: "e. Tw",
     });
     expect(document.querySelector("[data-testid='context-menu']")).toBeNull();
+  });
+
+  it("opens the diagnostic popover before the quote actions on right-click", async () => {
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("teh cat")) });
+    const onDiagnostic = vi.fn();
+    const onSelectionActions = vi.fn();
+    const panel = new EditPanel({ api, onDiagnostic, onSelectionActions });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    const diagnostic: WysiwygDiagnostic = {
+      rule_id: "MORFOLOGIK_RULE_EN_US",
+      category: "TYPOS",
+      severity: "warning",
+      message: "Possible spelling mistake",
+      start: 0,
+      end: 3,
+      replacements: ["the"],
+      in_focus: true,
+      from: 1,
+      to: 4,
+      word: "teh",
+    };
+    const wysiwyg = (panel as unknown as { wysiwyg: WysiwygView }).wysiwyg;
+    vi.spyOn(wysiwyg, "diagnosticAtPoint").mockReturnValue(diagnostic);
+    selectInPanel(panel, 1, 5);
+
+    const paragraph = panel.element.querySelector("p")!;
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+      clientY: 20,
+    });
+    paragraph.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onDiagnostic).toHaveBeenCalledWith(diagnostic, { x: 10, y: 20 });
+    expect(onSelectionActions).not.toHaveBeenCalled();
   });
 
   it("leaves the browser menu alone when no text is selected", async () => {

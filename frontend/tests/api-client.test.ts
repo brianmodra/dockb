@@ -558,3 +558,70 @@ describe("ApiClient auth", () => {
     expect(call.init.method).toBe("POST");
   });
 });
+
+describe("ApiClient proofreading", () => {
+  it("checks a paragraph with its language, document, paragraph and focus", async () => {
+    const response = {
+      language: "en-GB",
+      diagnostics: [
+        {
+          rule_id: "MORFOLOGIK_RULE_EN_GB",
+          category: "TYPOS",
+          severity: "warning",
+          message: "Possible spelling mistake",
+          start: 4,
+          end: 7,
+          replacements: ["the"],
+          in_focus: true,
+        },
+      ],
+    };
+    mockFetch(200, response);
+    const signal = new AbortController().signal;
+
+    const result = await new ApiClient().checkText(
+      {
+        text: "teh cat",
+        language: "en-GB",
+        document_id: "d-1",
+        paragraph_id: "p-1",
+        focus: { start: 0, end: 7 },
+      },
+      signal,
+    );
+
+    expect(result).toEqual(response);
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/check");
+    expect(call.init.method).toBe("POST");
+    expect(call.init.signal).toBe(signal);
+    expect(call.init.body).toBe(
+      JSON.stringify({
+        text: "teh cat",
+        language: "en-GB",
+        document_id: "d-1",
+        paragraph_id: "p-1",
+        focus: { start: 0, end: 7 },
+      }),
+    );
+  });
+
+  it("gets a document's glossary", async () => {
+    mockFetch(200, { words: ["Karakas"] });
+    const result = await new ApiClient().getGlossary("d-1");
+    expect(result).toEqual({ words: ["Karakas"] });
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/documents/d-1/glossary");
+    expect(call.init.method).toBeUndefined();
+  });
+
+  it("replaces a document's glossary", async () => {
+    mockFetch(200, { words: ["Karakas", "teh"] });
+    const result = await new ApiClient().putGlossary("d-1", ["Karakas", "teh"]);
+    expect(result).toEqual({ words: ["Karakas", "teh"] });
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/documents/d-1/glossary");
+    expect(call.init.method).toBe("PUT");
+    expect(call.init.body).toBe(JSON.stringify({ words: ["Karakas", "teh"] }));
+  });
+});

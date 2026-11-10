@@ -580,6 +580,51 @@ body {
   margin-left: 4ch;
 }
 
+.edit-panel .ProseMirror .proofreading-warning {
+  text-decoration: underline wavy #c0392b;
+  cursor: context-menu;
+}
+
+.edit-panel .ProseMirror .proofreading-info {
+  text-decoration: underline dotted #2c6fb5;
+  cursor: context-menu;
+}
+
+.proofreading-popover {
+  position: fixed;
+  z-index: 1000;
+  max-width: 280px;
+  padding: 8px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+}
+
+.proofreading-message {
+  margin-bottom: 6px;
+}
+
+.proofreading-replacements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.proofreading-popover button {
+  padding: 2px 6px;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  background: #f7f7f5;
+  cursor: pointer;
+}
+
+.proofreading-popover button:hover {
+  background: #e9e9e6;
+}
+
 .edit-panel .ProseMirror p:last-child {
   margin-bottom: 0;
 }

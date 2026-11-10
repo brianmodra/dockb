@@ -7,11 +7,14 @@ import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
 import { characterHeaderText, frontMatterFields, manuscriptHeaderText } from "./characterHeader";
+import type { ProofreadingDiagnostic } from "../api/types";
 import {
   WysiwygView,
   chapterBody,
   quoteSignatureOf,
+  type ProofreadingParagraph,
   type SelectionContext,
+  type WysiwygDiagnostic,
 } from "./wysiwyg";
 import type { Mode } from "./menubar";
 
@@ -24,6 +27,7 @@ export interface EditPanelOptions {
   onDirtyChange?: (dirty: boolean) => void;
   onSelectionActions?: (context: SelectionContext) => void;
   onSelectionChange?: () => void;
+  onDiagnostic?: (diagnostic: WysiwygDiagnostic, point: { x: number; y: number }) => void;
 }
 
 export class EditPanel {
@@ -35,6 +39,8 @@ export class EditPanel {
   onDirtyChange?: (dirty: boolean) => void;
   onSelectionActions?: (context: SelectionContext) => void;
   onSelectionChange?: () => void;
+  onDiagnostic?: (diagnostic: WysiwygDiagnostic, point: { x: number; y: number }) => void;
+  onEditActivity?: () => void;
   private view: EditorView;
   private readonly wysiwyg: WysiwygView;
   private readonly rawHost: HTMLElement;
@@ -54,6 +60,7 @@ export class EditPanel {
     this.onDirtyChange = options.onDirtyChange;
     this.onSelectionActions = options.onSelectionActions;
     this.onSelectionChange = options.onSelectionChange;
+    this.onDiagnostic = options.onDiagnostic;
 
     this.element = document.createElement("div");
     this.element.className = "edit-panel";
@@ -90,13 +97,22 @@ export class EditPanel {
           if (update.docChanged) {
             this.notifyDirty();
           }
+          if (update.docChanged || update.selectionSet) {
+            this.onEditActivity?.();
+          }
         }),
       ],
     });
     this.view = new EditorView({ state, parent: this.rawHost });
     this.wysiwyg = new WysiwygView({
-      onChange: () => this.notifyDirty(),
-      onSelectionChange: () => this.onSelectionChange?.(),
+      onChange: () => {
+        this.notifyDirty();
+        this.onEditActivity?.();
+      },
+      onSelectionChange: () => {
+        this.onSelectionChange?.();
+        this.onEditActivity?.();
+      },
     });
     this.wysiwygHost.append(this.wysiwyg.element);
     this.wysiwygHost.addEventListener("contextmenu", (event) => this.openParagraphMenu(event));
@@ -109,6 +125,12 @@ export class EditPanel {
    * selection the browser's own menu is left alone.
    */
   private openParagraphMenu(event: MouseEvent): void {
+    const diagnostic = this.wysiwyg.diagnosticAtPoint(event.clientX, event.clientY);
+    if (diagnostic !== null) {
+      event.preventDefault();
+      this.onDiagnostic?.(diagnostic, { x: event.clientX, y: event.clientY });
+      return;
+    }
     const context = this.wysiwyg.selectionContext();
     if (context === null) {
       return;
@@ -219,12 +241,36 @@ export class EditPanel {
     return this.mode === "wysiwyg" && this.wysiwyg.selectSentences(paragraphId, sentenceIndexes);
   }
 
+  proofreadingParagraph(): ProofreadingParagraph | null {
+    return this.mode === "wysiwyg" ? this.wysiwyg.currentProofreadingParagraph() : null;
+  }
+
+  setProofreadingDiagnostics(
+    context: ProofreadingParagraph,
+    diagnostics: ProofreadingDiagnostic[],
+  ): WysiwygDiagnostic[] {
+    return this.mode === "wysiwyg"
+      ? this.wysiwyg.setProofreadingDiagnostics(context, diagnostics)
+      : [];
+  }
+
+  clearProofreadingDiagnostics(): void {
+    this.wysiwyg.clearProofreadingDiagnostics();
+  }
+
+  applyProofreadingReplacement(diagnostic: WysiwygDiagnostic, replacement: string): boolean {
+    return this.mode === "wysiwyg"
+      ? this.wysiwyg.applyProofreadingReplacement(diagnostic, replacement)
+      : false;
+  }
+
   getLanguage(): string {
     return this.wysiwyg.getLanguage();
   }
 
   setLanguage(lang: string): void {
     this.wysiwyg.setLanguage(lang);
+    this.onEditActivity?.();
   }
 
   private notifyDirty(): void {
@@ -316,6 +362,7 @@ export class EditPanel {
     this.view.dispatch({
       changes: { from: 0, to: this.view.state.doc.length, insert: text },
     });
+    this.onEditActivity?.();
   }
 
   private applyMode(): void {

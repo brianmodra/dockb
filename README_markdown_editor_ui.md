@@ -160,9 +160,19 @@ byte-stable by construction. Spelling and grammar are checked by the backend (La
 editable's `lang` attribute (default `en-US`) is the checker language plus accessibility
 metadata, rewritten by the Settings → Language… dialog (§3). Span-aware highlighting of the
 inline HTML (`data-par-id`,
-`data-triple`, `data-spo`) and remark-lint / LanguageTool diagnostics in the edit panel are still planned
+`data-triple`, `data-spo`) and remark-lint diagnostics in the edit panel are still planned
 (`README_markdown_redesign.md` §7). This supersedes the earlier open option "markdown-it + HTML,
 or TipTap": TipTap was rejected because it is a structured-document (serializer-out) editor.
+
+LanguageTool proofreading checks the paragraph holding the cursor, debounced at about 500 ms; the
+focused sentence is the cursor's sentence. Diagnostics for other paragraphs are cleared, and a
+reply whose paragraph has already changed is discarded. The squiggle shows the diagnostic's
+severity. **Right-clicking a squiggle** opens its popover: the message, up to five replacements,
+and **Add to dictionary**. Choosing a replacement applies it to the buffer — the writer's next
+save is still the only write to the file — and adding a word stores it in *this document's*
+glossary (`PUT /api/documents/{id}/glossary`), then re-checks; the word is not added to any
+account-wide or LanguageTool dictionary. Right-clicking selected text that is not a diagnostic
+keeps the existing quote-action menu (§4).
 
 **Decorations** are ProseMirror's mechanism for rendering over text without changing it. A
 decoration applies a CSS class, style, or injected DOM element to a range of the flat document

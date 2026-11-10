@@ -166,6 +166,44 @@ export interface MutationResponse {
   notifications?: Array<Record<string, unknown>> | null;
 }
 
+/** The sentence being edited, as offsets into the paragraph text. */
+export interface ProofreadingFocus {
+  start: number;
+  end: number;
+}
+
+/** POST /api/check body: one paragraph and the sentence holding the cursor. */
+export interface ProofreadingCheckRequest {
+  text: string;
+  language?: string;
+  document_id?: string;
+  paragraph_id?: string;
+  focus?: ProofreadingFocus;
+}
+
+/** One proofreading finding, with paragraph-relative offsets. */
+export interface ProofreadingDiagnostic {
+  rule_id: string;
+  category: string;
+  severity: string;
+  message: string;
+  start: number;
+  end: number;
+  replacements: string[];
+  in_focus: boolean;
+}
+
+/** POST /api/check response — every diagnostic for the requested paragraph. */
+export interface ProofreadingCheckResponse {
+  language: string;
+  diagnostics: ProofreadingDiagnostic[];
+}
+
+/** GET / PUT /api/documents/{id}/glossary response. */
+export interface GlossaryResponse {
+  words: string[];
+}
+
 export interface AppState {
   last_document_id: string | null;
   panel_widths: Record<string, number> | null;

@@ -601,3 +601,114 @@ describe("WysiwygView quoted paragraphs", () => {
     expect(onSelectionChange).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("WysiwygView proofreading", () => {
+  function diagnostic(overrides: Record<string, unknown> = {}) {
+    return {
+      rule_id: "MORFOLOGIK_RULE_EN_US",
+      category: "TYPOS",
+      severity: "warning",
+      message: "Possible spelling mistake",
+      start: 0,
+      end: 3,
+      replacements: ["the"],
+      in_focus: true,
+      ...overrides,
+    };
+  }
+
+  function paragraphWithCursor(content = "teh cat sat.") {
+    const view = new WysiwygView();
+    view.setContent(content);
+    select(view, 1, 1);
+    const paragraph = view.currentProofreadingParagraph();
+    expect(paragraph).not.toBeNull();
+    return { view, paragraph: paragraph! };
+  }
+
+  it("describes the cursor paragraph, its text and its focused sentence", () => {
+    const view = new WysiwygView();
+    view.setContent('<span data-par-id="p-1">\nOne.\nTwo.\n</span>\n\nNext.');
+    select(view, 7, 7);
+
+    const paragraph = view.currentProofreadingParagraph();
+
+    expect(paragraph).toEqual({
+      paragraphId: "p-1",
+      paragraphIndex: 0,
+      text: "One. Two.",
+      focus: { start: 5, end: 9 },
+      contentStart: 1,
+      contentEnd: 10,
+    });
+  });
+
+  it("returns null when the view is not mounted", () => {
+    expect(new WysiwygView().currentProofreadingParagraph()).toBeNull();
+  });
+
+  it("maps paragraph-relative diagnostics onto document positions", () => {
+    const { view, paragraph } = paragraphWithCursor();
+
+    const mapped = view.setProofreadingDiagnostics(paragraph, [diagnostic()]);
+
+    expect(mapped).toHaveLength(1);
+    expect(mapped[0]).toMatchObject({ from: 1, to: 4, word: "teh" });
+    const mark = view.element.querySelector(".proofreading-warning");
+    expect(mark?.textContent).toBe("teh");
+    expect(mark?.getAttribute("data-severity")).toBe("warning");
+  });
+
+  it("maps an info diagnostic to the info class", () => {
+    const { view, paragraph } = paragraphWithCursor();
+    view.setProofreadingDiagnostics(paragraph, [
+      diagnostic({ severity: "info", start: 4, end: 7, message: "Style" }),
+    ]);
+
+    expect(view.element.querySelector(".proofreading-info")?.textContent).toBe("cat");
+  });
+
+  it("clears the decorations and ignores out-of-range diagnostics", () => {
+    const { view, paragraph } = paragraphWithCursor();
+    view.setProofreadingDiagnostics(paragraph, [diagnostic({ start: 90, end: 99 })]);
+    expect(view.element.querySelector(".proofreading-warning")).toBeNull();
+
+    view.setProofreadingDiagnostics(paragraph, [diagnostic()]);
+    expect(view.element.querySelector(".proofreading-warning")).not.toBeNull();
+
+    view.clearProofreadingDiagnostics();
+    expect(view.element.querySelector(".proofreading-warning")).toBeNull();
+  });
+
+  it("finds the diagnostic at a document position", () => {
+    const { view, paragraph } = paragraphWithCursor();
+    const [mapped] = view.setProofreadingDiagnostics(paragraph, [diagnostic()]);
+
+    expect(view.diagnosticAtPos(2)?.rule_id).toBe(mapped.rule_id);
+    expect(view.diagnosticAtPos(8)).toBeNull();
+  });
+
+  it("replaces a diagnostic range in one transaction", () => {
+    const { view, paragraph } = paragraphWithCursor();
+    const [mapped] = view.setProofreadingDiagnostics(paragraph, [diagnostic()]);
+
+    expect(view.applyProofreadingReplacement(mapped, "the")).toBe(true);
+    expect(view.plainContent()).toBe("the cat sat.");
+  });
+
+  it("refuses a replacement whose range has fallen outside the document", () => {
+    const { view, paragraph } = paragraphWithCursor();
+    const [mapped] = view.setProofreadingDiagnostics(paragraph, [diagnostic()]);
+
+    expect(view.applyProofreadingReplacement({ ...mapped, from: 90, to: 99 }, "the")).toBe(false);
+  });
+
+  it("keeps the decoration on the same text as the user types before it", () => {
+    const { view, paragraph } = paragraphWithCursor();
+    view.setProofreadingDiagnostics(paragraph, [diagnostic()]);
+
+    view.view.dispatch(view.view.state.tr.insertText("X ", 1));
+
+    expect(view.element.querySelector(".proofreading-warning")?.textContent).toBe("teh");
+  });
+});

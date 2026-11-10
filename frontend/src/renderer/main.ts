@@ -4,6 +4,7 @@ import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import { parseResponseReply, selectionActionObjects } from "./layout/responseArea";
 import { EditPanel } from "./layout/editPanel";
+import { ProofreadingController } from "./layout/proofreading";
 import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
 import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
@@ -167,6 +168,29 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
     currentDocumentId = () => panel.currentDocumentId();
+
+    if (
+      typeof options.api.checkText === "function" &&
+      typeof options.api.getGlossary === "function" &&
+      typeof options.api.putGlossary === "function"
+    ) {
+      const proofreading = new ProofreadingController({
+        api: options.api,
+        target: {
+          currentProofreadingParagraph: () => editPanel.proofreadingParagraph(),
+          setProofreadingDiagnostics: (context, diagnostics) =>
+            editPanel.setProofreadingDiagnostics(context, diagnostics),
+          clearProofreadingDiagnostics: () => editPanel.clearProofreadingDiagnostics(),
+          applyProofreadingReplacement: (diagnostic, replacement) =>
+            editPanel.applyProofreadingReplacement(diagnostic, replacement),
+        },
+        documentId: () => panel.currentDocumentId(),
+        language: () => editPanel.getLanguage(),
+        onMessage: (text) => layout.pushMessage(text),
+      });
+      editPanel.onDiagnostic = (diagnostic, point) => proofreading.openPopover(diagnostic, point);
+      editPanel.onEditActivity = () => proofreading.schedule();
+    }
 
     /**
      * A reply's highlight button: open the named chapter (saving the dirty open

@@ -10,9 +10,12 @@ import type {
   ChatResponse,
   DocumentContentResponse,
   DocumentWire,
+  GlossaryResponse,
   ImportResponse,
   MutationResponse,
   PovResponse,
+  ProofreadingCheckRequest,
+  ProofreadingCheckResponse,
   RenumberResponse,
   Session,
   UserProfile,
@@ -117,6 +120,31 @@ export class ApiClient {
     return request<ChatResponse>(this.url("/ai/chat"), {
       method: "POST",
       body: JSON.stringify({ prompt, ...(documentId ? { document_id: documentId } : {}) }),
+    });
+  }
+
+  /** Check one paragraph; *signal* lets a newer check abort a stale one. */
+  async checkText(
+    body: ProofreadingCheckRequest,
+    signal?: AbortSignal,
+  ): Promise<ProofreadingCheckResponse> {
+    return request<ProofreadingCheckResponse>(this.url("/check"), {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    });
+  }
+
+  /** Return this document's stored accepted words. */
+  async getGlossary(documentId: string): Promise<GlossaryResponse> {
+    return request<GlossaryResponse>(this.url(`/documents/${encodeURIComponent(documentId)}/glossary`));
+  }
+
+  /** Replace this document's stored accepted words. */
+  async putGlossary(documentId: string, words: string[]): Promise<GlossaryResponse> {
+    return request<GlossaryResponse>(this.url(`/documents/${encodeURIComponent(documentId)}/glossary`), {
+      method: "PUT",
+      body: JSON.stringify({ words }),
     });
   }
 

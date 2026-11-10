@@ -5,6 +5,7 @@ import { baseKeymap, splitBlock } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { history, redo, undo } from "prosemirror-history";
 import MarkdownIt from "markdown-it";
+import type { ProofreadingDiagnostic } from "../api/types";
 
 const insertHardBreak: Command = (state, dispatch) => {
   const br = state.schema.nodes.hardBreak;
@@ -304,6 +305,23 @@ export interface SelectionPoint {
   offset: number;
 }
 
+/** The paragraph whose check a cursor position selects. */
+export interface ProofreadingParagraph {
+  paragraphId: string | null;
+  paragraphIndex: number;
+  text: string;
+  focus: { start: number; end: number } | null;
+  contentStart: number;
+  contentEnd: number;
+}
+
+/** A wire diagnostic mapped onto ProseMirror positions in the open document. */
+export interface WysiwygDiagnostic extends ProofreadingDiagnostic {
+  from: number;
+  to: number;
+  word: string;
+}
+
 /** The editor state a selected-text action needs, captured when it is chosen. */
 export interface SelectionContext {
   text: string;
@@ -336,6 +354,59 @@ function paragraphSpans(doc: Node): ParagraphSpan[] {
   return spans;
 }
 
+interface ProofreadingState {
+  diagnostics: WysiwygDiagnostic[];
+  decorations: DecorationSet;
+}
+
+const proofreadingPluginKey = new PluginKey<ProofreadingState>("proofreading");
+
+function proofreadingDecoration(diagnostic: WysiwygDiagnostic): Decoration {
+  return Decoration.inline(diagnostic.from, diagnostic.to, {
+    class: diagnostic.severity === "info" ? "proofreading-info" : "proofreading-warning",
+    "data-severity": diagnostic.severity,
+    title: diagnostic.message,
+  });
+}
+
+function proofreadingPlugin(): Plugin<ProofreadingState> {
+  return new Plugin<ProofreadingState>({
+    key: proofreadingPluginKey,
+    state: {
+      init: () => ({ diagnostics: [], decorations: DecorationSet.empty }),
+      apply: (tr, value) => {
+        const set = tr.getMeta(proofreadingPluginKey) as WysiwygDiagnostic[] | undefined;
+        if (set !== undefined) {
+          const diagnostics = set.filter(
+            (diagnostic) => diagnostic.from < diagnostic.to && diagnostic.to <= tr.doc.content.size,
+          );
+          return {
+            diagnostics,
+            decorations: DecorationSet.create(tr.doc, diagnostics.map(proofreadingDecoration)),
+          };
+        }
+        if (!tr.docChanged) {
+          return value;
+        }
+        const diagnostics = value.diagnostics
+          .map((diagnostic) => {
+            const from = tr.mapping.map(diagnostic.from);
+            const to = tr.mapping.map(diagnostic.to);
+            return { ...diagnostic, from, to, word: tr.doc.textBetween(from, to, " ") };
+          })
+          .filter((diagnostic) => diagnostic.from < diagnostic.to);
+        return {
+          diagnostics,
+          decorations: DecorationSet.create(tr.doc, diagnostics.map(proofreadingDecoration)),
+        };
+      },
+    },
+    props: {
+      decorations: (state) => proofreadingPluginKey.getState(state)?.decorations ?? null,
+    },
+  });
+}
+
 export class WysiwygView {
   readonly element: HTMLElement;
   private readonly options: WysiwygViewOptions;
@@ -364,6 +435,114 @@ export class WysiwygView {
   setLanguage(lang: string): void {
     this.language = lang;
     this.innerView?.dom.setAttribute("lang", lang);
+  }
+
+  /** The paragraph and sentence the cursor is in, ready for a backend check. */
+  currentProofreadingParagraph(): ProofreadingParagraph | null {
+    if (!this.innerView) {
+      return null;
+    }
+    const { from } = this.innerView.state.selection;
+    const span = this.paragraphAt(paragraphSpans(this.innerView.state.doc), from);
+    if (!span) {
+      return null;
+    }
+    const text = span.node.textBetween(0, span.node.content.size, " ");
+    const offset = Math.min(Math.max(from - span.contentStart, 0), span.node.content.size);
+    const range =
+      this.sentenceRanges(span.node).find(
+        (candidate) => offset >= candidate.from && offset <= candidate.to,
+      ) ?? null;
+    const focus = range ? { start: range.from, end: range.to } : null;
+    return {
+      paragraphId: span.node.attrs.id ?? null,
+      paragraphIndex: span.index,
+      text,
+      focus,
+      contentStart: span.contentStart,
+      contentEnd: span.contentEnd,
+    };
+  }
+
+  /** Decorate *context*'s diagnostics and return them mapped to document positions. */
+  setProofreadingDiagnostics(
+    context: ProofreadingParagraph,
+    diagnostics: ProofreadingDiagnostic[],
+  ): WysiwygDiagnostic[] {
+    if (!this.innerView) {
+      return [];
+    }
+    const span = paragraphSpans(this.innerView.state.doc).find(
+      (candidate) => candidate.index === context.paragraphIndex && candidate.contentStart === context.contentStart,
+    );
+    if (!span || span.node.textBetween(0, span.node.content.size, " ") !== context.text) {
+      return [];
+    }
+    const mapped: WysiwygDiagnostic[] = [];
+    diagnostics.forEach((diagnostic) => {
+      const { start, end } = diagnostic;
+      if (
+        !Number.isInteger(start) ||
+        !Number.isInteger(end) ||
+        start < 0 ||
+        end > context.text.length ||
+        start >= end
+      ) {
+        return;
+      }
+      mapped.push({
+        ...diagnostic,
+        from: span.contentStart + start,
+        to: span.contentStart + end,
+        word: context.text.slice(start, end),
+      });
+    });
+    this.innerView.dispatch(this.innerView.state.tr.setMeta(proofreadingPluginKey, mapped));
+    return mapped;
+  }
+
+  clearProofreadingDiagnostics(): void {
+    this.innerView?.dispatch(this.innerView.state.tr.setMeta(proofreadingPluginKey, []));
+  }
+
+  /** The diagnostic under a screen point, for the right-click popover. */
+  diagnosticAtPoint(x: number, y: number): WysiwygDiagnostic | null {
+    if (!this.innerView) {
+      return null;
+    }
+    try {
+      const at = this.innerView.posAtCoords({ left: x, top: y });
+      return at ? this.diagnosticAtPos(at.pos) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The diagnostic covering a document position, if one does. */
+  diagnosticAtPos(pos: number): WysiwygDiagnostic | null {
+    if (!this.innerView) {
+      return null;
+    }
+    const diagnostics = proofreadingPluginKey.getState(this.innerView.state)?.diagnostics ?? [];
+    return diagnostics.find((diagnostic) => pos >= diagnostic.from && pos <= diagnostic.to) ?? null;
+  }
+
+  /** Replace one diagnostic's range with *replacement* in one transaction. */
+  applyProofreadingReplacement(
+    diagnostic: WysiwygDiagnostic,
+    replacement: string,
+  ): boolean {
+    if (!this.innerView) {
+      return false;
+    }
+    const size = this.innerView.state.doc.content.size;
+    if (diagnostic.from < 0 || diagnostic.to > size || diagnostic.from >= diagnostic.to) {
+      return false;
+    }
+    this.innerView.dispatch(
+      this.innerView.state.tr.insertText(replacement, diagnostic.from, diagnostic.to),
+    );
+    return true;
   }
 
   /** Take the editable away (or give it back) while the panel is busy. */
@@ -490,7 +669,7 @@ export class WysiwygView {
       const state = EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids, quoteTypes),
-        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
+        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
       });
       this.innerView = new EditorView(this.element, {
         state,
@@ -514,7 +693,7 @@ export class WysiwygView {
       EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids, quoteTypes),
-        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt())],
+        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
       }),
     );
   }
