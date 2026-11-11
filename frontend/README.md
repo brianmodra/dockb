@@ -157,10 +157,10 @@ its 10px floor.
   with severity squiggles, and right-clicking one asks in the response strip: a
   line naming the word and its message, at most five replacements, and
   **Add to dictionary**. A replacement is one ProseMirror
-  transaction (the next save is still the only file write); adding a word reads
-  and writes *this document's* glossary (`GET`/`PUT /api/documents/{id}/glossary`)
-  and re-checks immediately. Cached glossaries are per open document; no word
-  reaches LanguageTool's shared dictionary.
+  transaction (the next save is still the only file write); adding a word posts it to
+  *this document's* glossary (`POST /api/documents/{id}/glossary`)
+  and re-checks immediately. The dictionary view (`Settings → Dictionary…`) is
+  where the whole list is seen and edited; no word reaches LanguageTool's shared dictionary.
 - `rawProofreading.ts` — maps the canonical paragraph under the raw cursor onto
   the text the writer sees: front matter and span lines are skipped, inline span
   markup stripped, entities decoded, and sentence line breaks kept. The

@@ -101,11 +101,11 @@ Right-clicking a proofreading squiggle — a WYSIWYG severity squiggle or a raw 
 the strip a third way: a first line names the word and its message, then at most five replacement
 buttons and **Add to dictionary**. `ProofreadingController` keeps the right-clicked diagnostic,
 so the buttons carry only the chosen replacement or the word itself. Applying a replacement edits
-the buffer in one transaction and re-checks the paragraph; adding a word writes *this document's*
-glossary and re-checks, and a glossary failure is reported to the message log while the strip
-stays open for another try. Changing the selection, loading another chapter, or submitting a new
-AI prompt clears the strip, exactly as with the quote prompt; Escape and outside clicks do not
-close it.
+the buffer in one transaction and re-checks the paragraph; adding a word posts it to *this document's*
+glossary (`POST /api/documents/{id}/glossary`) and re-checks, and a glossary failure is reported to the
+message log while the strip stays open for another try. Changing the selection, loading another chapter,
+or submitting a new AI prompt clears the strip, exactly as with the quote prompt; Escape and outside
+clicks do not close it.
 
 **Any right-click menu belongs in the response area.** The strip is the renderer's one surface
 for asking "what do you want to do with this?" — one styling, one teardown rule, one place the

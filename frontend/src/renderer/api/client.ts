@@ -146,12 +146,20 @@ export class ApiClient {
     return request<GlossaryResponse>(this.url(`/documents/${encodeURIComponent(documentId)}/glossary`));
   }
 
-  /** Replace this document's stored accepted words. */
-  async putGlossary(documentId: string, words: string[]): Promise<GlossaryResponse> {
+  /** Add one word to this document's accepted words. */
+  async postGlossary(documentId: string, word: string): Promise<GlossaryResponse> {
     return request<GlossaryResponse>(this.url(`/documents/${encodeURIComponent(documentId)}/glossary`), {
-      method: "PUT",
-      body: JSON.stringify({ words }),
+      method: "POST",
+      body: JSON.stringify({ word }),
     });
+  }
+
+  /** Remove one word from this document's accepted words. */
+  async deleteGlossary(documentId: string, word: string): Promise<GlossaryResponse> {
+    return request<GlossaryResponse>(
+      this.url(`/documents/${encodeURIComponent(documentId)}/glossary/${encodeURIComponent(word)}`),
+      { method: "DELETE" },
+    );
   }
 
   async listChapters(documentId: string): Promise<ChapterListRow[]> {

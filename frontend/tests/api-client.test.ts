@@ -627,13 +627,22 @@ describe("ApiClient proofreading", () => {
     expect(call.init.method).toBeUndefined();
   });
 
-  it("replaces a document's glossary", async () => {
+  it("adds one word to a document's glossary", async () => {
     mockFetch(200, { words: ["Karakas", "teh"] });
-    const result = await new ApiClient().putGlossary("d-1", ["Karakas", "teh"]);
+    const result = await new ApiClient().postGlossary("d-1", "teh");
     expect(result).toEqual({ words: ["Karakas", "teh"] });
     const call = fetchCalls()[0];
     expect(call.url).toBe("/api/documents/d-1/glossary");
-    expect(call.init.method).toBe("PUT");
-    expect(call.init.body).toBe(JSON.stringify({ words: ["Karakas", "teh"] }));
+    expect(call.init.method).toBe("POST");
+    expect(call.init.body).toBe(JSON.stringify({ word: "teh" }));
+  });
+
+  it("removes one word from a document's glossary", async () => {
+    mockFetch(200, { words: ["Karakas"] });
+    const result = await new ApiClient().deleteGlossary("d-1", "teh");
+    expect(result).toEqual({ words: ["Karakas"] });
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/documents/d-1/glossary/teh");
+    expect(call.init.method).toBe("DELETE");
   });
 });

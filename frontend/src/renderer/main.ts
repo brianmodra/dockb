@@ -203,8 +203,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
 
     if (
       typeof options.api.checkText === "function" &&
-      typeof options.api.getGlossary === "function" &&
-      typeof options.api.putGlossary === "function"
+      typeof options.api.postGlossary === "function"
     ) {
       proofreading = new ProofreadingController({
         api: options.api,

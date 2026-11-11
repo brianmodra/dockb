@@ -52,8 +52,7 @@ function setup(
 ) {
   const api = {
     checkText: vi.fn(),
-    getGlossary: vi.fn(),
-    putGlossary: vi.fn(),
+    postGlossary: vi.fn(),
   };
   const target: ProofreadingTarget = {
     currentProofreadingParagraph: vi.fn(() => (options.paragraph === undefined ? paragraph : options.paragraph)),
@@ -283,37 +282,20 @@ describe("ProofreadingController actions", () => {
 
   it("adds the word to this document's glossary, closes the actions, and re-checks", async () => {
     const { api, controller, onCloseActions } = setup();
-    api.getGlossary.mockResolvedValue({ words: ["Karakas"] });
-    api.putGlossary.mockResolvedValue({ words: ["Karakas", "teh"] });
+    api.postGlossary.mockResolvedValue({ words: ["Karakas", "teh"] });
     api.checkText.mockResolvedValue({ language: "en-US", diagnostics: [] });
     controller.showActions(mappedDiagnostic);
 
     await controller.addActiveWord();
 
-    expect(api.getGlossary).toHaveBeenCalledWith("d-1");
-    expect(api.putGlossary).toHaveBeenCalledWith("d-1", ["Karakas", "teh"]);
+    expect(api.postGlossary).toHaveBeenCalledWith("d-1", "teh");
     expect(api.checkText).toHaveBeenCalledTimes(1);
     expect(onCloseActions).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses the cached glossary for a second word in the same document", async () => {
-    const { api, controller } = setup();
-    api.getGlossary.mockResolvedValue({ words: [] });
-    api.putGlossary.mockResolvedValue({ words: [] });
-    api.checkText.mockResolvedValue({ language: "en-US", diagnostics: [] });
-
-    controller.showActions(mappedDiagnostic);
-    await controller.addActiveWord();
-    controller.showActions({ ...mappedDiagnostic, word: "cat" });
-    await controller.addActiveWord();
-
-    expect(api.getGlossary).toHaveBeenCalledTimes(1);
-    expect(api.putGlossary).toHaveBeenLastCalledWith("d-1", ["teh", "cat"]);
-  });
-
   it("reports a glossary failure and keeps the actions open", async () => {
     const { api, controller, onMessage, onCloseActions } = setup();
-    api.getGlossary.mockRejectedValue(new Error("nope"));
+    api.postGlossary.mockRejectedValue(new Error("nope"));
     controller.showActions(mappedDiagnostic);
 
     await controller.addActiveWord();
@@ -328,8 +310,7 @@ describe("ProofreadingController actions", () => {
 
     await controller.addActiveWord();
 
-    expect(api.getGlossary).not.toHaveBeenCalled();
-    expect(api.putGlossary).not.toHaveBeenCalled();
+    expect(api.postGlossary).not.toHaveBeenCalled();
     expect(onCloseActions).not.toHaveBeenCalled();
   });
 

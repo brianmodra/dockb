@@ -15,7 +15,7 @@ export interface ProofreadingTarget {
 }
 
 export interface ProofreadingControllerOptions {
-  api: Pick<ApiClient, "checkText" | "getGlossary" | "putGlossary">;
+  api: Pick<ApiClient, "checkText" | "postGlossary">;
   target: ProofreadingTarget;
   documentId: () => string | null;
   language: () => string;
@@ -36,7 +36,6 @@ export class ProofreadingController {
   private abortController: AbortController | null = null;
   private requestId = 0;
   private active: WysiwygDiagnostic | null = null;
-  private readonly glossaries = new Map<string, string[]>();
 
   constructor(options: ProofreadingControllerOptions) {
     this.options = options;
@@ -148,17 +147,7 @@ export class ProofreadingController {
       return;
     }
     try {
-      let words = this.glossaries.get(documentId);
-      if (!words) {
-        words = [...(await this.options.api.getGlossary(documentId)).words];
-        this.glossaries.set(documentId, words);
-      }
-      const folded = diagnostic.word.toLowerCase();
-      if (!words.some((word) => word.toLowerCase() === folded)) {
-        words = [...words, diagnostic.word];
-        await this.options.api.putGlossary(documentId, words);
-        this.glossaries.set(documentId, words);
-      }
+      await this.options.api.postGlossary(documentId, diagnostic.word);
       this.closeActions();
       await this.checkNow();
     } catch (error) {
@@ -181,7 +170,6 @@ export class ProofreadingController {
     this.abortController?.abort();
     this.abortController = null;
     this.closeActions();
-    this.glossaries.clear();
   }
 }
 
