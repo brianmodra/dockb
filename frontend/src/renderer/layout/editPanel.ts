@@ -128,6 +128,15 @@ export class EditPanel {
     });
     this.wysiwygHost.append(this.wysiwyg.element);
     this.wysiwygHost.addEventListener("contextmenu", (event) => this.openParagraphMenu(event));
+    // A right-click would otherwise move the caret into the word under the
+    // cursor, which ProseMirror sees as a selection change and uses to close
+    // the diagnostic menu the click just opened. Stop the caret move at the
+    // source so the menu stays up.
+    this.wysiwygHost.addEventListener("mousedown", (event) => {
+      if (event.button === 2) {
+        event.preventDefault();
+      }
+    });
     this.rawHost.addEventListener("contextmenu", (event) => this.openRawParagraphMenu(event));
     this.applyMode();
   }

@@ -205,3 +205,20 @@ describe("EditPanel raw proofreading", () => {
     expect(panel.content()).not.toContain("teh cat");
   });
 });
+
+describe("EditPanel WYSIWYG right-click", () => {
+  it("stops a right-click from moving the caret (so the diagnostic menu stays open)", () => {
+    const panel = new EditPanel({ api: fakeApi() });
+    document.body.append(panel.element);
+    panel.setContent(CANONICAL);
+    const host = panel.element.querySelector<HTMLElement>('[data-testid="edit-wysiwyg"]')!;
+
+    const right = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 2 });
+    host.dispatchEvent(right);
+    expect(right.defaultPrevented).toBe(true);
+
+    const left = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 });
+    host.dispatchEvent(left);
+    expect(left.defaultPrevented).toBe(false);
+  });
+});
