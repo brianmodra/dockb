@@ -1,5 +1,11 @@
 # DeleteJob and ReconstructJob
 
+## Executive Summary
+
+This note explains the background jobs that turn edited text into structured, searchable words — for someone changing sentence splitting, tokenization, or how those jobs run. A Job is a unit of work that a single background worker runs one at a time from a queue; ReconstructJob and DeleteJob are the two concrete jobs, and the SentenceTokenizer turns sentence text into Token objects carrying part of speech, lemma, and whitespace.
+
+The tokenizer can also hand back tokens from an already-parsed paragraph, so an import never re-runs spaCy once per sentence. Jobs can be cancelled cooperatively, time out, and report a status, and the queue lets a newer job for the same model replace the older one so rapid edits never pile up duplicate work.
+
 DeleteJob clears existing sentence tokens before reconstruction.
 ReconstructJob performs sentence-boundary detection, tokenization, and semantic reconstruction.
 

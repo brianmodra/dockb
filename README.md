@@ -15,12 +15,12 @@ markdown files, and pointers to the per-layer documentation.
 
 The desktop editor (`frontend/`) is a thin API client that never writes files or git: writers edit
 canonical markdown in WYSIWYG or raw view, and an import only reads the directory a writer picks and
-hands it to the server. Every manuscript belongs to an account. That account decides which
-documents the writer can see, which directory the markdown lives in, and which git history it has —
-so an editor session reads and writes only its own account's work, and a manuscript whose account
-was deleted is handed to another with `dockb users assign` rather than lost. The backend is
-observable as well as structured: every HTTP request logs its total time and a per-stage breakdown,
-so a slow open shows exactly where the time went.
+hands it to the server. Every manuscript belongs to an account, which decides which documents the
+writer can see, which directory the markdown lives in, and which git history it has — so a session
+reads and writes only its own account's work, and a manuscript whose account was deleted is handed
+to another with `dockb users assign` rather than lost. The backend is observable as well as
+structured: every HTTP request logs its total time and a per-stage breakdown, so a slow save or open
+shows exactly where the time went.
 
 ## Summary
 

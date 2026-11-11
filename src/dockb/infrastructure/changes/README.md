@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-This note explains how a saved chapter file is compared with the knowledge graph and written back. It is for someone changing import or change detection. Alongside the text, each paragraph's quote type (`data-quote-type` on its span) and the chapter's hand-maintained front matter — a character's name parts, a chapter's point-of-view character — are part of the comparison: a front-matter-only change still updates the graph, and a point-of-view title that matches nothing warns while the stored value waits.
+This note explains how a saved chapter file is compared with the knowledge graph and written back — for someone changing the import or the change detection. Alongside the text, each paragraph's quote type and the chapter's hand-maintained front matter (a character's name parts, a chapter's point-of-view character) take part in the comparison: a front-matter-only change still updates the graph, and a point-of-view title that matches nothing warns while the stored value waits.
 
-A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need no numbers. Changed files are rewritten so the next import can match them. If write-back is off, the graph updates and the source files stay as they were. A folder reaches this package either as a path — from the shell command or the API's upload route, which stages the files in a temporary directory first — or one file at a time.
+A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need none. Changed files are rewritten so the next import can match them, and with write-back off the graph updates while the source files stay as they were. A folder reaches this package either as a path — from the shell command or the API's upload route, which stages the files in a temporary directory first — or one file at a time, and the caller hands over the chapter model it already loaded rather than reading it twice.
 
 ## Calling context
 

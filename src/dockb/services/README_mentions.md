@@ -2,10 +2,9 @@
 
 ## Executive Summary
 
-This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so next time the same question is asked, it is easy and quick to answer. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit. Search answers character questions straight from the cached verdicts — the search itself never judges anything — and return the matching paragraphs in reading order, each carrying its chapter's position and its own position within that chapter.
+This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so the question is quick next time. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit. Search answers character questions straight from the cached verdicts — the search itself never judges anything — and returns the matching paragraphs in reading order, each carrying its chapter's position and its own position within that chapter.
 
-The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, and that a shared surname could be either of two characters. Deterministic name matching (with NER where a whole name span settles it) answers what it can and the model judges the ambiguous remainder, asynchronously, only after a save or an operator sweep says it is time — the scheduler in `mentions_scheduler.py` runs evaluations on one worker thread and keeps at most one
-evaluation running per chapter, so an editing burst never piles up model calls.
+The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, and that a shared surname could be either of two characters. Deterministic name matching (with NER where a whole name span settles it) answers what it can, and the model judges the ambiguous remainder — asynchronously, only after a save or an operator sweep says it is time, on one worker thread with at most one evaluation per chapter, so an editing burst never piles up model calls.
 
 ## 1. The graph: a MENTIONS relationship, and four paragraph states
 

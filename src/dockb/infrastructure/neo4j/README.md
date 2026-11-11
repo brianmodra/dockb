@@ -1,5 +1,11 @@
 # Database sessions
 
+## Executive Summary
+
+This note explains how DockB talks to its Neo4j graph database — for someone changing the storage layer. Every repository shares one serialized session (a Neo4j session is not thread-safe), and a UnitOfWork collects the models a request changed and commits them together, grouping like-typed models so the paragraph and sentence writes go out as a few batched queries rather than one round trip per model.
+
+A base repository class carries the shared save dispatch — which query runs for a new, changed, or deleted model — leaving each repository to supply only its own Cypher and how it serializes its children. The note walks through the session, the factory, and the unit of work, including how the strict commit path differs from the lenient flush that recovers after a cancelled reconstruction.
+
 This package has a SessionFactory, a UnitOfWork class, a SerializedSession, and a Repository
 base class/mixin for repository classes in @src/dockb/repositories
 
