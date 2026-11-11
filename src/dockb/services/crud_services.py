@@ -284,6 +284,8 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         mentions_repo: Any | None = None,
         session_context: SessionContext | None = None,
         mentions_scheduler: MentionsScheduler | None = None,
+        mentions_chapter_repo: ChapterRepository | None = None,
+        mentions_document_repo: DocumentRepository | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
@@ -291,6 +293,11 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         self._document_store_factory = document_store_factory
         self._nlp = nlp
         self._mentions_repo = mentions_repo
+        # The background mention evaluation reads through its own repositories
+        # (wired on a separate session in production) so it never contends with
+        # the request path; tests that omit them fall back to the request repos.
+        self._mentions_chapter_repo = mentions_chapter_repo if mentions_chapter_repo is not None else chapter_repo
+        self._mentions_document_repo = mentions_document_repo if mentions_document_repo is not None else document_repo
         self._mentions_scheduler = mentions_scheduler or MentionsScheduler()
         self._session_context = session_context
         self._save_locks: dict[str, threading.Lock] = {}
@@ -468,8 +475,8 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         if ch.category == "Character" and not identity_changed:
             return
         if identity_changed:
-            document = self._document_repo.load(document_id, owner) if self._document_repo is not None else None
-            chapter_ids = [chapter.id for chapter in document.chapters] if document is not None else []
+            shell = self._document_repo.load_shell(document_id, owner) if self._document_repo is not None else None
+            chapter_ids = [chapter.id for chapter in shell.chapters] if shell is not None else []
         else:
             chapter_ids = [ch.id]
         for chapter_id in chapter_ids:
@@ -477,8 +484,8 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
                 MentionsJob,
                 chapter_id=chapter_id,
                 mentions_repo=self._mentions_repo,
-                chapter_repo=self._chapter_repo,
-                document_repo=self._document_repo,
+                chapter_repo=self._mentions_chapter_repo,
+                document_repo=self._mentions_document_repo,
                 owner=owner,
             )
             self._mentions_scheduler.schedule(chapter_id, job)

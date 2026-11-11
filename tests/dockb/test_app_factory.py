@@ -230,6 +230,36 @@ class TestWireServices:
         assert get_para_service() is not None
         assert get_sent_service() is not None
 
+    @patch("dockb.composition.MentionsRepository")
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_gives_mentions_a_separate_session(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_doc_repo: MagicMock,
+        mock_mentions_repo: MagicMock,
+    ) -> None:
+        from dockb.composition import wire
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf)
+
+        # DocumentRepository is built twice — once on the request session, once on the
+        # mentions session — and the mentions one must not share the request session.
+        assert mock_doc_repo.call_count == 2
+        request_session = mock_doc_repo.call_args_list[0][0][0]
+        mentions_session = mock_doc_repo.call_args_list[1][0][0]
+        assert request_session is not mentions_session
+        assert mock_mentions_repo.call_args[0][0] is mentions_session
+
     @patch("dockb.composition.DocumentRepository")
     @patch("dockb.composition.ChapterRepository")
     @patch("dockb.composition.ParagraphRepository")
@@ -566,7 +596,9 @@ class TestWireMcpIssuer:
             first = wire(mock_sf)
             second = wire(mock_sf)
             assert second is first
-            mock_sf.session.assert_called_once()
+            # one session for the request path, one for the mentions worker;
+            # the no-op second wire creates no more.
+            assert mock_sf.session.call_count == 2
         finally:
             unwire()
 

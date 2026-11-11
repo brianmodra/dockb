@@ -9,6 +9,7 @@ from __future__ import annotations
 # pylint: disable=too-many-lines
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -215,6 +216,16 @@ class _CountingChapterRepo(StubChapterRepo):
     def load(self, model_id: str, owner: str = "") -> Chapter | None:
         self.load_calls.append(model_id)
         return super().load(model_id, owner)
+
+
+class _RecordingScheduler:  # pylint: disable=too-few-public-methods
+    """Captures scheduled mention jobs without running them."""
+
+    def __init__(self) -> None:
+        self.jobs: list[tuple[str, Any]] = []
+
+    def schedule(self, chapter_id: str, make_job: Any) -> None:
+        self.jobs.append((chapter_id, make_job))
 
 
 class StubParagraphRepo(StubOwnedRepo):
@@ -1726,6 +1737,55 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             "stage.trigger_mentions",
             "stage.read_chapter",
         ]
+
+    def test_trigger_mentions_schedules_the_job_on_the_mentions_repositories(self) -> None:
+        scheduler = _RecordingScheduler()
+        mentions_repo = object()
+        mentions_chapter_repo = object()
+        mentions_document_repo = object()
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=self.doc_repo,
+            mentions_repo=mentions_repo,
+            mentions_chapter_repo=mentions_chapter_repo,
+            mentions_document_repo=mentions_document_repo,
+            mentions_scheduler=scheduler,
+        )
+        ch = Chapter(id="c1", title="Intro", category="Chapter", state=DataState.SYNC)
+
+        svc._trigger_mentions(ch, "d1", (None, None, (), ()), self._OWNER)
+
+        assert len(scheduler.jobs) == 1
+        chapter_id, make_job = scheduler.jobs[0]
+        assert chapter_id == "c1"
+        job = make_job()
+        assert job._repos[0] is mentions_repo
+        assert job._repos[1] is mentions_chapter_repo
+        assert job._repos[2] is mentions_document_repo
+
+    def test_trigger_mentions_uses_shell_load_for_an_identity_change(self) -> None:
+        scheduler = _RecordingScheduler()
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=self.doc_repo,
+            mentions_repo=object(),
+            mentions_scheduler=scheduler,
+        )
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        doc.chapters.append(Chapter(id="c1", title="Karakas", category="Character", state=DataState.SYNC))
+        doc.chapters.append(Chapter(id="c2", title="Kiral", category="Character", state=DataState.SYNC))
+        self.doc_repo._store["d1"] = doc
+        self.doc_repo.forbid_full_load = True
+
+        ch = Chapter(id="c1", title="Karakas", category="Character", state=DataState.SYNC)
+        ch.first_name = "Kiral"
+        ch.surname = "Karakas"
+
+        svc._trigger_mentions(ch, "d1", (None, None, (), ()), self._OWNER)
+
+        assert {chapter_id for chapter_id, _ in scheduler.jobs} == {"c1", "c2"}
 
     def test_save_document_loads_the_chapter_once(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)

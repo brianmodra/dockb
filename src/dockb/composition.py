@@ -224,6 +224,16 @@ def wire(  # pylint: disable=too-many-locals
         Sentence: SentenceRepository(session),
     }
 
+    # The mentions evaluation runs on a daemon thread after each save. It gets
+    # its own session and read repositories so its background document loads and
+    # verdict writes never contend with the live request path on the shared
+    # session above.
+    mentions_session = SerializedSession(_stack.enter_context(session_factory.session()))
+    mentions_repos: dict[type, Any] = {
+        Document: DocumentRepository(mentions_session),
+        Chapter: ChapterRepository(mentions_session),
+    }
+
     uow_factory = UnitOfWorkFactory(
         repos=repos,
         session_factory=session_factory,
@@ -244,7 +254,9 @@ def wire(  # pylint: disable=too-many-locals
         document_repo=repos[Document],
         document_store_factory=document_store_factory,
         nlp=nlp,
-        mentions_repo=MentionsRepository(session),
+        mentions_repo=MentionsRepository(mentions_session),
+        mentions_chapter_repo=mentions_repos[Chapter],
+        mentions_document_repo=mentions_repos[Document],
     )
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])
     sent_svc = SentenceService(uow_factory=uow_factory, sentence_repo=repos[Sentence])
