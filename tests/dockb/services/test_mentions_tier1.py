@@ -245,14 +245,11 @@ def test_a_manuscript_save_schedules_its_own_chapter(tmp_path, nlp) -> None:
     assert job.chapter_id == "c1"
 
 
-def test_a_character_identity_change_schedules_every_chapter_of_the_document(tmp_path, nlp) -> None:
+def test_a_character_identity_change_schedules_a_document_wide_job(tmp_path, nlp) -> None:
     """The ambiguity set is document-wide, so every chapter's verdicts are re-judged."""
     ker = _text_chapter("k1", "Jeremiah", category="Character")
-    first = _text_chapter("c1", "Opening 1", act="Act I")
-    second = _text_chapter("c2", "Opening 2", act="Act I")
     scheduler = _RecordingScheduler()
-    service, _chapter_repo, doc_repo, _store = _save_service(tmp_path, ker, MagicMock(), nlp, scheduler)
-    doc_repo.load.return_value.chapters.extend([first, second])  # the book has both manuscript chapters
+    service, _chapter_repo, _doc_repo, _store = _save_service(tmp_path, ker, MagicMock(), nlp, scheduler)
 
     content = (
         "---\nid: k1\ntitle: Jeremiah\ncategory: Character\n"
@@ -261,10 +258,9 @@ def test_a_character_identity_change_schedules_every_chapter_of_the_document(tmp
     )
     service.save_document("k1", content, owner="acct-1")
 
-    assert sorted(chapter_id for chapter_id, _make in scheduler.scheduled) == ["c1", "c2", "k1"]
-    for chapter_id, make_job in scheduler.scheduled:
-        job = make_job()
-        assert job.chapter_id == chapter_id  # one job per chapter, no document-wide batch
+    assert [chapter_id for chapter_id, _make in scheduler.scheduled] == ["k1"]
+    job = scheduler.scheduled[0][1]()  # the factory builds the job the run evaluates
+    assert job.document_id == "d1"
 
 
 def test_an_identity_change_still_schedules_when_the_repository_loads_fresh_models(tmp_path, nlp) -> None:
@@ -274,11 +270,8 @@ def test_an_identity_change_still_schedules_when_the_repository_loads_fresh_mode
     object — the save's own chapter model is the one the file's front matter is
     applied to."""
     ker = _text_chapter("k1", "Jeremiah", category="Character")
-    first = _text_chapter("c1", "Opening 1", act="Act I")
-    second = _text_chapter("c2", "Opening 2", act="Act I")
     scheduler = _RecordingScheduler()
-    service, chapter_repo, doc_repo, _store = _save_service(tmp_path, ker, MagicMock(), nlp, scheduler)
-    doc_repo.load.return_value.chapters.extend([first, second])
+    service, chapter_repo, _doc_repo, _store = _save_service(tmp_path, ker, MagicMock(), nlp, scheduler)
     chapter_repo.load.side_effect = lambda model_id, owner="acct-1": ker.model_copy(deep=True)
 
     content = (
@@ -288,7 +281,50 @@ def test_an_identity_change_still_schedules_when_the_repository_loads_fresh_mode
     )
     service.save_document("k1", content, owner="acct-1")
 
-    assert sorted(chapter_id for chapter_id, _make in scheduler.scheduled) == ["c1", "c2", "k1"]
+    assert [chapter_id for chapter_id, _make in scheduler.scheduled] == ["k1"]
+
+
+def test_a_document_job_evaluates_every_manuscript_chapter(monkeypatch) -> None:
+    from dockb.services import mentions as mentions_module
+
+    mentions_repo = MagicMock()
+    chapter_repo = MagicMock()
+    chapter_repo.list_by_document.return_value = [
+        {"id": "c1", "title": "Opening 1", "act": "Act I", "category": "Chapter", "index": 0},
+        {"id": "k1", "title": "Jeremiah", "act": "", "category": "Character", "index": 1},
+        {"id": "c2", "title": "Opening 2", "act": "Act I", "category": "Chapter", "index": 2},
+    ]
+    evaluated: list[str] = []
+    monkeypatch.setattr(mentions_module, "_evaluate_chapter", lambda chapter_id, **_kwargs: evaluated.append(chapter_id))
+
+    mentions_module._evaluate_document("d1", owner="acct-1", mentions_repo=mentions_repo, chapter_repo=chapter_repo)
+
+    assert evaluated == ["c1", "c2"]  # manuscript chapters only, in order
+
+
+def test_a_document_job_stops_when_cancelled(monkeypatch) -> None:
+    import threading
+
+    from dockb.services import mentions as mentions_module
+
+    mentions_repo = MagicMock()
+    chapter_repo = MagicMock()
+    chapter_repo.list_by_document.return_value = [
+        {"id": "c1", "title": "Opening 1", "act": "Act I", "category": "Chapter", "index": 0},
+        {"id": "c2", "title": "Opening 2", "act": "Act I", "category": "Chapter", "index": 1},
+    ]
+    cancel = threading.Event()
+    evaluated: list[str] = []
+
+    def record_then_cancel(chapter_id, **_kwargs):
+        evaluated.append(chapter_id)
+        cancel.set()
+
+    monkeypatch.setattr(mentions_module, "_evaluate_chapter", record_then_cancel)
+
+    mentions_module._evaluate_document("d1", owner="acct-1", mentions_repo=mentions_repo, chapter_repo=chapter_repo, cancel=cancel)
+
+    assert evaluated == ["c1"]  # the successor run evaluates the rest
 
 
 def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, nlp) -> None:

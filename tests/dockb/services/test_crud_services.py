@@ -1761,28 +1761,29 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert job._repos[0] is mentions_repo
         assert job._repos[1] is mentions_chapter_repo
 
-    def test_trigger_mentions_uses_shell_load_for_an_identity_change(self) -> None:
+    def test_trigger_mentions_schedules_a_document_wide_job_for_an_identity_change(self) -> None:
         scheduler = _RecordingScheduler()
+        mentions_repo = object()
         svc = ChapterService(
             uow_factory=self.factory,
             chapter_repo=self.repo,
             document_repo=self.doc_repo,
-            mentions_repo=object(),
+            mentions_repo=mentions_repo,
             mentions_scheduler=scheduler,
         )
-        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
-        doc.chapters.append(Chapter(id="c1", title="Karakas", category="Character", state=DataState.SYNC))
-        doc.chapters.append(Chapter(id="c2", title="Kiral", category="Character", state=DataState.SYNC))
-        self.doc_repo._store["d1"] = doc
-        self.doc_repo.forbid_full_load = True
 
-        ch = Chapter(id="c1", title="Karakas", category="Character", state=DataState.SYNC)
+        ch = Chapter(id="k1", title="Karakas", category="Character", state=DataState.SYNC)
         ch.first_name = "Kiral"
         ch.surname = "Karakas"
 
         svc._trigger_mentions(ch, "d1", (None, None, (), ()), self._OWNER)
 
-        assert {chapter_id for chapter_id, _ in scheduler.jobs} == {"c1", "c2"}
+        assert len(scheduler.jobs) == 1
+        chapter_id, make_job = scheduler.jobs[0]
+        assert chapter_id == "k1"  # keyed by the character that triggered it
+        job = make_job()
+        assert job.document_id == "d1"
+        assert job._repos[0] is mentions_repo
 
     def test_save_document_loads_the_chapter_once(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)

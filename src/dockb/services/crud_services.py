@@ -42,7 +42,7 @@ from dockb.models.sentence import Sentence
 from dockb.services.chapter_front_matter import set_pov as apply_set_pov
 from dockb.services.chapter_renumber import plan_renumber
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
-from dockb.services.mentions import MentionsJob
+from dockb.services.mentions import DocumentMentionsJob, MentionsJob
 from dockb.services.mentions_scheduler import MentionsScheduler
 from dockb.services.semantics.async_reconstructor import AsyncReconstructor
 from dockb.services.semantics.commit_job import CommitJob
@@ -458,13 +458,14 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         before_identity: tuple[str, str, tuple[str, ...], tuple[str, ...]],
         owner: str,
     ) -> None:
-        """Schedule the mention evaluation the save made necessary, per chapter.
+        """Schedule the mention evaluation the save made necessary.
 
-        A manuscript save schedules its own chapter; a character save whose identity
-        changed schedules every chapter of the document (the ambiguity of a shared
-        name is decided by every character's name set); anything else schedules nothing.
-        One evaluation runs per chapter at a time — a newer save cancels the
-        superseded one and queues the fresh state.
+        A manuscript save schedules its own chapter; a character save whose
+        identity changed schedules one job for the whole document (the
+        ambiguity of a shared name is decided by every character's name set);
+        anything else schedules nothing. The scheduler coalesces jobs by the
+        chapter that triggered them, so re-saving the same chapter cancels its
+        superseded evaluation and queues the fresh state.
         """
         if self._mentions_repo is None:
             return
@@ -473,19 +474,27 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         if ch.category == "Character" and not identity_changed:
             return
         if identity_changed:
-            shell = self._document_repo.load_shell(document_id, owner) if self._document_repo is not None else None
-            chapter_ids = [chapter.id for chapter in shell.chapters] if shell is not None else []
-        else:
-            chapter_ids = [ch.id]
-        for chapter_id in chapter_ids:
-            job = partial(
-                MentionsJob,
-                chapter_id=chapter_id,
-                mentions_repo=self._mentions_repo,
-                chapter_repo=self._mentions_chapter_repo,
-                owner=owner,
+            self._mentions_scheduler.schedule(
+                ch.id,
+                partial(
+                    DocumentMentionsJob,
+                    document_id=document_id,
+                    mentions_repo=self._mentions_repo,
+                    chapter_repo=self._mentions_chapter_repo,
+                    owner=owner,
+                ),
             )
-            self._mentions_scheduler.schedule(chapter_id, job)
+        else:
+            self._mentions_scheduler.schedule(
+                ch.id,
+                partial(
+                    MentionsJob,
+                    chapter_id=ch.id,
+                    mentions_repo=self._mentions_repo,
+                    chapter_repo=self._mentions_chapter_repo,
+                    owner=owner,
+                ),
+            )
 
     def open_document(self, chapter_id: str, *, owner: str) -> str | None:
         """Read a chapter's owned file as canonical text, reconciling it first.

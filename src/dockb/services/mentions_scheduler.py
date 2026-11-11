@@ -1,16 +1,18 @@
-"""The mentions scheduler: coalesce per-chapter evaluations, cancel superseded ones.
+"""The mentions scheduler: coalesce evaluations, cancel superseded ones.
 
-The save pipeline triggers a chapter's mention evaluation after each save; a
-burst of saves must not become a burst of concurrent evaluations of the same
-chapter. One worker thread runs the evaluations, in FIFO order, so a chapter's
-evaluation never overlaps another's. Per chapter the scheduler keeps at most one
-running job and one pending — freshest — factory: a trigger that arrives while
-the chapter's job is running cancels the running job (cooperatively, at the
-job's own checkpoints) and records the newest factory as the successor, which
-the worker runs after the running job finishes. A trigger that arrives while a
-chapter is already queued only refreshes its factory, so a burst of saves queues
-the fresh state once, not once per save. The latest state is always evaluated
-eventually, and never twice at once.
+The save pipeline triggers a mention evaluation after each save; a burst of
+saves must not become a burst of concurrent evaluations. One worker thread runs
+the evaluations, in FIFO order, so two evaluations never overlap. Per trigger
+the scheduler keeps at most one running job and one pending — freshest —
+factory: a trigger that arrives while its key's job is running cancels the
+running job (cooperatively, at the job's own checkpoints) and records the newest
+factory as the successor, which the worker runs after the running job finishes.
+A trigger that arrives while its key is already queued only refreshes the
+factory, so a burst of saves queues the fresh state once, not once per save. The
+latest state is always evaluated eventually, and never twice at once.
+
+The key is the chapter whose save triggered the evaluation: a manuscript chapter
+for its own evaluation, or a character chapter for a document-wide one.
 """
 
 from __future__ import annotations
@@ -19,12 +21,21 @@ import logging
 import queue
 import threading
 from collections.abc import Callable
-
-from dockb.services.mentions import MentionsJob
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
-JobFactory = Callable[[], MentionsJob]
+
+class EvaluationJob(Protocol):  # pylint: disable=too-few-public-methods
+    """What the worker runs: a job with a cooperative cancel and a run."""
+
+    cancel: threading.Event | None
+
+    def run(self) -> None:
+        """Do the evaluation."""
+
+
+JobFactory = Callable[[], EvaluationJob]
 
 
 def start_thread(target: Callable[[], None]) -> None:
@@ -34,7 +45,7 @@ def start_thread(target: Callable[[], None]) -> None:
 
 
 class MentionsScheduler:  # pylint: disable=too-few-public-methods
-    """At most one running evaluation per chapter, one worker in all."""
+    """At most one running evaluation per trigger, one worker in all."""
 
     def __init__(self) -> None:
         self._pending: dict[str, JobFactory] = {}
@@ -44,17 +55,19 @@ class MentionsScheduler:  # pylint: disable=too-few-public-methods
         self._worker_alive = False
 
     def schedule(self, chapter_id: str, make_job: JobFactory) -> None:
-        """Evaluate *chapter_id* in turn, cancel-and-queue when one is running.
+        """Evaluate for *chapter_id* in turn, cancel-and-queue when one is running.
 
-        *make_job* builds a MentionsJob for exactly `chapter_id` — one chapter
-        per evaluation — from the repositories as they are in the caller's
-        hands; the trigger, not the scheduler, owns what the evaluation reads.
-        When the chapter is idle its job is queued and the worker (started if
-        needed) runs it in FIFO order. While the chapter's job is running,
-        further triggers only install their factory as the freshest pending and
-        cancel the running job, whose worker then runs the successor; while it
-        is merely queued, a trigger only refreshes the pending factory. Nothing
-        is evaluated twice at once, and every save's latest state is evaluated.
+        *chapter_id* is the chapter whose save triggered the evaluation: a
+        manuscript chapter evaluates itself, a character chapter evaluates its
+        whole document. *make_job* builds the job from the repositories as they
+        are in the caller's hands; the trigger, not the scheduler, owns what the
+        evaluation reads. When the key is idle its job is queued and the worker
+        (started if needed) runs it in FIFO order. While the key's job is
+        running, further triggers only install their factory as the freshest
+        pending and cancel the running job, whose worker then runs the
+        successor; while it is merely queued, a trigger only refreshes the
+        pending factory. Nothing is evaluated twice at once, and every save's
+        latest state is evaluated.
         """
         start = False
         with self._guard:

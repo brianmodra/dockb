@@ -465,8 +465,7 @@ class MentionsJob:  # pylint: disable=too-few-public-methods
     wired in production, and a mentions evaluation wants no ordering
     guarantees beyond "after the commit" — which the caller guarantees by
     only constructing it after the save returned. One chapter per job; a
-    document-wide trigger schedules one job per chapter (the scheduler
-    coalesces runs for the same chapter).
+    character identity change schedules a :class:`DocumentMentionsJob` instead.
 
     *cancel* is the scheduler's cooperative stop signal — the job checks it
     at its own checkpoints and leaves the rest to a successor run.
@@ -496,6 +495,62 @@ class MentionsJob:  # pylint: disable=too-few-public-methods
             chapter_repo=chapter_repo,
             cancel=self.cancel,
         )
+
+
+class DocumentMentionsJob:  # pylint: disable=too-few-public-methods
+    """The evaluation of every manuscript chapter of one document.
+
+    A character save that changed the identity properties triggers it: the
+    ambiguity set is document-wide, so a rename re-judges the whole book. It
+    evaluates one manuscript chapter at a time, checking *cancel* between
+    chapters, and shares the scheduler's cooperative stop signal.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        *,
+        mentions_repo: Any,
+        chapter_repo: Any,
+        owner: str,
+        document_id: str,
+        cancel: threading.Event | None = None,
+    ) -> None:
+        self.document_id = document_id
+        self._repos = (mentions_repo, chapter_repo)
+        self._owner = owner
+        self.cancel = cancel
+
+    def run(self) -> None:
+        """Evaluate every manuscript chapter of the document, both tiers."""
+        mentions_repo, chapter_repo = self._repos
+        _evaluate_document(
+            self.document_id,
+            owner=self._owner,
+            mentions_repo=mentions_repo,
+            chapter_repo=chapter_repo,
+            cancel=self.cancel,
+        )
+
+
+def _evaluate_document(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    document_id: str,
+    *,
+    owner: str,
+    mentions_repo: Any,
+    chapter_repo: Any,
+    cancel: threading.Event | None = None,
+) -> None:
+    """Both tiers for every manuscript chapter of *document_id*, in order.
+
+    *cancel* is checked between chapters — a superseded evaluation stops and
+    leaves the rest to its successor run.
+    """
+    for row in chapter_repo.list_by_document(document_id, owner):
+        if _stop_requested(cancel):
+            return
+        if row.get("category") != "Chapter":
+            continue
+        _evaluate_chapter(row["id"], owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, cancel=cancel)
 
 
 def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional-arguments
