@@ -131,6 +131,26 @@ describe("EditPanel", () => {
     expect(panel.isDirty()).toBe(false);
   });
 
+  it("keeps unsaved edits when the pov line is refreshed", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    panel.setContent(panel.content().replace("Body.", "CHANGED TEXT"));
+    expect(panel.isDirty()).toBe(true);
+
+    panel.refreshPovLine("Karakas");
+
+    expect(panel.content()).toContain("CHANGED TEXT");
+    expect(panel.content()).toContain("pov: Karakas");
+    expect(panel.isDirty()).toBe(true);
+  });
+
   it("reports the response's warnings through onWarning after a load", async () => {
     const onWarning = vi.fn();
     const api = fakeApi({

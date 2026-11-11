@@ -502,8 +502,10 @@ export class EditPanel {
    * Rewrite the buffer's pov line in place after a POV set or clear elsewhere.
    *
    * The open buffer's front matter would otherwise go stale — and its next
-   * save, carrying no pov, would clear what the modal just set. Both the
-   * buffer and the clean baseline learn the new line, so the save sends it.
+   * save, carrying no pov, would clear what the modal just set. The clean
+   * baseline learns the new line too, so the save sends it; the live buffer
+   * (which may hold unsaved edits) is rewritten in place, not replaced from
+   * the baseline, so those edits survive.
    */
   refreshPovLine(povTitle: string | null): void {
     const rewrite = (text: string | null): string | null => {
@@ -526,7 +528,7 @@ export class EditPanel {
       return kept.join("\n");
     };
     this.lastCanonicalText = rewrite(this.lastCanonicalText);
-    this.replaceDoc(this.lastCanonicalText ?? "");
+    this.replaceDoc(rewrite(this.content()) ?? "");
     this.updateHeader();
     this.notifyDirty();
   }
