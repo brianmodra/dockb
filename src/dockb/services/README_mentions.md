@@ -4,7 +4,7 @@
 
 This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so next time the same question is asked, it is easy and quick to answer. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit. Search answers character questions straight from the cached verdicts — the search itself never judges anything — and return the matching paragraphs in reading order, each carrying its chapter's position and its own position within that chapter.
 
-The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, and that a shared surname could be either of two characters. Deterministic name matching (with NER where a whole name span settles it) answers what it can and the model judges the ambiguous remainder, asynchronously, only after a save or an operator sweep says it is time — the scheduler in `mentions_scheduler.py` keeps at most one
+The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, and that a shared surname could be either of two characters. Deterministic name matching (with NER where a whole name span settles it) answers what it can and the model judges the ambiguous remainder, asynchronously, only after a save or an operator sweep says it is time — the scheduler in `mentions_scheduler.py` runs evaluations on one worker thread and keeps at most one
 evaluation running per chapter, so an editing burst never piles up model calls.
 
 ## 1. The graph: a MENTIONS relationship, and four paragraph states
@@ -82,7 +82,7 @@ simply stays un-evaluated and is retried by the next trigger.
 
 ## 4. What triggers an evaluation
 
-The only triggers are chapter saves and the sweep CLI — a search never evaluates. The auto triggers go through **`mentions_scheduler.py`**, which keeps at most one running evaluation per chapter and evaluates the latest state next (its module docstring carries the coalescing and cancellation semantics; an already-sent model batch may finish, but its verdicts are discarded).
+The only triggers are chapter saves and the sweep CLI — a search never evaluates. The auto triggers go through **`mentions_scheduler.py`**, which runs evaluations on a single worker thread in FIFO order and, per chapter, keeps at most one running evaluation and one pending — freshest — factory: a save that lands while a chapter's evaluation is running cancels it (cooperatively) and queues the latest state next, and a burst of saves queues the fresh state once, not once per save (its module docstring carries the coalescing and cancellation semantics; an already-sent model batch may finish, but its verdicts are discarded).
 
 - **A manuscript chapter save** schedules one **MentionsJob** for that chapter: it evaluates the chapter's state 1 and state 4 paragraphs.
 - **A character chapter save that changed the identity properties** schedules a MentionsJob **per chapter of the document** (the ambiguity set is document-wide, so the scope is too).

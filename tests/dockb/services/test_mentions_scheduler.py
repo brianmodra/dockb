@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from dockb.services import mentions_scheduler as scheduler_module
 from dockb.services.mentions_scheduler import MentionsScheduler
 
@@ -128,7 +126,7 @@ def test_a_trigger_during_the_successor_runs_the_latest_state_after_it(monkeypat
 
 
 def test_a_failed_evaluation_leaves_the_slot_free(monkeypatch):
-    """An evaluation that raises still releases the chapter's slot."""
+    """An evaluation that raises is logged and swallowed; the chapter stays usable."""
     started = []
     _sync_threads(monkeypatch)
     scheduler = MentionsScheduler()
@@ -138,8 +136,7 @@ def test_a_failed_evaluation_leaves_the_slot_free(monkeypatch):
         job.run.side_effect = ValueError("boom")
         return job
 
-    with pytest.raises(ValueError):
-        scheduler.schedule("c1", make_failing)
+    scheduler.schedule("c1", make_failing)  # raises inside the worker, not to the caller
 
     scheduler.schedule("c1", _make_job(started, "retried"))
     assert started == ["retried"]
@@ -188,7 +185,7 @@ def test_no_two_evaluations_of_one_chapter_run_at_once():
     assert not overlaps
 
 
-def test_distinct_chapters_run_independently(monkeypatch):
+def test_distinct_chapters_run_in_turn(monkeypatch):
     started = []
     _sync_threads(monkeypatch)
     scheduler = MentionsScheduler()
@@ -197,4 +194,43 @@ def test_distinct_chapters_run_independently(monkeypatch):
     scheduler.schedule("c2", _make_job(started, "c2-run"))
 
     assert started == ["c1-run", "c2-run"]
-    assert not scheduler._entries  # every slot releases when its work is done
+    assert not scheduler._pending  # every evaluation runs and clears its slot
+    assert not scheduler._running
+
+
+def test_distinct_chapters_are_serialized_on_one_worker():
+    """Real threads: one worker runs c2 only after c1 finishes, never alongside it."""
+    import threading
+    import time
+
+    scheduler = MentionsScheduler()
+    runs = []
+    c1_started = threading.Event()
+    release = threading.Event()
+
+    def make_c1():
+        def make():
+            job = MagicMock()
+
+            def run():
+                runs.append("c1-start")
+                c1_started.set()
+                release.wait(2)
+                runs.append("c1-end")
+
+            job.run.side_effect = run
+            return job
+
+        return make
+
+    scheduler.schedule("c1", make_c1())
+    assert c1_started.wait(2)
+    scheduler.schedule("c2", _make_job(runs, "c2"))
+
+    time.sleep(0.2)
+    assert runs == ["c1-start"]  # c2 waits behind the busy worker, not beside it
+    release.set()
+    deadline = time.time() + 2
+    while "c2" not in runs and time.time() < deadline:
+        time.sleep(0.01)
+    assert runs == ["c1-start", "c1-end", "c2"]
