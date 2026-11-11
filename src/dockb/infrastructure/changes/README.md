@@ -208,7 +208,10 @@ The caller receives the hydrated `Document`, the chapter file path, `nlp`, and t
 to load chapters and persist models. Its steps:
 
 1. **Read and diff.** Read the file; derive `title_fallback` from the file stem; call
-   `detect_changes` with `get_chapter`=chapter load, `create_chapter`=skeleton builder.
+   `detect_changes` with `get_chapter`=chapter load, `create_chapter`=skeleton builder. The
+   caller can hand its already-loaded chapter model to `apply_chapter_file` (`preloaded=`), and
+   the load answers from it — one graph read per request, not one per load site; a file naming a
+   different id than the handed model still reads that chapter from the repository.
 2. **Validate membership.** A chapter file always belongs to the document it lives under —
    - `created` and `front_id` is not `None`: the front matter names a chapter unknown to the
      knowledge graph, so it is not a child of this document → raise `ChapterMismatchError`.

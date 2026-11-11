@@ -716,6 +716,43 @@ class TestExistingChapter:
         assert summary.changed == 1
 
 
+class TestPreloadedChapter:
+    """A caller that already holds the chapter model can hand it over."""
+
+    def test_a_preloaded_chapter_is_used_without_a_repository_load(self, nlp, tmp_path):
+        file = tmp_path / "c1.md"
+        file.write_text('---\nid: c1\ntitle: Old Title\n---\n\n<span data-par-id="p1">New text.</span>')
+        chapter = _make_chapter("c1", _make_paragraph("p1", "Old text."))
+        document = _make_document("d1", chapter)
+        chapter_repo, uow_factory = _setup(chapter)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, preloaded=chapter, owner=_OWNER)
+
+        assert summary.created is False
+        assert summary.changed == 1
+        chapter_repo.load.assert_not_called()
+        assert _saved_chapter(uow)[0] is chapter
+
+    def test_a_preloaded_chapter_of_a_different_id_falls_back_to_the_repository(self, nlp, tmp_path):
+        file = tmp_path / "c2.md"
+        file.write_text('---\nid: c2\ntitle: Named\n---\n\n<span data-par-id="p1">New text.</span>')
+        named = _make_chapter("c2", _make_paragraph("p1", "Old text."), title="Named")
+        preloaded = _make_chapter("c1", _make_paragraph("p0", "Unrelated."))
+        document = _make_document("d1", named)
+        chapter_repo, uow_factory = _setup(named)
+        uow = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        summary = apply_chapter_file(document, file, nlp, chapter_repo, uow_factory, preloaded=preloaded, owner=_OWNER)
+
+        assert summary.created is False
+        assert summary.changed == 1
+        chapter_repo.load.assert_called_once_with("c2", _OWNER)
+        assert _saved_chapter(uow)[0] is named
+
+
 class TestApplyChapterFileTiming:
     """apply_chapter_file records its sub-stages in the active trace."""
 

@@ -73,6 +73,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     write_back: bool = True,
     *,
     owner: str,
+    preloaded: Chapter | None = None,
 ) -> ChapterImportSummary:
     """Persist the changes a markdown chapter file makes to *document*.
 
@@ -98,12 +99,17 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
     *owner* is the account the chapter is being read for: the graph reads that name a
     chapter id resolves under are scoped by it, so a file cannot name a chapter of
     another account and rewrite it.
+
+    *preloaded* is the chapter model the caller already holds from its own load:
+    the diff reads it as the existing chapter instead of paying a second
+    repository round trip. It only answers for its own id — a file naming a
+    different chapter still loads that one from the repository.
     """
     path = Path(file_path)
     with measure("stage.parse_file"):
         content = path.read_text(encoding="utf-8")
 
-        cached: dict[str, Chapter | None] = {}
+        cached: dict[str, Chapter | None] = {preloaded.id: preloaded} if preloaded is not None else {}
 
         def load_once(chapter_id: str) -> Chapter | None:
             if chapter_id not in cached:

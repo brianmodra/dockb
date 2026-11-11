@@ -273,6 +273,30 @@ def test_a_character_identity_change_schedules_every_chapter_of_the_document(tmp
         assert job.chapter_id == chapter_id  # one job per chapter, no document-wide batch
 
 
+def test_an_identity_change_still_schedules_when_the_repository_loads_fresh_models(tmp_path, nlp) -> None:
+    """A real repository builds a new model per load; the save still sees the change.
+
+    The identity verdict must not depend on both loads handing back the same
+    object — the save's own chapter model is the one the file's front matter is
+    applied to."""
+    ker = _text_chapter("k1", "Jeremiah", category="Character")
+    first = _text_chapter("c1", "Opening 1", act="Act I")
+    second = _text_chapter("c2", "Opening 2", act="Act I")
+    scheduler = _RecordingScheduler()
+    service, chapter_repo, doc_repo, _store = _save_service(tmp_path, ker, MagicMock(), nlp, scheduler)
+    doc_repo.load.return_value.chapters.extend([first, second])
+    chapter_repo.load.side_effect = lambda model_id, owner="acct-1": ker.model_copy(deep=True)
+
+    content = (
+        "---\nid: k1\ntitle: Jeremiah\ncategory: Character\n"
+        "first_name: Jeremiah\nsurname: Adams\n---\n\n"
+        '<span data-par-id="p-k1">\nBody.\n</span>'
+    )
+    service.save_document("k1", content, owner="acct-1")
+
+    assert sorted(chapter_id for chapter_id, _make in scheduler.scheduled) == ["c1", "c2", "k1"]
+
+
 def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, nlp) -> None:
     chapter = Chapter(id="k1", title="Jeremiah", category="Character", state=DataState.SYNC)
     chapter.first_name = "Jeremiah"

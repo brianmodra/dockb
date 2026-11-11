@@ -205,6 +205,18 @@ class StubChapterRepo(StubOwnedRepo):  # pylint: disable=too-many-instance-attri
         return self._pov_titles_by_id.get(pov_id)
 
 
+class _CountingChapterRepo(StubChapterRepo):
+    """Counts chapter loads — each one costs a real repository a full graph read."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.load_calls: list[str] = []
+
+    def load(self, model_id: str, owner: str = "") -> Chapter | None:
+        self.load_calls.append(model_id)
+        return super().load(model_id, owner)
+
+
 class StubParagraphRepo(StubOwnedRepo):
     """The paragraph repository, and the chapter ids its writes go through.
 
@@ -1674,6 +1686,69 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert result.summary.changed == 1
         assert "New text here." in result.content
 
+    def test_save_document_records_stage_timings(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.timing import trace
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        para.sentences.append(sentence)
+        ch.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+            nlp=nlp,
+        )
+
+        with trace() as timings:
+            result = svc.save_document("c1", '<span data-par-id="p1">\nNew text here.\n</span>', owner=self._OWNER)
+
+        assert result is not None
+        names = [part.split(" ")[0] for part in timings.summary().split(", ")]
+        assert names == [
+            "repo.chapter.load",
+            "repo.chapter.find_document_id",
+            "repo.document.load",
+            "stage.write_chapter",
+            "stage.apply_chapter_file",
+            "stage.parse_file",
+            "stage.spacy",
+            "stage.persist",
+            "stage.render",
+            "stage.git_commit",
+            "stage.trigger_mentions",
+            "stage.read_chapter",
+        ]
+
+    def test_save_document_loads_the_chapter_once(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        repo = _CountingChapterRepo()
+        repo._store["c1"] = ch
+        repo.set_document("c1", "d1")
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=repo,
+            document_repo=doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+            nlp=nlp,
+        )
+
+        result = svc.save_document("c1", "Hello there.\n\nSecond paragraph.", owner=self._OWNER)
+
+        assert result is not None
+        assert result.summary.added == 2
+        assert repo.load_calls == ["c1"]  # the hand-off to apply_chapter_file is not a second read
+
     def test_open_document_returns_none_when_missing(self) -> None:
         assert self.svc.open_document("nonexistent", owner=self._OWNER) is None
 
@@ -1820,6 +1895,39 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
             "stage.git_commit",
             "stage.read_chapter",
         ]
+
+    def test_open_document_loads_the_chapter_once(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.models.token import Token
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        para = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(id="s1", state=DataState.SYNC)
+        token = Token()
+        token.set_text("Old text.")
+        sentence.tokens.append(token)
+        para.sentences.append(sentence)
+        ch.paragraphs.append(para)
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        repo = _CountingChapterRepo()
+        repo._store["c1"] = ch
+        repo.set_document("c1", "d1")
+        store = DocumentStore(base_dir=tmp_path, account_id=self._OWNER)
+        store.write_chapter("Faith", "", "Intro", '---\nid: c1\ntitle: Intro\n---\n<span data-par-id="p1">\nEdited text.\n</span>\n')
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=repo,
+            document_repo=doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+            nlp=nlp,
+        )
+
+        content = svc.open_document("c1", owner=self._OWNER)
+
+        assert content is not None
+        assert "Edited text." in content
+        assert repo.load_calls == ["c1"]  # reconciling the hand edit reuses the chapter already in hand
 
     def test_open_document_records_materialize_stage(self, tmp_path, nlp, doc_repo) -> None:
         from dockb.timing import trace

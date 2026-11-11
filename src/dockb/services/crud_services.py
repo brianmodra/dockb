@@ -402,14 +402,17 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         store = self._store(owner)
         if store is None or self._nlp is None or self._document_repo is None:
             return None
-        ch = self._chapter_repo.load(chapter_id, owner)
+        with measure("repo.chapter.load"):
+            ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
         before_identity = (ch.first_name, ch.surname, tuple(ch.middle_names), tuple(ch.nicknames))
-        document_id = self._chapter_repo.find_document_id(chapter_id, owner)
+        with measure("repo.chapter.find_document_id"):
+            document_id = self._chapter_repo.find_document_id(chapter_id, owner)
         if document_id is None:
             return None
-        document = self._document_repo.load_shell(document_id, owner)
+        with measure("repo.document.load"):
+            document = self._document_repo.load_shell(document_id, owner)
         if document is None:
             return None
         with self._save_scope(chapter_id):
@@ -417,24 +420,30 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
             if ch.act:
                 updates["act"] = ch.act
             updates["category"] = ch.category
-            store.write_chapter(
-                document.title,
-                ch.act,
-                ch.title,
-                front_matter.merge(content, updates),
-                ch.category,
-            )
-            summary = apply_chapter_file(
-                document,
-                store.chapter_file(document.title, ch.act, ch.title, ch.category),
-                self._nlp,
-                self._chapter_repo,
-                self._uow_factory,
-                owner=owner,
-            )
-            store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
-        self._trigger_mentions(ch, document_id, before_identity, owner)
-        canonical = store.read_chapter(document.title, ch.act, ch.title, ch.category)
+            with measure("stage.write_chapter"):
+                store.write_chapter(
+                    document.title,
+                    ch.act,
+                    ch.title,
+                    front_matter.merge(content, updates),
+                    ch.category,
+                )
+            with measure("stage.apply_chapter_file"):
+                summary = apply_chapter_file(
+                    document,
+                    store.chapter_file(document.title, ch.act, ch.title, ch.category),
+                    self._nlp,
+                    self._chapter_repo,
+                    self._uow_factory,
+                    owner=owner,
+                    preloaded=ch,
+                )
+            with measure("stage.git_commit"):
+                store.git_commit(document.title, f"save: chapter {chapter_id[:8]}")
+        with measure("stage.trigger_mentions"):
+            self._trigger_mentions(ch, document_id, before_identity, owner)
+        with measure("stage.read_chapter"):
+            canonical = store.read_chapter(document.title, ch.act, ch.title, ch.category)
         return ChapterSaveResult(content=canonical or "", summary=summary)
 
     def _trigger_mentions(
@@ -511,6 +520,7 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
                         self._chapter_repo,
                         self._uow_factory,
                         owner=owner,
+                        preloaded=ch,
                     )
                 with measure("stage.git_commit"):
                     store.git_commit(document.title, f"open: chapter {chapter_id[:8]}")
