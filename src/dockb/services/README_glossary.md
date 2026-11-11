@@ -39,7 +39,7 @@ into the set case-insensitively, so "Karakas" and "karakas" are one entry.
 
 ## The dictionary view
 
-The editor's review area carries a **Dictionary** button that opens a small modal: a text box with
+The editor's **Settings** menu (⚙) carries a **Dictionary…** item that opens a small modal: a text box with
 an **Add** button, and beneath it the document's current words, each with an **×** to remove it.
 Adding a word calls `POST`, removing one calls `DELETE`; the modal reflects the returned list, so it
 stays in step with the store. A glossary failure is reported to the message log and the modal stays

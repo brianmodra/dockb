@@ -92,6 +92,58 @@ class TestGetAndSet:
         assert documents.calls == [("doc-1", "acct-1")]
 
 
+class TestAddAndRemove:
+    def test_add_appends_the_trimmed_word_and_returns_the_saved_list(self) -> None:
+        service, store, _, _ = _service()
+        store.rows[("abby", "doc-1")] = ["Karakas"]
+
+        saved = service.add_word("doc-1", " teh ", owner="acct-1", username="abby")
+
+        assert saved == ["Karakas", "teh"]
+        assert store.rows[("abby", "doc-1")] == ["Karakas", "teh"]
+
+    def test_add_is_idempotent_across_case(self) -> None:
+        service, store, _, _ = _service()
+        store.rows[("abby", "doc-1")] = ["Karakas"]
+
+        saved = service.add_word("doc-1", "karakas", owner="acct-1", username="abby")
+
+        assert saved == ["Karakas"]
+        assert store.rows[("abby", "doc-1")] == ["Karakas"]
+
+    def test_remove_drops_the_word_case_insensitively_and_returns_the_saved_list(self) -> None:
+        service, store, _, _ = _service()
+        store.rows[("abby", "doc-1")] = ["Karakas", "teh"]
+
+        saved = service.remove_word("doc-1", "karakas", owner="acct-1", username="abby")
+
+        assert saved == ["teh"]
+        assert store.rows[("abby", "doc-1")] == ["teh"]
+
+    def test_remove_of_an_absent_word_is_a_no_op(self) -> None:
+        service, store, _, _ = _service()
+        store.rows[("abby", "doc-1")] = ["Karakas"]
+
+        saved = service.remove_word("doc-1", "nope", owner="acct-1", username="abby")
+
+        assert saved == ["Karakas"]
+        assert store.rows[("abby", "doc-1")] == ["Karakas"]
+
+    def test_a_document_the_account_does_not_own_is_absent_for_add(self) -> None:
+        service, store, _, _ = _service(owned=set())
+
+        with pytest.raises(DocumentNotFoundError):
+            service.add_word("doc-1", "word", owner="acct-1", username="abby")
+        assert not store.rows
+
+    def test_a_document_the_account_does_not_own_is_absent_for_remove(self) -> None:
+        service, store, _, _ = _service(owned=set())
+
+        with pytest.raises(DocumentNotFoundError):
+            service.remove_word("doc-1", "word", owner="acct-1", username="abby")
+        assert not store.rows
+
+
 class TestEffectiveWords:
     def test_merges_stored_words_and_character_names_without_case_duplicates(self) -> None:
         service, store, _, _ = _service(names={("doc-1", "acct-1"): ["Karakas", "Kiral"]})

@@ -75,10 +75,13 @@ the merge used by checks. The stored words live in SQLite under the signed-in us
 document id (`AccountStore.get_glossary`/`set_glossary`); every operation first confirms the
 account owns the document through `DocumentRepository.load_shell`, so another account's document
 is indistinguishable from a missing one. `set_words` trims blanks and removes case-insensitive
-duplicates, and GET returns only what was stored. `effective_words` merges those stored words with
+duplicates, and GET returns only what was stored. `add_word` and `remove_word` edit one word at a
+time — the single-word editing surface that `POST`/`DELETE` expose, so two editor windows cannot
+race by reading the list, mutating it, and putting it back. `effective_words` merges those stored words with
 the document's character names from `ChapterRepository.list_character_names` at check time; the
 names are never persisted into the glossary, so editing a character name cannot leave a stale
-word behind. The routes are `GET`/`PUT /api/documents/{document_id}/glossary`.
+word behind. The routes are `GET`/`PUT`/`POST /api/documents/{document_id}/glossary` and
+`DELETE /api/documents/{document_id}/glossary/{word}`.
 
 ## Character mentions
 

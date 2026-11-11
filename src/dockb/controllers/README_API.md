@@ -820,12 +820,17 @@ reached, `502` when a check fails.
 |---|---|---|
 | `GET` | `/api/documents/{document_id}/glossary` | Return the document's stored accepted words |
 | `PUT` | `/api/documents/{document_id}/glossary` | Replace the document's stored accepted words |
+| `POST` | `/api/documents/{document_id}/glossary` | Add one word (`{ "word": "..." }`), idempotent |
+| `DELETE` | `/api/documents/{document_id}/glossary/{word}` | Remove one word (case-insensitive), a no-op when absent |
 
 Session-gated like every editor route, and scoped to the signed-in account: a document the caller
 does not own answers `404` just as a missing one does. The body of `PUT` is
 `{ "words": ["Karakas", "teh"] }`; blank entries and case-insensitive duplicates are dropped
-before the row set is replaced. Both routes answer `{ "words": [...] }`, with `GET` returning the
-stored words in case-insensitive order. Character names are deliberately not part of this list:
+before the row set is replaced. All four routes answer `{ "words": [...] }`, with `GET` returning the
+stored words in case-insensitive order. `POST` and `DELETE` are the single-word editing surface: a
+client adds or removes one word at a time instead of reading the list, mutating it, and putting it
+back, which two editor windows could otherwise race over. An added word is trimmed and folded in
+case-insensitively. Character names are deliberately not part of this list:
 they are merged only when `POST /api/check` builds the effective glossary, so a renamed character
 does not leave stale words behind. `503` when the glossary service is unwired.
 

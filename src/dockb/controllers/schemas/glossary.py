@@ -11,6 +11,12 @@ class GlossaryRequest(BaseModel):
     words: list[str] = Field(default_factory=list)
 
 
+class GlossaryWordRequest(BaseModel):
+    """One word to add to the document's accepted words."""
+
+    word: str
+
+
 class GlossaryResponse(BaseModel):
     """The document's stored accepted words."""
 

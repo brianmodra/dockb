@@ -1,4 +1,4 @@
-"""Document glossary routes — GET / PUT /api/documents/{document_id}/glossary.
+"""Document glossary routes — GET / PUT / POST /api/documents/{document_id}/glossary, DELETE …/{word}.
 
 The glossary is editor state, not manuscript content: it lives in the account SQLite
 store, never in the graph, the markdown file, or a snapshot. A document the signed-in
@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from dockb.controllers.auth import get_current_user, get_owner
-from dockb.controllers.schemas.glossary import GlossaryRequest, GlossaryResponse
+from dockb.controllers.schemas.glossary import GlossaryRequest, GlossaryResponse, GlossaryWordRequest
 from dockb.exceptions import DocumentNotFoundError
 
 router = APIRouter(prefix="/api/documents", tags=["glossary"])
@@ -59,6 +59,40 @@ def put_glossary(
         raise HTTPException(status_code=503, detail="glossary_service_unavailable")
     try:
         words = svc.set_words(document_id, body.words, owner=owner, username=user)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}") from exc
+    return GlossaryResponse(words=words).model_dump()
+
+
+@router.post("/{document_id}/glossary")
+def post_glossary(
+    document_id: str,
+    body: GlossaryWordRequest,
+    svc: Any = Depends(get_glossary_service),
+    owner: str = Depends(get_owner),
+    user: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    if svc is None:
+        raise HTTPException(status_code=503, detail="glossary_service_unavailable")
+    try:
+        words = svc.add_word(document_id, body.word, owner=owner, username=user)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}") from exc
+    return GlossaryResponse(words=words).model_dump()
+
+
+@router.delete("/{document_id}/glossary/{word}")
+def delete_glossary(
+    document_id: str,
+    word: str,
+    svc: Any = Depends(get_glossary_service),
+    owner: str = Depends(get_owner),
+    user: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    if svc is None:
+        raise HTTPException(status_code=503, detail="glossary_service_unavailable")
+    try:
+        words = svc.remove_word(document_id, word, owner=owner, username=user)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}") from exc
     return GlossaryResponse(words=words).model_dump()

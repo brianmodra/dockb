@@ -52,6 +52,21 @@ class GlossaryService:  # pylint: disable=too-few-public-methods
         self._account_store.set_glossary(username, document_id, normalized)
         return normalized
 
+    def add_word(self, document_id: str, word: str, *, owner: str, username: str) -> list[str]:
+        """Add one *word* to the glossary and return the saved words (idempotent)."""
+        self._require_document(document_id, owner)
+        normalized = normalize_words([*self._account_store.get_glossary(username, document_id), word])
+        self._account_store.set_glossary(username, document_id, normalized)
+        return normalized
+
+    def remove_word(self, document_id: str, word: str, *, owner: str, username: str) -> list[str]:
+        """Remove *word* (case-insensitively) and return the saved words; a no-op when absent."""
+        self._require_document(document_id, owner)
+        key = word.casefold()
+        kept = [w for w in self._account_store.get_glossary(username, document_id) if w.casefold() != key]
+        self._account_store.set_glossary(username, document_id, kept)
+        return kept
+
     def effective_words(self, document_id: str | None, *, owner: str, username: str) -> tuple[str, ...]:
         """Return the stored glossary plus the document's character names."""
         if document_id is None:
