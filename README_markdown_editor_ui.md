@@ -137,6 +137,9 @@ stays identical across platforms; the native menu is removed at startup
   determines the act it adopts (decided server-side) when that chapter is the same category.
   The bar is hidden, and a click does not commit, when the pointer is over the other category.
   **Esc** or a **click outside the list** cancels move mode.
+- The chapter shown in the edit panel stays selected in the list: a reload after **Rename**,
+  **Move**, **Renumber**, or **POV** keeps the selected row, while loading another document — or
+  deleting the chapter — leaves nothing selected.
 
 ## 5. Edit panel (decided)
 

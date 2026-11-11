@@ -178,7 +178,10 @@ DOM as HTML.
   mover's category. **Renumber** asks once, then renumbers every act chapter of
   the document in their current order (`POST /api/chapters/renumber`), counting
   from 1 or from 0 when the dialog's box is ticked —
-  the title's number is rewritten in place and the list reloads. Clicking a
+  the title's number is rewritten in place and the list reloads. A list reload
+  (after a rename, move, renumber, or POV change) keeps the selected chapter
+  selected; another document, or a deleted chapter, leaves nothing selected.
+  Clicking a
   chapter selects it **and** loads its text into the editor (via `onEdit` →
   `editPanel.open` → the `.../document` GET); a dirty buffer is saved first, and
   a failed save keeps the editor on the open chapter rather than losing the

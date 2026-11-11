@@ -48,11 +48,19 @@ export class LeftPanel {
     this.element.append(this.chapterList.element);
   }
 
+  /**
+   * Load a document's chapters, keeping the selected chapter selected when it
+   * is still in the list: reloading the same document after a rename, move,
+   * renumber, or POV change must not drop the row the writer is editing, while
+   * another document's rows — or a deleted chapter — leave nothing selected.
+   */
   async load(documentId: string): Promise<void> {
     try {
+      const selectedId = this.chapterList.selectedId();
       this.documentId = documentId;
       this.chapters = await this.api.listChapters(documentId);
       this.chapterList.setChapters(this.chapters);
+      this.chapterList.select(selectedId);
     } catch (error) {
       reportError("Load chapters", error, this.onMessage);
     }
@@ -73,9 +81,7 @@ export class LeftPanel {
 
   async reload(): Promise<void> {
     if (this.documentId !== null) {
-      const selectedId = this.chapterList.selectedId();
       await this.load(this.documentId);
-      this.chapterList.select(selectedId);
     }
   }
 

@@ -568,4 +568,98 @@ describe("LeftPanel", () => {
     expect(api.listChapters).toHaveBeenLastCalledWith("d1");
     expect(panel.selectedChapter()?.title).toBe("Second");
   });
+
+  it("keeps the selected chapter when a POV change reloads the list", async () => {
+    const afterPov = chapters(["a", "A", "I"], ["b", "B2", "I"], ["c", "C", "II"]).map((row) =>
+      row.id === "b" ? { ...row, pov: "Karakas" } : row,
+    );
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => afterPov)
+        .mockResolvedValueOnce(chapters(["a", "A", "I"], ["b", "B", "I"], ["c", "C", "II"]))
+        .mockResolvedValueOnce(afterPov),
+      setPov: vi.fn(async () => ({ applied: true, pov: { id: "k1", title: "Karakas" }, warning: null })),
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"))
+      .find((n) => n.textContent === "POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.querySelector<HTMLInputElement>("[data-testid='pov-input']")!.value = "Karakas";
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"))
+      .find((n) => n.textContent === "Set POV")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await vi.waitFor(() => expect(listRows()[1].textContent).toBe("B2"));
+    const selected = document.querySelector<HTMLElement>(".chapter-row.is-selected");
+    expect(selected?.dataset.chapterId).toBe("b");
+  });
+
+  it("keeps the selection on the renamed chapter when the list reloads", async () => {
+    const updateChapter = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"], ["b", "Renamed", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "A", "I"], ["b", "B", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "A", "I"], ["b", "Renamed", "I"])),
+      updateChapter,
+    });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"))
+      .find((n) => n.textContent === "Rename")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.querySelector<HTMLInputElement>("[data-testid='modal-input']")!.value = "Renamed";
+    Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"))
+      .find((n) => n.textContent === "Rename")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await vi.waitFor(() => expect(listRows()[1].textContent).toBe("Renamed"));
+    const selected = document.querySelector<HTMLElement>(".chapter-row.is-selected");
+    expect(selected?.dataset.chapterId).toBe("b");
+    expect(selected?.textContent).toBe("Renamed");
+  });
+
+  it("drops the selection when the selected chapter is gone from the reloaded list", async () => {
+    const listChapters = vi
+      .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"]))
+      .mockResolvedValueOnce(chapters(["a", "A", "I"], ["b", "B", "I"]))
+      .mockResolvedValueOnce(chapters(["a", "A", "I"]));
+    const api = fakeApi({ listChapters });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(panel.selectedChapter()?.id).toBe("b");
+
+    await panel.reload();
+
+    expect(panel.selectedChapter()).toBeNull();
+  });
+
+  it("clears the selection when another document is loaded", async () => {
+    const listChapters = vi
+      .fn(async (): Promise<ChapterListRow[]> => chapters(["z", "Z", "I"]))
+      .mockResolvedValueOnce(chapters(["a", "A", "I"]))
+      .mockResolvedValueOnce(chapters(["z", "Z", "I"]));
+    const api = fakeApi({ listChapters });
+    const panel = new LeftPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(panel.selectedChapter()?.id).toBe("a");
+
+    await panel.load("d2");
+
+    expect(panel.selectedChapter()).toBeNull();
+    expect(document.querySelector(".chapter-row.is-selected")).toBeNull();
+  });
 });
