@@ -435,6 +435,24 @@ describe("EditPanel", () => {
     expect(api.getChapterDocument).toHaveBeenLastCalledWith("c2");
   });
 
+  it("open saves and reads nothing when the chapter is already open", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => doc("First")),
+      saveChapterDocument: vi.fn(async (_id: string, content: string) => doc(content)),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    panel.setContent("# Edited\n");
+
+    await panel.open("c1");
+
+    expect(api.saveChapterDocument).not.toHaveBeenCalled();
+    expect(api.getChapterDocument).toHaveBeenCalledTimes(1);
+    expect(panel.isDirty()).toBe(true);
+    expect(panel.content()).toContain("# Edited");
+  });
+
   it("delegates setLanguage and getLanguage to the WYSIWYG editable", async () => {
     const api = fakeApi();
     const panel = new EditPanel({ api });

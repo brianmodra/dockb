@@ -127,7 +127,9 @@ stays identical across platforms; the native menu is removed at startup
   surname in order; three or more the full name — and a near miss suggests a character
   (replacing the typed text, warning shown, the modal staying open). An empty name clears.
   (A metadata YAML entry is a later addition once per-chapter `*.yaml` meta files exist.)
-- **Edit** — opens the chapter (`GET /api/chapters/{id}/document`) in the edit panel.
+- **Edit** — opens the chapter (`GET /api/chapters/{id}/document`) in the edit panel. Clicking the
+  chapter already shown in the panel saves and reads nothing: the buffer stays as the writer
+  left it, dirty or clean.
 - **Rename** — a modal with a single field for the new name and **Cancel / Rename**.
 - **Delete** — a confirmation modal first: **Cancel / Delete**.
 - **Move** — enter move mode: a **solid bar** is drawn under the chapter name nearest the mouse.

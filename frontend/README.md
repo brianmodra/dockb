@@ -185,7 +185,7 @@ DOM as HTML.
   chapter selects it **and** loads its text into the editor (via `onEdit` →
   `editPanel.open` → the `.../document` GET); a dirty buffer is saved first, and
   a failed save keeps the editor on the open chapter rather than losing the
-  text. Above the text (in the same scroll) sits the chapter's identity line
+  text. Re-clicking the chapter already shown saves and reads nothing. Above the text (in the same scroll) sits the chapter's identity line
   (`characterHeader.ts`, read-only): a character's name parts as one prose
   line, or the title and its point of view; hidden in raw mode, where the
   front matter is visible as text. When a POV is set on the open chapter the
