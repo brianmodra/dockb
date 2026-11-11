@@ -239,7 +239,7 @@ describe("EditPanel", () => {
     expect(document.querySelector("[data-testid='context-menu']")).toBeNull();
   });
 
-  it("opens the diagnostic popover before the quote actions on right-click", async () => {
+  it("offers the diagnostic's actions before the quote actions on right-click", async () => {
     const api = fakeApi({ getChapterDocument: vi.fn(async () => doc("teh cat")) });
     const onDiagnostic = vi.fn();
     const onSelectionActions = vi.fn();
@@ -273,7 +273,7 @@ describe("EditPanel", () => {
     paragraph.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(onDiagnostic).toHaveBeenCalledWith(diagnostic, { x: 10, y: 20 });
+    expect(onDiagnostic).toHaveBeenCalledWith(diagnostic);
     expect(onSelectionActions).not.toHaveBeenCalled();
   });
 

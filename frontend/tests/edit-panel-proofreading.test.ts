@@ -123,7 +123,6 @@ describe("EditPanel raw proofreading", () => {
 
     expect(onDiagnostic).toHaveBeenCalledWith(
       expect.objectContaining({ word: "recieve", replacements: ["receive"] }),
-      expect.any(Object),
     );
   });
 
@@ -153,7 +152,6 @@ describe("EditPanel raw proofreading", () => {
       .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     expect(onDiagnostic).toHaveBeenCalledWith(
       expect.objectContaining({ word: "&", from: diagnostic.from, to: diagnostic.to }),
-      expect.any(Object),
     );
 
     expect(panel.applyProofreadingReplacement(diagnostic, "and")).toBe(true);

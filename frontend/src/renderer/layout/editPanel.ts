@@ -38,7 +38,7 @@ export interface EditPanelOptions {
   onDirtyChange?: (dirty: boolean) => void;
   onSelectionActions?: (context: SelectionContext) => void;
   onSelectionChange?: () => void;
-  onDiagnostic?: (diagnostic: WysiwygDiagnostic, point: { x: number; y: number }) => void;
+  onDiagnostic?: (diagnostic: WysiwygDiagnostic) => void;
 }
 
 export class EditPanel {
@@ -50,7 +50,7 @@ export class EditPanel {
   onDirtyChange?: (dirty: boolean) => void;
   onSelectionActions?: (context: SelectionContext) => void;
   onSelectionChange?: () => void;
-  onDiagnostic?: (diagnostic: WysiwygDiagnostic, point: { x: number; y: number }) => void;
+  onDiagnostic?: (diagnostic: WysiwygDiagnostic) => void;
   onEditActivity?: () => void;
   private view: EditorView;
   private readonly wysiwyg: WysiwygView;
@@ -141,7 +141,7 @@ export class EditPanel {
     const diagnostic = this.wysiwyg.diagnosticAtPoint(event.clientX, event.clientY);
     if (diagnostic !== null) {
       event.preventDefault();
-      this.onDiagnostic?.(diagnostic, { x: event.clientX, y: event.clientY });
+      this.onDiagnostic?.(diagnostic);
       return;
     }
     const context = this.wysiwyg.selectionContext();
@@ -161,7 +161,7 @@ export class EditPanel {
       return;
     }
     event.preventDefault();
-    this.onDiagnostic?.(diagnostic, { x: event.clientX, y: event.clientY });
+    this.onDiagnostic?.(diagnostic);
   }
 
   private rawDiagnosticAtPoint(x: number, y: number): WysiwygDiagnostic | null {
