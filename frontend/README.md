@@ -8,7 +8,9 @@ never writes files itself — an import reads the directory the user picks and h
 server, which does the writing — and the backend even serves the interface, so the app and API
 share an origin and the signed-in session reaches every route. Proofreading starts from the
 backend's default language and checks a paragraph at a time. The chapter list's right-click menu
-renames, moves, renumbers, and assigns a point-of-view character; a read-only identity line tracks
+renames, moves, renumbers, and assigns a point-of-view character; the selected chapter stays
+selected through those list changes, and re-clicking the chapter shown in the editor saves and
+reads nothing. A read-only identity line tracks
 the front matter; and the message panel's response strip answers AI chat prompts (opening a
 named chapter and highlighting its sentences), right-clicks on selected text (marking or
 clearing a paragraph's quote type), and right-clicks on a proofreading squiggle (applying a

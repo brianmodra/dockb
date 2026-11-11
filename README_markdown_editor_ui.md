@@ -7,7 +7,8 @@ and the dialogs, so someone new can see what the writer sees and why each click 
 including how proofreading works in both the WYSIWYG and raw views: the backend checks the
 paragraph under the cursor, the writer picks a correction or adds a word to that document's
 glossary through the response strip, and nothing is written to the file until the writer saves.
-The File menu
+The chapter list stays in step with the editor — the shown chapter stays selected through list
+changes, and re-clicking it saves and reads nothing. The File menu
 saves unsaved work before signing out, and the identity line above the text shows a character's
 name parts or a chapter's title and point of view.
 
