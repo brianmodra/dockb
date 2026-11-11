@@ -159,6 +159,27 @@ describe("menubar", () => {
     item?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onOpenLanguageSettings).toHaveBeenCalledTimes(1);
   });
+
+  it("reports Settings → Dictionary… to onOpenDictionary", () => {
+    const onOpenDictionary = vi.fn();
+    const bar = buildMenubar({ onOpenDictionary });
+    document.body.append(bar.element);
+    openMenu(bar, "Settings");
+    bar.element
+      .querySelector<HTMLElement>('[data-testid="menu-item-dictionary"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onOpenDictionary).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Language and Dictionary in the Settings menu", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    openMenu(bar, "Settings");
+    const labels = Array.from(dropdown(bar, "Settings").querySelectorAll(".menu-item")).map(
+      (n) => n.textContent,
+    );
+    expect(labels).toEqual(["Language…", "Dictionary…"]);
+  });
 });
 
 describe("menubar document actions", () => {

@@ -527,6 +527,46 @@ body {
   background: #e8f1fb;
 }
 
+.dictionary-field {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dictionary-field .modal-input {
+  flex: 1;
+  margin-top: 0;
+}
+
+.dictionary-words {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.dictionary-word {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.dictionary-word:last-child {
+  border-bottom: none;
+}
+
+.dictionary-remove {
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  color: #888;
+}
+
+.dictionary-remove:hover {
+  color: #a02020;
+}
+
 [data-testid="panel-edit"] {
   flex: 1;
   background: #fff;

@@ -453,9 +453,9 @@ Prose validation is an interactive feature over one paragraph at a time, compute
 - The server applies the document's effective glossary — the stored glossary plus the document's
   character names — to suppress spelling diagnostics for accepted names. It never adds those
   words to LanguageTool's shared user dictionary. The stored words are per account and document in
-  SQLite, edited through `GET`/`PUT /api/documents/{document_id}/glossary`; only that stored list
-  is returned, and character names are merged at check time so a renamed character leaves no stale
-  word behind.
+  SQLite, edited through `GET`/`PUT /api/documents/{document_id}/glossary` and the single-word
+  `POST`/`DELETE`; only that stored list is returned, and character names are merged at check time
+  so a renamed character leaves no stale word behind.
 - Diagnostics are debounced as the user types; they are not part of the save request, the save
   response, or the canonical text. The backend remains the only writer of record and diagnostics
   never touch files or git.

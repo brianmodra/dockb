@@ -8,6 +8,7 @@ export interface MenubarOptions {
   onImport?: () => void;
   onQuit?: () => void;
   onOpenLanguageSettings?: () => void;
+  onOpenDictionary?: () => void;
   onDeleteDocument?: () => void;
   onEditDocument?: () => void;
   onEditChapter?: () => void;
@@ -58,7 +59,10 @@ const MENUS: MenuSpec[] = [
   {
     key: "Settings",
     label: "⚙",
-    items: [{ key: "language", label: "Language…" }],
+    items: [
+      { key: "language", label: "Language…" },
+      { key: "dictionary", label: "Dictionary…" },
+    ],
   },
 ];
 
@@ -199,5 +203,7 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
     options.onSignOut?.();
   } else if (menu.key === "Settings" && item.key === "language") {
     options.onOpenLanguageSettings?.();
+  } else if (menu.key === "Settings" && item.key === "dictionary") {
+    options.onOpenDictionary?.();
   }
 }

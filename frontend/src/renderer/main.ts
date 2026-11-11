@@ -14,6 +14,7 @@ import { LeftPanel } from "./layout/leftPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
 import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
 import { LANGUAGES, openLanguageSettings } from "./layout/languageSettings";
+import { openDictionaryDialog } from "./layout/dictionaryDialog";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
 import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
@@ -104,6 +105,19 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           editPanel?.setLanguage(lang);
         }
       })();
+    },
+    onOpenDictionary: () => {
+      if (!options.api) {
+        return;
+      }
+      openDictionaryDialog({
+        api: options.api,
+        documentId: currentDocumentId(),
+        onMessage: (text) => layout.pushMessage(text),
+        onWordsChanged: () => {
+          void proofreading?.checkNow();
+        },
+      });
     },
     onSignOut: () => signOut.request(),
     onQuit: () => {
