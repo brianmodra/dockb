@@ -40,7 +40,7 @@ def _document() -> Document:
     chapter.paragraphs.append(_paragraph("p1", [("The", POS.DET), ("murder", POS.NOUN), ("was", POS.AUX), ("discovered", POS.VERB)]))
     chapter.paragraphs.append(_paragraph("p2", [("Jeremiah", POS.PROPN), ("spoke", POS.VERB)]))
     chapter.paragraphs.append(_paragraph("p3", [("Adams", POS.PROPN), ("entered", POS.VERB)]))
-    chapter.paragraphs.append(_paragraph("p4", [("Jer-bear", POS.PROPN), ("smiled", POS.VERB)]))
+    chapter.paragraphs.append(_paragraph("p4", [("Jer", POS.PROPN), ("-", POS.PUNCT), ("bear", POS.PROPN), ("smiled", POS.VERB)]))
     document.chapters.append(chapter)
     return document
 
@@ -103,7 +103,8 @@ def test_an_ambiguous_name_is_left_pending_not_stamped() -> None:
 
 
 def test_a_hyphenated_nickname_matches_through_its_tokens() -> None:
-    # "Jer-bear" is split by spaCy into Jer - bear; the joined text still names him.
+    # spaCy stores "Jer-bear" as three tokens — Jer, -, bear — and the hyphen
+    # (a PUNCT token) is skipped, so the name matches through its word tokens.
     mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture([{"id": "p4", "state": 1}])
 
     evaluate_chapter_tier1(

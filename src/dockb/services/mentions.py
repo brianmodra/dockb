@@ -179,10 +179,9 @@ def _judge_paragraph(  # pylint: disable=too-many-locals,too-many-branches
         for token in sentence.tokens:
             if token.pos in (POS.PUNCT, POS.PART):
                 continue
-            # a hyphenated token ("Jer-bear") splits like a hyphenated entry
-            for piece in token.text.lower().split("-"):
-                if piece:
-                    words.append((piece, token.pos == POS.PROPN))
+            # spaCy already splits "Jer-bear" into "Jer" "-" "bear" (the hyphen
+            # is a skipped PUNCT token), so a name token never carries a hyphen.
+            words.append((token.text.lower(), token.pos == POS.PROPN))
         position = 0
         while position < len(words):
             best_length = 0
