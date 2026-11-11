@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ResponseArea,
   parseResponseReply,
+  proofreadingActionObjects,
   selectionActionObjects,
 } from "../src/renderer/layout/responseArea";
-import type { SelectionContext } from "../src/renderer/layout/wysiwyg";
+import type { SelectionContext, WysiwygDiagnostic } from "../src/renderer/layout/wysiwyg";
 
 function button(area: ResponseArea, label: string): HTMLButtonElement {
   return Array.from(area.element.querySelectorAll<HTMLButtonElement>("button")).find(
@@ -220,5 +221,53 @@ describe("selectionActionObjects", () => {
       text: `What do you want to do with this unquoted text: "${forty}…"`,
     });
     expect((objects[1].button?.args as { text: string }).text).toBe(longer);
+  });
+});
+
+function sampleDiagnostic(overrides: Partial<WysiwygDiagnostic> = {}): WysiwygDiagnostic {
+  return {
+    rule_id: "MORFOLOGIK_RULE_EN_US",
+    category: "TYPOS",
+    severity: "warning",
+    message: "Possible spelling mistake found.",
+    start: 0,
+    end: 3,
+    replacements: ["the", "tea"],
+    in_focus: true,
+    from: 1,
+    to: 4,
+    word: "teh",
+    ...overrides,
+  };
+}
+
+describe("proofreadingActionObjects", () => {
+  it("names the word and message, then the replacements and Add to dictionary", () => {
+    const objects = proofreadingActionObjects(sampleDiagnostic());
+
+    expect(objects).toEqual([
+      { text: '"teh" — Possible spelling mistake found.' },
+      { button: { label: "the", function: "proofreading-replace", args: { replacement: "the" } } },
+      { button: { label: "tea", function: "proofreading-replace", args: { replacement: "tea" } } },
+      { button: { label: "Add to dictionary", function: "proofreading-add-word", args: { word: "teh" } } },
+    ]);
+  });
+
+  it("offers at most five replacements", () => {
+    const objects = proofreadingActionObjects(
+      sampleDiagnostic({ replacements: ["a", "b", "c", "d", "e", "f", "g"] }),
+    );
+
+    const labels = objects.slice(1, -1).map((item) => item.button?.label);
+    expect(labels).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("offers the message and Add to dictionary alone when there are no replacements", () => {
+    const objects = proofreadingActionObjects(sampleDiagnostic({ replacements: [] }));
+
+    expect(objects).toEqual([
+      { text: '"teh" — Possible spelling mistake found.' },
+      { button: { label: "Add to dictionary", function: "proofreading-add-word", args: { word: "teh" } } },
+    ]);
   });
 });

@@ -1,5 +1,8 @@
 import { createSpinner } from "./spinner";
-import type { SelectionContext } from "./wysiwyg";
+import type { SelectionContext, WysiwygDiagnostic } from "./wysiwyg";
+
+export const PROOFREADING_REPLACE_FUNCTION = "proofreading-replace";
+export const PROOFREADING_ADD_WORD_FUNCTION = "proofreading-add-word";
 
 export interface ResponseButton {
   label: string;
@@ -120,6 +123,31 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
   return [
     { text: `What do you want to do with this ${state} text: "${snippet}"` },
     ...buttons,
+  ];
+}
+
+/**
+ * Build the response-area objects for a right-clicked diagnostic: a line naming
+ * the word and its message, then the replacement buttons and Add to dictionary.
+ */
+export function proofreadingActionObjects(diagnostic: WysiwygDiagnostic): ResponseObject[] {
+  const replacements = diagnostic.replacements.slice(0, 5).map((replacement) => ({
+    button: {
+      label: replacement,
+      function: PROOFREADING_REPLACE_FUNCTION,
+      args: { replacement },
+    },
+  }));
+  return [
+    { text: `"${diagnostic.word}" — ${diagnostic.message}` },
+    ...replacements,
+    {
+      button: {
+        label: "Add to dictionary",
+        function: PROOFREADING_ADD_WORD_FUNCTION,
+        args: { word: diagnostic.word },
+      },
+    },
   ];
 }
 
