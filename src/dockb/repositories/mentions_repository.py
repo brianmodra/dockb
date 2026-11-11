@@ -92,7 +92,7 @@ _CHAPTER_STAMP_CYPHER = """
 MATCH (ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})
 OPTIONAL MATCH (ch)-[m:MENTIONS]->()
 DELETE m
-WITH ch
+WITH DISTINCT ch
 UNWIND $character_ids AS character_id
 MATCH (c:Chapter {id: character_id, category: 'Character'})
 CREATE (ch)-[:MENTIONS {method: "rollup", confidence: 1.0}]->(c)

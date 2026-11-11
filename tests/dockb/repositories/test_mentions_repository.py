@@ -163,6 +163,9 @@ class TestChapterRollup:
         cypher, params = extract_call(neo4j_session)
         assert "MATCH (ch:Chapter {id: $chapter_id})-[:PART_OF]->(d:Document {owner: $owner})" in cypher
         assert "DELETE m" in cypher
+        # the delete collapses to ONE chapter row, or the UNWIND below would
+        # re-create the rollup once per old relationship (exponential blowup)
+        assert "WITH DISTINCT ch" in cypher
         assert params["character_ids"] == ["k1", "k2"]
 
     def test_mark_stale_also_stales_the_chapters_rollup(self, repo, neo4j_session):
