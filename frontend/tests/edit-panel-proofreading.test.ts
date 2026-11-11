@@ -222,3 +222,41 @@ describe("EditPanel WYSIWYG right-click", () => {
     expect(left.defaultPrevented).toBe(false);
   });
 });
+
+describe("EditPanel raw quote-pair fix", () => {
+  const QUOTES = '---\ntitle: Test\n---\n\n<span data-par-id="p-1">\n"hello"\n</span>';
+
+  it("maps the partner and fixes both quotes in raw mode", () => {
+    const panel = new EditPanel({ api: fakeApi() });
+    document.body.append(panel.element);
+    panel.setMode("raw");
+    panel.setContent(QUOTES);
+    viewOf(panel).dispatch({ selection: { anchor: QUOTES.indexOf('"hello"') } });
+    const context = panel.proofreadingParagraph();
+    expect(context?.text).toBe('"hello"');
+
+    const [diagnostic] = panel.setProofreadingDiagnostics(context!, [
+      {
+        rule_id: "EN_QUOTES",
+        category: "",
+        severity: "warning",
+        message: "In English, the correct closing quote is \u201d",
+        start: 6,
+        end: 7,
+        replacements: ["\u201d"],
+        in_focus: true,
+        pair: { replacement: "\u201d", partner_start: 0, partner_end: 1, partner_replacement: "\u201c" },
+      },
+    ]);
+
+    expect(diagnostic.pair).toEqual({
+      replacement: "\u201d",
+      from: expect.any(Number),
+      to: expect.any(Number),
+      partnerReplacement: "\u201c",
+    });
+    expect(panel.applyProofreadingPair(diagnostic)).toBe(true);
+    expect(panel.content()).toContain("\u201chello\u201d");
+    expect(panel.content()).not.toContain('"hello"');
+  });
+});

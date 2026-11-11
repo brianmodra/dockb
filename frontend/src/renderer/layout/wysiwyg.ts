@@ -316,10 +316,47 @@ export interface ProofreadingParagraph {
 }
 
 /** A wire diagnostic mapped onto ProseMirror positions in the open document. */
-export interface WysiwygDiagnostic extends ProofreadingDiagnostic {
+export interface WysiwygDiagnostic extends Omit<ProofreadingDiagnostic, "pair"> {
   from: number;
   to: number;
   word: string;
+  pair?: MappedQuotePair | null;
+}
+
+/** A quote pair mapped to document positions: what each side should become. */
+export interface MappedQuotePair {
+  replacement: string;
+  from: number;
+  to: number;
+  partnerReplacement: string;
+}
+
+/** Map a wire pair's partner offsets onto document positions at *base*. */
+export function mapQuotePair(
+  diagnostic: ProofreadingDiagnostic,
+  base: number,
+  textLength: number,
+): MappedQuotePair | undefined {
+  const pair = diagnostic.pair;
+  if (!pair) {
+    return undefined;
+  }
+  const { partner_start, partner_end } = pair;
+  if (
+    !Number.isInteger(partner_start) ||
+    !Number.isInteger(partner_end) ||
+    partner_start < 0 ||
+    partner_end > textLength ||
+    partner_start >= partner_end
+  ) {
+    return undefined;
+  }
+  return {
+    replacement: pair.replacement,
+    from: base + partner_start,
+    to: base + partner_end,
+    partnerReplacement: pair.partner_replacement,
+  };
 }
 
 /** The editor state a selected-text action needs, captured when it is chosen. */
@@ -495,6 +532,7 @@ export class WysiwygView {
         from: span.contentStart + start,
         to: span.contentStart + end,
         word: context.text.slice(start, end),
+        pair: mapQuotePair(diagnostic, span.contentStart, context.text.length),
       });
     });
     this.innerView.dispatch(this.innerView.state.tr.setMeta(proofreadingPluginKey, mapped));
@@ -542,6 +580,27 @@ export class WysiwygView {
     this.innerView.dispatch(
       this.innerView.state.tr.insertText(replacement, diagnostic.from, diagnostic.to),
     );
+    return true;
+  }
+
+  /** Apply a quote-pair fix — the flagged quote and its partner — in one transaction. */
+  applyProofreadingPair(diagnostic: WysiwygDiagnostic): boolean {
+    if (!this.innerView || !diagnostic.pair) {
+      return false;
+    }
+    const size = this.innerView.state.doc.content.size;
+    const edits = [
+      { from: diagnostic.from, to: diagnostic.to, insert: diagnostic.pair.replacement },
+      { from: diagnostic.pair.from, to: diagnostic.pair.to, insert: diagnostic.pair.partnerReplacement },
+    ];
+    if (edits.some((edit) => edit.from < 0 || edit.to > size || edit.from >= edit.to)) {
+      return false;
+    }
+    const tr = this.innerView.state.tr;
+    for (const edit of [...edits].sort((a, b) => b.from - a.from)) {
+      tr.insertText(edit.insert, edit.from, edit.to);
+    }
+    this.innerView.dispatch(tr);
     return true;
   }
 

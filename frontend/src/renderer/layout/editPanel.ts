@@ -368,6 +368,29 @@ export class EditPanel {
     return this.wysiwyg.applyProofreadingReplacement(diagnostic, replacement);
   }
 
+  applyProofreadingPair(diagnostic: WysiwygDiagnostic): boolean {
+    if (this.mode === "raw") {
+      if (!diagnostic.pair) {
+        return false;
+      }
+      const length = this.view.state.doc.length;
+      const edits = [
+        { from: diagnostic.from, to: diagnostic.to, insert: diagnostic.pair.replacement },
+        {
+          from: diagnostic.pair.from,
+          to: diagnostic.pair.to,
+          insert: diagnostic.pair.partnerReplacement,
+        },
+      ];
+      if (edits.some((edit) => edit.from < 0 || edit.to > length || edit.from >= edit.to)) {
+        return false;
+      }
+      this.view.dispatch({ changes: edits });
+      return true;
+    }
+    return this.wysiwyg.applyProofreadingPair(diagnostic);
+  }
+
   private clearRawProofreadingDiagnostics(): void {
     this.rawProofreading.clear();
     this.view.dispatch(setLintDiagnostics(this.view.state, []));

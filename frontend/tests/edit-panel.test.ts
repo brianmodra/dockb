@@ -733,3 +733,60 @@ describe("EditPanel dirty change reporting", () => {
     expect(onDirtyChange.mock.calls.map((call) => call[0])).toEqual([false, true]);
   });
 });
+
+describe("EditPanel quote-pair fixes", () => {
+  it("fixes both quotes in one transaction (WYSIWYG)", async () => {
+    const panel = new EditPanel({
+      api: fakeApi({ getChapterDocument: vi.fn(async () => doc('"hello"')) }),
+    });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    const diagnostic: WysiwygDiagnostic = {
+      rule_id: "EN_QUOTES",
+      category: "",
+      severity: "warning",
+      message: "In English, the correct closing quote is \u201d",
+      start: 6,
+      end: 7,
+      replacements: ["\u201d"],
+      in_focus: true,
+      from: 7,
+      to: 8,
+      word: '"',
+      pair: { replacement: "\u201d", from: 1, to: 2, partnerReplacement: "\u201c" },
+    };
+
+    expect(panel.applyProofreadingPair(diagnostic)).toBe(true);
+
+    const content = panel.content();
+    expect(content).toContain("\u201chello\u201d");
+    expect(content).not.toContain('"');
+  });
+
+  it("refuses a quote-pair fix with a bad partner range (WYSIWYG)", async () => {
+    const panel = new EditPanel({
+      api: fakeApi({ getChapterDocument: vi.fn(async () => doc('"hello"')) }),
+    });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    const diagnostic: WysiwygDiagnostic = {
+      rule_id: "EN_QUOTES",
+      category: "",
+      severity: "warning",
+      message: "In English, the correct closing quote is \u201d",
+      start: 6,
+      end: 7,
+      replacements: ["\u201d"],
+      in_focus: true,
+      from: 7,
+      to: 8,
+      word: '"',
+      pair: { replacement: "\u201d", from: 3, to: 2, partnerReplacement: "\u201c" },
+    };
+
+    expect(panel.applyProofreadingPair(diagnostic)).toBe(false);
+    expect(panel.content()).toContain('"');
+  });
+});

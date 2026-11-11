@@ -181,6 +181,14 @@ export interface ProofreadingCheckRequest {
   focus?: ProofreadingFocus;
 }
 
+/** A paired quote fix: the flagged quote and its partner, each corrected. */
+export interface ProofreadingQuotePair {
+  replacement: string;
+  partner_start: number;
+  partner_end: number;
+  partner_replacement: string;
+}
+
 /** One proofreading finding, with paragraph-relative offsets. */
 export interface ProofreadingDiagnostic {
   rule_id: string;
@@ -190,6 +198,7 @@ export interface ProofreadingDiagnostic {
   start: number;
   end: number;
   replacements: string[];
+  pair?: ProofreadingQuotePair | null;
   in_focus: boolean;
 }
 

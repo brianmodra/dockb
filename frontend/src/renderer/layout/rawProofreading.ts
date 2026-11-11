@@ -93,9 +93,38 @@ export function mapRawProofreadingDiagnostics(
       from: starts[start],
       to: ends[end - 1],
       word: context.text.slice(start, end),
+      pair: mapRawQuotePair(diagnostic, starts, ends, context.text.length),
     });
   });
   return mapped;
+}
+
+function mapRawQuotePair(
+  diagnostic: ProofreadingDiagnostic,
+  starts: number[],
+  ends: number[],
+  textLength: number,
+): WysiwygDiagnostic["pair"] {
+  const pair = diagnostic.pair;
+  if (!pair) {
+    return undefined;
+  }
+  const { partner_start, partner_end } = pair;
+  if (
+    !Number.isInteger(partner_start) ||
+    !Number.isInteger(partner_end) ||
+    partner_start < 0 ||
+    partner_end > textLength ||
+    partner_start >= partner_end
+  ) {
+    return undefined;
+  }
+  return {
+    replacement: pair.replacement,
+    from: starts[partner_start],
+    to: ends[partner_end - 1],
+    partnerReplacement: pair.partner_replacement,
+  };
 }
 
 function parseBlocks(buffer: string): RawBlock[] {

@@ -228,6 +228,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           clearProofreadingDiagnostics: () => editPanel.clearProofreadingDiagnostics(),
           applyProofreadingReplacement: (diagnostic, replacement) =>
             editPanel.applyProofreadingReplacement(diagnostic, replacement),
+          applyProofreadingPair: (diagnostic) => editPanel.applyProofreadingPair(diagnostic),
         },
         documentId: () => panel.currentDocumentId(),
         language: () => editPanel.getLanguage(),

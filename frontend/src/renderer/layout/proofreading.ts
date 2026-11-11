@@ -12,6 +12,7 @@ export interface ProofreadingTarget {
   ): WysiwygDiagnostic[];
   clearProofreadingDiagnostics(): void;
   applyProofreadingReplacement(diagnostic: WysiwygDiagnostic, replacement: string): boolean;
+  applyProofreadingPair(diagnostic: WysiwygDiagnostic): boolean;
 }
 
 export interface ProofreadingControllerOptions {
