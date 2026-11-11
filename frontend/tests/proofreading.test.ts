@@ -59,6 +59,7 @@ function setup(
     setProofreadingDiagnostics: vi.fn(() => [mappedDiagnostic]),
     clearProofreadingDiagnostics: vi.fn(),
     applyProofreadingReplacement: vi.fn(() => true),
+    applyProofreadingPair: vi.fn(() => true),
   };
   const onMessage = vi.fn();
   const onShowActions = vi.fn();
@@ -255,6 +256,43 @@ describe("ProofreadingController actions", () => {
     expect(target.applyProofreadingReplacement).toHaveBeenCalledWith(mappedDiagnostic, "the");
     expect(onCloseActions).toHaveBeenCalledTimes(1);
     expect(api.checkText).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a quote-pair fix button when the diagnostic carries a pair", () => {
+    const { controller, onShowActions } = setup();
+    const paired = { ...mappedDiagnostic, pair: { replacement: "”", from: 5, to: 6, partnerReplacement: "“" } };
+
+    controller.showActions(paired);
+
+    expect(onShowActions).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        { button: { label: "Fix “ … ”", function: "proofreading-fix-pair" } },
+      ]),
+    );
+  });
+
+  it("applies the pair fix, closes the actions, and re-checks", async () => {
+    const { api, target, controller, onCloseActions } = setup();
+    api.checkText.mockResolvedValue({ language: "en-US", diagnostics: [] });
+    const paired = { ...mappedDiagnostic, pair: { replacement: "”", from: 5, to: 6, partnerReplacement: "“" } };
+    controller.showActions(paired);
+
+    controller.applyActivePair();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(target.applyProofreadingPair).toHaveBeenCalledWith(paired);
+    expect(onCloseActions).toHaveBeenCalledTimes(1);
+    expect(api.checkText).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing for a pair fix when the active diagnostic has no pair", () => {
+    const { target, controller, onCloseActions } = setup();
+    controller.showActions(mappedDiagnostic);
+
+    controller.applyActivePair();
+
+    expect(target.applyProofreadingPair).not.toHaveBeenCalled();
+    expect(onCloseActions).not.toHaveBeenCalled();
   });
 
   it("closes the actions without re-checking when the replacement no longer applies", async () => {

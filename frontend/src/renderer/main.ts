@@ -4,6 +4,7 @@ import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import {
   PROOFREADING_ADD_WORD_FUNCTION,
+  PROOFREADING_FIX_PAIR_FUNCTION,
   PROOFREADING_REPLACE_FUNCTION,
   parseResponseReply,
   selectionActionObjects,
@@ -168,6 +169,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       },
       [PROOFREADING_ADD_WORD_FUNCTION]: () => {
         void proofreading?.addActiveWord();
+      },
+      [PROOFREADING_FIX_PAIR_FUNCTION]: () => {
+        proofreading?.applyActivePair();
       },
     },
   });

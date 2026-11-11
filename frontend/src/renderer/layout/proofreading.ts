@@ -137,6 +137,19 @@ export class ProofreadingController {
     }
   }
 
+  /** Apply the active diagnostic's quote-pair fix and re-check. */
+  applyActivePair(): void {
+    const diagnostic = this.active;
+    if (diagnostic === null || !diagnostic.pair) {
+      return;
+    }
+    const applied = this.options.target.applyProofreadingPair(diagnostic);
+    this.closeActions();
+    if (applied) {
+      this.schedule();
+    }
+  }
+
   /** Add the active diagnostic's word to this document's glossary and re-check. */
   async addActiveWord(): Promise<void> {
     const diagnostic = this.active;

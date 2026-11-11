@@ -3,6 +3,7 @@ import type { SelectionContext, WysiwygDiagnostic } from "./wysiwyg";
 
 export const PROOFREADING_REPLACE_FUNCTION = "proofreading-replace";
 export const PROOFREADING_ADD_WORD_FUNCTION = "proofreading-add-word";
+export const PROOFREADING_FIX_PAIR_FUNCTION = "proofreading-fix-pair";
 
 export interface ResponseButton {
   label: string;
@@ -128,7 +129,8 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
 
 /**
  * Build the response-area objects for a right-clicked diagnostic: a line naming
- * the word and its message, then the replacement buttons and Add to dictionary.
+ * the word and its message, then the replacement buttons, a quote-pair fix when
+ * the diagnostic carries one, and Add to dictionary.
  */
 export function proofreadingActionObjects(diagnostic: WysiwygDiagnostic): ResponseObject[] {
   const replacements = diagnostic.replacements.slice(0, 5).map((replacement) => ({
@@ -138,9 +140,13 @@ export function proofreadingActionObjects(diagnostic: WysiwygDiagnostic): Respon
       args: { replacement },
     },
   }));
+  const pair = diagnostic.pair
+    ? [{ button: { label: "Fix \u201c \u2026 \u201d", function: PROOFREADING_FIX_PAIR_FUNCTION } }]
+    : [];
   return [
     { text: `"${diagnostic.word}" — ${diagnostic.message}` },
     ...replacements,
+    ...pair,
     {
       button: {
         label: "Add to dictionary",

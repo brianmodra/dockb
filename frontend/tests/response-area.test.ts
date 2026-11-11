@@ -270,4 +270,18 @@ describe("proofreadingActionObjects", () => {
       { button: { label: "Add to dictionary", function: "proofreading-add-word", args: { word: "teh" } } },
     ]);
   });
+
+  it("offers a quote-pair fix when the diagnostic carries a pair", () => {
+    const objects = proofreadingActionObjects(
+      sampleDiagnostic({ pair: { replacement: "\u201d", from: 1, to: 2, partnerReplacement: "\u201c" } }),
+    );
+
+    expect(objects).toEqual([
+      { text: '"teh" — Possible spelling mistake found.' },
+      { button: { label: "the", function: "proofreading-replace", args: { replacement: "the" } } },
+      { button: { label: "tea", function: "proofreading-replace", args: { replacement: "tea" } } },
+      { button: { label: "Fix \u201c \u2026 \u201d", function: "proofreading-fix-pair" } },
+      { button: { label: "Add to dictionary", function: "proofreading-add-word", args: { word: "teh" } } },
+    ]);
+  });
 });
