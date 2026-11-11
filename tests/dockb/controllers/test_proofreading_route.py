@@ -16,6 +16,7 @@ from dockb.services.proofreading import (
     ProofreadingDisabledError,
     ProofreadingService,
     ProofreadingUnavailableError,
+    QuotePair,
     TextTooLongError,
     UnsupportedLanguageError,
 )
@@ -113,9 +114,38 @@ class TestCheckRoute:
                     "start": 4,
                     "end": 7,
                     "replacements": ["the"],
+                    "pair": None,
                     "in_focus": True,
                 }
             ],
+        }
+
+    def test_a_quote_pair_is_serialized(self) -> None:
+        self._wire(
+            _StubService(
+                [
+                    Diagnostic(
+                        rule_id="EN_QUOTES",
+                        category="",
+                        severity="warning",
+                        message="In English, the correct closing quote is \u201d",
+                        start=6,
+                        end=7,
+                        replacements=("\u201d",),
+                        pair=QuotePair("\u201d", 0, 1, "\u201c"),
+                    )
+                ]
+            )
+        )
+
+        resp = self.client.post("/api/check", json={"text": '"hello"', "language": "en-US"})
+
+        assert resp.status_code == 200
+        assert resp.json()["diagnostics"][0]["pair"] == {
+            "replacement": "\u201d",
+            "partner_start": 0,
+            "partner_end": 1,
+            "partner_replacement": "\u201c",
         }
 
     def test_without_a_service_answers_503(self) -> None:

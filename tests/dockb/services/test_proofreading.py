@@ -14,8 +14,10 @@ from dockb.services.proofreading import (
     ProofreadingDisabledError,
     ProofreadingService,
     ProofreadingUnavailableError,
+    QuotePair,
     TextTooLongError,
     UnsupportedLanguageError,
+    _find_quote_pair,
 )
 
 
@@ -241,3 +243,105 @@ class TestCheck:
         codes = [code for code, _label in service.supported_languages()]
 
         assert DEFAULT_LANGUAGE in codes
+
+
+class TestQuotePair:
+    OPEN_DOUBLE = "\u201c"
+    CLOSE_DOUBLE = "\u201d"
+    OPEN_SINGLE = "\u2018"
+    CLOSE_SINGLE = "\u2019"
+
+    def test_a_quote_rule_carries_its_pair_through_the_service(self) -> None:
+        service, _ = _service(
+            _FakeTool(
+                [
+                    _Match(
+                        rule_id="EN_QUOTES",
+                        category="",
+                        rule_issue_type="",
+                        offset=6,
+                        error_length=1,
+                        message=f"In English, the correct closing quote is {self.CLOSE_DOUBLE}",
+                    )
+                ]
+            )
+        )
+
+        [diagnostic] = service.check('"hello"', "en-US")
+
+        assert diagnostic.pair == QuotePair(self.CLOSE_DOUBLE, 0, 1, self.OPEN_DOUBLE)
+
+    def test_an_unpaired_opener_is_paired_with_a_trailing_straight_quote(self) -> None:
+        text = f'{self.OPEN_DOUBLE}hello"'
+
+        pair = _find_quote_pair(
+            text,
+            0,
+            1,
+            "EN_UNPAIRED_BRACKETS",
+            f"Unpaired symbol: '{self.CLOSE_DOUBLE}' seems to be missing",
+        )
+
+        assert pair == QuotePair(self.OPEN_DOUBLE, 6, 7, self.CLOSE_DOUBLE)
+
+    def test_a_straight_closer_is_paired_with_its_opener(self) -> None:
+        text = '"hello"'
+
+        pair = _find_quote_pair(
+            text,
+            6,
+            7,
+            "EN_QUOTES",
+            f"In English, the correct closing quote is {self.CLOSE_DOUBLE}",
+        )
+
+        assert pair == QuotePair(self.CLOSE_DOUBLE, 0, 1, self.OPEN_DOUBLE)
+
+    def test_no_partner_yields_no_pair(self) -> None:
+        text = f"{self.OPEN_DOUBLE}hello"
+
+        pair = _find_quote_pair(
+            text,
+            0,
+            1,
+            "EN_UNPAIRED_BRACKETS",
+            f"Unpaired symbol: '{self.CLOSE_DOUBLE}' seems to be missing",
+        )
+
+        assert pair is None
+
+    def test_a_non_quote_character_is_ignored(self) -> None:
+        pair = _find_quote_pair("(hello", 0, 1, "EN_UNPAIRED_BRACKETS", "Unpaired symbol: ')' seems to be missing")
+
+        assert pair is None
+
+    def test_a_non_quote_rule_is_ignored(self) -> None:
+        pair = _find_quote_pair(f'{self.OPEN_DOUBLE}hello"', 0, 1, "SOME_OTHER_RULE", "")
+
+        assert pair is None
+
+    def test_an_apostrophe_is_not_taken_as_a_single_quote_closer(self) -> None:
+        text = f"{self.OPEN_SINGLE}don{self.CLOSE_SINGLE}t stop"
+
+        pair = _find_quote_pair(
+            text,
+            0,
+            1,
+            "EN_UNPAIRED_BRACKETS",
+            f"Unpaired symbol: '{self.CLOSE_SINGLE}' seems to be missing",
+        )
+
+        assert pair is None
+
+    def test_a_single_quote_pair_is_fixed(self) -> None:
+        text = f"{self.OPEN_SINGLE}hello{self.CLOSE_SINGLE}"
+
+        pair = _find_quote_pair(
+            text,
+            0,
+            1,
+            "EN_UNPAIRED_BRACKETS",
+            f"Unpaired symbol: '{self.CLOSE_SINGLE}' seems to be missing",
+        )
+
+        assert pair == QuotePair(self.OPEN_SINGLE, 6, 7, self.CLOSE_SINGLE)

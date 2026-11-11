@@ -22,6 +22,15 @@ class CheckRequest(BaseModel):
     focus: FocusSpan | None = None
 
 
+class QuotePair(BaseModel):
+    """A paired quote fix: the flagged quote and its partner, each corrected."""
+
+    replacement: str
+    partner_start: int = Field(ge=0)
+    partner_end: int = Field(ge=0)
+    partner_replacement: str
+
+
 class Diagnostic(BaseModel):
     """One finding, anchored to paragraph-relative offsets."""
 
@@ -32,6 +41,7 @@ class Diagnostic(BaseModel):
     start: int
     end: int
     replacements: list[str] = Field(default_factory=list)
+    pair: QuotePair | None = None
     in_focus: bool = False
 
 

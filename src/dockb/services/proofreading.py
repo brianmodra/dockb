@@ -69,6 +69,21 @@ class TextTooLongError(ProofreadingError):
 
 
 @dataclass(frozen=True)
+class QuotePair:
+    """A paired quote fix: what the flagged quote and its partner should become.
+
+    The flagged (main) position is the diagnostic's own ``start``/``end``;
+    ``replacement`` is its correct character. ``partner_start``/``partner_end``
+    name the partner quote and ``partner_replacement`` its correct character.
+    """
+
+    replacement: str
+    partner_start: int
+    partner_end: int
+    partner_replacement: str
+
+
+@dataclass(frozen=True)
 class Diagnostic:
     """One proofreading finding, anchored to paragraph-relative offsets."""
 
@@ -79,6 +94,7 @@ class Diagnostic:
     start: int
     end: int
     replacements: tuple[str, ...] = ()
+    pair: QuotePair | None = None
     in_focus: bool = False
 
 
@@ -213,15 +229,17 @@ def _to_diagnostic(
     if _is_spelling(rule_id, category, issue_type) and _word_at(text, offset, end) in accepted:
         return None
     replacements = tuple(str(replacement) for replacement in (getattr(match, "replacements", ()) or ()))
+    message = str(getattr(match, "message", "") or "")
     in_focus = focus_start is not None and focus_end is not None and offset < focus_end and end > focus_start
     return Diagnostic(
         rule_id=rule_id,
         category=category,
         severity="info" if issue_type in _INFORMATIONAL_ISSUES else "warning",
-        message=str(getattr(match, "message", "") or ""),
+        message=message,
         start=offset,
         end=end,
         replacements=replacements,
+        pair=_find_quote_pair(text, offset, end, rule_id, message),
         in_focus=in_focus,
     )
 
@@ -244,3 +262,84 @@ def _as_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+_QUOTE_RULES = frozenset({"EN_QUOTES", "EN_UNPAIRED_BRACKETS", "UNPAIRED_BRACKETS"})
+_QUOTE_CHARS = frozenset({'"', "'", "\u201c", "\u201d", "\u2018", "\u2019"})
+_OPEN_DOUBLE = "\u201c"
+_CLOSE_DOUBLE = "\u201d"
+_OPEN_SINGLE = "\u2018"
+_CLOSE_SINGLE = "\u2019"
+_DOUBLE_QUOTES = frozenset({'"', _OPEN_DOUBLE, _CLOSE_DOUBLE})
+_CLOSERS_DOUBLE = frozenset({'"', _CLOSE_DOUBLE})
+_OPENERS_DOUBLE = frozenset({'"', _OPEN_DOUBLE})
+_CLOSERS_SINGLE = frozenset({"'", _CLOSE_SINGLE})
+_OPENERS_SINGLE = frozenset({"'", _OPEN_SINGLE})
+
+
+def _find_quote_pair(text: str, offset: int, end: int, rule_id: str, message: str) -> QuotePair | None:
+    """Return the pair fix for a flagged quote, or ``None`` when there is no partner.
+
+    LanguageTool flags one quote at a time and never says where its partner is, so
+    the partner is re-found by scanning the same paragraph for the nearest opposite
+    quote of the same kind (double or single). The result is best-effort: apostrophes
+    and nested quotes can occasionally mis-pair, which the caller accepts.
+    """
+    if rule_id not in _QUOTE_RULES or end - offset != 1:
+        return None
+    char = text[offset:end]
+    if char not in _QUOTE_CHARS:
+        return None
+    double = char in _DOUBLE_QUOTES
+    role = _quote_role(text, offset, message)
+    partner = _next_closer(text, end, double) if role == "open" else _prev_opener(text, offset, double)
+    if partner is None:
+        return None
+    opener = _OPEN_DOUBLE if double else _OPEN_SINGLE
+    closer = _CLOSE_DOUBLE if double else _CLOSE_SINGLE
+    return QuotePair(closer, partner, partner + 1, opener) if role == "close" else QuotePair(opener, partner, partner + 1, closer)
+
+
+def _quote_role(text: str, index: int, message: str) -> str:
+    """Whether the flagged quote opens or closes a pair.
+
+    Curly quotes say it outright; a straight quote borrows the message's
+    "opening"/"closing", and falls back to the next character (a word following a
+    straight quote marks it as an opener).
+    """
+    char = text[index]
+    if char in (_OPEN_DOUBLE, _OPEN_SINGLE):
+        return "open"
+    if char in (_CLOSE_DOUBLE, _CLOSE_SINGLE):
+        return "close"
+    lowered = message.lower()
+    if "closing" in lowered:
+        return "close"
+    if "opening" in lowered:
+        return "open"
+    after = index + 1
+    return "open" if after < len(text) and text[after].isalpha() else "close"
+
+
+def _next_closer(text: str, start: int, double: bool) -> int | None:
+    candidates = _CLOSERS_DOUBLE if double else _CLOSERS_SINGLE
+    for index in range(start, len(text)):
+        char = text[index]
+        if char in candidates and (double or not _is_apostrophe(text, index)):
+            return index
+    return None
+
+
+def _prev_opener(text: str, start: int, double: bool) -> int | None:
+    candidates = _OPENERS_DOUBLE if double else _OPENERS_SINGLE
+    for index in range(start - 1, -1, -1):
+        char = text[index]
+        if char in candidates and (double or not _is_apostrophe(text, index)):
+            return index
+    return None
+
+
+def _is_apostrophe(text: str, index: int) -> bool:
+    before = index - 1 >= 0 and text[index - 1].isalnum()
+    after = index + 1 < len(text) and text[index + 1].isalnum()
+    return before and after

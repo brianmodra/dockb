@@ -25,6 +25,9 @@ from dockb.controllers.schemas.proofreading import (
 from dockb.controllers.schemas.proofreading import (
     Diagnostic as DiagnosticWire,
 )
+from dockb.controllers.schemas.proofreading import (
+    QuotePair as QuotePairWire,
+)
 from dockb.exceptions import DocumentNotFoundError
 from dockb.services.proofreading import (
     ProofreadingDisabledError,
@@ -111,6 +114,16 @@ def check(
                 start=diagnostic.start,
                 end=diagnostic.end,
                 replacements=list(diagnostic.replacements),
+                pair=(
+                    QuotePairWire(
+                        replacement=diagnostic.pair.replacement,
+                        partner_start=diagnostic.pair.partner_start,
+                        partner_end=diagnostic.pair.partner_end,
+                        partner_replacement=diagnostic.pair.partner_replacement,
+                    )
+                    if diagnostic.pair is not None
+                    else None
+                ),
                 in_focus=diagnostic.in_focus,
             )
             for diagnostic in diagnostics
