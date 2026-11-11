@@ -9,9 +9,10 @@ server, which does the writing — and the backend even serves the interface, so
 share an origin and the signed-in session reaches every route. Proofreading starts from the
 backend's default language and checks a paragraph at a time. The chapter list's right-click menu
 renames, moves, renumbers, and assigns a point-of-view character; a read-only identity line tracks
-the front matter; and the message panel's response strip answers both AI chat prompts (opening a
-named chapter and highlighting its sentences) and right-clicks on selected text (marking or
-clearing a paragraph's quote type). The raw and WYSIWYG views edit the same canonical buffer, and
+the front matter; and the message panel's response strip answers AI chat prompts (opening a
+named chapter and highlighting its sentences), right-clicks on selected text (marking or
+clearing a paragraph's quote type), and right-clicks on a proofreading squiggle (applying a
+replacement or adding the word to the document's glossary). The raw and WYSIWYG views edit the same canonical buffer, and
 the dirty check compares that buffer against the last canonical text (quote types included), so
 merely switching chapters never saves an untouched file.
 

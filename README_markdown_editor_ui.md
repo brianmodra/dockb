@@ -5,8 +5,9 @@
 This is the design of DockB's writing window. It explains the menus, the chapter list, the editor
 and the dialogs, so someone new can see what the writer sees and why each click does what it does —
 including how proofreading works in both the WYSIWYG and raw views: the backend checks the
-paragraph under the cursor, the writer picks a correction from the response strip or adds a word
-to that document's glossary, and nothing is written to the file until the writer saves. The File menu
+paragraph under the cursor, the writer picks a correction or adds a word to that document's
+glossary through the response strip, and nothing is written to the file until the writer saves.
+The File menu
 saves unsaved work before signing out, and the identity line above the text shows a character's
 name parts or a chapter's title and point of view.
 
