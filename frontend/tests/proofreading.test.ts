@@ -43,12 +43,6 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function flush(): Promise<void> {
-  for (let i = 0; i < 6; i += 1) {
-    await Promise.resolve();
-  }
-}
-
 function setup(
   options: {
     paragraph?: ProofreadingParagraph | null;
@@ -68,6 +62,8 @@ function setup(
     applyProofreadingReplacement: vi.fn(() => true),
   };
   const onMessage = vi.fn();
+  const onShowActions = vi.fn();
+  const onCloseActions = vi.fn();
   const controller = new ProofreadingController({
     api,
     target,
@@ -79,9 +75,11 @@ function setup(
           : options.documentId,
     language: () => "en-US",
     onMessage,
+    onShowActions,
+    onCloseActions,
     debounceMs: 500,
   });
-  return { api, target, controller, onMessage };
+  return { api, target, controller, onMessage, onShowActions, onCloseActions };
 }
 
 beforeEach(() => {
@@ -229,51 +227,73 @@ describe("ProofreadingController checks", () => {
   });
 });
 
-describe("ProofreadingController popover", () => {
-  it("shows the message, at most five replacements, and Add to dictionary", () => {
-    const { controller } = setup();
+describe("ProofreadingController actions", () => {
+  it("shows the diagnostic's actions through onShowActions", () => {
+    const { controller, onShowActions } = setup();
 
-    controller.openPopover(mappedDiagnostic, { x: 12, y: 34 });
+    controller.showActions(mappedDiagnostic);
 
-    const popover = document.querySelector<HTMLElement>('[data-testid="proofreading-popover"]');
-    expect(popover).not.toBeNull();
-    expect(popover!.textContent).toContain("Possible spelling mistake");
-    expect(popover!.style.left).toBe("12px");
-    expect(popover!.style.top).toBe("34px");
-    expect(popover!.querySelectorAll('[data-testid="proofreading-replacement"]')).toHaveLength(5);
-    expect(popover!.querySelector('[data-testid="proofreading-add-word"]')).not.toBeNull();
+    expect(onShowActions).toHaveBeenCalledTimes(1);
+    expect(onShowActions).toHaveBeenCalledWith([
+      { text: '"teh" — Possible spelling mistake' },
+      { button: { label: "the", function: "proofreading-replace", args: { replacement: "the" } } },
+      { button: { label: "tea", function: "proofreading-replace", args: { replacement: "tea" } } },
+      { button: { label: "ten", function: "proofreading-replace", args: { replacement: "ten" } } },
+      { button: { label: "tech", function: "proofreading-replace", args: { replacement: "tech" } } },
+      { button: { label: "tee", function: "proofreading-replace", args: { replacement: "tee" } } },
+      { button: { label: "Add to dictionary", function: "proofreading-add-word", args: { word: "teh" } } },
+    ]);
   });
 
-  it("applies the chosen replacement and closes", async () => {
-    const { api, target, controller } = setup();
+  it("applies the chosen replacement, closes the actions, and re-checks", async () => {
+    const { api, target, controller, onCloseActions } = setup();
     api.checkText.mockResolvedValue({ language: "en-US", diagnostics: [] });
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
+    controller.showActions(mappedDiagnostic);
 
-    const first = document.querySelector<HTMLButtonElement>(
-      '[data-testid="proofreading-replacement"]',
-    );
-    expect(first?.textContent).toBe("the");
-    first!.click();
-    await flush();
+    controller.applyActiveReplacement("the");
+    await vi.advanceTimersByTimeAsync(500);
 
     expect(target.applyProofreadingReplacement).toHaveBeenCalledWith(mappedDiagnostic, "the");
-    expect(document.querySelector('[data-testid="proofreading-popover"]')).toBeNull();
+    expect(onCloseActions).toHaveBeenCalledTimes(1);
+    expect(api.checkText).toHaveBeenCalledTimes(1);
   });
 
-  it("adds the word to this document's glossary and re-checks", async () => {
-    const { api, controller } = setup();
+  it("closes the actions without re-checking when the replacement no longer applies", async () => {
+    const { api, target, controller, onCloseActions } = setup();
+    target.applyProofreadingReplacement = vi.fn(() => false);
+    controller.showActions(mappedDiagnostic);
+
+    controller.applyActiveReplacement("the");
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(onCloseActions).toHaveBeenCalledTimes(1);
+    expect(api.checkText).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when no diagnostic is active", async () => {
+    const { api, target, controller, onCloseActions } = setup();
+
+    controller.applyActiveReplacement("the");
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(target.applyProofreadingReplacement).not.toHaveBeenCalled();
+    expect(onCloseActions).not.toHaveBeenCalled();
+    expect(api.checkText).not.toHaveBeenCalled();
+  });
+
+  it("adds the word to this document's glossary, closes the actions, and re-checks", async () => {
+    const { api, controller, onCloseActions } = setup();
     api.getGlossary.mockResolvedValue({ words: ["Karakas"] });
     api.putGlossary.mockResolvedValue({ words: ["Karakas", "teh"] });
     api.checkText.mockResolvedValue({ language: "en-US", diagnostics: [] });
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
+    controller.showActions(mappedDiagnostic);
 
-    document.querySelector<HTMLButtonElement>('[data-testid="proofreading-add-word"]')!.click();
-    await flush();
+    await controller.addActiveWord();
 
     expect(api.getGlossary).toHaveBeenCalledWith("d-1");
     expect(api.putGlossary).toHaveBeenCalledWith("d-1", ["Karakas", "teh"]);
     expect(api.checkText).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('[data-testid="proofreading-popover"]')).toBeNull();
+    expect(onCloseActions).toHaveBeenCalledTimes(1);
   });
 
   it("reuses the cached glossary for a second word in the same document", async () => {
@@ -282,57 +302,43 @@ describe("ProofreadingController popover", () => {
     api.putGlossary.mockResolvedValue({ words: [] });
     api.checkText.mockResolvedValue({ language: "en-US", diagnostics: [] });
 
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
-    document.querySelector<HTMLButtonElement>('[data-testid="proofreading-add-word"]')!.click();
-    await flush();
-    controller.openPopover({ ...mappedDiagnostic, word: "cat" }, { x: 1, y: 2 });
-    document.querySelector<HTMLButtonElement>('[data-testid="proofreading-add-word"]')!.click();
-    await flush();
+    controller.showActions(mappedDiagnostic);
+    await controller.addActiveWord();
+    controller.showActions({ ...mappedDiagnostic, word: "cat" });
+    await controller.addActiveWord();
 
     expect(api.getGlossary).toHaveBeenCalledTimes(1);
     expect(api.putGlossary).toHaveBeenLastCalledWith("d-1", ["teh", "cat"]);
   });
 
-  it("closes the popover on Escape and on dispose", () => {
-    const { controller } = setup();
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    expect(document.querySelector('[data-testid="proofreading-popover"]')).toBeNull();
-
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
-    controller.dispose();
-    expect(document.querySelector('[data-testid="proofreading-popover"]')).toBeNull();
-  });
-
-  it("closes the popover when the writer clicks outside it", () => {
-    const { controller } = setup();
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
-
-    document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-
-    expect(document.querySelector('[data-testid="proofreading-popover"]')).toBeNull();
-  });
-
-  it("reports a glossary failure and keeps the popover open", async () => {
-    const { api, controller, onMessage } = setup();
+  it("reports a glossary failure and keeps the actions open", async () => {
+    const { api, controller, onMessage, onCloseActions } = setup();
     api.getGlossary.mockRejectedValue(new Error("nope"));
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
+    controller.showActions(mappedDiagnostic);
 
-    document.querySelector<HTMLButtonElement>('[data-testid="proofreading-add-word"]')!.click();
-    await flush();
+    await controller.addActiveWord();
 
     expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("nope"));
-    expect(document.querySelector('[data-testid="proofreading-popover"]')).not.toBeNull();
+    expect(onCloseActions).not.toHaveBeenCalled();
   });
 
   it("does nothing when there is no open document", async () => {
-    const { api, controller } = setup({ documentId: null });
-    controller.openPopover(mappedDiagnostic, { x: 1, y: 2 });
+    const { api, controller, onCloseActions } = setup({ documentId: null });
+    controller.showActions(mappedDiagnostic);
 
-    document.querySelector<HTMLButtonElement>('[data-testid="proofreading-add-word"]')!.click();
-    await flush();
+    await controller.addActiveWord();
 
     expect(api.getGlossary).not.toHaveBeenCalled();
     expect(api.putGlossary).not.toHaveBeenCalled();
+    expect(onCloseActions).not.toHaveBeenCalled();
+  });
+
+  it("closes the actions on dispose", () => {
+    const { controller, onCloseActions } = setup();
+    controller.showActions(mappedDiagnostic);
+
+    controller.dispose();
+
+    expect(onCloseActions).toHaveBeenCalledTimes(1);
   });
 });

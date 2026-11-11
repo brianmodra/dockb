@@ -1,5 +1,7 @@
 import type { ApiClient } from "../api/client";
 import type { ProofreadingCheckRequest, ProofreadingDiagnostic } from "../api/types";
+import { proofreadingActionObjects } from "./responseArea";
+import type { ResponseObject } from "./responseArea";
 import type { ProofreadingParagraph, WysiwygDiagnostic } from "./wysiwyg";
 
 export interface ProofreadingTarget {
@@ -12,41 +14,29 @@ export interface ProofreadingTarget {
   applyProofreadingReplacement(diagnostic: WysiwygDiagnostic, replacement: string): boolean;
 }
 
-export interface ProofreadingPoint {
-  x: number;
-  y: number;
-}
-
 export interface ProofreadingControllerOptions {
   api: Pick<ApiClient, "checkText" | "getGlossary" | "putGlossary">;
   target: ProofreadingTarget;
   documentId: () => string | null;
   language: () => string;
   onMessage?: (text: string) => void;
+  onShowActions?: (objects: ResponseObject[]) => void;
+  onCloseActions?: () => void;
   debounceMs?: number;
 }
 
 /**
  * Debounces backend checks for the paragraph holding the cursor, drops replies
- * for text that has moved, and owns the diagnostic popover.
+ * for text that has moved, and shows a right-clicked diagnostic's actions in
+ * the response area.
  */
 export class ProofreadingController {
   private readonly options: ProofreadingControllerOptions;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private abortController: AbortController | null = null;
   private requestId = 0;
-  private popover: HTMLElement | null = null;
+  private active: WysiwygDiagnostic | null = null;
   private readonly glossaries = new Map<string, string[]>();
-  private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") {
-      this.closePopover();
-    }
-  };
-  private readonly onPointerDown = (event: PointerEvent): void => {
-    if (this.popover && !this.popover.contains(event.target as Node)) {
-      this.closePopover();
-    }
-  };
 
   constructor(options: ProofreadingControllerOptions) {
     this.options = options;
@@ -128,80 +118,31 @@ export class ProofreadingController {
     }
   }
 
-  /** Open the suggestion popover for *diagnostic* at *point*. */
-  openPopover(diagnostic: WysiwygDiagnostic, point: ProofreadingPoint): void {
-    this.closePopover();
-    const popover = document.createElement("div");
-    popover.className = "proofreading-popover";
-    popover.dataset.testid = "proofreading-popover";
-    popover.style.left = `${point.x}px`;
-    popover.style.top = `${point.y}px`;
-
-    const message = document.createElement("div");
-    message.className = "proofreading-message";
-    message.textContent = diagnostic.message;
-    popover.append(message);
-
-    const replacements = diagnostic.replacements.slice(0, 5);
-    if (replacements.length > 0) {
-      const list = document.createElement("div");
-      list.className = "proofreading-replacements";
-      replacements.forEach((replacement) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.dataset.testid = "proofreading-replacement";
-        button.textContent = replacement;
-        button.addEventListener("click", () => {
-          const applied = this.options.target.applyProofreadingReplacement(diagnostic, replacement);
-          this.closePopover();
-          if (applied) {
-            this.schedule();
-          }
-        });
-        list.append(button);
-      });
-      popover.append(list);
-    }
-
-    const addWord = document.createElement("button");
-    addWord.type = "button";
-    addWord.className = "proofreading-add-word";
-    addWord.dataset.testid = "proofreading-add-word";
-    addWord.textContent = "Add to dictionary";
-    addWord.addEventListener("click", () => {
-      void this.addWord(diagnostic);
-    });
-    popover.append(addWord);
-
-    document.body.append(popover);
-    window.addEventListener("keydown", this.onKeyDown);
-    document.addEventListener("pointerdown", this.onPointerDown);
-    this.popover = popover;
+  /** Hold *diagnostic* as the active one and show its actions in the response area. */
+  showActions(diagnostic: WysiwygDiagnostic): void {
+    this.active = diagnostic;
+    this.options.onShowActions?.(proofreadingActionObjects(diagnostic));
   }
 
-  closePopover(): void {
-    if (!this.popover) {
+  /** Apply *replacement* to the active diagnostic's text in the editor buffer. */
+  applyActiveReplacement(replacement: string): void {
+    const diagnostic = this.active;
+    if (diagnostic === null) {
       return;
     }
-    window.removeEventListener("keydown", this.onKeyDown);
-    document.removeEventListener("pointerdown", this.onPointerDown);
-    this.popover.remove();
-    this.popover = null;
-  }
-
-  dispose(): void {
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-      this.timer = null;
+    const applied = this.options.target.applyProofreadingReplacement(diagnostic, replacement);
+    this.closeActions();
+    if (applied) {
+      this.schedule();
     }
-    this.requestId += 1;
-    this.abortController?.abort();
-    this.abortController = null;
-    this.closePopover();
-    this.glossaries.clear();
   }
 
-  private async addWord(diagnostic: WysiwygDiagnostic): Promise<void> {
+  /** Add the active diagnostic's word to this document's glossary and re-check. */
+  async addActiveWord(): Promise<void> {
+    const diagnostic = this.active;
+    if (diagnostic === null) {
+      return;
+    }
     const documentId = this.options.documentId();
     if (!documentId) {
       return;
@@ -218,11 +159,29 @@ export class ProofreadingController {
         await this.options.api.putGlossary(documentId, words);
         this.glossaries.set(documentId, words);
       }
-      this.closePopover();
+      this.closeActions();
       await this.checkNow();
     } catch (error) {
       this.options.onMessage?.(`Could not add the word: ${errorMessage(error)}`);
     }
+  }
+
+  /** Drop the active diagnostic and close its actions in the response area. */
+  closeActions(): void {
+    this.active = null;
+    this.options.onCloseActions?.();
+  }
+
+  dispose(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.requestId += 1;
+    this.abortController?.abort();
+    this.abortController = null;
+    this.closeActions();
+    this.glossaries.clear();
   }
 }
 

@@ -204,7 +204,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         language: () => editPanel.getLanguage(),
         onMessage: (text) => layout.pushMessage(text),
       });
-      editPanel.onDiagnostic = (diagnostic, point) => proofreading.openPopover(diagnostic, point);
+      editPanel.onDiagnostic = (diagnostic) => proofreading.showActions(diagnostic);
       editPanel.onEditActivity = () => proofreading.schedule();
     }
 
