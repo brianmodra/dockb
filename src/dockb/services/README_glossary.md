@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note describes the per-document list of accepted words that the spelling checker stops flagging — the invented names, dialect, and terms of art a writer has decided are correct. Each word a writer accepts is remembered for that document, so the next save does not underline it again; the writer can also open a dictionary view to add a word by hand or remove one they accepted by mistake. The list is editor state, not manuscript content, so it lives in the account store rather than the knowledge graph.
+This note describes the per-document list of accepted words that the spelling checker stops flagging — the invented names, dialect, and terms of art a writer has decided are correct. Each word a writer accepts is remembered for that document, so the next save does not underline it again; the writer can also open a dictionary view (Settings → Dictionary…) to add a word by hand or remove one they accepted by mistake, and the squiggle's **Add to dictionary** is the shortcut for the word under the cursor. The list is editor state, not manuscript content, so it lives in the account store rather than the knowledge graph.
 
 When a paragraph is checked, the effective dictionary is the stored words plus the document's own character names (a character called "Karakas" is never a spelling error). The accepted words are applied by filtering spelling findings after LanguageTool runs — they never reach LanguageTool's own shared dictionary, so the engine stays stateless and the list survives a restart.
 
