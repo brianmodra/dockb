@@ -88,6 +88,15 @@ def _saved_sentences(uow):
     return [(model, kwargs) for model, kwargs in _register_calls(uow) if isinstance(model, Sentence)]
 
 
+def test_split_sentences_builds_tokens_from_the_paragraph_parse(nlp):
+    text = "Hello world. Second sentence."
+    sentences = markdown_import._split_sentences(text, nlp)
+
+    assert "".join(s.get_text() for s in sentences) == text
+    assert all(list(s.tokens) for s in sentences)
+    assert sentences[0].tokens[0].text == "Hello"
+
+
 class TestNewChapter:
     def test_new_file_without_front_matter_creates_chapter(self, nlp, tmp_path):
         file = tmp_path / "Chapter 1.md"

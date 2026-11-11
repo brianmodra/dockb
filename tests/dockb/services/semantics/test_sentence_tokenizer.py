@@ -382,3 +382,17 @@ def test_sentence_tokenizer_cancel_is_idempotent():
     tok.cancel()
     tok.cancel()
     assert tok._cancel_event.is_set()
+
+
+def test_tokens_from_doc_builds_tokens_from_a_span(nlp):
+    tok = SentenceTokenizer()
+    doc = nlp("Hello world. Next sentence.")
+    span = list(doc.sents)[0]
+
+    tokens = tok.tokens_from_doc(span)
+
+    assert [t.text for t in tokens] == ["Hello", "world", "."]
+    assert tokens[0].trailing_ws == " "
+    assert tokens[2].trailing_ws == " "
+    assert tokens[0].type == Type.WORD
+    assert tokens[2].type == Type.PUNCTUATION

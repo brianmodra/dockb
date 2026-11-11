@@ -38,7 +38,6 @@ from dockb.services.chapter_front_matter import (
     reconcile_pov_title,
     write_back_chapter_file,
 )
-from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer
 from dockb.timing import measure
 
@@ -138,7 +137,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
             if category is not None:
                 chapter.category = category
             with measure("stage.persist"):
-                _persist(uow_factory, document.id, chapter, [], [], nlp, owner)
+                _persist(uow_factory, document.id, chapter, [], [], owner)
             if write_back:
                 _write_back_front_matter(
                     path,
@@ -192,7 +191,7 @@ def apply_chapter_file(  # pylint: disable=too-many-arguments,too-many-positiona
         added_paragraphs = _place_new_paragraphs(chapter, diff.new, nlp)
 
     with measure("stage.persist"):
-        _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, nlp, owner)
+        _persist(uow_factory, document.id, chapter, changed_paragraphs, added_paragraphs, owner)
     if write_back:
         with measure("stage.render"):
             write_back_chapter_file(
@@ -545,24 +544,23 @@ def _persist(  # pylint: disable=too-many-arguments,too-many-positional-argument
     chapter: Chapter,
     changed_paragraphs: list[Paragraph],
     added_paragraphs: list[Paragraph],
-    nlp: Language,
     owner: str,
 ) -> None:
     """Register the rebuilt chapter, its content-bearing paragraphs, and every
-    sentence of those paragraphs (tokenized with *nlp*), then commit once.
+    sentence of those paragraphs, then commit once.
+
+    Sentences already carry their tokens from the paragraph's single parse (see
+    :func:`_split_sentences`), so nothing is re-tokenized here.
 
     *owner* is the account the writes belong to: the repositories scope every
     write to a document the account owns, so a chapter is never written under
     another account's tree.
     """
-    tokenizer = SentenceTokenizer()
-    doc_cache = DocCache(nlp)
     uow = uow_factory.get_unit_of_work()
     uow.register(chapter, document_id=document_id, owner=owner)
     for paragraph in changed_paragraphs + added_paragraphs:
         uow.register(paragraph, chapter_id=chapter.id, owner=owner)
         for sentence in paragraph.sentences:
-            sentence.tokens[:] = tokenizer.tokenize(sentence.text, doc_cache)
             sentence.state = DataState.NEW
             uow.register(sentence, paragraph_id=paragraph.id, owner=owner)
     uow.commit()
@@ -619,7 +617,7 @@ def _reconcile_front_matter_only(  # pylint: disable=too-many-arguments,too-many
     apply_character_props(loaded, diff)
     loaded.state = DataState.CHANGED
     with measure("stage.persist"):
-        _persist(uow_factory, document.id, loaded, [], [], nlp, owner)
+        _persist(uow_factory, document.id, loaded, [], [], owner)
     if write_back:
         write_back_chapter_file(
             path,
@@ -653,15 +651,21 @@ def _split_sentences(text: str, nlp: Language) -> list[Sentence]:
 
     Newlines are never sentence delimiters: a mid-sentence newline stays inside
     the sentence's text, and a backslash-newline hard break is preserved. Each
-    sentence keeps the whitespace up to the next sentence.
+    sentence keeps the whitespace up to the next sentence. The paragraph is
+    parsed once and each sentence's tokens come straight from its span in that
+    parse, so a chapter never re-runs spaCy per sentence.
     """
-    spans = list(nlp(text).sents)
+    tokenizer = SentenceTokenizer()
+    doc = nlp(text)
+    spans = list(doc.sents)
     sentences = []
     for idx, span in enumerate(spans):
         end = spans[idx + 1].start_char if idx + 1 < len(spans) else len(text)
         sentence_text = text[span.start_char : end]
         if sentence_text.strip():
-            sentences.append(Sentence(text=sentence_text))
+            sentence = Sentence(text=sentence_text)
+            sentence.tokens[:] = tokenizer.tokens_from_doc(span)
+            sentences.append(sentence)
     return sentences
 
 

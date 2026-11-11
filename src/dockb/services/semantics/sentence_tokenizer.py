@@ -2,6 +2,8 @@
 
 import threading
 
+from spacy.tokens import Doc, Span
+
 from dockb.models.token import Token, Type
 from dockb.services.semantics.doc_cache import DocCache
 
@@ -30,7 +32,16 @@ class SentenceTokenizer:
             raise TokenizationCancelled()
 
         doc = doc_cache.get_doc(text)
+        return self.tokens_from_doc(doc)
 
+    def tokens_from_doc(self, doc: Doc | Span) -> list[Token]:
+        """Build Token models from an already-parsed spaCy Doc or sentence Span.
+
+        Lets a caller that has already parsed a whole paragraph reuse that one
+        parse for each sentence (its span) instead of re-parsing each sentence
+        in isolation. POS, lemma, and whitespace come straight from the tokens.
+        Raises TokenizationCancelled if cancel() was called during processing.
+        """
         tokens: list[Token] = []
         for spacy_token in doc:
             if self._cancel_event.is_set():

@@ -81,7 +81,11 @@ Tokenizes raw sentence text into `Token` objects using spaCy via a `DocCache`.
 Both `ReconstructJob` and `SyncReconstructor` delegate to this class,
 keeping the `models` layer free of spaCy awareness. The `tokenize()` method
 takes `(text: str, doc_cache: DocCache)` and returns a `list[Token]` with POS,
-lemma, whitespace, and other spaCy-derived attributes populated.
+lemma, whitespace, and other spaCy-derived attributes populated. The
+`tokens_from_doc()` method builds the same tokens from an already-parsed
+`Doc` or sentence `Span`, which lets the markdown import tokenize every
+sentence of a paragraph from that paragraph's single parse instead of
+re-running spaCy per sentence.
 
 # Sentence split detection
 
