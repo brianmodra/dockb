@@ -5,8 +5,8 @@
 This is the design of DockB's writing window. It explains the menus, the chapter list, the editor
 and the dialogs, so someone new can see what the writer sees and why each click does what it does —
 including how proofreading works in both the WYSIWYG and raw views: the backend checks the
-paragraph under the cursor, the writer picks a correction from a popover or adds a word to that
-document's glossary, and nothing is written to the file until the writer saves. The File menu
+paragraph under the cursor, the writer picks a correction from the response strip or adds a word
+to that document's glossary, and nothing is written to the file until the writer saves. The File menu
 saves unsaved work before signing out, and the identity line above the text shows a character's
 name parts or a chapter's title and point of view.
 
@@ -167,18 +167,19 @@ or TipTap": TipTap was rejected because it is a structured-document (serializer-
 LanguageTool proofreading checks the paragraph holding the cursor, debounced at about 500 ms; the
 focused sentence is the cursor's sentence. Diagnostics for other paragraphs are cleared, and a
 reply whose paragraph has already changed is discarded. The squiggle shows the diagnostic's
-severity. **Right-clicking a squiggle** opens its popover: the message, up to five replacements,
-and **Add to dictionary**. Choosing a replacement applies it to the buffer — the writer's next
+severity. **Right-clicking a squiggle** asks in the response strip: a line naming the word and
+its message, up to five replacements, and **Add to dictionary**. Choosing a replacement applies
+it to the buffer — the writer's next
 save is still the only write to the file — and adding a word stores it in *this document's*
 glossary (`PUT /api/documents/{id}/glossary`), then re-checks; the word is not added to any
 account-wide or LanguageTool dictionary. Right-clicking selected text that is not a diagnostic
-keeps the existing quote-action menu (§4).
+keeps the existing quote actions in the same strip (§4).
 
 In **Raw MD** the same rule reads the canonical paragraph holding the cursor: front matter and
 the paragraph's span lines are skipped, inline span markup is stripped, HTML entities are
 decoded, and each sentence line keeps the newline the writer sees. Diagnostics map back through
-those offsets onto CodeMirror lint markers; right-clicking a marker opens the same popover, and a
-replacement edits the canonical buffer in place.
+those offsets onto CodeMirror lint markers; right-clicking a marker opens the same strip actions,
+and a replacement edits the canonical buffer in place.
 
 **Decorations** are ProseMirror's mechanism for rendering over text without changing it. A
 decoration applies a CSS class, style, or injected DOM element to a range of the flat document

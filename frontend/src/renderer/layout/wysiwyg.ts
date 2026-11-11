@@ -505,7 +505,7 @@ export class WysiwygView {
     this.innerView?.dispatch(this.innerView.state.tr.setMeta(proofreadingPluginKey, []));
   }
 
-  /** The diagnostic under a screen point, for the right-click popover. */
+  /** The diagnostic under a screen point, for the right-click actions. */
   diagnosticAtPoint(x: number, y: number): WysiwygDiagnostic | null {
     if (!this.innerView) {
       return null;

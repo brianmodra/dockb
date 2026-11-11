@@ -115,9 +115,10 @@ its 10px floor.
   saved. The canonical side's signature is read from the same paragraphs the
   loaded doc has — a file's trailing newline shows as an empty final paragraph
   there too — so a freshly loaded writer-canonical file is clean and switching
-  chapters does not save it. Right-clicking a proofreading squiggle opens its
-  diagnostic popover before the quote actions; right-clicking selected text hands
-  the selection's context to the response strip to offer quote actions for the
+  chapters does not save it. Right-clicking a proofreading squiggle hands the
+  diagnostic to the response strip to offer its corrections before the quote
+  actions; right-clicking selected text hands
+  the selection's context to the same strip to offer quote actions for the
   touched paragraphs (see `layout/README_response_area.md`), while an empty
   selection leaves the browser menu alone; a quoted paragraph renders indented
   (`4ch`) and its span carries `data-quote-type` in the canonical text. While a save
@@ -150,8 +151,9 @@ its 10px floor.
 - `proofreading.ts` — `ProofreadingController` debounces backend checks of the
   cursor's paragraph (~500 ms), aborts the previous request, and drops replies
   whose paragraph text or document has changed. It decorates the WYSIWYG text
-  with severity squiggles, and its right-click popover shows the message, at most
-  five replacements, and **Add to dictionary**. A replacement is one ProseMirror
+  with severity squiggles, and right-clicking one asks in the response strip: a
+  line naming the word and its message, at most five replacements, and
+  **Add to dictionary**. A replacement is one ProseMirror
   transaction (the next save is still the only file write); adding a word reads
   and writes *this document's* glossary (`GET`/`PUT /api/documents/{id}/glossary`)
   and re-checks immediately. Cached glossaries are per open document; no word
@@ -160,7 +162,7 @@ its 10px floor.
   the text the writer sees: front matter and span lines are skipped, inline span
   markup stripped, entities decoded, and sentence line breaks kept. The
   controller's offsets then become CodeMirror lint markers; right-clicking one
-  opens the same popover, and its replacement edits the canonical buffer in
+  opens the same strip actions, and its replacement edits the canonical buffer in
   place.
 
 Panels are built with `createElement`/`textContent` — no user data enters the

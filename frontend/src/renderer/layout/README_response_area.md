@@ -3,12 +3,14 @@
 ## Executive Summary
 
 This module renders interactive prompts and answers inside the message panel's response strip. It
-serves two flows through the same strip and function registry: the model's structured reply to a
+serves three flows through the same strip and function registry: the model's structured reply to a
 chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
-sentences, and the editor's own prompt when the writer right-clicks selected text, which offers
-buttons to mark or clear the touched paragraphs' quote type. In both flows, outside or selected
-text never enters the DOM as markup, and each button passes plain-data arguments to a registered
-editor function.
+sentences; the editor's own prompt when the writer right-clicks selected text, which offers
+buttons to mark or clear the touched paragraphs' quote type; and the corrections for a
+right-clicked proofreading squiggle, which offer its replacements and Add to dictionary. In every
+flow, outside or selected text never enters the DOM as markup, and each button passes plain-data
+arguments to a registered editor function. Any new right-click menu belongs here too, in the
+strip — never in a floating popover.
 
 When the server attaches its manuscript tools to a chat turn it constrains the model to the
 response syntax, so a plain answer arrives as a single text line; without them, or on a refusal,
@@ -92,6 +94,23 @@ right-clicking never dirties the buffer) rather than by document positions that 
 would shift. Choosing a button applies the quote type in one transaction and clears the strip;
 changing the selection or loading another chapter while the quote prompt is open clears the strip
 as well, while an AI reply in the strip stays open across chapter loads and highlights.
+
+## `proofreading-replace` / `proofreading-add-word` — a squiggle's corrections in the strip
+
+Right-clicking a proofreading squiggle — a WYSIWYG severity squiggle or a raw lint marker — reuses
+the strip a third way: a first line names the word and its message, then at most five replacement
+buttons and **Add to dictionary**. `ProofreadingController` keeps the right-clicked diagnostic,
+so the buttons carry only the chosen replacement or the word itself. Applying a replacement edits
+the buffer in one transaction and re-checks the paragraph; adding a word writes *this document's*
+glossary and re-checks, and a glossary failure is reported to the message log while the strip
+stays open for another try. Changing the selection, loading another chapter, or submitting a new
+AI prompt clears the strip, exactly as with the quote prompt; Escape and outside clicks do not
+close it.
+
+**Any right-click menu belongs in the response area.** The strip is the renderer's one surface
+for asking "what do you want to do with this?" — one styling, one teardown rule, one place the
+writer has already learned — so a new menu reuses it instead of spawning a floating popover with
+its own dismissal handling.
 
 ## Security
 
