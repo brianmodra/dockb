@@ -34,6 +34,12 @@ def _character(chapter_id: str, title: str, **props) -> Chapter:
     return character
 
 
+def _stamps(repo) -> list[dict]:
+    """The batched stamps the tier-1 pass wrote, in order (empty when it wrote none)."""
+    call = repo.stamp_many.call_args
+    return list(call.args[0]) if call is not None else []
+
+
 def _document() -> Document:
     document = Document(id="d1", state=DataState.SYNC)
     chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
@@ -77,11 +83,12 @@ def test_a_first_name_match_becomes_a_name_verdict() -> None:
         chapter_repo=chapter_repo,
     )
 
-    stamped = mentions_repo.stamp.call_args
+    stamped = mentions_repo.stamp_many.call_args
     assert stamped is not None
-    assert stamped.args[0] == "p2"
-    assert stamped.kwargs["checked_at"]
-    assert stamped.args[1] == [{"character_id": "k1", "method": "name", "confidence": 1.0}]
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p2"
+    assert stamps[0]["checked_at"]
+    assert stamps[0]["verdicts"] == [{"character_id": "k1", "method": "name", "confidence": 1.0}]
 
 
 def test_an_ambiguous_name_is_left_pending_not_stamped() -> None:
@@ -95,7 +102,7 @@ def test_an_ambiguous_name_is_left_pending_not_stamped() -> None:
         chapter_repo=chapter_repo,
     )
 
-    mentions_repo.stamp.assert_not_called()
+    mentions_repo.stamp_many.assert_not_called()
 
 
 def test_a_hyphenated_nickname_matches_through_its_tokens() -> None:
@@ -110,9 +117,11 @@ def test_a_hyphenated_nickname_matches_through_its_tokens() -> None:
         chapter_repo=chapter_repo,
     )
 
-    stamped = mentions_repo.stamp.call_args
-    assert stamped is not None and stamped.args[0] == "p4"
-    assert [v["character_id"] for v in stamped.args[1]] == ["k1"]
+    stamped = mentions_repo.stamp_many.call_args
+    assert stamped is not None
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p4"
+    assert [v["character_id"] for v in stamps[0]["verdicts"]] == ["k1"]
 
 
 def test_a_paragraph_with_no_name_tokens_becomes_state_2() -> None:
@@ -125,10 +134,11 @@ def test_a_paragraph_with_no_name_tokens_becomes_state_2() -> None:
         chapter_repo=chapter_repo,
     )
 
-    stamped = mentions_repo.stamp.call_args
+    stamped = mentions_repo.stamp_many.call_args
     assert stamped is not None
-    assert stamped.args[0] == "p1"
-    assert stamped.args[1] == []
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p1"
+    assert stamps[0]["verdicts"] == []
 
 
 def test_states_2_and_3_paragraphs_are_not_touched() -> None:
@@ -148,8 +158,8 @@ def test_states_2_and_3_paragraphs_are_not_touched() -> None:
         chapter_repo=chapter_repo,
     )
 
-    stamped_ids = [call.args[0] for call in mentions_repo.stamp.call_args_list]
-    assert sorted(stamped_ids) == ["p2", "p4"]
+    stamps = _stamps(mentions_repo)
+    assert sorted(stamp["paragraph_id"] for stamp in stamps) == ["p2", "p4"]
 
 
 def test_a_job_evaluates_its_scoped_chapter() -> None:
@@ -309,9 +319,11 @@ def test_a_longer_adjacent_run_beats_the_defeated_shorter_match() -> None:
 
     evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
-    stamped = mentions_repo.stamp.call_args
-    assert stamped is not None and stamped.args[0] == "p5"
-    assert [v["character_id"] for v in stamped.args[1]] == ["k2"]
+    stamped = mentions_repo.stamp_many.call_args
+    assert stamped is not None
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p5"
+    assert [v["character_id"] for v in stamps[0]["verdicts"]] == ["k2"]
 
 
 def test_the_full_name_run_beats_both_the_first_name_and_the_nickname() -> None:
@@ -325,10 +337,12 @@ def test_the_full_name_run_beats_both_the_first_name_and_the_nickname() -> None:
 
     evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
-    stamped = mentions_repo.stamp.call_args
-    assert stamped is not None and stamped.args[0] == "p6"
-    assert [v["character_id"] for v in stamped.args[1]] == ["k1"]
-    assert stamped.kwargs["checked_at"]
+    stamped = mentions_repo.stamp_many.call_args
+    assert stamped is not None
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p6"
+    assert [v["character_id"] for v in stamps[0]["verdicts"]] == ["k1"]
+    assert stamps[0]["checked_at"]
 
 
 def test_a_shared_name_with_no_completing_run_stays_pending() -> None:
@@ -337,7 +351,7 @@ def test_a_shared_name_with_no_completing_run_stays_pending() -> None:
 
     evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
-    mentions_repo.stamp.assert_not_called()  # pending for tier 3
+    mentions_repo.stamp_many.assert_not_called()  # pending for tier 3
 
 
 def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
@@ -353,9 +367,11 @@ def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
 
     evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
-    stamped = mentions_repo.stamp.call_args
-    assert stamped is not None and stamped.args[0] == "p7"
-    assert [v["character_id"] for v in stamped.args[1]] == ["k2"]
+    stamped = mentions_repo.stamp_many.call_args
+    assert stamped is not None
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p7"
+    assert [v["character_id"] for v in stamps[0]["verdicts"]] == ["k2"]
 
 
 def test_the_evaluation_refreshes_the_chapters_mention_rollup() -> None:
@@ -363,7 +379,7 @@ def test_the_evaluation_refreshes_the_chapters_mention_rollup() -> None:
 
     def states_evolve(*_args, **_kwargs):
         # the graph's view: pending until tier 1 stamps it, then a valid verdict
-        if mentions_repo.stamp.call_args_list:
+        if mentions_repo.stamp_many.call_args_list:
             return [{"id": "p2", "state": 3, "index": 0, "mentions": ["k1"]}]
         return [{"id": "p2", "state": 1, "index": 0, "mentions": []}]
 
@@ -394,7 +410,7 @@ def test_a_cancelled_job_evaluates_nothing() -> None:
     mentions_repo.paragraph_states.assert_not_called()  # cancelled before it read anything
 
 
-def test_a_job_cancelled_between_paragraphs_stamps_nothing_more() -> None:
+def test_a_job_cancelled_between_paragraphs_stamps_nothing_more(monkeypatch) -> None:
     import threading
 
     from dockb.services import mentions as mentions_module
@@ -408,14 +424,16 @@ def test_a_job_cancelled_between_paragraphs_stamps_nothing_more() -> None:
     )
     job.cancel = threading.Event()
 
-    def cancel_after_first_stamp(*_args, **_kwargs):
-        job.cancel.set()
+    real_judge = mentions_module._judge_paragraph
 
-    mentions_repo.stamp.side_effect = cancel_after_first_stamp
+    def judge_then_cancel(paragraph, characters, ambiguity):
+        job.cancel.set()
+        return real_judge(paragraph, characters, ambiguity)
+
+    monkeypatch.setattr(mentions_module, "_judge_paragraph", judge_then_cancel)
     job.run()
 
-    stamped_ids = [call.args[0] for call in mentions_repo.stamp.call_args_list]
-    assert stamped_ids == ["p2"]  # p4's paragraph is left for the successor run
+    mentions_repo.stamp_many.assert_not_called()  # the cancelled pass wrote nothing
     mentions_repo.stamp_chapter.assert_not_called()  # a cancelled run refreshes no rollup
 
 

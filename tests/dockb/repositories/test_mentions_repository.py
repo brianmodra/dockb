@@ -106,6 +106,28 @@ class TestStampVerdicts:
         assert params["owner"] == _OWNER
         assert params["checked_at"] == "2026-11-05T00:00:00Z"
 
+    def test_stamp_many_writes_every_paragraph_in_one_query(self, repo, neo4j_session):
+        stamps = [
+            {
+                "paragraph_id": "p1",
+                "verdicts": [{"character_id": "k1", "method": "name", "confidence": 1.0}],
+                "checked_at": "2026-11-05T00:00:00Z",
+            },
+            {"paragraph_id": "p2", "verdicts": [], "checked_at": "2026-11-05T00:00:00Z"},
+        ]
+
+        repo.stamp_many(stamps, owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "UNWIND $stamps AS stamp" in cypher
+        assert "owner: $owner" in cypher
+        assert params == {"owner": _OWNER, "stamps": stamps}
+
+    def test_stamp_many_with_no_stamps_writes_nothing(self, repo, neo4j_session):
+        repo.stamp_many([], owner=_OWNER)
+
+        neo4j_session.run.assert_not_called()
+
 
 class TestMarkStale:
     """Invalidation marks relationships stale, and un-stamps the no-mention verdicts."""

@@ -110,11 +110,12 @@ def test_a_true_verdict_stamps_the_paragraph_as_a_mention(monkeypatch) -> None:
         complete=lambda prompt: '{"1": true, "2": false}',
     )
 
-    stamped = mentions_repo.stamp.call_args
+    stamped = mentions_repo.stamp_many.call_args
     assert stamped is not None
-    assert stamped.args[0] == "p1"
-    assert stamped.kwargs["checked_at"]
-    assert stamped.args[1] == [{"character_id": "k1", "method": "model", "confidence": 1.0}]
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p1"
+    assert stamps[0]["checked_at"]
+    assert stamps[0]["verdicts"] == [{"character_id": "k1", "method": "model", "confidence": 1.0}]
 
 
 def test_a_false_verdict_stamps_the_paragraph_as_mentioning_nobody(monkeypatch) -> None:
@@ -130,10 +131,11 @@ def test_a_false_verdict_stamps_the_paragraph_as_mentioning_nobody(monkeypatch) 
         complete=lambda prompt: '{"1": false, "2": false}',
     )
 
-    stamped = mentions_repo.stamp.call_args
+    stamped = mentions_repo.stamp_many.call_args
     assert stamped is not None
-    assert stamped.args[1] == []
-    assert stamped.kwargs["checked_at"]
+    stamps = stamped.args[0]
+    assert stamps[0]["verdicts"] == []
+    assert stamps[0]["checked_at"]
 
 
 def test_no_ai_skips_the_model_with_a_warning(monkeypatch, caplog) -> None:
@@ -153,7 +155,7 @@ def test_no_ai_skips_the_model_with_a_warning(monkeypatch, caplog) -> None:
         )
 
     complete.assert_not_called()
-    mentions_repo.stamp.assert_not_called()
+    mentions_repo.stamp_many.assert_not_called()
     assert any("no-ai" in record.message or "no_ai" in record.message or "prevented" in record.message for record in caplog.records)
 
 
@@ -170,7 +172,7 @@ def test_an_unresolved_candidate_leaves_the_paragraph_unstamped(monkeypatch) -> 
         complete=lambda prompt: "no thanks",
     )
 
-    mentions_repo.stamp.assert_not_called()
+    mentions_repo.stamp_many.assert_not_called()
 
 
 def test_a_missing_api_key_makes_no_call(monkeypatch) -> None:
@@ -189,7 +191,7 @@ def test_a_missing_api_key_makes_no_call(monkeypatch) -> None:
     )
 
     complete.assert_not_called()
-    mentions_repo.stamp.assert_not_called()
+    mentions_repo.stamp_many.assert_not_called()
 
 
 class _Span:  # pylint: disable=too-few-public-methods
@@ -240,12 +242,13 @@ def test_a_person_span_matching_one_candidate_resolves_it_without_the_model(monk
     )
 
     assert complete.call_count == 1
-    stamped = mentions_repo.stamp.call_args
+    stamped = mentions_repo.stamp_many.call_args
     assert stamped is not None
-    assert stamped.args[0] == "p1"
-    assert stamped.kwargs["checked_at"]
-    assert [v["character_id"] for v in stamped.args[1]] == ["k1"]
-    assert all(v["method"] == "name" for v in stamped.args[1])
+    stamps = stamped.args[0]
+    assert stamps[0]["paragraph_id"] == "p1"
+    assert stamps[0]["checked_at"]
+    assert [v["character_id"] for v in stamps[0]["verdicts"]] == ["k1"]
+    assert all(v["method"] == "name" for v in stamps[0]["verdicts"])
 
 
 def test_a_person_span_two_candidates_claim_does_not_resolve(monkeypatch) -> None:
@@ -263,10 +266,11 @@ def test_a_person_span_two_candidates_claim_does_not_resolve(monkeypatch) -> Non
         nlp=nlp,
     )
 
-    stamped = mentions_repo.stamp.call_args
+    stamped = mentions_repo.stamp_many.call_args
     assert stamped is not None
-    assert stamped.kwargs["checked_at"]  # the model settled it
-    assert [v["method"] for v in stamped.args[1]] == ["model"]
+    stamps = stamped.args[0]
+    assert stamps[0]["checked_at"]  # the model settled it
+    assert [v["method"] for v in stamps[0]["verdicts"]] == ["model"]
 
 
 def test_no_nlp_goes_straight_to_the_model(monkeypatch) -> None:
@@ -283,8 +287,8 @@ def test_no_nlp_goes_straight_to_the_model(monkeypatch) -> None:
         nlp=None,
     )
 
-    stamped = mentions_repo.stamp.call_args
-    assert stamped is not None and stamped.kwargs["checked_at"]
+    stamped = mentions_repo.stamp_many.call_args
+    assert stamped is not None and stamped.args[0][0]["checked_at"]
 
 
 def test_a_cancelled_job_never_calls_the_model(monkeypatch) -> None:
@@ -302,7 +306,7 @@ def test_a_cancelled_job_never_calls_the_model(monkeypatch) -> None:
         cancel=threading.Event(),
     )
 
-    mentions_repo.stamp.assert_not_called()
+    mentions_repo.stamp_many.assert_not_called()
 
 
 def test_a_cancel_after_the_model_answers_stamps_nothing(monkeypatch) -> None:
@@ -327,4 +331,4 @@ def test_a_cancel_after_the_model_answers_stamps_nothing(monkeypatch) -> None:
         cancel=cancel,
     )
 
-    mentions_repo.stamp.assert_not_called()
+    mentions_repo.stamp_many.assert_not_called()

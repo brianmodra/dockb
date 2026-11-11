@@ -110,6 +110,19 @@ MATCH (c:Chapter {id: verdict.character_id, category: 'Character'})
 CREATE (p)-[:MENTIONS {method: verdict.method, confidence: verdict.confidence}]->(c)
 """
 
+_STAMP_MANY_CYPHER = """
+UNWIND $stamps AS stamp
+MATCH (p:Paragraph {id: stamp.paragraph_id})-[:PART_OF]->(ch:Chapter)-[:PART_OF]->(d:Document {owner: $owner})
+OPTIONAL MATCH (p)-[m:MENTIONS]->()
+DELETE m
+WITH DISTINCT p, stamp
+SET p.mentions_checked_at = stamp.checked_at
+WITH p, stamp
+UNWIND stamp.verdicts AS verdict
+MATCH (c:Chapter {id: verdict.character_id, category: 'Character'})
+CREATE (p)-[:MENTIONS {method: verdict.method, confidence: verdict.confidence}]->(c)
+"""
+
 
 class MentionsRepository:
     """Reads and writes the mention verdicts; not a model repository.
@@ -190,6 +203,17 @@ class MentionsRepository:
                 "checked_at": checked_at,
             },
         )
+
+    def stamp_many(self, stamps: list[dict[str, Any]], *, owner: str) -> None:
+        """Replace many paragraphs' verdicts and stamp them, in one query.
+
+        *stamps* is `[{paragraph_id, verdicts, checked_at}]` — the same shape one
+        :meth:`stamp` call takes, batched so a whole chapter's evaluation is one
+        write instead of one per paragraph. An empty list writes nothing.
+        """
+        if not stamps:
+            return
+        self._session.run(_STAMP_MANY_CYPHER, {"owner": owner, "stamps": stamps})
 
     def reset(self, owner: str, *, chapter_id: str | None = None, document_id: str | None = None) -> None:
         """Forget every verdict in the scope: no stamp, no MENTIONS (all state 1).

@@ -105,6 +105,7 @@ def evaluate_chapter_tier1(  # pylint: disable=too-many-positional-arguments,too
         return
 
     now = datetime.now(timezone.utc).isoformat()
+    stamps: list[dict[str, Any]] = []
     for paragraph_id in pending:
         if _stop_requested(cancel):
             return
@@ -116,11 +117,13 @@ def evaluate_chapter_tier1(  # pylint: disable=too-many-positional-arguments,too
             # Tier 2 must judge the ambiguous evidence; the settled verdicts
             # are written without the stamp so the paragraph stays un-evaluated.
             if verdicts:
-                mentions_repo.stamp(paragraph_id, verdicts, owner=owner)
+                stamps.append({"paragraph_id": paragraph_id, "verdicts": verdicts, "checked_at": None})
         else:
-            mentions_repo.stamp(paragraph_id, verdicts, owner=owner, checked_at=now)
+            stamps.append({"paragraph_id": paragraph_id, "verdicts": verdicts, "checked_at": now})
     if _stop_requested(cancel):
         return
+    if stamps:
+        mentions_repo.stamp_many(stamps, owner=owner)
     _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, chapter_title=chapter.title)
 
 
@@ -362,6 +365,7 @@ def _stamps_tier2_verdicts(
     computed for a state the chapter has left behind.
     """
     now = datetime.now(timezone.utc).isoformat()
+    stamps: list[dict[str, Any]] = []
     for paragraph_id, (settled, waiting) in per_paragraph.items():
         if _stop_requested(cancel):
             return True
@@ -375,10 +379,14 @@ def _stamps_tier2_verdicts(
                 unresolved = True
         if unresolved:
             if settled:
-                mentions_repo.stamp(paragraph_id, settled, owner=owner)
+                stamps.append({"paragraph_id": paragraph_id, "verdicts": settled, "checked_at": None})
         else:
-            mentions_repo.stamp(paragraph_id, settled, owner=owner, checked_at=now)
-    return _stop_requested(cancel)
+            stamps.append({"paragraph_id": paragraph_id, "verdicts": settled, "checked_at": now})
+    if _stop_requested(cancel):
+        return True
+    if stamps:
+        mentions_repo.stamp_many(stamps, owner=owner)
+    return False
 
 
 def _settle_by_ner(

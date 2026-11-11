@@ -101,7 +101,7 @@ def wired(document, monkeypatch):
     def states(_owner, chapter_id=None, document_id=None):  # pylint: disable=unused-argument
         # the graph's view: p1 settles when tier 1 stamps it; p2's "Adams" is
         # ambiguous and only the model can rule on it
-        if chapter_id == "c1" and mentions_repo.stamp.call_args_list:
+        if chapter_id == "c1" and mentions_repo.stamp_many.call_args_list:
             return [
                 {"id": "p1", "state": 3, "index": 0, "mentions": ["k1"]},
                 {"id": "p2", "state": 1, "index": 1, "mentions": []},
@@ -127,7 +127,7 @@ def test_the_sweep_evaluates_the_documents_pending_chapters(wired, capsys):
 
     assert code == 0
     mentions_repo.mark_stale.assert_not_called()
-    assert mentions_repo.stamp.called
+    assert mentions_repo.stamp_many.called
     assert "Opening 1" in capsys.readouterr().out
 
 
