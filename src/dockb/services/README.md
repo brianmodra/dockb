@@ -66,7 +66,12 @@ resolved `DOCKB_PROOFREADING_LANGUAGE`, advertised by `GET /api/check/languages`
 
 The route hands the service the paragraph text, the focused sentence's offsets, and the
 document's effective glossary, so accepted character names are filtered out of spelling
-diagnostics instead of being added to LanguageTool's shared user dictionary.
+diagnostics instead of being added to LanguageTool's shared user dictionary. A quote diagnostic
+(`EN_QUOTES`, `EN_UNPAIRED_BRACKETS`) whose partner sits in the same paragraph also carries a
+`pair` naming the partner's offsets and the correction for both quotes, so the editor can offer a
+single click that turns a mismatched or straight pair into matching curly quotes. The partner is
+re-found by a same-paragraph scan (apostrophes are skipped), so it is best-effort and absent when
+no partner exists.
 
 ### Glossary
 

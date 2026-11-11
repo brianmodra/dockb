@@ -802,6 +802,7 @@ The reply is a bare payload, not the status envelope:
       "start": 4,
       "end": 7,
       "replacements": ["the"],
+      "pair": null,
       "in_focus": true
     }
   ]
@@ -810,6 +811,11 @@ The reply is a bare payload, not the status envelope:
 
 Offsets are paragraph-relative, so each view maps them onto the sentence text it displays.
 Spelling diagnostics for the document's glossary and character names are filtered server-side.
+A quote diagnostic (`EN_QUOTES`, `EN_UNPAIRED_BRACKETS`) whose partner quote sits in the same
+paragraph also carries `pair`: `{ "replacement", "partner_start", "partner_end",
+"partner_replacement" }`, describing the flagged quote's correction and its partner's, so the
+editor can offer a one-click fix of both quotes to matching curly quotes. The partner is found by
+a same-paragraph scan, so it is best-effort and absent (`null`) when no partner exists.
 Errors: `422` for an empty or oversized paragraph or an unsupported language, `404` when the
 document is not owned by the caller, `503` when proofreading is disabled or the engine cannot be
 reached, `502` when a check fails.

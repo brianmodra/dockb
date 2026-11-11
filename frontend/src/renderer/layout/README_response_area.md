@@ -95,13 +95,15 @@ would shift. Choosing a button applies the quote type in one transaction and cle
 changing the selection or loading another chapter while the quote prompt is open clears the strip
 as well, while an AI reply in the strip stays open across chapter loads and highlights.
 
-## `proofreading-replace` / `proofreading-add-word` — a squiggle's corrections in the strip
+## `proofreading-replace` / `proofreading-fix-pair` / `proofreading-add-word` — a squiggle's corrections in the strip
 
 Right-clicking a proofreading squiggle — a WYSIWYG severity squiggle or a raw lint marker — reuses
 the strip a third way: a first line names the word and its message, then at most five replacement
-buttons and **Add to dictionary**. `ProofreadingController` keeps the right-clicked diagnostic,
-so the buttons carry only the chosen replacement or the word itself. Applying a replacement edits
-the buffer in one transaction and re-checks the paragraph; adding a word posts it to *this document's*
+buttons, a **Fix “ … ”** button when the diagnostic carries a quote pair, and **Add to dictionary**.
+`ProofreadingController` keeps the right-clicked diagnostic, so the buttons carry only the chosen
+replacement, the pair, or the word itself. Applying a replacement edits the buffer in one transaction
+and re-checks the paragraph; a pair fix rewrites the flagged quote and its partner to matching curly
+quotes in one transaction and re-checks; adding a word posts it to *this document's*
 glossary (`POST /api/documents/{id}/glossary`) and re-checks, and a glossary failure is reported to the
 message log while the strip stays open for another try. Changing the selection, loading another chapter,
 or submitting a new AI prompt clears the strip, exactly as with the quote prompt; Escape and outside

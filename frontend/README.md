@@ -159,7 +159,9 @@ its 10px floor.
   **Add to dictionary**. A replacement is one ProseMirror
   transaction (the next save is still the only file write); adding a word posts it to
   *this document's* glossary (`POST /api/documents/{id}/glossary`)
-  and re-checks immediately. The dictionary view (`Settings → Dictionary…`) is
+  and re-checks immediately. A quote diagnostic whose partner sits in the same paragraph also
+  offers **Fix “ … ”**, which rewrites both quotes to matching curly quotes in one transaction.
+  The dictionary view (`Settings → Dictionary…`) is
   where the whole list is seen and edited; no word reaches LanguageTool's shared dictionary.
 - `rawProofreading.ts` — maps the canonical paragraph under the raw cursor onto
   the text the writer sees: front matter and span lines are skipped, inline span
