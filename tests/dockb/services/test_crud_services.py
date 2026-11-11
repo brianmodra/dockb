@@ -1742,14 +1742,12 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         scheduler = _RecordingScheduler()
         mentions_repo = object()
         mentions_chapter_repo = object()
-        mentions_document_repo = object()
         svc = ChapterService(
             uow_factory=self.factory,
             chapter_repo=self.repo,
             document_repo=self.doc_repo,
             mentions_repo=mentions_repo,
             mentions_chapter_repo=mentions_chapter_repo,
-            mentions_document_repo=mentions_document_repo,
             mentions_scheduler=scheduler,
         )
         ch = Chapter(id="c1", title="Intro", category="Chapter", state=DataState.SYNC)
@@ -1762,7 +1760,6 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         job = make_job()
         assert job._repos[0] is mentions_repo
         assert job._repos[1] is mentions_chapter_repo
-        assert job._repos[2] is mentions_document_repo
 
     def test_trigger_mentions_uses_shell_load_for_an_identity_change(self) -> None:
         scheduler = _RecordingScheduler()

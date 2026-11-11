@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
-from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token
@@ -77,10 +76,8 @@ def _paragraph(par_id: str, words_and_pos: list[tuple[str, POS]]) -> Paragraph:
 def _ambiguity_fixture(monkeypatch):
     """A document whose 'Adams' is ambiguous between Jeremiah and Jael."""
 
-    document = Document(id="d1", state=DataState.SYNC)
     chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
     chapter.paragraphs.append(_paragraph("p1", [("Adams", POS.PROPN), ("waited", POS.VERB)]))
-    document.chapters.append(chapter)
     jeremiah = Chapter(id="k1", title="Jeremiah", category="Character", state=DataState.SYNC)
     jeremiah.first_name = "Jeremiah"
     jeremiah.surname = "Adams"
@@ -88,32 +85,28 @@ def _ambiguity_fixture(monkeypatch):
     jael = Chapter(id="k2", title="Jael", category="Character", state=DataState.SYNC)
     jael.first_name = "Jael"
     jael.surname = "Adams"
-    document.chapters.append(jeremiah)
-    document.chapters.append(jael)
 
     mentions_repo = MagicMock()
     mentions_repo.paragraph_states.return_value = [{"id": "p1", "state": 1}]
     chapter_repo = MagicMock()
     chapter_repo.load.return_value = chapter
     chapter_repo.find_document_id.return_value = "d1"
-    document_repo = MagicMock()
-    document_repo.load.return_value = document
+    chapter_repo.list_characters.return_value = [jeremiah, jael]
 
     monkeypatch.setenv("OPENAI_API_KEY", "key-test")
-    return mentions_repo, chapter_repo, document_repo
+    return mentions_repo, chapter_repo
 
 
 def test_a_true_verdict_stamps_the_paragraph_as_a_mention(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
 
     evaluate_chapter_tier2(
         "c1",
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=lambda prompt: '{"1": true, "2": false}',
     )
 
@@ -127,14 +120,13 @@ def test_a_true_verdict_stamps_the_paragraph_as_a_mention(monkeypatch) -> None:
 def test_a_false_verdict_stamps_the_paragraph_as_mentioning_nobody(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
 
     evaluate_chapter_tier2(
         "c1",
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=lambda prompt: '{"1": false, "2": false}',
     )
 
@@ -147,7 +139,7 @@ def test_a_false_verdict_stamps_the_paragraph_as_mentioning_nobody(monkeypatch) 
 def test_no_ai_skips_the_model_with_a_warning(monkeypatch, caplog) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
     complete = MagicMock(side_effect=AssertionError("no-ai must not call"))
 
     with caplog.at_level("WARNING"):
@@ -156,7 +148,6 @@ def test_no_ai_skips_the_model_with_a_warning(monkeypatch, caplog) -> None:
             owner="acct-1",
             mentions_repo=mentions_repo,
             chapter_repo=chapter_repo,
-            document_repo=document_repo,
             complete=complete,
             no_ai=True,
         )
@@ -169,14 +160,13 @@ def test_no_ai_skips_the_model_with_a_warning(monkeypatch, caplog) -> None:
 def test_an_unresolved_candidate_leaves_the_paragraph_unstamped(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
 
     evaluate_chapter_tier2(
         "c1",
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=lambda prompt: "no thanks",
     )
 
@@ -186,7 +176,7 @@ def test_an_unresolved_candidate_leaves_the_paragraph_unstamped(monkeypatch) -> 
 def test_a_missing_api_key_makes_no_call(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     complete = MagicMock(side_effect=AssertionError("no key, no call"))
 
@@ -195,7 +185,6 @@ def test_a_missing_api_key_makes_no_call(monkeypatch) -> None:
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=complete,
     )
 
@@ -229,15 +218,15 @@ def _fake_nlp(spans: list[_Span]):
 
 def _ner_fixture(monkeypatch):
     """'Adams waited.' is pending; the fake NER sees a full-name PERSON span."""
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
     nlp = _fake_nlp([_Span("Jeremiah Adams", "PERSON")])
-    return mentions_repo, chapter_repo, document_repo, nlp
+    return mentions_repo, chapter_repo, nlp
 
 
 def test_a_person_span_matching_one_candidate_resolves_it_without_the_model(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo, nlp = _ner_fixture(monkeypatch)
+    mentions_repo, chapter_repo, nlp = _ner_fixture(monkeypatch)
     # the model is only asked about k2 (Jael): the span named Jeremiah exactly
     complete = MagicMock(return_value='{"1": false}')
 
@@ -246,7 +235,6 @@ def test_a_person_span_matching_one_candidate_resolves_it_without_the_model(monk
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=complete,
         nlp=nlp,
     )
@@ -263,7 +251,7 @@ def test_a_person_span_matching_one_candidate_resolves_it_without_the_model(monk
 def test_a_person_span_two_candidates_claim_does_not_resolve(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
     nlp = _fake_nlp([_Span("Adams", "PERSON")])
 
     evaluate_chapter_tier2(
@@ -271,7 +259,6 @@ def test_a_person_span_two_candidates_claim_does_not_resolve(monkeypatch) -> Non
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=lambda prompt: '{"1": true, "2": false}',
         nlp=nlp,
     )
@@ -285,14 +272,13 @@ def test_a_person_span_two_candidates_claim_does_not_resolve(monkeypatch) -> Non
 def test_no_nlp_goes_straight_to_the_model(monkeypatch) -> None:
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
 
     evaluate_chapter_tier2(
         "c1",
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=lambda prompt: '{"1": true, "2": false}',
         nlp=None,
     )
@@ -306,14 +292,13 @@ def test_a_cancelled_job_never_calls_the_model(monkeypatch) -> None:
 
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
 
     evaluate_chapter_tier2(
         "c1",
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         cancel=threading.Event(),
     )
 
@@ -326,7 +311,7 @@ def test_a_cancel_after_the_model_answers_stamps_nothing(monkeypatch) -> None:
 
     from dockb.services.mentions import evaluate_chapter_tier2
 
-    mentions_repo, chapter_repo, document_repo = _ambiguity_fixture(monkeypatch)
+    mentions_repo, chapter_repo = _ambiguity_fixture(monkeypatch)
     cancel = threading.Event()
 
     def answer_then_cancel(_prompt: str) -> str:
@@ -338,7 +323,6 @@ def test_a_cancel_after_the_model_answers_stamps_nothing(monkeypatch) -> None:
         owner="acct-1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         complete=answer_then_cancel,
         cancel=cancel,
     )

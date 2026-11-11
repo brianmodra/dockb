@@ -223,14 +223,12 @@ def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-loca
                 owner=owner,
                 mentions_repo=mentions_repo,
                 chapter_repo=chapter_repo,
-                document_repo=document_repo,
             )
             evaluate_chapter_tier2(
                 chapter.id,
                 owner=owner,
                 mentions_repo=mentions_repo,
                 chapter_repo=chapter_repo,
-                document_repo=document_repo,
                 no_ai=args.no_ai,
             )
             _log_chapter_mentions(chapter, owner=owner, mentions_repo=mentions_repo, document=document)

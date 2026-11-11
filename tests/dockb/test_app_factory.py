@@ -252,11 +252,11 @@ class TestWireServices:
 
         wire(mock_sf)
 
-        # DocumentRepository is built twice — once on the request session, once on the
+        # ChapterRepository is built twice — once on the request session, once on the
         # mentions session — and the mentions one must not share the request session.
-        assert mock_doc_repo.call_count == 2
-        request_session = mock_doc_repo.call_args_list[0][0][0]
-        mentions_session = mock_doc_repo.call_args_list[1][0][0]
+        assert mock_ch_repo.call_count == 2
+        request_session = mock_ch_repo.call_args_list[0][0][0]
+        mentions_session = mock_ch_repo.call_args_list[1][0][0]
         assert request_session is not mentions_session
         assert mock_mentions_repo.call_args[0][0] is mentions_session
 

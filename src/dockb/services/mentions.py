@@ -29,7 +29,6 @@ from typing import Any
 import httpx2
 
 from dockb.models.chapter import Chapter
-from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.token import POS
 
@@ -72,12 +71,10 @@ def _is_proper_noun(token: Any) -> bool:
     return bool(token.pos == POS.PROPN)
 
 
-def _ambiguity(document: Document) -> dict[str, list[str]]:
+def _ambiguity(characters: list[Chapter]) -> dict[str, list[str]]:
     """Which characters' name sets contain each entry (the document's own)."""
     owners: dict[str, list[str]] = {}
-    for chapter in document.chapters:
-        if chapter.category != "Character":
-            continue
+    for chapter in characters:
         for entry in name_set(chapter):
             key = " ".join(_entry_words(entry))
             owners.setdefault(key, []).append(chapter.id)
@@ -90,7 +87,6 @@ def evaluate_chapter_tier1(  # pylint: disable=too-many-positional-arguments,too
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
-    document_repo: Any,
     cancel: threading.Event | None = None,
 ) -> None:
     """Evaluate a chapter's state-1 and state-4 paragraphs, tier 1.
@@ -104,7 +100,7 @@ def evaluate_chapter_tier1(  # pylint: disable=too-many-positional-arguments,too
     *cancel*, when set between paragraphs, ends the pass: nothing further is
     stamped and the rollup is left for the successor run.
     """
-    pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo, document_repo)
+    pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo)
     if pending is None or chapter is None or _stop_requested(cancel):
         return
 
@@ -125,7 +121,7 @@ def evaluate_chapter_tier1(  # pylint: disable=too-many-positional-arguments,too
             mentions_repo.stamp(paragraph_id, verdicts, owner=owner, checked_at=now)
     if _stop_requested(cancel):
         return
-    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, chapter_title=chapter.title)
 
 
 def _gather(
@@ -133,22 +129,18 @@ def _gather(
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
-    document_repo: Any,
 ) -> tuple[list[str] | None, Chapter | None, list[Chapter], dict[str, list[str]]]:
     """The chapter's pending paragraph ids, the chapter, the cast, and the ambiguity map."""
     document_id = chapter_repo.find_document_id(chapter_id, owner)
     if document_id is None:
         return None, None, [], {}
-    document: Document | None = document_repo.load(document_id, owner)
-    if document is None:
-        return None, None, [], {}
-    chapter = next((c for c in document.chapters if c.id == chapter_id), None)
+    chapter: Chapter | None = chapter_repo.load(chapter_id, owner)
     if chapter is None:
         return None, None, [], {}
-    characters = [c for c in document.chapters if c.category == "Character"]
+    characters = chapter_repo.list_characters(document_id, owner)
     if not characters:
         return None, None, [], {}
-    ambiguity = _ambiguity(document)
+    ambiguity = _ambiguity(characters)
     states = {state["id"]: state["state"] for state in mentions_repo.paragraph_states(owner, chapter_id=chapter_id)}
     pending = [state_id for state_id, state in states.items() if state in (1, 4)]
     return pending, chapter, characters, ambiguity
@@ -286,7 +278,6 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
-    document_repo: Any,
     complete: Any = None,
     nlp: Any = None,
     no_ai: bool = False,
@@ -307,7 +298,7 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     verdicts are stamped, so what a still-flying batch comes back with is
     discarded rather than written.
     """
-    pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo, document_repo)
+    pending, chapter, characters, ambiguity = _gather(chapter_id, owner, mentions_repo, chapter_repo)
     if pending is None or chapter is None or _stop_requested(cancel):
         return
 
@@ -351,7 +342,7 @@ def evaluate_chapter_tier2(  # pylint: disable=too-many-arguments,too-many-posit
     verdicts = judge_ambiguous(candidates, complete=complete)
     if _stamps_tier2_verdicts(per_paragraph, verdicts, mentions_repo=mentions_repo, owner=owner, cancel=cancel):
         return
-    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, chapter_title=chapter.title)
 
 
 def _stamps_tier2_verdicts(
@@ -478,25 +469,23 @@ class MentionsJob:  # pylint: disable=too-few-public-methods
         *,
         mentions_repo: Any,
         chapter_repo: Any,
-        document_repo: Any,
         owner: str,
         chapter_id: str,
         cancel: threading.Event | None = None,
     ) -> None:
         self.chapter_id = chapter_id
-        self._repos = (mentions_repo, chapter_repo, document_repo)
+        self._repos = (mentions_repo, chapter_repo)
         self._owner = owner
         self.cancel = cancel
 
     def run(self) -> None:
         """Evaluate every pending paragraph of the job's chapter, both tiers."""
-        mentions_repo, chapter_repo, document_repo = self._repos
+        mentions_repo, chapter_repo = self._repos
         _evaluate_chapter(
             self.chapter_id,
             owner=self._owner,
             mentions_repo=mentions_repo,
             chapter_repo=chapter_repo,
-            document_repo=document_repo,
             cancel=self.cancel,
         )
 
@@ -507,7 +496,6 @@ def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
-    document_repo: Any,
     cancel: threading.Event | None = None,
 ) -> None:
     """Both tiers for one chapter's pending paragraphs, then the chapter rollup.
@@ -522,7 +510,6 @@ def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional
         owner=owner,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         cancel=cancel,
     )
     if _stop_requested(cancel):
@@ -532,15 +519,21 @@ def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional
         owner=owner,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         cancel=cancel,
     )
     if _stop_requested(cancel):
         return
-    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    _refresh_rollup(chapter_id, owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
 
-def _refresh_rollup(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_repo: Any, document_repo: Any) -> None:
+def _refresh_rollup(
+    chapter_id: str,
+    *,
+    owner: str,
+    mentions_repo: Any,
+    chapter_repo: Any,
+    chapter_title: str | None = None,
+) -> None:
     """The chapter's own MENTIONS: the characters its paragraphs' valid verdicts name.
 
     A view, never a judgement — rebuilt from the paragraph verdicts after every
@@ -549,10 +542,8 @@ def _refresh_rollup(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_
     document_id = chapter_repo.find_document_id(chapter_id, owner)
     if document_id is None:
         return
-    document: Document | None = document_repo.load(document_id, owner)
-    if document is None:
-        return
-    character_titles = {chapter.id: chapter.title for chapter in document.chapters if chapter.category == "Character"}
+    characters = chapter_repo.list_characters(document_id, owner)
+    character_titles = {chapter.id: chapter.title for chapter in characters}
     mentioned: set[str] = set()
     total = 0
     for state in mentions_repo.paragraph_states(owner, chapter_id=chapter_id):
@@ -563,5 +554,4 @@ def _refresh_rollup(chapter_id: str, *, owner: str, mentions_repo: Any, chapter_
                 total += 1
                 mentioned.add(character_id)
     mentions_repo.stamp_chapter(chapter_id, sorted(mentioned), owner=owner)
-    chapter_title = next((chapter.title for chapter in document.chapters if chapter.id == chapter_id), chapter_id)
-    logger.info("Mentions for chapter '%s': %d", chapter_title, total)
+    logger.info("Mentions for chapter '%s': %d", chapter_title or chapter_id, total)

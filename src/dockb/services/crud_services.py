@@ -285,7 +285,6 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         session_context: SessionContext | None = None,
         mentions_scheduler: MentionsScheduler | None = None,
         mentions_chapter_repo: ChapterRepository | None = None,
-        mentions_document_repo: DocumentRepository | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
@@ -297,7 +296,6 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         # (wired on a separate session in production) so it never contends with
         # the request path; tests that omit them fall back to the request repos.
         self._mentions_chapter_repo = mentions_chapter_repo if mentions_chapter_repo is not None else chapter_repo
-        self._mentions_document_repo = mentions_document_repo if mentions_document_repo is not None else document_repo
         self._mentions_scheduler = mentions_scheduler or MentionsScheduler()
         self._session_context = session_context
         self._save_locks: dict[str, threading.Lock] = {}
@@ -485,7 +483,6 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
                 chapter_id=chapter_id,
                 mentions_repo=self._mentions_repo,
                 chapter_repo=self._mentions_chapter_repo,
-                document_repo=self._mentions_document_repo,
                 owner=owner,
             )
             self._mentions_scheduler.schedule(chapter_id, job)

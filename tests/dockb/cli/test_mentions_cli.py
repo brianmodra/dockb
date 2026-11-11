@@ -89,6 +89,15 @@ def wired(document, monkeypatch):
     document_repo.list_all.return_value = [{"id": document.id, "title": "Linchpin", "author": "A"}]
     mentions_repo = MagicMock()
 
+    def load_chapter(chapter_id, _owner="acct-1"):
+        return next((c for c in document_repo.load.return_value.chapters if c.id == chapter_id), None)
+
+    def list_characters(_document_id, _owner="acct-1"):
+        return [c for c in document_repo.load.return_value.chapters if c.category == "Character"]
+
+    chapter_repo.load.side_effect = load_chapter
+    chapter_repo.list_characters.side_effect = list_characters
+
     def states(_owner, chapter_id=None, document_id=None):  # pylint: disable=unused-argument
         # the graph's view: p1 settles when tier 1 stamps it; p2's "Adams" is
         # ambiguous and only the model can rule on it

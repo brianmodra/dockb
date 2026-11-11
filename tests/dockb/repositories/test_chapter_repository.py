@@ -668,6 +668,44 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
 
         assert chapter_repo.list_character_names("d-1", _OWNER) == []
 
+    def test_lists_every_character_with_their_names(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "id": "k1",
+                "title": "Karakas",
+                "first_name": "Kiral",
+                "surname": "Karakas",
+                "middle_names": ["Edgar"],
+                "nicknames": ["Kira"],
+            },
+            {
+                "id": "k2",
+                "title": "Jael",
+                "first_name": "",
+                "surname": "Adams",
+                "middle_names": [],
+                "nicknames": [],
+            },
+        ]
+
+        characters = chapter_repo.list_characters("d-1", _OWNER)
+
+        assert [character.id for character in characters] == ["k1", "k2"]
+        assert characters[0].title == "Karakas"
+        assert characters[0].first_name == "Kiral"
+        assert characters[0].surname == "Karakas"
+        assert characters[0].middle_names == ["Edgar"]
+        assert characters[0].nicknames == ["Kira"]
+        assert all(character.category == "Character" for character in characters)
+        cypher, params = extract_call(neo4j_session)
+        assert "category: 'Character'" in cypher
+        assert params == {"document_id": "d-1", "owner": _OWNER}
+
+    def test_characters_are_empty_when_the_document_has_none(self, chapter_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+
+        assert chapter_repo.list_characters("d-1", _OWNER) == []
+
     def test_loads_character_properties_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
             {

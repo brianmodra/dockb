@@ -46,7 +46,7 @@ def _document() -> Document:
 
 
 def _fixture(chapter_states: list[dict]):
-    document = _document()
+    chapter = _document().chapters[0]
     jeremiah = _character(
         "k1",
         "Jeremiah",
@@ -56,28 +56,25 @@ def _fixture(chapter_states: list[dict]):
         nicknames=["Adams", "Jer", "Jer-bear"],
     )
     jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
-    document.chapters.append(jeremiah)
-    document.chapters.append(jael)
+    characters = [jeremiah, jael]
 
     mentions_repo = MagicMock()
     mentions_repo.paragraph_states.return_value = chapter_states
     chapter_repo = MagicMock()
-    chapter_repo.load.return_value = next(c for c in document.chapters if c.id == "c1")
+    chapter_repo.load.return_value = chapter
     chapter_repo.find_document_id.return_value = "d1"
-    document_repo = MagicMock()
-    document_repo.load.return_value = document
-    return mentions_repo, chapter_repo, document_repo, document
+    chapter_repo.list_characters.return_value = characters
+    return mentions_repo, chapter_repo, characters, chapter
 
 
 def test_a_first_name_match_becomes_a_name_verdict() -> None:
-    mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture([{"id": "p2", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p2", "state": 1}])
 
     evaluate_chapter_tier1(
         "c1",
         owner=_OWNER,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
     )
 
     stamped = mentions_repo.stamp.call_args
@@ -89,14 +86,13 @@ def test_a_first_name_match_becomes_a_name_verdict() -> None:
 
 def test_an_ambiguous_name_is_left_pending_not_stamped() -> None:
     # "Adams" is Jeremiah's nickname AND Jael's surname: tier 1 may not judge it.
-    mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture([{"id": "p3", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p3", "state": 1}])
 
     evaluate_chapter_tier1(
         "c1",
         owner=_OWNER,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
     )
 
     mentions_repo.stamp.assert_not_called()
@@ -105,14 +101,13 @@ def test_an_ambiguous_name_is_left_pending_not_stamped() -> None:
 def test_a_hyphenated_nickname_matches_through_its_tokens() -> None:
     # spaCy stores "Jer-bear" as three tokens — Jer, -, bear — and the hyphen
     # (a PUNCT token) is skipped, so the name matches through its word tokens.
-    mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture([{"id": "p4", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p4", "state": 1}])
 
     evaluate_chapter_tier1(
         "c1",
         owner=_OWNER,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
     )
 
     stamped = mentions_repo.stamp.call_args
@@ -121,14 +116,13 @@ def test_a_hyphenated_nickname_matches_through_its_tokens() -> None:
 
 
 def test_a_paragraph_with_no_name_tokens_becomes_state_2() -> None:
-    mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture([{"id": "p1", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p1", "state": 1}])
 
     evaluate_chapter_tier1(
         "c1",
         owner=_OWNER,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
     )
 
     stamped = mentions_repo.stamp.call_args
@@ -138,7 +132,7 @@ def test_a_paragraph_with_no_name_tokens_becomes_state_2() -> None:
 
 
 def test_states_2_and_3_paragraphs_are_not_touched() -> None:
-    mentions_repo, chapter_repo, document_repo, _jeremiah = _fixture(
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture(
         [
             {"id": "p2", "state": 1, "mentions": []},
             {"id": "p3", "state": 2, "mentions": []},
@@ -152,7 +146,6 @@ def test_states_2_and_3_paragraphs_are_not_touched() -> None:
         owner=_OWNER,
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
     )
 
     stamped_ids = [call.args[0] for call in mentions_repo.stamp.call_args_list]
@@ -163,21 +156,17 @@ def test_a_job_evaluates_its_scoped_chapter() -> None:
     from dockb.services import mentions as mentions_module
 
     chapter = _character("k1", "Jeremiah", first_name="Jeremiah")
-    document = Document(id="d1", state=DataState.SYNC)
-    document.chapters.append(chapter)
     mentions_repo = MagicMock()
     mentions_repo.paragraph_states.return_value = []
     chapter_repo = MagicMock()
     chapter_repo.load.return_value = chapter
     chapter_repo.find_document_id.return_value = "d1"
-    document_repo = MagicMock()
-    document_repo.load.return_value = document
+    chapter_repo.list_characters.return_value = [chapter]
 
     job = mentions_module.MentionsJob(
         chapter_id="k1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         owner="acct-1",
     )
     job.run()
@@ -194,20 +183,14 @@ def test_the_job_logs_the_mentions_found_for_the_finished_chapter(caplog) -> Non
         {"id": "p2", "state": 2, "index": 1, "mentions": []},
     ]
     chapter_repo = MagicMock()
-    chapter_repo.load.return_value = _character("c1", "")
+    chapter_repo.load.return_value = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
     chapter_repo.find_document_id.return_value = "d1"
-    document = Document(id="d1", title="Linchpin", state=DataState.SYNC)
-    document.chapters.append(Chapter(id="c1", title="Opening 1", state=DataState.SYNC))
-    document.chapters.append(_character("k1", "Karakas"))
-    document.chapters.append(_character("k2", "Jael"))
-    document_repo = MagicMock()
-    document_repo.load.return_value = document
+    chapter_repo.list_characters.return_value = [_character("k1", "Karakas"), _character("k2", "Jael")]
 
     job = mentions_module.MentionsJob(
         chapter_id="c1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         owner="acct-1",
     )
     with caplog.at_level("INFO", logger="dockb.services.mentions"):
@@ -321,13 +304,10 @@ def test_a_character_save_without_identity_change_triggers_nothing(tmp_path, nlp
 def test_a_longer_adjacent_run_beats_the_defeated_shorter_match() -> None:
     # "Jael Adams": the two-token run is Jael's name; the nickname "Adams"
     # (Jeremiah's) is defeated — no verdict for Jeremiah, one for Jael.
-    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p5", "state": 1}])
-    jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
-    document.chapters.append(jael)
-    chapter = document.chapters[0]
+    mentions_repo, chapter_repo, _characters, chapter = _fixture([{"id": "p5", "state": 1}])
     chapter.paragraphs.append(_paragraph("p5", [("Jael", POS.PROPN), ("Adams", POS.PROPN), ("waited", POS.VERB)]))
 
-    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
     stamped = mentions_repo.stamp.call_args
     assert stamped is not None and stamped.args[0] == "p5"
@@ -335,8 +315,7 @@ def test_a_longer_adjacent_run_beats_the_defeated_shorter_match() -> None:
 
 
 def test_the_full_name_run_beats_both_the_first_name_and_the_nickname() -> None:
-    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p6", "state": 1}])
-    chapter = document.chapters[0]
+    mentions_repo, chapter_repo, _characters, chapter = _fixture([{"id": "p6", "state": 1}])
     chapter.paragraphs.append(
         _paragraph(
             "p6",
@@ -344,7 +323,7 @@ def test_the_full_name_run_beats_both_the_first_name_and_the_nickname() -> None:
         )
     )
 
-    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
     stamped = mentions_repo.stamp.call_args
     assert stamped is not None and stamped.args[0] == "p6"
@@ -354,18 +333,15 @@ def test_the_full_name_run_beats_both_the_first_name_and_the_nickname() -> None:
 
 def test_a_shared_name_with_no_completing_run_stays_pending() -> None:
     # "Adams entered" alone: shared by Jeremiah (nickname) and Jael (surname).
-    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p3", "state": 1}])
-    jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
-    document.chapters.append(jael)
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p3", "state": 1}])
 
-    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
     mentions_repo.stamp.assert_not_called()  # pending for tier 3
 
 
 def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
-    mentions_repo, chapter_repo, document_repo, document = _fixture([{"id": "p7", "state": 1}])
-    chapter = document.chapters[0]
+    mentions_repo, chapter_repo, _characters, chapter = _fixture([{"id": "p7", "state": 1}])
     # "Jael's" tokenizes as Jael + 's
     paragraph = Paragraph(id="p7", state=DataState.SYNC)
     sentence = Sentence(state=DataState.SYNC)
@@ -374,10 +350,8 @@ def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
     sentence.tokens.append(Token(text="brother", trailing_ws=" ", pos=POS.NOUN, state=DataState.SYNC))
     paragraph.sentences.append(sentence)
     chapter.paragraphs.append(paragraph)
-    jael = _character("k2", "Jael", first_name="Jael", surname="Adams")
-    document.chapters.append(jael)
 
-    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
     stamped = mentions_repo.stamp.call_args
     assert stamped is not None and stamped.args[0] == "p7"
@@ -385,7 +359,7 @@ def test_a_possessive_clitic_does_not_block_the_name_match() -> None:
 
 
 def test_the_evaluation_refreshes_the_chapters_mention_rollup() -> None:
-    mentions_repo, chapter_repo, document_repo, _document = _fixture([{"id": "p2", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p2", "state": 1}])
 
     def states_evolve(*_args, **_kwargs):
         # the graph's view: pending until tier 1 stamps it, then a valid verdict
@@ -395,7 +369,7 @@ def test_the_evaluation_refreshes_the_chapters_mention_rollup() -> None:
 
     mentions_repo.paragraph_states.side_effect = states_evolve
 
-    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo, document_repo=document_repo)
+    evaluate_chapter_tier1("c1", owner=_OWNER, mentions_repo=mentions_repo, chapter_repo=chapter_repo)
 
     mentions_repo.stamp_chapter.assert_called_once_with("c1", ["k1"], owner=_OWNER)
 
@@ -405,13 +379,12 @@ def test_a_cancelled_job_evaluates_nothing() -> None:
 
     from dockb.services import mentions as mentions_module
 
-    mentions_repo, chapter_repo, document_repo, _document = _fixture([{"id": "p2", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p2", "state": 1}])
 
     job = mentions_module.MentionsJob(
         chapter_id="c1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         owner=_OWNER,
     )
     job.cancel = threading.Event()
@@ -426,12 +399,11 @@ def test_a_job_cancelled_between_paragraphs_stamps_nothing_more() -> None:
 
     from dockb.services import mentions as mentions_module
 
-    mentions_repo, chapter_repo, document_repo, _document = _fixture([{"id": "p2", "state": 1}, {"id": "p4", "state": 1}])
+    mentions_repo, chapter_repo, _characters, _chapter = _fixture([{"id": "p2", "state": 1}, {"id": "p4", "state": 1}])
     job = mentions_module.MentionsJob(
         chapter_id="c1",
         mentions_repo=mentions_repo,
         chapter_repo=chapter_repo,
-        document_repo=document_repo,
         owner=_OWNER,
     )
     job.cancel = threading.Event()

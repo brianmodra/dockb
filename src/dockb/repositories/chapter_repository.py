@@ -137,6 +137,15 @@ RETURN c.first_name AS first_name, c.surname AS surname,
        coalesce(c.nicknames, []) AS nicknames
 """
 
+_LIST_CHARACTERS_CYPHER = """
+MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $document_id, owner: $owner})
+RETURN c.id AS id, c.title AS title,
+       c.first_name AS first_name, c.surname AS surname,
+       coalesce(c.middle_names, []) AS middle_names,
+       coalesce(c.nicknames, []) AS nicknames
+ORDER BY r.index
+"""
+
 _RETITLE_CYPHER = """
 UNWIND $entries AS entry
 MATCH (d:Document {id: $document_id, owner: $owner})<-[r:PART_OF]-(c:Chapter {id: entry.id})
@@ -301,6 +310,33 @@ class ChapterRepository(BaseRepository[Chapter]):
                 if word:
                     names.setdefault(word.casefold(), word)
         return [names[key] for key in sorted(names)]
+
+    def list_characters(self, document_id: str, owner: str) -> list[Chapter]:
+        """Return *document_id*'s Character chapters as id-only, name-bearing stubs.
+
+        Each chapter carries its title and name fields (first name, middle names,
+        surname, nicknames) but no paragraphs — enough for the mention pipeline to
+        build its name index without loading the whole document.
+        """
+        records = self._session.run(
+            _LIST_CHARACTERS_CYPHER,
+            {"document_id": document_id, "owner": owner},
+        )
+        characters: list[Chapter] = []
+        for record in records:
+            characters.append(
+                Chapter(
+                    id=str(record["id"]),
+                    title=str(record.get("title") or ""),
+                    category="Character",
+                    first_name=str(record.get("first_name") or ""),
+                    surname=str(record.get("surname") or ""),
+                    middle_names=list(record.get("middle_names") or []),
+                    nicknames=list(record.get("nicknames") or []),
+                    state=DataState.SYNC,
+                )
+            )
+        return characters
 
     def reorder(self, document_id: str, ordered_ids: list[str], owner: str) -> None:
         """Rewrite the chapters' PART_OF `index` to match their position in *ordered_ids*."""
