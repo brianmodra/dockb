@@ -40,6 +40,11 @@ In the repository classes then the only things that vary are:
 - Whether a parent ID is required (Document: none; Sentence/Paragraph/Chapter: one)
 - The Cypher query strings (\_NEW_CYPHER, \_CHANGED_CYPHER, \_DELETE_CYPHER)
 - The child serialization method (\_child_to_dict vs \_token_to_dict)
+- Whether `save_many()` batches: `ParagraphRepository` and `SentenceRepository`
+  override it to write a whole commit's worth of models in one `UNWIND $rows` query
+  (three queries per commit — NEW, CHANGED, DELETED — chunked at 500 rows), while
+  `DocumentRepository` and `ChapterRepository` inherit the default of one `save()` per
+  model.
 
 ## UnitOfWork
 
@@ -49,6 +54,11 @@ The register(model) adds a model to the unit of work.
 Opens a session via SessionFactory, wraps all repo.save() calls in a transaction, commits on success.
 If any save fails, the transaction is rolled back and tracked changes are discarded.
 The UoW holds a list of models whose state == DELETED, ensuring they aren't garbage-collected before the Cypher runs.
+
+At commit time the UoW partitions each state list (`_new`, `_changed`, `_deleted`) by model type in
+first-appearance order — which is registration order, parent-first — and dispatches each type's batch
+through that repository's `save_many()` rather than one `save()` per model. This lets the paragraph and
+sentence repositories collapse dozens of round trips into a handful of `UNWIND` queries.
 
 During re-parenting, if a Sentence moves from Paragraph A to Paragraph B, the UoW must save both paragraphs
 (A loses a child, B gains one) and the sentence itself (its parent changed). Each paragraph is registered with

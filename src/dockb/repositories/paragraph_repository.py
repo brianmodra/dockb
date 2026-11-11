@@ -41,6 +41,36 @@ DETACH DELETE p
 """
 
 # ---------------------------------------------------------------------------
+# Batched write Cypher — the same writes over `UNWIND $rows AS row`.
+# ---------------------------------------------------------------------------
+
+_NEW_ROWS_CYPHER = """
+UNWIND $rows AS row
+MATCH (c:Chapter {id: row.chapter_id})-[:PART_OF]->(:Document {owner: row.owner})
+MERGE (p:Paragraph {id: row.paragraph_id})
+MERGE (p)-[:PART_OF]->(c)
+SET p.quote_type = row.quote_type
+WITH p, row
+UNWIND row.sentences AS s
+MERGE (sent:Sentence {id: s.id})
+MERGE (sent)-[r:PART_OF]->(p)
+SET r.index = s.index
+"""
+
+_CHANGED_ROWS_CYPHER = _NEW_ROWS_CYPHER + """
+WITH p, COLLECT(s.id) AS keep_ids
+OPTIONAL MATCH (p)<-[r:PART_OF]-(orphan:Sentence)
+WHERE NOT orphan.id IN keep_ids
+DETACH DELETE orphan
+"""
+
+_DELETE_ROWS_CYPHER = """
+UNWIND $rows AS row
+MATCH (p:Paragraph {id: row.paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: row.owner})
+DETACH DELETE p
+"""
+
+# ---------------------------------------------------------------------------
 # Read Cypher
 # ---------------------------------------------------------------------------
 
@@ -92,6 +122,19 @@ class ParagraphRepository(BaseRepository[Paragraph]):
             "quote_type": model.quote_type,
             "sentences": [{"id": s.id, "index": i} for i, s in enumerate(model.sentences)],
         }
+
+    def save_many(self, entries: list[tuple[Paragraph, dict[str, str]]]) -> None:
+        """Persist many paragraphs — one UNWIND query per data state."""
+        for model, _ in entries:
+            if model.dirty:
+                raise ValueError(f"{type(model).__name__} is dirty, cannot save")
+        for state, cypher in (
+            (DataState.NEW, _NEW_ROWS_CYPHER),
+            (DataState.CHANGED, _CHANGED_ROWS_CYPHER),
+            (DataState.DELETED, _DELETE_ROWS_CYPHER),
+        ):
+            rows = [self._build_params(model, **parent_ids) for model, parent_ids in entries if model.state is state]
+            self._run_batched(cypher, rows)
 
     def owns_chapter(self, chapter_id: str, owner: str) -> bool:
         """Return whether *chapter_id* — the parent this repository writes through — is *owner*'s.

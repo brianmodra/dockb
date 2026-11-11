@@ -137,7 +137,7 @@ class TestUnitOfWorkCommit:
         repo = MagicMock()
         uow.register(model, document_id="d1")
         uow.commit({Document: repo})
-        repo.save.assert_called_once_with(model, document_id="d1")
+        repo.save_many.assert_called_once_with([(model, {"document_id": "d1"})])
 
     def test_calls_repo_save_for_changed(self):
         uow = UnitOfWork()
@@ -146,7 +146,7 @@ class TestUnitOfWorkCommit:
         repo = MagicMock()
         uow.register(model)
         uow.commit({Document: repo})
-        repo.save.assert_called_once_with(model)
+        repo.save_many.assert_called_once_with([(model, {})])
 
     def test_calls_repo_save_for_deleted(self):
         uow = UnitOfWork()
@@ -155,7 +155,7 @@ class TestUnitOfWorkCommit:
         repo = MagicMock()
         uow.register(model)
         uow.commit({Document: repo})
-        repo.save.assert_called_once_with(model)
+        repo.save_many.assert_called_once_with([(model, {})])
 
     def test_mixed_models_all_saved_to_correct_repos(self):
         # Separate mocks per model type verify dispatch by repos[type(model)]
@@ -170,8 +170,24 @@ class TestUnitOfWorkCommit:
         uow.register(doc)
         uow.register(chapter, document_id="d1")
         uow.commit({Document: doc_repo, Chapter: ch_repo})
-        doc_repo.save.assert_called_once_with(doc)
-        ch_repo.save.assert_called_once_with(chapter, document_id="d1")
+        doc_repo.save_many.assert_called_once_with([(doc, {})])
+        ch_repo.save_many.assert_called_once_with([(chapter, {"document_id": "d1"})])
+
+    def test_batches_each_type_in_registration_order(self):
+        # Paragraphs and sentences registered parent-first must reach their own
+        # repos as one ordered batch each, paragraphs before sentences.
+        uow = UnitOfWork()
+        paragraph = Paragraph()
+        paragraph.state = DataState.NEW
+        sentence = Sentence()
+        sentence.state = DataState.NEW
+        para_repo = MagicMock()
+        sent_repo = MagicMock()
+        uow.register(paragraph, chapter_id="c1", owner="acct-1")
+        uow.register(sentence, paragraph_id="p1", owner="acct-1")
+        uow.commit({Paragraph: para_repo, Sentence: sent_repo})
+        para_repo.save_many.assert_called_once_with([(paragraph, {"chapter_id": "c1", "owner": "acct-1"})])
+        sent_repo.save_many.assert_called_once_with([(sentence, {"paragraph_id": "p1", "owner": "acct-1"})])
 
     def test_clears_lists_after_commit(self):
         uow = UnitOfWork()
@@ -189,7 +205,7 @@ class TestUnitOfWorkCommit:
         model = Document()
         model.state = DataState.NEW
         repo = MagicMock()
-        repo.save.side_effect = RuntimeError("fail")
+        repo.save_many.side_effect = RuntimeError("fail")
         uow.register(model)
         with pytest.raises(RuntimeError):
             uow.commit({Document: repo})
@@ -206,7 +222,7 @@ class TestUnitOfWorkCommit:
         repo = MagicMock()
         uow.register(model, paragraph_id="p1")
         uow.commit({Sentence: repo})
-        repo.save.assert_called_once_with(model, paragraph_id="p1")
+        repo.save_many.assert_called_once_with([(model, {"paragraph_id": "p1"})])
 
     def test_commit_uses_stored_repos_when_none_passed(self):
         repo = MagicMock()
@@ -215,7 +231,7 @@ class TestUnitOfWorkCommit:
         model.state = DataState.NEW
         uow.register(model)
         uow.commit()
-        repo.save.assert_called_once_with(model)
+        repo.save_many.assert_called_once_with([(model, {})])
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +256,7 @@ class TestUnitOfWorkOnCommit:
         model = Document()
         model.state = DataState.NEW
         repo = MagicMock()
-        repo.save.side_effect = RuntimeError("fail")
+        repo.save_many.side_effect = RuntimeError("fail")
         uow.register(model)
         with pytest.raises(RuntimeError):
             uow.commit({Document: repo})
@@ -318,7 +334,7 @@ class TestUnitOfWorkFlushPending:
         model.dirty = True
         uow.register(model)
         uow.flush_pending()
-        repo.save.assert_called_once()
+        repo.save_many.assert_called_once()
 
     def test_clears_lists_after_flush(self):
         reconstructor = MagicMock()
@@ -396,7 +412,12 @@ class TestUnitOfWorkFlushPending:
         reconstructor.run.assert_not_called()
         repo.save.assert_not_called()
         save_states: list[tuple[object, bool]] = []
-        repo.save.side_effect = lambda m, **kw: save_states.append((m.state, m.dirty))
+
+        def record(entries: list[tuple[object, dict[str, str]]]) -> None:
+            model_, _ = entries[0]
+            save_states.append((model_.state, model_.dirty))
+
+        repo.save_many.side_effect = record
         uow.flush_pending()
         reconstructor.run.assert_called_once_with(model)
         assert save_states == [(DataState.CHANGED, False)]  # updated, not deleted
@@ -453,5 +474,5 @@ class TestUnitOfWorkCommitFlushWithDeleted:
         # flush_pending() auto-promotes resurrected model and commits
         uow.flush_pending()
         # Model should have been updated, not deleted
-        assert repo.save.call_count == 1
-        repo.save.assert_called_once_with(model)
+        assert repo.save.call_count == 0
+        repo.save_many.assert_called_once_with([(model, {})])

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dockb.models.base import DataState
+from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
 
 _OWNER = "acct-1"
@@ -191,6 +192,80 @@ class TestSaveDirtySentence:  # pylint: disable=too-few-public-methods
         sentence.state = DataState.CHANGED
         with pytest.raises(ValueError, match="(?i)dirty"):
             repo.save(sentence, paragraph_id="p1", owner=_OWNER)
+        neo4j_session.run.assert_not_called()
+
+
+class TestSaveMany:
+    """save_many() — one UNWIND query per data state."""
+
+    def test_batches_new_sentences_into_one_run(self, repo, neo4j_session):
+        s1 = Sentence(id="s1", state=DataState.NEW, text="Hello")
+        s2 = Sentence(id="s2", state=DataState.NEW, text="World")
+        s1.tokens.append(make_token("Hello"))
+
+        repo.save_many(
+            [
+                (s1, {"paragraph_id": "p1", "owner": _OWNER}),
+                (s2, {"paragraph_id": "p2", "owner": _OWNER}),
+            ]
+        )
+
+        assert neo4j_session.run.call_count == 1
+        cypher, params = extract_call(neo4j_session)
+        assert "UNWIND $rows AS row" in cypher
+        rows = params["rows"]
+        assert [r["sentence_id"] for r in rows] == ["s1", "s2"]
+        assert rows[0]["paragraph_id"] == "p1"
+        assert rows[0]["tokens"]
+
+    def test_changed_batch_includes_orphan_cleanup(self, repo, neo4j_session):
+        s = Sentence(id="s1", state=DataState.CHANGED, text="Hello")
+        s.tokens.append(make_token("Hello"))
+
+        repo.save_many([(s, {"paragraph_id": "p1", "owner": _OWNER})])
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "OPTIONAL MATCH" in cypher
+        assert "DETACH DELETE orphan" in cypher
+
+    def test_deleted_batch_detaches_each_sentence(self, repo, neo4j_session):
+        s1 = Sentence(id="s1", state=DataState.DELETED)
+        s2 = Sentence(id="s2", state=DataState.DELETED)
+
+        repo.save_many(
+            [
+                (s1, {"paragraph_id": "p1", "owner": _OWNER}),
+                (s2, {"paragraph_id": "p2", "owner": _OWNER}),
+            ]
+        )
+
+        cypher, params = extract_call(neo4j_session)
+        assert "DETACH DELETE" in cypher
+        assert [r["sentence_id"] for r in params["rows"]] == ["s1", "s2"]
+
+    def test_separates_states_into_separate_runs(self, repo, neo4j_session):
+        new = Sentence(id="s1", state=DataState.NEW, text="Hello")
+        changed = Sentence(id="s2", state=DataState.CHANGED, text="World")
+
+        repo.save_many(
+            [
+                (new, {"paragraph_id": "p1", "owner": _OWNER}),
+                (changed, {"paragraph_id": "p2", "owner": _OWNER}),
+            ]
+        )
+
+        assert neo4j_session.run.call_count == 2
+
+    def test_raises_on_dirty_entry_without_running(self, repo, neo4j_session):
+        dirty = Sentence(id="s1", state=DataState.NEW, text="Hello")
+        dirty.dirty = True
+        with pytest.raises(ValueError, match="(?i)dirty"):
+            repo.save_many([(dirty, {"paragraph_id": "p1", "owner": _OWNER})])
+        neo4j_session.run.assert_not_called()
+
+    def test_skips_sync_entries(self, repo, neo4j_session):
+        s = Sentence(id="s1", state=DataState.SYNC, text="Hello")
+        repo.save_many([(s, {"paragraph_id": "p1", "owner": _OWNER})])
         neo4j_session.run.assert_not_called()
 
 

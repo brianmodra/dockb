@@ -109,3 +109,25 @@ class TestBaseRepositorySave:
         # _build_params receives chapter_id but may or may not use it;
         # the assert confirms the save call itself forwards parent_ids correctly.
         session.run.assert_called_once()
+
+
+class TestBaseRepositorySaveMany:
+    """The default save_many() persists each entry with save()."""
+
+    def test_default_loops_save_per_entry(self):
+        session = MagicMock()
+        repo = _ConcreteRepo(session)
+        m1 = MagicMock(spec=Document, dirty=False, state=DataState.NEW)
+        m1.id = "doc-1"
+        m2 = MagicMock(spec=Document, dirty=False, state=DataState.NEW)
+        m2.id = "doc-2"
+        repo.save_many([(m1, {}), (m2, {})])
+        assert session.run.call_count == 2
+
+    def test_default_raises_on_dirty_entry(self):
+        session = MagicMock()
+        repo = _ConcreteRepo(session)
+        model = MagicMock(spec=Document, dirty=True, state=DataState.NEW)
+        with pytest.raises(ValueError, match="dirty"):
+            repo.save_many([(model, {})])
+        session.run.assert_not_called()

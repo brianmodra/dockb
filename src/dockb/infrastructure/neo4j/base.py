@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 M = TypeVar("M", bound=DockbModel)
 
+_BATCH_SIZE = 500
+
 
 class BaseRepository(ABC, Generic[M]):  # pylint: disable=too-few-public-methods
     """Shared save dispatch for models with DataState.
@@ -49,6 +51,21 @@ class BaseRepository(ABC, Generic[M]):  # pylint: disable=too-few-public-methods
             case DataState.DELETED:
                 logger.debug("Delete %s", type(model).__name__)
                 self._session.run(self._delete_cypher, self._build_params(model, **parent_ids))
+
+    def save_many(self, entries: list[tuple[M, dict[str, str]]]) -> None:
+        """Persist a batch of like-typed models in registration order.
+
+        The default issues one :meth:`save` per entry; repositories whose write
+        Cypher UNWINDs child rows override this to batch many models into a
+        single query. Entries of a batch always share the repository (the unit
+        of work dispatches by model type) but may span states."""
+        for model, parent_ids in entries:
+            self.save(model, **parent_ids)
+
+    def _run_batched(self, cypher: str, rows: list[dict[str, Any]]) -> None:
+        """Run *cypher* once per ``_BATCH_SIZE`` slice of *rows* under ``$rows``."""
+        for start in range(0, len(rows), _BATCH_SIZE):
+            self._session.run(cypher, {"rows": rows[start : start + _BATCH_SIZE]})
 
     @property
     @abstractmethod

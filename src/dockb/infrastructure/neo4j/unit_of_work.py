@@ -63,18 +63,34 @@ class UnitOfWork:
 
         success = False
         try:
-            for model, parent_ids in self._new:
-                repos[type(model)].save(model, **parent_ids)
-            for model, parent_ids in self._changed:
-                repos[type(model)].save(model, **parent_ids)
-            for model, parent_ids in self._deleted:
-                repos[type(model)].save(model, **parent_ids)
+            for entries in (self._new, self._changed, self._deleted):
+                for model_type, group in self._group_by_type(entries):
+                    repos[model_type].save_many(group)
             success = True
         finally:
             if success:
                 self._clear()
         if success and self._on_commit is not None:
             self._on_commit()
+
+    @staticmethod
+    def _group_by_type(
+        entries: list[tuple[DockbModel, dict[str, str]]],
+    ) -> list[tuple[type[DockbModel], list[tuple[DockbModel, dict[str, str]]]]]:
+        """Partition *entries* by model type, preserving first-appearance order.
+
+        Registration is parent-first (chapter, then its paragraphs, then their
+        sentences), so grouping keeps the write order each repository's Cypher
+        depends on while letting each repository persist its set in one batch."""
+        groups: dict[type[DockbModel], list[tuple[DockbModel, dict[str, str]]]] = {}
+        order: list[type[DockbModel]] = []
+        for model, parent_ids in entries:
+            model_type = type(model)
+            if model_type not in groups:
+                groups[model_type] = []
+                order.append(model_type)
+            groups[model_type].append((model, parent_ids))
+        return [(model_type, groups[model_type]) for model_type in order]
 
     def flush_pending(self) -> None:
         """Lenient: reconstruct dirty new/changed, handle deleted directly, then commit."""

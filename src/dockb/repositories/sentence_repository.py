@@ -59,6 +59,55 @@ DETACH DELETE s
 """
 
 # ---------------------------------------------------------------------------
+# Batched write Cypher — the same writes over `UNWIND $rows AS row`.
+# ---------------------------------------------------------------------------
+
+_NEW_ROWS_CYPHER = """
+UNWIND $rows AS row
+MATCH (p:Paragraph {id: row.paragraph_id})-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: row.owner})
+MERGE (s:Sentence {id: row.sentence_id})
+MERGE (s)-[:PART_OF]->(p)
+WITH s, row
+UNWIND row.tokens AS t
+MERGE (tok:Token {id: t.id})
+ON CREATE SET
+  tok.text = t.text,
+  tok.type = t.type,
+  tok.trailing_ws = t.trailing_ws,
+  tok.pos = t.pos,
+  tok.lemma = t.lemma,
+  tok.is_digit = t.is_digit,
+  tok.like_num = t.like_num,
+  tok.is_alpha = t.is_alpha,
+  tok.is_stop = t.is_stop
+ON MATCH SET
+  tok.text = t.text,
+  tok.type = t.type,
+  tok.trailing_ws = t.trailing_ws,
+  tok.pos = t.pos,
+  tok.lemma = t.lemma,
+  tok.is_digit = t.is_digit,
+  tok.like_num = t.like_num,
+  tok.is_alpha = t.is_alpha,
+  tok.is_stop = t.is_stop
+MERGE (tok)-[r:PART_OF]->(s)
+SET r.index = t.index
+"""
+
+_CHANGED_ROWS_CYPHER = _NEW_ROWS_CYPHER + """
+WITH s, COLLECT(t.id) AS keep_ids
+OPTIONAL MATCH (s)<-[r:PART_OF]-(orphan:Token)
+WHERE NOT orphan.id IN keep_ids
+DETACH DELETE orphan
+"""
+
+_DELETE_ROWS_CYPHER = """
+UNWIND $rows AS row
+MATCH (s:Sentence {id: row.sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: row.owner})
+DETACH DELETE s
+"""
+
+# ---------------------------------------------------------------------------
 # Read Cypher
 # ---------------------------------------------------------------------------
 
@@ -122,6 +171,19 @@ class SentenceRepository(BaseRepository[Sentence]):
             "is_stop": token.is_stop,
             "index": index,
         }
+
+    def save_many(self, entries: list[tuple[Sentence, dict[str, str]]]) -> None:
+        """Persist many sentences — one UNWIND query per data state."""
+        for model, _ in entries:
+            if model.dirty:
+                raise ValueError(f"{type(model).__name__} is dirty, cannot save")
+        for state, cypher in (
+            (DataState.NEW, _NEW_ROWS_CYPHER),
+            (DataState.CHANGED, _CHANGED_ROWS_CYPHER),
+            (DataState.DELETED, _DELETE_ROWS_CYPHER),
+        ):
+            rows = [self._build_params(model, **parent_ids) for model, parent_ids in entries if model.state is state]
+            self._run_batched(cypher, rows)
 
     def owns_paragraph(self, paragraph_id: str, owner: str) -> bool:
         """Return whether *paragraph_id* — the parent this repository writes through — is *owner*'s.
