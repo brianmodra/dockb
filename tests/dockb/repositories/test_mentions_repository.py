@@ -70,6 +70,33 @@ class TestParagraphStates:
         assert states == [{"id": "p1", "state": 4, "index": 0, "mentions": []}]
 
 
+class TestDocumentMentions:  # pylint: disable=too-few-public-methods
+    """The document's paragraph → character map, valid verdicts only."""
+
+    def test_maps_only_valid_verdicts(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "id": "p1",
+                "index": 0,
+                "checked_at": 1,
+                "mentions": [
+                    {"character_id": "k1", "stale": False},
+                    {"character_id": "k2", "stale": False},
+                ],
+            },
+            {"id": "p2", "index": 1, "checked_at": 1, "mentions": []},
+            {"id": "p3", "index": 2, "checked_at": None, "mentions": []},
+            {"id": "p4", "index": 3, "checked_at": 1, "mentions": [{"character_id": "k1", "stale": True}]},
+        ]
+
+        result = repo.document_mentions("d1", _OWNER)
+
+        assert result == {"p1": ["k1", "k2"]}
+        cypher, params = extract_call(neo4j_session)
+        assert "Document {id: $document_id" in cypher
+        assert params == {"document_id": "d1", "owner": _OWNER}
+
+
 class TestStampVerdicts:
     """Stamping replaces a paragraph's verdicts wholesale and stamps it checked."""
 

@@ -24,6 +24,7 @@ from dockb.controllers.glossary import set_glossary_service
 from dockb.controllers.history import set_history_service
 from dockb.controllers.imports import set_import_service
 from dockb.controllers.mcp_mint import set_mint_issuer, set_mint_secret
+from dockb.controllers.mentions import set_mentions_repo
 from dockb.controllers.notifications import set_session_context
 from dockb.controllers.paragraphs import set_para_service
 from dockb.controllers.proofreading import get_proofreading_service, set_proofreading_service
@@ -281,6 +282,7 @@ def wire(  # pylint: disable=too-many-locals
     set_session_context(ctx)
     set_mcp_issuer(PromptTokenIssuer())
     set_mcp_repos(repos[Chapter], ParagraphSearchRepository(session))
+    set_mentions_repo(MentionsRepository(session))
     set_mint_issuer(get_mcp_issuer())
     set_mint_secret(os.environ.get("DOCKB_SECRET_KEY"))
 
@@ -318,6 +320,7 @@ def unwire() -> None:
     set_import_service(None)
     set_mcp_issuer(None)
     set_mcp_repos(None, None)
+    set_mentions_repo(None)
     set_mint_issuer(None)
     set_mint_secret(None)
     if _stack is not None:

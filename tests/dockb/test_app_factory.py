@@ -258,7 +258,11 @@ class TestWireServices:
         request_session = mock_ch_repo.call_args_list[0][0][0]
         mentions_session = mock_ch_repo.call_args_list[1][0][0]
         assert request_session is not mentions_session
-        assert mock_mentions_repo.call_args[0][0] is mentions_session
+        # MentionsRepository is built twice: the background job's on the mentions
+        # session, the route's on the request session.
+        assert mock_mentions_repo.call_count == 2
+        assert mock_mentions_repo.call_args_list[0][0][0] is mentions_session
+        assert mock_mentions_repo.call_args_list[1][0][0] is request_session
 
     @patch("dockb.composition.DocumentRepository")
     @patch("dockb.composition.ChapterRepository")
@@ -688,7 +692,7 @@ class TestTimingMiddleware:
         from dockb.timing import measure
 
         class FakeChapterService:
-            def open_document(self, chapter_id: str, owner: str = "") -> str | None:
+            def open_document(self, chapter_id: str, owner: str = "", readonly: bool = False) -> str | None:
                 with measure("fake.slow_stage"):
                     time.sleep(0.005)
                 return "canonical text"
@@ -717,7 +721,7 @@ class TestTimingMiddleware:
         from dockb.controllers.chapters import set_ch_service
 
         class QuietService:
-            def open_document(self, chapter_id: str, owner: str = "") -> str | None:
+            def open_document(self, chapter_id: str, owner: str = "", readonly: bool = False) -> str | None:
                 return "text"
 
         set_ch_service(QuietService())
@@ -742,7 +746,7 @@ class TestTimingMiddleware:
         from dockb.controllers.chapters import set_ch_service
 
         class FailingService:
-            def open_document(self, chapter_id: str) -> str | None:
+            def open_document(self, chapter_id: str, readonly: bool = False) -> str | None:
                 raise RuntimeError("boom")
 
         set_ch_service(FailingService())

@@ -90,7 +90,7 @@ class StubChapterService(_Recording):
     def open(self, chapter_id: str, owner: str = "") -> None:
         self._record("open", owner=owner, chapter_id=chapter_id)
 
-    def open_document(self, chapter_id: str, owner: str = "") -> None:
+    def open_document(self, chapter_id: str, owner: str = "", readonly: bool = False) -> None:
         self._record("open_document", owner=owner, chapter_id=chapter_id)
 
     def save_document(self, chapter_id: str, content: str, owner: str = "") -> None:

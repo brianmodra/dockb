@@ -17,6 +17,7 @@ from dockb.controllers.glossary import router as glossary_router
 from dockb.controllers.history import router as history_router
 from dockb.controllers.imports import router as imports_router
 from dockb.controllers.mcp_mint import router as mcp_mint_router
+from dockb.controllers.mentions import router as mentions_router
 from dockb.controllers.notifications import router as notifications_router
 from dockb.controllers.paragraphs import router as paragraphs_router
 from dockb.controllers.proofreading import router as proofreading_router
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     application.include_router(ai_router, dependencies=_authenticated)
     application.include_router(proofreading_router, dependencies=_authenticated)
     application.include_router(glossary_router, dependencies=_authenticated)
+    application.include_router(mentions_router, dependencies=_authenticated)
     # The MCP mint route is the operator's, not the editor's: gated by the
     # server's own secret (not a session), and answered by the live in-memory
     # issuer this process holds.

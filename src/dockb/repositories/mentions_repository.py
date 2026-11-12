@@ -141,7 +141,7 @@ class MentionsRepository:
         *,
         chapter_id: str | None = None,
         document_id: str | None = None,
-    ) -> list[dict[str, int | str]]:
+    ) -> list[dict[str, Any]]:
         """Every paragraph of the scope with its state number (1-4).
 
         Exactly one of *chapter_id* / *document_id* names the scope; a state-1
@@ -177,6 +177,18 @@ class MentionsRepository:
                 }
             )
         return states
+
+    def document_mentions(self, document_id: str, owner: str) -> dict[str, list[str]]:
+        """Return the document's paragraph id → mentioned character-chapter ids.
+
+        Only paragraphs with a valid (state 3) verdict appear; a paragraph the
+        verdicts say mentions nobody is simply absent from the map.
+        """
+        result: dict[str, list[str]] = {}
+        for state in self.paragraph_states(owner, document_id=document_id):
+            if state["state"] == 3 and state["mentions"]:
+                result[str(state["id"])] = [str(character_id) for character_id in state["mentions"]]
+        return result
 
     def stamp(
         self,
