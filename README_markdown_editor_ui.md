@@ -230,10 +230,17 @@ the panel by default, growing automatically as its typed text needs more lines);
 the response area scroll when their content outgrows the panel. `frontend/src/renderer/layout/README_response_area.md`
 specifies the response syntax.
 
-## 7. Right panel (decided shape, no role yet)
+## 7. Right panel (read-only chapters)
 
-Far right, ten pixels wide by default, opened by dragging its seam. Purpose reserved for later
-features (undecided).
+Far right, now the mirror of the chapter list — the same default width, not the
+10 px sliver. A tab strip across its top lists chapters shown read-only: the
+writer-added ones first (kept until closed), then the characters the paragraph
+under the cursor mentions (replaced as the cursor moves). The opened chapter is
+the writer's markdown file rendered read-only — shown as-is when it exists,
+hydrated from the graph only when it does not. The full spec, including the tab
+truncation, the mention map that drives the automatic tabs, and the
+response-area function that opens a chapter scrolled to a paragraph, is in
+`frontend/src/renderer/layout/README_right_panel.md`.
 
 ## 8. Modals (decided)
 
