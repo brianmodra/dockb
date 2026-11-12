@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 _NEW_CYPHER = """
 MERGE (d:Document {id: $document_id})
-SET d.title = $title, d.author = $author, d.owner = $owner, d.title_key = toLower($title)
+SET d.title = $title, d.author = $author, d.owner = $owner, d.title_key = toLower($title),
+    d.narrative_perspective = $narrative_perspective
 WITH d
 UNWIND $chapters AS ch
 MERGE (chapter:Chapter {id: ch.id})
@@ -51,6 +52,7 @@ OPTIONAL MATCH (s:Sentence)-[rs:PART_OF]->(p)
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   d.id AS document_id, d.title AS document_title, d.author AS document_author,
+  d.narrative_perspective AS document_narrative_perspective,
   c.id AS chapter_id, rc.index AS chapter_index,
   c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
   c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
@@ -68,7 +70,8 @@ ORDER BY chapter_index, paragraph_index, sentence_index, token_index
 
 _LIST_ALL_CYPHER = """
 MATCH (d:Document {owner: $owner})
-RETURN d.id AS id, d.title AS title, d.author AS author
+RETURN d.id AS id, d.title AS title, d.author AS author,
+       d.narrative_perspective AS narrative_perspective
 ORDER BY d.id
 """
 
@@ -78,6 +81,7 @@ OPTIONAL MATCH (c:Chapter)-[r:PART_OF]->(d)
 WITH d, c, r ORDER BY r.index
 RETURN
   d.id AS document_id, d.title AS document_title, d.author AS document_author,
+  d.narrative_perspective AS document_narrative_perspective,
   c.id AS chapter_id
 """
 
@@ -126,18 +130,27 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             "title": model.title,
             "author": model.author,
             "owner": model.owner,
+            "narrative_perspective": model.narrative_perspective,
             "chapters": [{"id": ch.id, "index": i} for i, ch in enumerate(model.chapters)],
         }
 
     def list_all(self, owner: str) -> list[dict[str, str]]:
-        """Return a ``{id, title, author}`` dict for every Document owned by *owner*.
+        """Return a ``{id, title, author, narrative_perspective}`` dict for every Document owned by *owner*.
 
         *owner* is an account id. A document with no owner — one created before
         ownership existed, or one imported without a stamp — is owned by nobody and
         so is returned to nobody; the admin CLI is what gives it an owner.
         """
         records = list(self._session.run(_LIST_ALL_CYPHER, {"owner": owner}))
-        return [{"id": r["id"], "title": r["title"], "author": r["author"]} for r in records]
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "author": r["author"],
+                "narrative_perspective": r.get("narrative_perspective") or "",
+            }
+            for r in records
+        ]
 
     def find_summary(self, document_id: str) -> dict[str, str | None] | None:
         """Return ``{id, title, owner}`` for *document_id*, or None when it does not exist.
@@ -212,6 +225,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             title=str(first.get("document_title") or ""),
             author=str(first.get("document_author") or ""),
             owner=owner,
+            narrative_perspective=str(first.get("document_narrative_perspective") or ""),
             state=DataState.SYNC,
         )
         seen: set[str] = set()
@@ -257,6 +271,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             title=str(first.get("document_title") or ""),
             author=str(first.get("document_author") or ""),
             owner=owner,
+            narrative_perspective=str(first.get("document_narrative_perspective") or ""),
             state=DataState.SYNC,
         )
 

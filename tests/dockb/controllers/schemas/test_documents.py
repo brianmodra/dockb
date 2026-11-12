@@ -8,6 +8,8 @@ from dockb.controllers.schemas.documents import (
     DocumentAttrs,
     DocumentResponse,
     DocumentSummary,
+    NarrativePerspective,
+    NarrativePerspectivesResponse,
     UpdateDocumentRequest,
 )
 from dockb.controllers.schemas.nodes import ChapterSummary
@@ -27,6 +29,21 @@ def test_document_attrs_id_optional():
 def test_document_attrs_allows_extra_fields():
     a = DocumentAttrs(title="x", author="y", premise="A story about...")
     assert a.premise == "A story about..."
+
+
+def test_document_attrs_defaults_narrative_perspective_to_empty():
+    a = DocumentAttrs(title="Faith", author="Paul")
+    assert a.narrative_perspective == ""
+
+
+def test_document_attrs_accepts_a_known_narrative_perspective():
+    a = DocumentAttrs(title="Faith", author="Paul", narrative_perspective="third_person_limited")
+    assert a.narrative_perspective == "third_person_limited"
+
+
+def test_document_attrs_rejects_an_unknown_narrative_perspective():
+    with pytest.raises(ValidationError, match="(?i)narrative perspective"):
+        DocumentAttrs(title="Faith", author="Paul", narrative_perspective="unknown")
 
 
 def test_create_document_request():
@@ -69,7 +86,22 @@ def test_document_response_empty_chapters():
 def test_document_summary():
     s = DocumentSummary(id="d-1", title="Faith", author="Paul")
     d = s.model_dump()
-    assert d == {"id": "d-1", "title": "Faith", "author": "Paul"}
+    assert d == {"id": "d-1", "title": "Faith", "author": "Paul", "narrative_perspective": ""}
+
+
+def test_document_summary_carries_the_narrative_perspective():
+    s = DocumentSummary(id="d-1", title="Faith", author="Paul", narrative_perspective="epistolary")
+    assert s.model_dump()["narrative_perspective"] == "epistolary"
+
+
+def test_narrative_perspective_schema():
+    p = NarrativePerspective(code="first_person", label="First Person")
+    assert p.model_dump() == {"code": "first_person", "label": "First Person"}
+
+
+def test_narrative_perspectives_response():
+    resp = NarrativePerspectivesResponse(perspectives=[NarrativePerspective(code="first_person", label="First Person")])
+    assert resp.model_dump() == {"perspectives": [{"code": "first_person", "label": "First Person"}]}
 
 
 def test_create_document_requires_attrs():

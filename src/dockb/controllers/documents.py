@@ -10,9 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from dockb.controllers.auth import get_owner
 from dockb.controllers.notifications import get_session_context, mutation_response
-from dockb.controllers.schemas.documents import CreateDocumentRequest, UpdateDocumentRequest
+from dockb.controllers.schemas.documents import (
+    CreateDocumentRequest,
+    NarrativePerspective,
+    NarrativePerspectivesResponse,
+    UpdateDocumentRequest,
+)
 from dockb.controllers.serializers import serialize_document
 from dockb.exceptions import DocumentOwnershipError, DuplicateTitleError
+from dockb.narrative_perspectives import NARRATIVE_PERSPECTIVES
 from dockb.services.session_context import SessionContext
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -37,11 +43,23 @@ def list_documents(
     summaries = svc.list_all(owner=owner)
     return [
         {
-            "attrs": {"id": s["id"], "title": s["title"], "author": s["author"]},
+            "attrs": {
+                "id": s["id"],
+                "title": s["title"],
+                "author": s["author"],
+                "narrative_perspective": s["narrative_perspective"],
+            },
             "chapter_summaries": [],
         }
         for s in summaries
     ]
+
+
+@router.get("/narrative-perspectives", response_model=NarrativePerspectivesResponse)
+def list_narrative_perspectives() -> NarrativePerspectivesResponse:
+    return NarrativePerspectivesResponse(
+        perspectives=[NarrativePerspective(code=code, label=label) for code, label in NARRATIVE_PERSPECTIVES]
+    )
 
 
 @router.post("")
@@ -59,6 +77,7 @@ def create_document(
             title=body.attrs.title,
             author=body.attrs.author,
             owner=owner,
+            narrative_perspective=body.attrs.narrative_perspective,
         )
     except DuplicateTitleError as exc:
         raise HTTPException(status_code=409, detail=f"document_title_conflict: {exc}") from exc
@@ -96,6 +115,7 @@ def update_document(
             title=body.attrs.title,
             author=body.attrs.author,
             owner=owner,
+            narrative_perspective=body.attrs.narrative_perspective,
         )
     except DuplicateTitleError as exc:
         raise HTTPException(status_code=409, detail=f"document_title_conflict: {exc}") from exc

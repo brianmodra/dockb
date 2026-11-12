@@ -78,6 +78,22 @@ class TestSaveNewDocument:
         cypher, _ = extract_call(neo4j_session)
         assert "d.title_key = toLower($title)" in cypher
 
+    def test_sets_narrative_perspective(self, document_repo, neo4j_session, document):
+        document.state = DataState.NEW
+        document.narrative_perspective = "third_person_limited"
+        document_repo.save(document)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "d.narrative_perspective = $narrative_perspective" in cypher
+        assert params["narrative_perspective"] == "third_person_limited"
+
+    def test_defaults_narrative_perspective_to_empty(self, document_repo, neo4j_session, document):
+        document.state = DataState.NEW
+        document_repo.save(document)
+
+        _, params = extract_call(neo4j_session)
+        assert params["narrative_perspective"] == ""
+
     def test_passes_chapter_ids(self, document_repo, neo4j_session, document):
         document.state = DataState.NEW
         chap = Chapter(text="First chapter.")
@@ -130,6 +146,15 @@ class TestSaveChangedDocument:
         cypher, _ = extract_call(neo4j_session)
         assert "OPTIONAL MATCH" in cypher
         assert "DETACH DELETE orphan" in cypher
+
+    def test_updates_narrative_perspective(self, document_repo, neo4j_session, document):
+        document.state = DataState.CHANGED
+        document.narrative_perspective = "epistolary"
+        document_repo.save(document)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "d.narrative_perspective = $narrative_perspective" in cypher
+        assert params["narrative_perspective"] == "epistolary"
 
     def test_passes_only_current_chapters_after_removal(self, document_repo, neo4j_session, document):
         document.state = DataState.CHANGED
@@ -191,13 +216,13 @@ class TestListAllDocuments:
 
     def test_returns_ids_from_records(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [
-            {"id": "d-1", "title": "T1", "author": "A1"},
-            {"id": "d-2", "title": "T2", "author": "A2"},
+            {"id": "d-1", "title": "T1", "author": "A1", "narrative_perspective": "first_person"},
+            {"id": "d-2", "title": "T2", "author": "A2", "narrative_perspective": None},
         ]
         result = document_repo.list_all("acct-1")
         assert result == [
-            {"id": "d-1", "title": "T1", "author": "A1"},
-            {"id": "d-2", "title": "T2", "author": "A2"},
+            {"id": "d-1", "title": "T1", "author": "A1", "narrative_perspective": "first_person"},
+            {"id": "d-2", "title": "T2", "author": "A2", "narrative_perspective": ""},
         ]
 
     def test_returns_empty_list_when_no_documents(self, document_repo, neo4j_session):
@@ -212,6 +237,7 @@ class TestListAllDocuments:
         assert "MATCH (d:Document {owner: $owner})" in cypher
         assert "d.title AS title" in cypher
         assert "d.author AS author" in cypher
+        assert "d.narrative_perspective AS narrative_perspective" in cypher
 
     def test_scopes_the_listing_to_the_owner(self, document_repo, neo4j_session):
         """The picker must not be every user's library.
@@ -336,6 +362,27 @@ class TestDocumentOwnership:
         assert chapter.location == "York"
         assert chapter.pov == "k-other"
 
+    def test_load_carries_the_narrative_perspective(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "document_id": "d-1",
+                "document_title": "Faith",
+                "document_author": "Paul",
+                "document_narrative_perspective": "third_person_omniscient",
+            },
+        ]
+
+        doc = document_repo.load("d-1", "acct-1")
+
+        assert doc is not None
+        assert doc.narrative_perspective == "third_person_omniscient"
+
+    def test_load_cypher_returns_the_narrative_perspective(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        document_repo.load("d-1", "acct-1")
+        cypher, _params = extract_call(neo4j_session)
+        assert "d.narrative_perspective AS document_narrative_perspective" in cypher
+
     def test_find_summary_returns_the_document_and_its_owner(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [{"id": "d-1", "title": "Faith", "owner": "acct-1"}]
         assert document_repo.find_summary("d-1") == {"id": "d-1", "title": "Faith", "owner": "acct-1"}
@@ -427,6 +474,7 @@ class TestLoadShellDocuments:
         cypher, params = extract_call(neo4j_session)
         assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
         assert "c.id AS chapter_id" in cypher
+        assert "d.narrative_perspective AS document_narrative_perspective" in cypher
         assert "ORDER BY" in cypher
         assert "Token" not in cypher
         assert "Sentence" not in cypher
@@ -452,6 +500,28 @@ class TestLoadShellDocuments:
         assert doc.author == "Paul"
         assert doc.state == DataState.SYNC
         assert doc.chapters == []
+
+    def test_builds_the_narrative_perspective(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "document_id": "d-1",
+                "document_title": "Faith",
+                "document_author": "Paul",
+                "document_narrative_perspective": "second_person",
+                "chapter_id": None,
+            },
+        ]
+        doc = document_repo.load_shell("d-1", "acct-1")
+        assert doc is not None
+        assert doc.narrative_perspective == "second_person"
+
+    def test_missing_narrative_perspective_reads_as_empty(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"document_id": "d-1", "document_title": "Faith", "document_author": "Paul", "chapter_id": None},
+        ]
+        doc = document_repo.load_shell("d-1", "acct-1")
+        assert doc is not None
+        assert doc.narrative_perspective == ""
 
     def test_builds_chapter_id_stubs(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [

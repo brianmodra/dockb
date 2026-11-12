@@ -38,7 +38,15 @@ class _MockDocService:
         self._docs: dict[str, Document] = {}
 
     def list_all(self, owner: str = "") -> list[dict[str, str]]:
-        return [{"id": d.id, "title": d.title, "author": d.author} for d in self._docs.values()]
+        return [
+            {
+                "id": d.id,
+                "title": d.title,
+                "author": d.author,
+                "narrative_perspective": d.narrative_perspective,
+            }
+            for d in self._docs.values()
+        ]
 
     def get(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
@@ -46,17 +54,38 @@ class _MockDocService:
     def open(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
-    def create(self, document_id: str, title: str, author: str, owner: str = "") -> Document:
-        doc = Document(id=document_id, title=title, author=author, state=DataState.SYNC)
+    def create(
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str = "",
+        narrative_perspective: str = "",
+    ) -> Document:
+        doc = Document(
+            id=document_id,
+            title=title,
+            author=author,
+            narrative_perspective=narrative_perspective,
+            state=DataState.SYNC,
+        )
         self._docs[document_id] = doc
         return doc
 
-    def update(self, document_id: str, title: str, author: str, owner: str = "") -> Document | None:
+    def update(
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str = "",
+        narrative_perspective: str = "",
+    ) -> Document | None:
         doc = self._docs.get(document_id)
         if doc is None:
             return None
         doc.title = title
         doc.author = author
+        doc.narrative_perspective = narrative_perspective
         return doc
 
     def delete(self, document_id: str, owner: str = "") -> bool:

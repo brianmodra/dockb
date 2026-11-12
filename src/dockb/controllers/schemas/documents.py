@@ -9,6 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dockb.controllers.schemas.nodes import ChapterSummary
+from dockb.narrative_perspectives import validate_narrative_perspective
 from dockb.titles import validate_segment
 
 
@@ -25,6 +26,7 @@ class DocumentAttrs(BaseModel):
     id: str | None = None
     title: str = Field(min_length=1)
     author: str
+    narrative_perspective: str = ""
 
     @field_validator("title")
     @classmethod
@@ -34,6 +36,12 @@ class DocumentAttrs(BaseModel):
             raise ValueError("title must not be blank")
         validate_segment(value)
         return value
+
+    @field_validator("narrative_perspective")
+    @classmethod
+    def narrative_perspective_known(cls, value: str) -> str:
+        """Reject a perspective that is neither empty nor a known code."""
+        return validate_narrative_perspective(value)
 
 
 class DocumentResponse(BaseModel):
@@ -49,6 +57,20 @@ class DocumentSummary(BaseModel):
     id: str
     title: str
     author: str
+    narrative_perspective: str = ""
+
+
+class NarrativePerspective(BaseModel):
+    """One selectable narrative perspective: a stable code and its label."""
+
+    code: str
+    label: str
+
+
+class NarrativePerspectivesResponse(BaseModel):
+    """GET /api/documents/narrative-perspectives response."""
+
+    perspectives: list[NarrativePerspective]
 
 
 class CreateDocumentRequest(BaseModel):

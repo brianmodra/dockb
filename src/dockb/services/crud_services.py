@@ -39,6 +39,7 @@ from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.narrative_perspectives import validate_narrative_perspective
 from dockb.services.chapter_front_matter import set_pov as apply_set_pov
 from dockb.services.chapter_renumber import plan_renumber
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
@@ -154,12 +155,13 @@ class DocumentService:
             store.write_chapter(doc.title, chapter.act, chapter.title, content, chapter.category)
         store.git_commit(doc.title, f"materialize: {doc.id[:8]}")
 
-    def create(
+    def create(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         document_id: str,
         title: str,
         author: str,
         owner: str,
+        narrative_perspective: str = "",
     ) -> Document:
         """Create a new empty document owned by *owner* and commit it.
 
@@ -173,10 +175,18 @@ class DocumentService:
         """
         if not owner or not owner.strip():
             raise DocumentOwnershipError("an account id is required to create a document")
+        narrative_perspective = validate_narrative_perspective(narrative_perspective)
         if any(str(row.get("title") or "").lower() == title.lower() for row in self._document_repo.list_all(owner)):
             raise DuplicateTitleError(title)
 
-        doc = Document(id=document_id, title=title, author=author, owner=owner, state=DataState.NEW)
+        doc = Document(
+            id=document_id,
+            title=title,
+            author=author,
+            owner=owner,
+            narrative_perspective=narrative_perspective,
+            state=DataState.NEW,
+        )
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
         uow.commit()
@@ -185,12 +195,13 @@ class DocumentService:
             store.write_metadata(title, DocumentMetadata(title=title, author=author))
         return doc
 
-    def update(
+    def update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         document_id: str,
         title: str,
         author: str,
         owner: str,
+        narrative_perspective: str = "",
     ) -> Document | None:
         """Update document attrs, renaming the owned tree and refreshing the graph.
 
@@ -202,12 +213,14 @@ class DocumentService:
         doc = self._document_repo.load(document_id, owner)
         if doc is None:
             return None
+        narrative_perspective = validate_narrative_perspective(narrative_perspective)
         for row in self._document_repo.list_all(owner):
             if row["id"] != document_id and str(row.get("title") or "").lower() == title.lower():
                 raise DuplicateTitleError(title)
         old_title = doc.title
         doc.title = title
         doc.author = author
+        doc.narrative_perspective = narrative_perspective
         doc.state = DataState.CHANGED
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)

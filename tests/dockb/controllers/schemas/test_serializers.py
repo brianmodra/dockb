@@ -210,9 +210,15 @@ def test_serialize_document_empty():
     doc = _make_document("d-1", "Book", "Author")
     d = serialize_document(doc)
     assert d == {
-        "attrs": {"id": "d-1", "title": "Book", "author": "Author"},
+        "attrs": {"id": "d-1", "title": "Book", "author": "Author", "narrative_perspective": ""},
         "chapter_summaries": [],
     }
+
+
+def test_serialize_document_carries_the_narrative_perspective():
+    doc = _make_document("d-1", "Book", "Author")
+    doc.narrative_perspective = "second_person"
+    assert serialize_document(doc)["attrs"]["narrative_perspective"] == "second_person"
 
 
 def test_serialize_document_with_chapters():

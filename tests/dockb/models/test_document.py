@@ -9,6 +9,15 @@ from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import InsertionMode
 
 
+def test_narrative_perspective_defaults_to_empty():
+    assert Document().narrative_perspective == ""
+
+
+def test_narrative_perspective_can_be_set():
+    doc = Document(narrative_perspective="third_person_limited")
+    assert doc.narrative_perspective == "third_person_limited"
+
+
 def test_each_document_has_unique_id():
     doc1 = Document()
     doc2 = Document()

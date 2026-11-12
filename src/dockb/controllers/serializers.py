@@ -75,6 +75,11 @@ def serialize_document(document: Document) -> dict[str, Any]:
     no child content).
     """
     return DocumentResponse(
-        attrs=DocumentAttrs(id=document.id, title=document.title, author=document.author),
+        attrs=DocumentAttrs(
+            id=document.id,
+            title=document.title,
+            author=document.author,
+            narrative_perspective=document.narrative_perspective,
+        ),
         chapter_summaries=[serialize_chapter_summary(ch) for ch in document.chapters],
     ).model_dump()

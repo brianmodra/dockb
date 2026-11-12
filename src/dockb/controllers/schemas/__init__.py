@@ -14,6 +14,8 @@ from dockb.controllers.schemas.documents import (
     DocumentAttrs,
     DocumentResponse,
     DocumentSummary,
+    NarrativePerspective,
+    NarrativePerspectivesResponse,
     UpdateDocumentRequest,
 )
 from dockb.controllers.schemas.history import HistoryResponse, RestoreRequest, Snapshot
@@ -64,6 +66,8 @@ __all__ = [
     "DocumentAttrs",
     "DocumentResponse",
     "DocumentSummary",
+    "NarrativePerspective",
+    "NarrativePerspectivesResponse",
     "CreateDocumentRequest",
     "UpdateDocumentRequest",
     # chapters

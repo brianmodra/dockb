@@ -60,13 +60,27 @@ class StubDocumentService(_Recording):
         self._record("list_all", owner=owner)
         return []
 
-    def create(self, document_id: str, title: str, author: str, owner: str = "") -> None:
+    def create(
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str = "",
+        narrative_perspective: str = "",
+    ) -> None:
         self._record("create", owner=owner, document_id=document_id)
 
     def open(self, document_id: str, owner: str = "") -> None:
         self._record("open", owner=owner, document_id=document_id)
 
-    def update(self, document_id: str, title: str, author: str, owner: str = "") -> None:
+    def update(
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str = "",
+        narrative_perspective: str = "",
+    ) -> None:
         self._record("update", owner=owner, document_id=document_id)
 
     def delete(self, document_id: str, owner: str = "") -> bool:
@@ -357,5 +371,8 @@ def test_every_manuscript_route_is_covered():
             for method in route.methods - {"HEAD", "OPTIONS"}:
                 registered.add(f"{method} {path}")
 
-    covered = {f"{r.method} {r.path}" for r in ROUTES} | {"POST /api/import"}
+    covered = {f"{r.method} {r.path}" for r in ROUTES} | {
+        "POST /api/import",
+        "GET /api/documents/narrative-perspectives",
+    }
     assert registered == covered

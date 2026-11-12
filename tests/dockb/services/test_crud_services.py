@@ -361,6 +361,21 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         self.svc.create("d1", title="T", author="A", owner=self._OWNER)
         assert self.uow.registered[0][1] == {}
 
+    def test_create_stores_the_narrative_perspective(self) -> None:
+        doc = self.svc.create("d1", title="T", author="A", owner=self._OWNER, narrative_perspective="first_person")
+        assert doc.narrative_perspective == "first_person"
+
+    def test_create_defaults_the_narrative_perspective_to_empty(self) -> None:
+        doc = self.svc.create("d1", title="T", author="A", owner=self._OWNER)
+        assert doc.narrative_perspective == ""
+
+    def test_create_rejects_an_unknown_narrative_perspective(self) -> None:
+        with pytest.raises(ValueError, match="(?i)narrative perspective"):
+            self.svc.create("d1", title="T", author="A", owner=self._OWNER, narrative_perspective="unknown")
+
+        assert not self.uow.committed
+        assert not self.uow.registered
+
     def test_create_rejects_exact_title_duplicate(self) -> None:
         existing = Document(owner=self._OWNER, id="d0", title="Faith", author="Paul", state=DataState.SYNC)
         self.repo._store["d0"] = existing
@@ -602,6 +617,49 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         assert doc.author == "New"
         assert doc.state == DataState.CHANGED
         assert self.uow.committed
+
+    def test_update_stores_the_narrative_perspective(self) -> None:
+        doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        result = self.svc.update(
+            "d1",
+            title="T",
+            author="A",
+            owner=self._OWNER,
+            narrative_perspective="third_person_limited",
+        )
+        assert result is doc
+        assert doc.narrative_perspective == "third_person_limited"
+
+    def test_update_clears_the_narrative_perspective_when_empty(self) -> None:
+        doc = Document(
+            owner=self._OWNER,
+            id="d1",
+            title="T",
+            author="A",
+            state=DataState.SYNC,
+            narrative_perspective="epistolary",
+        )
+        self.repo._store["d1"] = doc
+        self.svc.update("d1", title="T", author="A", owner=self._OWNER)
+        assert doc.narrative_perspective == ""
+
+    def test_update_rejects_an_unknown_narrative_perspective(self) -> None:
+        doc = Document(
+            owner=self._OWNER,
+            id="d1",
+            title="T",
+            author="A",
+            state=DataState.SYNC,
+            narrative_perspective="epistolary",
+        )
+        self.repo._store["d1"] = doc
+
+        with pytest.raises(ValueError, match="(?i)narrative perspective"):
+            self.svc.update("d1", title="T", author="A", owner=self._OWNER, narrative_perspective="unknown")
+
+        assert doc.narrative_perspective == "epistolary"
+        assert not self.uow.committed
 
     def test_update_rejects_title_taken_by_another_document(self) -> None:
         self.repo._store["d1"] = Document(owner=self._OWNER, id="d1", title="Alpha", author="A", state=DataState.SYNC)

@@ -25,8 +25,19 @@ from dockb.models.sentence import Sentence
 # ---------------------------------------------------------------------------
 
 
-def _make_doc(doc_id: str = "d1", title: str = "Test", author: str = "A") -> Document:
-    return Document(id=doc_id, title=title, author=author, state=DataState.SYNC)
+def _make_doc(
+    doc_id: str = "d1",
+    title: str = "Test",
+    author: str = "A",
+    narrative_perspective: str = "",
+) -> Document:
+    return Document(
+        id=doc_id,
+        title=title,
+        author=author,
+        state=DataState.SYNC,
+        narrative_perspective=narrative_perspective,
+    )
 
 
 def _make_chapter(ch_id: str = "c1", title: str = "Ch1") -> Chapter:
@@ -48,7 +59,15 @@ class MockDocumentService:
         self._docs: dict[str, Document] = {}
 
     def list_all(self, owner: str = "") -> list[dict[str, str]]:
-        return [{"id": d.id, "title": d.title, "author": d.author} for d in self._docs.values()]
+        return [
+            {
+                "id": d.id,
+                "title": d.title,
+                "author": d.author,
+                "narrative_perspective": d.narrative_perspective,
+            }
+            for d in self._docs.values()
+        ]
 
     def get(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
@@ -56,14 +75,28 @@ class MockDocumentService:
     def open(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
-    def create(self, document_id: str, title: str, author: str, owner: str = "") -> Document:
+    def create(
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str = "",
+        narrative_perspective: str = "",
+    ) -> Document:
         if any(d.title == title for d in self._docs.values()):
             raise DuplicateTitleError(title)
-        doc = _make_doc(document_id, title, author)
+        doc = _make_doc(document_id, title, author, narrative_perspective)
         self._docs[document_id] = doc
         return doc
 
-    def update(self, document_id: str, title: str, author: str, owner: str = "") -> Document | None:
+    def update(
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str = "",
+        narrative_perspective: str = "",
+    ) -> Document | None:
         doc = self._docs.get(document_id)
         if doc is None:
             return None
@@ -72,6 +105,7 @@ class MockDocumentService:
                 raise DuplicateTitleError(title)
         doc.title = title
         doc.author = author
+        doc.narrative_perspective = narrative_perspective
         return doc
 
     def delete(self, document_id: str, owner: str = "") -> bool:
@@ -255,7 +289,7 @@ def _build_app(
 # ---------------------------------------------------------------------------
 
 
-class TestDocumentRoutes:
+class TestDocumentRoutes:  # pylint: disable=too-many-public-methods
     def setup_method(self) -> None:
         self.svc = MockDocumentService()
         self.app = _build_app(doc_svc=self.svc)
@@ -277,6 +311,22 @@ class TestDocumentRoutes:
         assert data[0]["attrs"]["author"] == "A1"
         assert data[0]["chapter_summaries"] == []
 
+    def test_list_documents_carries_the_narrative_perspective(self) -> None:
+        self.svc.create("d1", "T1", "A1", narrative_perspective="first_person")
+        resp = self.client.get("/api/documents")
+        assert resp.json()[0]["attrs"]["narrative_perspective"] == "first_person"
+
+    def test_narrative_perspectives_route_is_not_shadowed_by_the_id_route(self) -> None:
+        resp = self.client.get("/api/documents/narrative-perspectives")
+        assert resp.status_code == 200
+
+    def test_narrative_perspectives_route_lists_the_vocabulary(self) -> None:
+        resp = self.client.get("/api/documents/narrative-perspectives")
+        perspectives = resp.json()["perspectives"]
+        assert len(perspectives) == 20
+        assert perspectives[0] == {"code": "first_person", "label": "First Person"}
+        assert {"code": "epistolary", "label": "Epistolary"} in perspectives
+
     def test_get_document_not_found(self) -> None:
         resp = self.client.get("/api/documents/nonexistent")
         assert resp.status_code == 404
@@ -290,6 +340,40 @@ class TestDocumentRoutes:
         assert data["attrs"]["title"] == "Faith"
         assert data["attrs"]["author"] == "Paul"
         assert data["chapter_summaries"] == []
+
+    def test_get_document_carries_the_narrative_perspective(self) -> None:
+        self.svc.create("d1", "Faith", "Paul", narrative_perspective="third_person_limited")
+        resp = self.client.get("/api/documents/d1")
+        assert resp.json()["attrs"]["narrative_perspective"] == "third_person_limited"
+
+    def test_create_document_passes_the_narrative_perspective(self) -> None:
+        resp = self.client.post(
+            "/api/documents",
+            json={
+                "attrs": {
+                    "id": "d1",
+                    "title": "T",
+                    "author": "A",
+                    "narrative_perspective": "first_person",
+                }
+            },
+        )
+        assert resp.status_code == 200
+        assert self.svc._docs["d1"].narrative_perspective == "first_person"
+
+    def test_create_document_rejects_an_unknown_narrative_perspective(self) -> None:
+        resp = self.client.post(
+            "/api/documents",
+            json={
+                "attrs": {
+                    "id": "d1",
+                    "title": "T",
+                    "author": "A",
+                    "narrative_perspective": "unknown",
+                }
+            },
+        )
+        assert resp.status_code == 422
 
     def test_create_document(self) -> None:
         resp = self.client.post(
@@ -325,6 +409,44 @@ class TestDocumentRoutes:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"]["code"] == "ok"
+
+    def test_update_document_passes_the_narrative_perspective(self) -> None:
+        self.svc.create("d1", "Old", "Old")
+        resp = self.client.put(
+            "/api/documents/d1",
+            json={
+                "attrs": {
+                    "title": "Old",
+                    "author": "Old",
+                    "narrative_perspective": "second_person",
+                }
+            },
+        )
+        assert resp.status_code == 200
+        assert self.svc._docs["d1"].narrative_perspective == "second_person"
+
+    def test_update_document_clears_the_narrative_perspective_when_omitted(self) -> None:
+        self.svc.create("d1", "Old", "Old", narrative_perspective="epistolary")
+        resp = self.client.put(
+            "/api/documents/d1",
+            json={"attrs": {"title": "Old", "author": "Old"}},
+        )
+        assert resp.status_code == 200
+        assert self.svc._docs["d1"].narrative_perspective == ""
+
+    def test_update_document_rejects_an_unknown_narrative_perspective(self) -> None:
+        self.svc.create("d1", "Old", "Old")
+        resp = self.client.put(
+            "/api/documents/d1",
+            json={
+                "attrs": {
+                    "title": "Old",
+                    "author": "Old",
+                    "narrative_perspective": "unknown",
+                }
+            },
+        )
+        assert resp.status_code == 422
 
     def test_update_document_duplicate_title_conflict(self) -> None:
         self.svc.create("d1", "Alpha", "A")
