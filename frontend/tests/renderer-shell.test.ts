@@ -20,6 +20,8 @@ function localModeApi(
     putAppState: vi.fn(async () => ({ last_document_id: null, panel_widths: null, edit_mode: null })),
     listDocuments: vi.fn(async () => []),
     listChapters: vi.fn(async () => []),
+    getDocument: vi.fn(async () => ({ attrs: { id: "d1", title: "", author: "" } })),
+    getNarrativePerspectives: vi.fn(async () => ({ perspectives: [] })),
     getDocumentMentions: vi.fn(async () => ({ mentions: {} })),
     ...overrides,
   };
@@ -693,15 +695,28 @@ describe("renderer shell", () => {
     expect(document.querySelector("[data-testid='chapter-row']")?.textContent).toBe("Second");
   });
 
-  it("File → Edit → Document edits title and author through the modal", async () => {
+  it("File → Edit → Document edits title, author and perspective through the modal", async () => {
     const updateDocument = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const getNarrativePerspectives = vi.fn(async () => ({
+      perspectives: [
+        { code: "first_person", label: "First Person" },
+        { code: "epistolary", label: "Epistolary" },
+      ],
+    }));
     const { api, bridge } = localModeApi({
       getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
       listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
       listDocuments: vi.fn(async () => [
-        { attrs: { id: "d1", title: "Faith", author: "Paul" }, chapter_summaries: [] },
-        { attrs: { id: "d2", title: "Sight", author: "Brian" }, chapter_summaries: [] },
+        {
+          attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "first_person" },
+          chapter_summaries: [],
+        },
+        {
+          attrs: { id: "d2", title: "Sight", author: "Brian", narrative_perspective: "epistolary" },
+          chapter_summaries: [],
+        },
       ]),
+      getNarrativePerspectives,
       updateDocument,
     });
     mountShell(document.body, { api: api as never, bridge: bridge as never });
@@ -722,15 +737,104 @@ describe("renderer shell", () => {
 
     const titleInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
     const authorInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-author']")!;
+    const perspective = document.querySelector<HTMLSelectElement>(
+      "[data-testid='modal-select-narrative-perspective']",
+    )!;
     expect(titleInput.value).toBe("Sight");
     expect(authorInput.value).toBe("Brian");
+    expect(perspective.value).toBe("epistolary");
+    expect(getNarrativePerspectives).toHaveBeenCalledTimes(1);
     titleInput.value = "Hope";
     authorInput.value = "Anna";
+    perspective.value = "first_person";
     const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
     (buttons[1] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(updateDocument).toHaveBeenCalledWith("d2", { title: "Hope", author: "Anna" });
+    expect(updateDocument).toHaveBeenCalledWith("d2", {
+      title: "Hope",
+      author: "Anna",
+      narrative_perspective: "first_person",
+    });
+  });
+
+  it("Settings → Document edits the open document through the same modal", async () => {
+    const getDocument = vi.fn(async () => ({
+      attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "first_person" },
+      chapter_summaries: [],
+    }));
+    const getNarrativePerspectives = vi.fn(async () => ({
+      perspectives: [
+        { code: "first_person", label: "First Person" },
+        { code: "epistolary", label: "Epistolary" },
+      ],
+    }));
+    const updateDocument = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      getDocument,
+      getNarrativePerspectives,
+      updateDocument,
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    (document.querySelector<HTMLElement>("[data-testid='menu-Settings']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-document']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const titleInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
+    const authorInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-author']")!;
+    const perspective = document.querySelector<HTMLSelectElement>(
+      "[data-testid='modal-select-narrative-perspective']",
+    )!;
+    expect(getDocument).toHaveBeenCalledWith("d1");
+    expect(getNarrativePerspectives).toHaveBeenCalledTimes(1);
+    expect(titleInput.value).toBe("Faith");
+    expect(authorInput.value).toBe("Paul");
+    expect(perspective.value).toBe("first_person");
+    expect(
+      Array.from(
+        perspective.querySelectorAll<HTMLOptionElement>(
+          "[data-testid='modal-option-narrative-perspective']",
+        ),
+      ).map((option) => option.textContent),
+    ).toEqual(["None", "First Person", "Epistolary"]);
+
+    titleInput.value = "Hope";
+    authorInput.value = "Anna";
+    perspective.value = "epistolary";
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
+    (buttons[1] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(updateDocument).toHaveBeenCalledWith("d1", {
+      title: "Hope",
+      author: "Anna",
+      narrative_perspective: "epistolary",
+    });
+  });
+
+  it("Settings → Document asks the writer to open a document when none is open", async () => {
+    const getDocument = vi.fn(async () => ({
+      attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "" },
+      chapter_summaries: [],
+    }));
+    const getNarrativePerspectives = vi.fn(async () => ({ perspectives: [] }));
+    const { api, bridge } = localModeApi({ getDocument, getNarrativePerspectives });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    (document.querySelector<HTMLElement>("[data-testid='menu-Settings']")!).click();
+    (document.querySelector<HTMLElement>("[data-testid='menu-item-document']")!).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(getNarrativePerspectives).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLElement>("[data-testid='panel-message']")?.textContent).toContain(
+      "Open a document first.",
+    );
   });
 });
 

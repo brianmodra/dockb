@@ -9,6 +9,7 @@ export interface AppLayoutOptions {
   onOpen?: () => void;
   onImport?: () => void;
   onQuit?: () => void;
+  onOpenDocumentSettings?: () => void;
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
   onDeleteDocument?: () => void;
@@ -80,6 +81,7 @@ export class AppLayout {
       onOpen: options.onOpen,
       onImport: options.onImport,
       onQuit: options.onQuit,
+      onOpenDocumentSettings: options.onOpenDocumentSettings,
       onOpenLanguageSettings: options.onOpenLanguageSettings,
       onOpenDictionary: options.onOpenDictionary,
       onDeleteDocument: options.onDeleteDocument,

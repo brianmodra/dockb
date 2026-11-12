@@ -154,10 +154,25 @@ describe("menubar", () => {
     const bar = buildMenubar({ onOpenLanguageSettings });
     document.body.append(bar.element);
     openMenu(bar, "Settings");
-    const item = dropdown(bar, "Settings").querySelector<HTMLElement>(".menu-item");
+    const item = dropdown(bar, "Settings").querySelector<HTMLElement>(
+      '[data-testid="menu-item-language"]',
+    );
     expect(item?.textContent).toBe("Language…");
     item?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onOpenLanguageSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports Settings → Document… to onOpenDocumentSettings", () => {
+    const onOpenDocumentSettings = vi.fn();
+    const bar = buildMenubar({ onOpenDocumentSettings });
+    document.body.append(bar.element);
+    openMenu(bar, "Settings");
+    const item = dropdown(bar, "Settings").querySelector<HTMLElement>(
+      '[data-testid="menu-item-document"]',
+    );
+    expect(item?.textContent).toBe("Document…");
+    item?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onOpenDocumentSettings).toHaveBeenCalledTimes(1);
   });
 
   it("reports Settings → Dictionary… to onOpenDictionary", () => {
@@ -171,14 +186,14 @@ describe("menubar", () => {
     expect(onOpenDictionary).toHaveBeenCalledTimes(1);
   });
 
-  it("offers Language and Dictionary in the Settings menu", () => {
+  it("offers Document, Language and Dictionary in the Settings menu", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "Settings");
     const labels = Array.from(dropdown(bar, "Settings").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(labels).toEqual(["Language…", "Dictionary…"]);
+    expect(labels).toEqual(["Document…", "Language…", "Dictionary…"]);
   });
 });
 

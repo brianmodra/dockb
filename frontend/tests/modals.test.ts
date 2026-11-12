@@ -105,19 +105,58 @@ describe("modals", () => {
     expect(result.input).toBe("Old");
   });
 
-  it("editDocumentModal pre-fills title and author and saves the new values", async () => {
-    const promise = editDocumentModal({ title: "Faith", author: "Paul" });
+  it("editDocumentModal pre-fills title, author and perspective and saves the new values", async () => {
+    const promise = editDocumentModal({
+      title: "Faith",
+      author: "Paul",
+      narrative_perspective: "first_person",
+      perspectives: [
+        { code: "first_person", label: "First Person" },
+        { code: "epistolary", label: "Epistolary" },
+      ],
+    });
     const titleInput = modal()!.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
     const authorInput = modal()!.querySelector<HTMLInputElement>("[data-testid='modal-input-author']")!;
+    const perspective = modal()!.querySelector<HTMLSelectElement>(
+      "[data-testid='modal-select-narrative-perspective']",
+    )!;
     expect(titleInput.value).toBe("Faith");
     expect(authorInput.value).toBe("Paul");
+    expect(perspective.value).toBe("first_person");
+    const labels = Array.from(
+      perspective.querySelectorAll<HTMLOptionElement>("[data-testid='modal-option-narrative-perspective']"),
+    ).map((option) => option.textContent);
+    expect(labels).toEqual(["None", "First Person", "Epistolary"]);
+
     titleInput.value = "Hope";
     authorInput.value = "Brian";
+    perspective.value = "epistolary";
     const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
     buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-    expect(await promise).toEqual({ title: "Hope", author: "Brian" });
+    expect(await promise).toEqual({
+      title: "Hope",
+      author: "Brian",
+      narrative_perspective: "epistolary",
+    });
     expect(modal()).toBeNull();
+  });
+
+  it("editDocumentModal resolves the None perspective as an empty code", async () => {
+    const promise = editDocumentModal({
+      title: "Faith",
+      author: "Paul",
+      narrative_perspective: "first_person",
+      perspectives: [{ code: "first_person", label: "First Person" }],
+    });
+    const perspective = modal()!.querySelector<HTMLSelectElement>(
+      "[data-testid='modal-select-narrative-perspective']",
+    )!;
+    perspective.value = "";
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect((await promise)?.narrative_perspective).toBe("");
   });
 
   it("editDocumentModal keeps Save disabled while the title is blank", async () => {

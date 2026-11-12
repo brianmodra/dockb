@@ -25,6 +25,7 @@ import { defaultProofreadingLanguage } from "./state/language";
 import { quitApp, confirmUnsaved } from "./state/quit";
 import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
+import type { DocumentAttrs } from "./api/types";
 
 export interface MountShellOptions {
   api?: ApiClient;
@@ -65,6 +66,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runImport: () => void = () => {};
   let runDeleteDocument: () => void = () => {};
   let runEditDocument: () => void = () => {};
+  let runDocumentSettings: () => void = () => {};
   let runEditChapter: () => void = () => {};
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
@@ -81,6 +83,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onDeleteDocument: () => runDeleteDocument(),
     onEditDocument: () => runEditDocument(),
     onEditChapter: () => runEditChapter(),
+    onOpenDocumentSettings: () => runDocumentSettings(),
     onSave: () => {
       void editPanel?.save();
     },
@@ -426,24 +429,50 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         });
     };
 
-    runEditDocument = () => {
-      void openDocumentAttrsPicker(options.api!).then((attrs) => {
-        if (attrs === null) {
+    const editDocument = async (attrs: DocumentAttrs): Promise<void> => {
+      try {
+        const response = await options.api!.getNarrativePerspectives();
+        const values = await editDocumentModal({
+          title: attrs.title,
+          author: attrs.author,
+          narrative_perspective: attrs.narrative_perspective,
+          perspectives: response.perspectives,
+        });
+        if (values === null) {
           return;
         }
-        void editDocumentModal({ title: attrs.title, author: attrs.author }).then((values) => {
-          if (values === null) {
-            return;
-          }
-          void options.api!.updateDocument(attrs.id, { title: values.title, author: values.author }).then(
-            () => {
-              layout.pushMessage(`Updated "${values.title}".`);
-              void panel.reload();
-            },
-            (error) => reportError("Edit document", error, (text) => layout.pushMessage(text)),
-          );
+        await options.api!.updateDocument(attrs.id, {
+          title: values.title,
+          author: values.author,
+          narrative_perspective: values.narrative_perspective,
         });
+        layout.pushMessage(`Updated "${values.title}".`);
+        void panel.reload();
+      } catch (error) {
+        reportError("Edit document", error, (text) => layout.pushMessage(text));
+      }
+    };
+
+    runEditDocument = () => {
+      void openDocumentAttrsPicker(options.api!).then((attrs) => {
+        if (attrs !== null) {
+          void editDocument(attrs);
+        }
       });
+    };
+
+    runDocumentSettings = () => {
+      const documentId = panel.currentDocumentId();
+      if (documentId === null) {
+        layout.pushMessage("Open a document first.");
+        return;
+      }
+      void options.api!.getDocument(documentId).then(
+        (document) => {
+          void editDocument(document.attrs);
+        },
+        (error) => reportError("Edit document", error, (text) => layout.pushMessage(text)),
+      );
     };
 
     runEditChapter = () => {

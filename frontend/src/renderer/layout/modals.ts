@@ -1,3 +1,5 @@
+import type { NarrativePerspective } from "../api/types";
+
 export interface ModalButton {
   label: string;
   value: string;
@@ -129,11 +131,17 @@ export function confirmCheckboxModal(options: {
 export interface EditDocumentResult {
   title: string;
   author: string;
+  narrative_perspective: string;
 }
 
-export function editDocumentModal(
-  options: { title: string; author: string },
-): Promise<EditDocumentResult | null> {
+export interface EditDocumentOptions {
+  title: string;
+  author: string;
+  narrative_perspective?: string;
+  perspectives?: NarrativePerspective[];
+}
+
+export function editDocumentModal(options: EditDocumentOptions): Promise<EditDocumentResult | null> {
   return new Promise((resolve) => {
     const overlay = makeOverlay();
     const dialog = document.createElement("div");
@@ -161,9 +169,30 @@ export function editDocumentModal(
     authorLabel.textContent = "Author";
     authorLabel.append(authorInput);
 
+    const perspectiveSelect = document.createElement("select");
+    perspectiveSelect.className = "modal-input";
+    perspectiveSelect.dataset.testid = "modal-select-narrative-perspective";
+    const perspectiveOptions = [
+      { code: "", label: "None" },
+      ...(options.perspectives ?? []),
+    ];
+    for (const perspective of perspectiveOptions) {
+      const option = document.createElement("option");
+      option.value = perspective.code;
+      option.textContent = perspective.label;
+      option.dataset.testid = "modal-option-narrative-perspective";
+      perspectiveSelect.append(option);
+    }
+    perspectiveSelect.value = options.narrative_perspective ?? "";
+
+    const perspectiveLabel = document.createElement("label");
+    perspectiveLabel.className = "modal-field-label";
+    perspectiveLabel.textContent = "Narrative perspective";
+    perspectiveLabel.append(perspectiveSelect);
+
     const body = document.createElement("div");
     body.className = "modal-fields";
-    body.append(titleLabel, authorLabel);
+    body.append(titleLabel, authorLabel, perspectiveLabel);
 
     const save = document.createElement("button");
     save.type = "button";
@@ -196,7 +225,11 @@ export function editDocumentModal(
         return;
       }
       overlay.remove();
-      resolve({ title: titleInput.value, author: authorInput.value });
+      resolve({
+        title: titleInput.value,
+        author: authorInput.value,
+        narrative_perspective: perspectiveSelect.value,
+      });
     });
 
     overlay.append(dialog);
