@@ -156,6 +156,11 @@ export interface DocumentContentResponse {
   warnings?: string[];
 }
 
+/** GET /api/documents/{id}/mentions response: paragraph id → character-chapter ids. */
+export interface DocumentMentionsResponse {
+  mentions: Record<string, string[]>;
+}
+
 export interface Status {
   code: string;
   message: string;

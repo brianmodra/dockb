@@ -159,6 +159,21 @@ describe("ApiClient chapters and lifecycle", () => {
     expect(fetchCalls()[0].url).toBe("/api/chapters/ch-1/document");
   });
 
+  it("gets a chapter's document read-only with a query flag", async () => {
+    mockFetch(200, { content: "# Intro\n\ntext", summary: null });
+    const client = new ApiClient();
+    await client.getChapterDocument("ch-1", { readonly: true });
+    expect(fetchCalls()[0].url).toBe("/api/chapters/ch-1/document?readonly=1");
+  });
+
+  it("gets a document's mention map", async () => {
+    mockFetch(200, { mentions: { p1: ["k1", "k2"] } });
+    const client = new ApiClient();
+    const result = await client.getDocumentMentions("d-1");
+    expect(result).toEqual({ mentions: { p1: ["k1", "k2"] } });
+    expect(fetchCalls()[0].url).toBe("/api/documents/d-1/mentions");
+  });
+
   it("saves a chapter document and returns canonical text", async () => {
     const response: DocumentContentResponse = {
       content: "canonical text",

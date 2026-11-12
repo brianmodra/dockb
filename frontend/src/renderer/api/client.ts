@@ -9,6 +9,7 @@ import type {
   ChapterRelations,
   ChatResponse,
   DocumentContentResponse,
+  DocumentMentionsResponse,
   DocumentWire,
   GlossaryResponse,
   ImportResponse,
@@ -179,9 +180,20 @@ export class ApiClient {
     return request<ChapterNode>(this.url(`/chapters/${encodeURIComponent(chapterId)}`));
   }
 
-  async getChapterDocument(chapterId: string): Promise<DocumentContentResponse> {
+  async getChapterDocument(
+    chapterId: string,
+    options: { readonly?: boolean } = {},
+  ): Promise<DocumentContentResponse> {
+    const query = options.readonly ? "?readonly=1" : "";
     return request<DocumentContentResponse>(
-      this.url(`/chapters/${encodeURIComponent(chapterId)}/document`),
+      this.url(`/chapters/${encodeURIComponent(chapterId)}/document${query}`),
+    );
+  }
+
+  /** Return the document's paragraph → mentioned-character-chapter map. */
+  async getDocumentMentions(documentId: string): Promise<DocumentMentionsResponse> {
+    return request<DocumentMentionsResponse>(
+      this.url(`/documents/${encodeURIComponent(documentId)}/mentions`),
     );
   }
 
