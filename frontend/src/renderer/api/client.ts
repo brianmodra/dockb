@@ -14,6 +14,7 @@ import type {
   GlossaryResponse,
   ImportResponse,
   MutationResponse,
+  NarrativePerspectivesResponse,
   PovResponse,
   ProofreadingCheckRequest,
   ProofreadingCheckResponse,
@@ -80,6 +81,7 @@ function badPath(path: string): string {
 export interface UpdateDocumentData {
   title: string;
   author: string;
+  narrative_perspective?: string;
 }
 
 export class ApiClient {
@@ -91,6 +93,11 @@ export class ApiClient {
 
   async listDocuments(): Promise<DocumentWire[]> {
     return request<DocumentWire[]>(this.url("/documents"));
+  }
+
+  /** Return the fixed narrative-perspective vocabulary the editor offers. */
+  async getNarrativePerspectives(): Promise<NarrativePerspectivesResponse> {
+    return request<NarrativePerspectivesResponse>(this.url("/documents/narrative-perspectives"));
   }
 
   async getDocument(documentId: string): Promise<DocumentWire> {

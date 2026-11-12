@@ -145,7 +145,7 @@ function renderEditPicker(documents: DocumentWire[]): Promise<DocumentAttrs | nu
     emptyTestId: "document-picker-empty",
     valueFor: (item) => {
       const entry = documents.find((doc) => doc.attrs.id === item.key);
-      return entry?.attrs ?? { id: item.key, title: item.label, author: "" };
+      return entry?.attrs ?? { id: item.key, title: item.label, author: "", narrative_perspective: "" };
     },
   });
   return selected.result;

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentWire } from "../src/renderer/api/types";
 
 function doc(id: string, title: string): DocumentWire {
-  return { attrs: { id, title, author: "A" }, chapter_summaries: [] };
+  return { attrs: { id, title, author: "A", narrative_perspective: "" }, chapter_summaries: [] };
 }
 
 function fakeApi(overrides: Partial<DocumentPickerApi> = {}): DocumentPickerApi {
@@ -205,7 +205,7 @@ describe("openDocumentAttrsPicker", () => {
     expect(edit.disabled).toBe(false);
 
     edit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(await promise).toEqual({ id: "d2", title: "Sight", author: "A" });
+    expect(await promise).toEqual({ id: "d2", title: "Sight", author: "A", narrative_perspective: "" });
     expect(modal()).toBeNull();
   });
 

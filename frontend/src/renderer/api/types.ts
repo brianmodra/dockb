@@ -28,6 +28,19 @@ export interface DocumentAttrs {
   id: string;
   title: string;
   author: string;
+  /** Empty means no perspective has been chosen. */
+  narrative_perspective: string;
+}
+
+/** One selectable narrative perspective: a stable code and its label. */
+export interface NarrativePerspective {
+  code: string;
+  label: string;
+}
+
+/** GET /api/documents/narrative-perspectives response. */
+export interface NarrativePerspectivesResponse {
+  perspectives: NarrativePerspective[];
 }
 
 export interface ChapterSummary {

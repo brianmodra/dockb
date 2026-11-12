@@ -44,6 +44,23 @@ describe("ApiClient documents", () => {
     expect(fetchCalls()[0].url).toBe("/api/documents");
   });
 
+  it("gets the narrative perspectives", async () => {
+    mockFetch(200, {
+      perspectives: [
+        { code: "first_person", label: "First Person" },
+        { code: "epistolary", label: "Epistolary" },
+      ],
+    });
+    const client = new ApiClient();
+    const result = await client.getNarrativePerspectives();
+    expect(result.perspectives).toEqual([
+      { code: "first_person", label: "First Person" },
+      { code: "epistolary", label: "Epistolary" },
+    ]);
+    expect(fetchCalls()[0].url).toBe("/api/documents/narrative-perspectives");
+    expect(fetchCalls()[0].init.method).toBeUndefined();
+  });
+
   it("gets a document with its chapter summaries", async () => {
     const body = {
       attrs: { id: "d-1", title: "Faith", author: "A" },
@@ -74,6 +91,27 @@ describe("ApiClient documents", () => {
     const call = fetchCalls()[0];
     expect(call.url).toBe("/api/documents/d-1");
     expect(call.init.method).toBe("PUT");
+  });
+
+  it("sends the narrative perspective when updating a document", async () => {
+    mockFetch(200, { status: { code: "ok", message: "success" } });
+    const client = new ApiClient();
+    await client.updateDocument("d-1", {
+      title: "Love",
+      author: "B",
+      narrative_perspective: "second_person",
+    });
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/documents/d-1");
+    expect(call.init.body).toBe(
+      JSON.stringify({
+        attrs: {
+          title: "Love",
+          author: "B",
+          narrative_perspective: "second_person",
+        },
+      }),
+    );
   });
 
   it("deletes a document", async () => {
