@@ -12,6 +12,7 @@ import {
 import { EditPanel } from "./layout/editPanel";
 import { ProofreadingController } from "./layout/proofreading";
 import { LeftPanel } from "./layout/leftPanel";
+import { RightPanel, type ShelfChapter } from "./layout/rightPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
 import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
 import { LANGUAGES, openLanguageSettings } from "./layout/languageSettings";
@@ -68,6 +69,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   let runQuote: (rawArgs: unknown) => void = () => {};
+  let loadDocumentMentions: (documentId: string) => void = () => {};
   let proofreading: ProofreadingController | null = null;
   let editorPromptOpen = false;
   const signOut: SignOutFlow = { request: () => {} };
@@ -178,7 +180,8 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   root.append(layout.element);
 
   if (options.api && editPanel) {
-    const controller = new AppStateController(options.api, {
+    const api = options.api;
+    const controller = new AppStateController(api, {
       onMessage: (text) => layout.pushMessage(text),
     });
     stateController = controller;
@@ -218,6 +221,52 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
     currentDocumentId = () => panel.currentDocumentId();
+
+    const rightPanel = new RightPanel({
+      api: options.api,
+      onMessage: (text) => layout.pushMessage(text),
+    });
+    layout.rightPanelEl().append(rightPanel.element);
+
+    let mentionMap: Record<string, string[]> = {};
+    let lastMentionParagraphId: string | null = null;
+
+    const refreshMentionTabs = (): void => {
+      const paragraphId = editPanel.proofreadingParagraph()?.paragraphId ?? null;
+      if (paragraphId === lastMentionParagraphId) {
+        return;
+      }
+      lastMentionParagraphId = paragraphId;
+      const characterIds = paragraphId === null ? [] : (mentionMap[paragraphId] ?? []);
+      const chapters = characterIds
+        .map((characterId): ShelfChapter | null => {
+          const title = panel.titleOf(characterId);
+          return title === null ? null : { chapterId: characterId, title };
+        })
+        .filter((chapter): chapter is ShelfChapter => chapter !== null);
+      rightPanel.setCharacterChapters(chapters);
+    };
+
+    loadDocumentMentions = (documentId: string): void => {
+      mentionMap = {};
+      lastMentionParagraphId = null;
+      rightPanel.setCharacterChapters([]);
+      void api.getDocumentMentions(documentId).then(
+        (response) => {
+          mentionMap = response.mentions;
+          refreshMentionTabs();
+        },
+        (error) => reportError("Load mentions", error, (text) => layout.pushMessage(text)),
+      );
+    };
+
+    editPanel.onSelectionChange = () => {
+      if (editorPromptOpen) {
+        editorPromptOpen = false;
+        layout.cancelResponse();
+      }
+      refreshMentionTabs();
+    };
 
     if (
       typeof options.api.checkText === "function" &&
@@ -336,6 +385,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           return;
         }
         void panel.load(documentId);
+        loadDocumentMentions(documentId);
         void controller.saveLastDocument(documentId);
       });
     };
@@ -396,7 +446,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       });
     };
 
-    void boot(options.api, { layout, panel, controller, editPanel, signOut });
+    void boot(options.api, { layout, panel, controller, editPanel, signOut, loadDocumentMentions });
   }
 
   return layout;
@@ -408,10 +458,11 @@ interface BootContext {
   controller: AppStateController;
   editPanel: EditPanel;
   signOut: SignOutFlow;
+  loadDocumentMentions: (documentId: string) => void;
 }
 
 async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
-  const { layout, panel, controller, editPanel, signOut: signOutFlow } = ctx;
+  const { layout, panel, controller, editPanel, signOut: signOutFlow, loadDocumentMentions } = ctx;
   const onMessage = (text: string): void => layout.pushMessage(text);
 
   let config: import("./api/types").AuthConfig;
@@ -517,6 +568,7 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
       pickDocument: () => openDocumentPicker(api),
       loadDocument: async (documentId) => {
         await panel.load(documentId);
+        loadDocumentMentions(documentId);
         await controller.saveLastDocument(documentId);
       },
     });

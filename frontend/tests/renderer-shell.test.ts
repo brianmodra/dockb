@@ -20,6 +20,7 @@ function localModeApi(
     putAppState: vi.fn(async () => ({ last_document_id: null, panel_widths: null, edit_mode: null })),
     listDocuments: vi.fn(async () => []),
     listChapters: vi.fn(async () => []),
+    getDocumentMentions: vi.fn(async () => ({ mentions: {} })),
     ...overrides,
   };
   return { api, bridge: { openExternal: vi.fn(async () => undefined) } };

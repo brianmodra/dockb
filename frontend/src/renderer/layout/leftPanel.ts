@@ -79,6 +79,11 @@ export class LeftPanel {
     return chapterId === null ? null : this.chapterList.chapter(chapterId) ?? null;
   }
 
+  /** The title of *chapterId*, or null when it is not in the loaded list. */
+  titleOf(chapterId: string): string | null {
+    return this.chapterList.chapter(chapterId)?.title ?? null;
+  }
+
   async reload(): Promise<void> {
     if (this.documentId !== null) {
       await this.load(this.documentId);
