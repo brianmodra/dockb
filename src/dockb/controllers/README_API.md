@@ -115,19 +115,28 @@ and a flat list of chapter summaries (attrs only, no child content):
 `GET /api/documents/{id}`:
 ```json
 {
-  "attrs": { "id": "doc-uuid", "title": "Forgiveness", "author": "Wes Almond" },
+  "attrs": {
+    "id": "doc-uuid",
+    "title": "Forgiveness",
+    "author": "Wes Almond",
+    "narrative_perspective": "third_person_limited"
+  },
   "chapter_summaries": [
     { "id": "ch-uuid-1", "title": "Chapter 1", "act": "", "category": "Chapter" }
   ]
 }
 ```
 
+`narrative_perspective` is the stored perspective code, or `""` when none is set.
+The list endpoint's summaries carry the same field.
+
 The FE loads a chapter via `GET /api/chapters/{id}` to get its full tree.
 
 ### Schema
 
 ```
-document: { attrs: { id: string, title: string, author: string }, chapter_summaries: chapter_summary* }
+document: { attrs: { id: string, title: string, author: string, narrative_perspective: string }, chapter_summaries: chapter_summary* }
+document_summary: { id: string, title: string, author: string, narrative_perspective: string }
 chapter_summary: { id: string, title: string, act: string, category: "Chapter" | "Character" }
 chapter:   { content: "paragraph+", attrs: { id: string, title: string, act: string, category: "Chapter" | "Character" } }
 paragraph: { content: "sentence+",  attrs: { id: string } }
@@ -242,8 +251,9 @@ A non-error response will have code `"ok"` and message `"success"` and a 2xx HTT
 |---|---|---|
 | `GET` | `/api/documents` | List summaries |
 | `POST` | `/api/documents` | Create document from the supplied data (See **POST Document Data**) |
+| `GET` | `/api/documents/narrative-perspectives` | List the fixed narrative-perspective choices (See **Narrative Perspectives**) |
 | `GET` | `/api/documents/{id}` | Returns the document attrs and chapter summaries (plain JSON — see **Wire Format**) |
-| `PUT` | `/api/documents/{id}` | Replace only the document attributes (title, author — see **PUT Document Data**). Chapters and their content are not affected |
+| `PUT` | `/api/documents/{id}` | Replace the document attributes (title, author, narrative perspective — see **PUT Document Data**). Chapters and their content are not affected |
 | `DELETE` | `/api/documents/{id}` | Delete doc + all children |
 | `GET` | `/api/documents/{id}/mentions` | Return the paragraph → mentioned-character-chapter map from the cached MENTIONS verdicts |
 
@@ -259,15 +269,22 @@ it creates an empty document with the supplied attributes.
 The body of a POST method to the /api/document endpoint will conform to the following schema:
 
 ```
-document: { attrs: { id: string, title: string, author: string } }
+document: { attrs: { id: string, title: string, author: string, narrative_perspective?: string } }
 ```
+`narrative_perspective` defaults to `""` (none). Any other value must be one of the codes from
+`GET /api/documents/narrative-perspectives`; an unknown code is rejected with `422`.
 Note also that the POST data for a document does not have a relations field, because a document does
 not have a parent or peers. It is a stand-alone entity. However, the database can have many documents in it.
 
 E.g. (no ordering with documents):
 ``` json
 {
-  "attrs": { "id": "d-uuid-1", "title": "Faith", "author": "Sha'ul ha-Tarsi" }
+  "attrs": {
+    "id": "d-uuid-1",
+    "title": "Faith",
+    "author": "Sha'ul ha-Tarsi",
+    "narrative_perspective": "first_person"
+  }
 }
 ```
 
@@ -278,17 +295,41 @@ Note that the ID is passed in from the FE, not generated in the BE.
 The body of a PUT method to the /api/document endpoint will conform to the following schema:
 
 ```
-document: { attrs: { id?: string, title: string, author: string } }
+document: { attrs: { id?: string, title: string, author: string, narrative_perspective?: string } }
 ```
 When using PUT, the ID is supplied in the URL, so is optional in the body of the PUT,
-but must be exactly the same if included.
+but must be exactly the same if included. PUT replaces the document attributes: omitting
+`narrative_perspective`, or sending `""`, clears the stored perspective.
 
 E.g.
 ``` json
 {
-  "attrs": { "title": "Love", "author": "Yōḥānān ha-Shaliaḥ" }
+  "attrs": {
+    "title": "Love",
+    "author": "Yōḥānān ha-Shaliaḥ",
+    "narrative_perspective": "epistolary"
+  }
 }
 ```
+
+#### Narrative Perspectives
+
+`GET /api/documents/narrative-perspectives` returns the fixed choices in display order. The
+route is registered before `GET /api/documents/{id}` so the literal path is not read as a
+document id.
+
+``` json
+{
+  "perspectives": [
+    { "code": "first_person", "label": "First Person" },
+    { "code": "first_person_present", "label": "First Person Present" }
+  ]
+}
+```
+
+`code` is the stable value stored on the document; `label` is what the editor shows. The list
+has twenty entries, including `third_person_limited`, `third_person_omniscient`, and
+`third_person_cinematic`. The editor adds its own **None** option for `""`.
 
 ### Chapter CRUD
 

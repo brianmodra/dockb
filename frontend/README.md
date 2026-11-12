@@ -39,6 +39,8 @@ The renderer talks to the backend through a typed client in
 `src/renderer/api/`: `client.ts` (documents, chapters, chapter-document
 lifecycle, reorder, app state, auth), `http.ts` (`ApiError` on non-2xx), and
 `session.ts` (`checkSession`, `signInWithPassword`, `changePassword`, `signOut`).
+Document attrs carry the stored `narrative_perspective` (empty means none), and
+`getNarrativePerspectives()` fetches the fixed code/label choices the edit dialog shows.
 `index.ts` wires the client into
 `mountShell`: its API base is the relative `/api`, unless a `VITE_API_BASE`
 build-time override is set.
@@ -175,7 +177,7 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
 - `menubar.ts` — File (Open, Import…, Save, Delete ▸ Document, Edit ▸ Document/Chapter,
-  Sign out, Quit), Mode, Settings (Language… dialog); dropdowns and nested submenus dismiss on
+  Sign out, Quit), Mode, Settings (Document…, Language…, Dictionary…); dropdowns and nested submenus dismiss on
   outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
   `confirmUnsaved`, so they share one unsaved-buffer question rather than two.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber/POV.
@@ -212,7 +214,10 @@ DOM as HTML.
   paragraph under the cursor mentions, replaced as the cursor moves. See
   `src/renderer/layout/README_right_panel.md`.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
-  document-edit dialogs (the delete/edit-document flows live in `main.ts`).
+  document-edit dialogs (the delete/edit-document flows live in `main.ts`). The
+  document-edit modal carries title, author, and a narrative-perspective select built from
+  `getNarrativePerspectives()`; File → Edit → Document and Settings → Document share its
+  save path.
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
   scrollable proofreading-language list with Cancel/Apply; the list comes from
   `GET /api/check/languages`, with the built-in list as the offline fallback. The
@@ -261,8 +266,9 @@ survives, because a mistyped password is no reason to retype the name. Then it r
 `runStartup` (restore last document, or pick one); File → Open opens the same
 select-document picker (`documentPicker.ts`
 `openDocumentPickerConfirm`) and loads the chosen document. File → Delete and
-File → Edit manage whole documents (delete with confirm; title/author) and the
-selected chapter's title; Mode, panel widths, and last document persist via
+File → Edit manage whole documents (delete with confirm; title, author, and narrative
+perspective) and the selected chapter's title; Settings → Document edits the open document;
+Mode, panel widths, and last document persist via
 `GET/PUT /api/app/state`. File → Quit asks to save when dirty, then sends the
 `quit` IPC channel.
 

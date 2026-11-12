@@ -22,15 +22,16 @@ and the database work is in `README_markdown_redesign.md`. Login is in `README_a
 - **Platform.** Electron + TypeScript on PC (Linux/macOS/Windows) — the decided front-end platform
   (`README_markdown_redesign.md` §8). Mobile is out of scope; a future Flutter client would drive
   the same backend.
-- **Existing API.** All editor operations map onto the document and chapter lifecycle
-  endpoints, so the UI design implies no backend work:
+- **Existing API.** Editor operations map onto the document and chapter lifecycle
+  endpoints; the document-edit dialog also reads the fixed perspective choices:
   - edit → `GET /api/chapters/{id}/document`
   - save → `PUT /api/chapters/{id}/document`
   - rename → `PUT /api/chapters/{id}` (title)
   - move → `POST /api/chapters/{id}/reorder` with `{after_chapter_id}` (`null` = first)
   - delete → `DELETE /api/chapters/{id}`
   - open document → `GET /api/documents/{id}`
-  - edit document → `PUT /api/documents/{id}` (title, author)
+  - edit document → `PUT /api/documents/{id}` (title, author, narrative perspective)
+  - perspective choices → `GET /api/documents/narrative-perspectives`
   - delete document → `DELETE /api/documents/{id}`
   The document-level renames and deletes additionally move or remove the document's
   owned store files (title-keyed directory and chapter markdown files) — backend-only
@@ -94,17 +95,20 @@ message console at 24px minimum height), and the right panel starts at its 10px 
   `PUT /api/chapters/{id}/document`), **Delete ▸ Document** (delete a whole document:
   pick it, confirm, then `DELETE /api/documents/{id}`; if it was the open document the
   editor and chapter list clear), **Edit ▸ Document / Chapter** (edit a document's
-  title/author or a chapter's title, saving through `PUT /api/documents/{id}` /
-  `PUT /api/chapters/{id}`), **Sign out** (offer to save an unsaved buffer, end the session
+  title, author, and narrative perspective, or a chapter's title, saving through
+  `PUT /api/documents/{id}` / `PUT /api/chapters/{id}`), **Sign out** (offer to save an unsaved buffer, end the session
   with `POST /api/auth/logout`, clear what the session owned, and show the gate again) and
   **Quit**.
 - **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
-- **Settings ⚙▾** — a cog glyph instead of the word "Settings". One item, **Language…**: opens
+- **Settings ⚙▾** — a cog glyph instead of the word "Settings". **Document…** edits the
+  currently open document through the same modal as File → Edit → Document; with no document
+  open it says to open one first. **Language…** opens
   a dialog listing the proofreading languages the backend checker supports (`GET
   /api/check/languages`; the dialog falls back to its built-in list if that request fails),
   scrollable, current one marked, Cancel/Apply; choosing one sets the language used for backend
-  spelling and grammar checks and the WYSIWYG editable's `lang` attribute. The browser's own
-  spellchecker is turned off, so the `lang` attribute no longer selects a native dictionary.
+  spelling and grammar checks and the WYSIWYG editable's `lang` attribute. **Dictionary…** opens
+  the document's glossary. The browser's own spellchecker is turned off, so the `lang` attribute
+  no longer selects a native dictionary.
 
 The menu bar is drawn in-window (HTML), not the native Electron menu, so its styling is ours and
 stays identical across platforms; the native menu is removed at startup
@@ -265,12 +269,14 @@ response-area function that opens a chapter scrolled to a paragraph, is in
   document was the one open in the editor, the editor and the chapter list clear
   (`PUT /api/app/state` forgets it as the last document).
 - **Edit document** (File → Edit → Document) — the document list with **Cancel / Edit** (Edit
-  disabled until a row is chosen). **Edit** opens a two-field modal pre-filled with the chosen
-  document's title and author; the edited values stay in the modal until **Save** (disabled
-  while the title is blank). **Save** updates via `PUT /api/documents/{id}` — which renames
-  the document's store directory when the title changed — then reloads the chapter list;
-  **Cancel** discards the edits. The modal edits title and author only; any other metadata
-  fields are preserved untouched, not shown, and not sent.
+  disabled until a row is chosen). **Edit** opens a modal pre-filled with the chosen document's
+  title, author, and narrative perspective; the perspective field is a select containing
+  **None** and the codes from `GET /api/documents/narrative-perspectives`. The edited values
+  stay in the modal until **Save** (disabled while the title is blank). **Save** sends all three
+  fields via `PUT /api/documents/{id}` — which renames the document's store directory when the
+  title changed — then reloads the chapter list; **Cancel** discards the edits. **Settings →
+  Document…** opens the same modal for the open document without the picker; when none is open
+  it asks the writer to open one first.
 - **Edit chapter** (File → Edit → Chapter) — a single title field pre-filled with the
   selected chapter's title and **Cancel / Save**. **Save** updates the title via
   `PUT /api/chapters/{id}` (renaming the chapter's store file) and reloads the chapter list;
