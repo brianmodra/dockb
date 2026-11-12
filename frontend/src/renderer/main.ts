@@ -69,6 +69,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   let runQuote: (rawArgs: unknown) => void = () => {};
+  let runReadonlyScroll: (rawArgs: unknown) => void = () => {};
   let loadDocumentMentions: (documentId: string) => void = () => {};
   let proofreading: ProofreadingController | null = null;
   let editorPromptOpen = false;
@@ -162,6 +163,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     responseFunctions: {
       highlight: (args) => void runHighlight(args),
       quote: (args) => runQuote(args),
+      "readonly-scroll": (args) => runReadonlyScroll(args),
       [PROOFREADING_REPLACE_FUNCTION]: (args) => {
         const replacement =
           typeof args === "object" && args !== null ? (args as { replacement?: unknown }).replacement : undefined;
@@ -200,12 +202,21 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
     layout.editPanelEl().append(editPanel.element);
 
+    const rightPanel = new RightPanel({
+      api: options.api,
+      onMessage: (text) => layout.pushMessage(text),
+    });
+    layout.rightPanelEl().append(rightPanel.element);
+
     const panel = new LeftPanel({
       api: options.api,
       onEdit: (chapterId) => {
         void editPanel.open(chapterId);
       },
       onMessage: (text) => layout.pushMessage(text),
+      onReadonly: (chapterId, title) => {
+        rightPanel.addWriterChapter(chapterId, title);
+      },
       onPovChanged: (chapterId, povTitle) => {
         // The file's pov line changed under the open buffer: a clean buffer
         // re-reads it; a dirty one learns the line in place, so its next save
@@ -221,12 +232,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
     currentDocumentId = () => panel.currentDocumentId();
-
-    const rightPanel = new RightPanel({
-      api: options.api,
-      onMessage: (text) => layout.pushMessage(text),
-    });
-    layout.rightPanelEl().append(rightPanel.element);
 
     let mentionMap: Record<string, string[]> = {};
     let lastMentionParagraphId: string | null = null;
@@ -349,6 +354,25 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       if (!editPanel || !editPanel.applyQuote(rawArgs)) {
         layout.pushMessage("Quoting works in WYSIWYG chapters.");
       }
+    };
+
+    runReadonlyScroll = (rawArgs: unknown): void => {
+      const args = (typeof rawArgs === "object" && rawArgs !== null ? rawArgs : {}) as {
+        chapter_id?: unknown;
+        paragraph_id?: unknown;
+      };
+      const chapterId = typeof args.chapter_id === "string" ? args.chapter_id : null;
+      const paragraphId = typeof args.paragraph_id === "string" ? args.paragraph_id : null;
+      if (chapterId === null || paragraphId === null) {
+        layout.pushMessage("The read-only button is missing its chapter or paragraph.");
+        return;
+      }
+      const title = panel.titleOf(chapterId);
+      if (title === null) {
+        layout.pushMessage("That chapter is not in this document.");
+        return;
+      }
+      rightPanel.addWriterChapterAt(chapterId, title, paragraphId);
     };
 
     runDeleteDocument = () => {

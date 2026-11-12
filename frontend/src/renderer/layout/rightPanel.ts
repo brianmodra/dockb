@@ -1,6 +1,6 @@
 import MarkdownIt from "markdown-it";
 import type { DocumentContentResponse } from "../api/types";
-import { chapterBody } from "./wysiwyg";
+import { chapterParagraphs } from "./wysiwyg";
 
 export interface RightPanelApi {
   getChapterDocument(
@@ -71,6 +71,14 @@ export class RightPanel {
     this.open(chapterId);
   }
 
+  /** Add a writer chapter (idempotent), open it, and scroll a paragraph into view. */
+  addWriterChapterAt(chapterId: string, title: string, paragraphId: string): void {
+    if (!this.writerChapters.some((chapter) => chapter.chapterId === chapterId)) {
+      this.writerChapters.push({ chapterId, title });
+    }
+    this.open(chapterId, paragraphId);
+  }
+
   /** Close a writer chapter's tab; its content clears if it was open. */
   closeWriterChapter(chapterId: string): void {
     this.writerChapters = this.writerChapters.filter((chapter) => chapter.chapterId !== chapterId);
@@ -95,21 +103,38 @@ export class RightPanel {
     this.renderTabs();
   }
 
-  private open(chapterId: string): void {
+  private open(chapterId: string, paragraphId: string | null = null): void {
     this.openId = chapterId;
     this.renderTabs();
-    void this.load(chapterId);
+    void this.load(chapterId, paragraphId);
   }
 
-  private async load(chapterId: string): Promise<void> {
+  private async load(chapterId: string, paragraphId: string | null): Promise<void> {
     try {
       const doc = await this.api.getChapterDocument(chapterId, { readonly: true });
       if (this.openId !== chapterId) {
         return;
       }
-      this.content.innerHTML = new MarkdownIt().render(chapterBody(doc.content));
+      this.renderContent(doc.content);
+      if (paragraphId !== null) {
+        this.content
+          .querySelector<HTMLElement>(`[data-par-id="${paragraphId}"]`)
+          ?.scrollIntoView();
+      }
     } catch (error) {
       this.onMessage?.(`Could not show the chapter: ${errorMessage(error)}`);
+    }
+  }
+
+  private renderContent(markdown: string): void {
+    this.content.replaceChildren();
+    for (const paragraph of chapterParagraphs(markdown)) {
+      const wrapper = document.createElement("div");
+      if (paragraph.id !== null) {
+        wrapper.dataset.parId = paragraph.id;
+      }
+      wrapper.innerHTML = new MarkdownIt().render(paragraph.text);
+      this.content.append(wrapper);
     }
   }
 

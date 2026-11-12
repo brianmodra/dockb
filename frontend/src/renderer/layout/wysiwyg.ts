@@ -115,6 +115,32 @@ export function chapterBody(buffer: string): string {
   return hadFrontMatter ? body.replace(/^\n/, "") : body;
 }
 
+export interface ChapterParagraph {
+  id: string | null;
+  text: string;
+}
+
+/** The canonical *buffer*'s paragraphs — span markup stripped, each with its id. */
+export function chapterParagraphs(buffer: string): ChapterParagraph[] {
+  const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
+  const body = buffer.replace(FRONT_MATTER_RE, "");
+  const normalized = hadFrontMatter ? body.replace(/^\n/, "") : body;
+  return normalized
+    .split(/\n\n+/)
+    .map((block) => {
+      const open = block.match(/<span\b([^>]*)>/);
+      const id = open ? (open[1].match(/\bdata-par-id="([^"]*)"/)?.[1] ?? null) : null;
+      const text = block
+        .split("\n")
+        .filter((line) => !PURE_SPAN_LINE_RE.test(line))
+        .map((line) => unescapeHtml(line.replace(SPAN_TAG_RE, "")))
+        .join("\n")
+        .trim();
+      return { id, text };
+    })
+    .filter((paragraph) => paragraph.text !== "");
+}
+
 interface BodyBlock {
   blanksBefore: number;
   lines: string[];

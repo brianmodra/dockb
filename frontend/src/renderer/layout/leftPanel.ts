@@ -16,6 +16,7 @@ export interface LeftPanelOptions {
   onEdit?: (chapterId: string) => void;
   onMessage?: (text: string) => void;
   onPovChanged?: (chapterId: string, povTitle: string | null) => void;
+  onReadonly?: (chapterId: string, title: string) => void;
 }
 
 export class LeftPanel {
@@ -25,6 +26,7 @@ export class LeftPanel {
   private onEdit?: (chapterId: string) => void;
   private onMessage?: (text: string) => void;
   private onPovChanged?: (chapterId: string, povTitle: string | null) => void;
+  private onReadonly?: (chapterId: string, title: string) => void;
   private documentId: string | null = null;
   private chapters: ChapterListRow[] = [];
   private chapterList: ChapterList;
@@ -35,6 +37,7 @@ export class LeftPanel {
     this.onEdit = options.onEdit;
     this.onMessage = options.onMessage;
     this.onPovChanged = options.onPovChanged;
+    this.onReadonly = options.onReadonly;
     this.element = document.createElement("div");
     this.element.className = "left-panel";
 
@@ -104,6 +107,7 @@ export class LeftPanel {
     }
     const items = [
       { label: "Edit", onSelect: () => this.onEdit?.(chapterId) },
+      { label: "Read-only view", onSelect: () => this.onReadonly?.(chapterId, chapter.title) },
       { label: "Rename", onSelect: () => void this.rename(chapterId, chapter.title) },
     ];
     if (chapter.category === "Character") {

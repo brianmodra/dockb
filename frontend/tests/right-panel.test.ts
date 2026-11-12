@@ -119,6 +119,31 @@ describe("RightPanel content", () => {
     });
   });
 
+  it("opens a writer chapter scrolled to a named paragraph", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () => ({
+        content:
+          '---\ntitle: T\n---\n\n<span data-par-id="p1">\nOne.\n</span>\n\n<span data-par-id="p2">\nTwo.\n</span>\n',
+        summary: null,
+      })),
+    });
+    const { panel: instance } = panel({ api });
+    const scrolled: HTMLElement[] = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this);
+    };
+
+    instance.addWriterChapterAt("c1", "Intro", "p2");
+
+    try {
+      await vi.waitFor(() => expect(scrolled).toHaveLength(1));
+      expect(scrolled[0].dataset.parId).toBe("p2");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
   it("reports a failed load without throwing", async () => {
     const api = fakeApi({ getChapterDocument: vi.fn(async () => Promise.reject(new Error("down"))) });
     const { panel: instance, onMessage } = panel({ api });

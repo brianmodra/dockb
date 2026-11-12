@@ -119,6 +119,26 @@ describe("LeftPanel", () => {
     expect(onEdit).toHaveBeenCalledWith("a");
   });
 
+  it("reports Read-only view with the chapter id and title", async () => {
+    const onReadonly = vi.fn();
+    const panel = new LeftPanel({
+      api: fakeApi({
+        listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      }),
+      onReadonly,
+    });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const menu = document.querySelector("[data-testid='context-menu']");
+    const item = Array.from(menu!.querySelectorAll<HTMLElement>(".context-item")).find(
+      (n) => n.textContent === "Read-only view",
+    )!;
+    item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onReadonly).toHaveBeenCalledWith("a", "A");
+  });
+
   it("renames a chapter through the modal and reloads the list", async () => {
     const updateChapter = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
     const api = fakeApi({
@@ -263,7 +283,7 @@ describe("LeftPanel", () => {
     const labels = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item")).map(
       (n) => n.textContent,
     );
-    expect(labels).toEqual(["Edit", "Rename", "Move", "Renumber", "POV", "Delete"]);
+    expect(labels).toEqual(["Edit", "Read-only view", "Rename", "Move", "Renumber", "POV", "Delete"]);
   });
 
   it("drops Move, Renumber, and POV on a character chapter", async () => {
@@ -280,7 +300,7 @@ describe("LeftPanel", () => {
     const labels = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item")).map(
       (n) => n.textContent,
     );
-    expect(labels).toEqual(["Edit", "Rename", "Delete"]);
+    expect(labels).toEqual(["Edit", "Read-only view", "Rename", "Delete"]);
   });
 
   it("sets the POV from the modal and closes it", async () => {
