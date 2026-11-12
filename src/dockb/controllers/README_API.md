@@ -245,6 +245,12 @@ A non-error response will have code `"ok"` and message `"success"` and a 2xx HTT
 | `GET` | `/api/documents/{id}` | Returns the document attrs and chapter summaries (plain JSON — see **Wire Format**) |
 | `PUT` | `/api/documents/{id}` | Replace only the document attributes (title, author — see **PUT Document Data**). Chapters and their content are not affected |
 | `DELETE` | `/api/documents/{id}` | Delete doc + all children |
+| `GET` | `/api/documents/{id}/mentions` | Return the paragraph → mentioned-character-chapter map from the cached MENTIONS verdicts |
+
+The mention map answers `{ "mentions": { "<paragraph_id>": ["<character_id>", …] } }` —
+only paragraphs with a valid (state 3) verdict appear, and only their mentioned
+characters. It is the cached verdicts the mention pipeline writes, so an unsaved
+paragraph is absent until a save re-evaluates it.
 
 #### POST Document Data
 
@@ -299,6 +305,12 @@ chapter's `act` attribute, so the editor can group chapters under act headers.
 | `POST` | `/api/chapters/renumber` | Renumber every act chapter of a document, from a requested start (See **POST Renumber Data**) |
 | `POST` | `/api/chapters/{id}/pov` | Set, suggest, or clear the chapter's point-of-view character (See **POST POV Data**) |
 | `DELETE` | `/api/chapters/{id}` | Delete chapter + all children |
+
+`GET /api/chapters/{id}/document` returns the chapter's owned markdown file as
+canonical text, materialising it from the graph when it is missing. With the
+query flag `?readonly=1` an existing file is returned as-is — no
+reconciliation, no re-write through the graph — so a read-only view never
+disturbs the file.
 
 #### POST Chapter Data
 

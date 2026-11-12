@@ -94,8 +94,8 @@ The shell lives in `src/renderer/layout/` and matches
 `../README_markdown_editor_ui.md`. Modules:
 
 Panels keep the dividers grippable: `layout.ts` clamps every panel to a 10px
-minimum (left panel 120px, message console 24px) and the right panel starts at
-its 10px floor.
+minimum (left panel 120px, message console 24px); the right panel starts at the
+same width as the chapter list (240px) and shrinks back to its 10px floor.
 
 - `layout.ts` — window chrome, panel seams, mode, dirty badge, menubar username
   label, message sink, and the AI chat line: a textarea at the bottom of the
@@ -203,6 +203,12 @@ DOM as HTML.
   `EditPanel.selectSentence` (see `layout/README_response_area.md`) opens the
   chapter the reply named and selects one of its sentences, or a whole
   paragraph, in the WYSIWYG view.
+- `rightPanel.ts` — the read-only reference shelf: a tab strip over one chapter,
+  rendered read-only from its markdown file. Writer-added tabs (from the chapter
+  list's `Read-only view` menu item or a response-area button) persist until
+  closed with their `×`; the automatic character tabs follow the characters the
+  paragraph under the cursor mentions, replaced as the cursor moves. See
+  `src/renderer/layout/README_right_panel.md`.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
   document-edit dialogs (the delete/edit-document flows live in `main.ts`).
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
