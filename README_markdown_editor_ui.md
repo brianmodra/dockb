@@ -2,18 +2,20 @@
 
 ## Executive Summary
 
-This is the design of DockB's writing window. It explains the menus, the chapter list, the editor
-and the dialogs, so someone new can see what the writer sees and why each click does what it does —
-including how proofreading works in both the WYSIWYG and raw views: the backend checks the
-paragraph under the cursor, the writer picks a correction or adds a word to that document's
-glossary through the response strip, and nothing is written to the file until the writer saves.
-The chapter list stays in step with the editor — the shown chapter stays selected through list
-changes, and re-clicking it saves and reads nothing. The File menu
-saves unsaved work before signing out, and the identity line above the text shows a character's
-name parts or a chapter's title and point of view.
+This is the design of DockB's writing window. It explains the menus, chapter list, editor, and
+dialogs, so someone new can see what the writer sees and why each click does what it does. It
+covers proofreading in both the WYSIWYG and raw views: the backend checks the paragraph under the
+cursor, the writer picks a correction or adds a word to the document's glossary through the
+response strip, and nothing is written to the file until the writer saves. A document's title,
+author, and narrative perspective are edited in one modal, reachable from File → Edit → Document
+or from Settings → Document for the open document.
 
-The window only sends text to the server and gets text back. It never touches files. How the files
-and the database work is in `README_markdown_redesign.md`. Login is in `README_auth.md`.
+The chapter list stays in step with the editor, keeping the shown chapter selected through list
+changes and reading nothing when it is re-clicked. The File menu saves unsaved work before signing
+out, and the identity line above the text shows a character's name parts or a chapter's title and
+point of view. The window only sends text to the server and gets text back; it never touches files.
+How files and the database work is in `README_markdown_redesign.md`, and login is in
+`README_auth.md`.
 
 ## 1. Context and constraints
 

@@ -7,23 +7,18 @@ document, edit a chapter, import a whole document from a folder on disk, and pro
 never writes files itself — an import reads the directory the user picks and hands it to the
 server, which does the writing — and the backend even serves the interface, so the app and API
 share an origin and the signed-in session reaches every route. Proofreading starts from the
-backend's default language and checks a paragraph at a time. The chapter list's right-click menu
-renames, moves, renumbers, and assigns a point-of-view character; the selected chapter stays
-selected through those list changes, and re-clicking the chapter shown in the editor saves and
-reads nothing. The right panel is a read-only reference shelf: writer-added chapters (or the
-characters the paragraph under the cursor mentions) in tabs over one chapter, shown from its
-markdown file without touching the graph. A read-only identity line tracks
-the front matter; and the message panel's response strip answers AI chat prompts (opening a
-named chapter and highlighting its sentences), right-clicks on selected text (marking or
-clearing a paragraph's quote type), and right-clicks on a proofreading squiggle (applying a
-replacement or adding the word to the document's glossary). The raw and WYSIWYG views edit the same canonical buffer, and
-the dirty check compares that buffer against the last canonical text (quote types included), so
-merely switching chapters never saves an untouched file.
+backend's default language and checks a paragraph at a time.
 
-Read it to run the app, to find which file owns the chapter list, editor, chat line, login, and
-sign-out, and to see how proofreading squiggles, corrections, the language dialog, and the
-document glossary are wired. How the window should look is in
-`../README_markdown_editor_ui.md`; what the editor sends and receives is in
+The chapter list's right-click menu renames, moves, renumbers, and assigns a point-of-view
+character, keeping the shown chapter selected through those changes. Document title, author, and
+narrative perspective are edited in one modal from File → Edit → Document or Settings → Document.
+The right panel is a read-only reference shelf for writer-added chapters or characters mentioned
+under the cursor. The message panel's response strip answers AI chat prompts, quote actions, and
+proofreading corrections, including adding a word to the document's glossary. Raw and WYSIWYG
+edit the same canonical buffer, and the dirty check compares it against the last canonical text so
+switching chapters never saves an untouched file. Read this to run the app, find the file that owns
+each area, and see how the window, API client, and dialogs fit together; the visual design is in
+`../README_markdown_editor_ui.md` and the wire contract in
 `../src/dockb/controllers/README_API.md`.
 
 ## API client and session
