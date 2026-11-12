@@ -24,6 +24,7 @@ const MIN_LEFT_WIDTH = 120;
 const DEFAULT_LEFT_WIDTH = 240;
 const MIN_RIGHT_WIDTH = 10;
 const MAX_RIGHT_WIDTH = 600;
+const DEFAULT_RIGHT_WIDTH = 240;
 const MIN_MESSAGE_HEIGHT = 24;
 const CHAT_LINE_HEIGHT = 18;
 const CHAT_VERTICAL_PADDING = 4;
@@ -47,6 +48,9 @@ export class AppLayout {
   editPanelEl(): HTMLElement {
     return this.editPanel;
   }
+  rightPanelEl(): HTMLElement {
+    return this.rightPanel;
+  }
   private readonly rightPanel: HTMLElement;
   private readonly messagePanel: HTMLElement;
   private readonly messageLog: HTMLElement;
@@ -54,7 +58,7 @@ export class AppLayout {
   private readonly chatLine: HTMLTextAreaElement;
   private lastPromptLines = 1;
   private leftWidth = DEFAULT_LEFT_WIDTH;
-  private rightWidth = MIN_RIGHT_WIDTH;
+  private rightWidth = DEFAULT_RIGHT_WIDTH;
   private messageHeight = MIN_MESSAGE_HEIGHT;
 
   constructor(options: AppLayoutOptions = {}) {

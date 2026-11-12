@@ -35,11 +35,11 @@ describe("AppLayout", () => {
     expect(layout.element.querySelector('[data-testid="panel-message"]')).not.toBeNull();
   });
 
-  it("starts with the right panel at ten pixels and the seam still available", () => {
+  it("starts with the right panel at the chapter-list width and the seam still available", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const right = layout.element.querySelector<HTMLElement>('[data-testid="panel-right"]')!;
-    expect(right.style.width).toBe("10px");
+    expect(right.style.width).toBe("240px");
     expect(layout.element.querySelector('[data-testid="resize-handle-v-right"]')).not.toBeNull();
   });
 
@@ -57,7 +57,7 @@ describe("AppLayout", () => {
     document.body.append(layout.element);
     const right = layout.element.querySelector<HTMLElement>('[data-testid="panel-right"]')!;
     drag(rightHandle(layout), 900, 100, -80, 0);
-    expect(parseInt(right.style.width, 10)).toBe(90);
+    expect(parseInt(right.style.width, 10)).toBe(320);
   });
 
   it("closes the right panel when dragging its seam rightwards", () => {
