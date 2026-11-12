@@ -83,6 +83,7 @@ class MockChapterService:
         self._chapters: dict[str, Chapter] = {}
         self._owners: dict[str, str] = {}
         self._documents: dict[str, str] = {}
+        self._readonly_calls: list[bool] = []
 
     def list_by_document(self, document_id: str, owner: str = "") -> list[dict[str, str]]:
         return [{"id": ch.id, "title": ch.title, "act": ch.act} for ch in self._chapters.values()]
@@ -139,7 +140,8 @@ class MockChapterService:
             return None
         return {"applied": True, "pov": None, "warning": None}
 
-    def open_document(self, chapter_id: str, owner: str = "") -> str | None:
+    def open_document(self, chapter_id: str, owner: str = "", readonly: bool = False) -> str | None:
+        self._readonly_calls.append(readonly)
         if chapter_id not in self._chapters:
             return None
         return self._documents.setdefault(chapter_id, "# New\n")
@@ -625,6 +627,12 @@ class TestChapterRoutes:  # pylint: disable=too-many-public-methods
     def test_get_chapter_document_not_found(self) -> None:
         resp = self.client.get("/api/chapters/nonexistent/document")
         assert resp.status_code == 404
+
+    def test_get_chapter_document_readonly_is_forwarded(self) -> None:
+        self.ch_svc.create("c1", "Intro", "d1")
+        resp = self.client.get("/api/chapters/c1/document", params={"readonly": "true"})
+        assert resp.status_code == 200
+        assert self.ch_svc._readonly_calls == [True]
 
     def test_put_chapter_document(self) -> None:
         self.ch_svc.create("c1", "Intro", "d1")

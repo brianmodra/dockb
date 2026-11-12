@@ -496,13 +496,15 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
                 ),
             )
 
-    def open_document(self, chapter_id: str, *, owner: str) -> str | None:
+    def open_document(self, chapter_id: str, *, owner: str, readonly: bool = False) -> str | None:
         """Read a chapter's owned file as canonical text, reconciling it first.
 
         Materializes ``chapter-{id}.md`` from the graph when it is missing,
         otherwise absorbs any hand edit through ``apply_chapter_file()``, then
-        git-snaps and returns the canonical text. Returns ``None`` for a missing
-        chapter, a chapter *owner* does not own, an orphan, or when no store / nlp is
+        git-snaps and returns the canonical text. With ``readonly`` an existing
+        file is returned as-is — no reconciliation, no git write — and only a
+        missing file is materialised. Returns ``None`` for a missing chapter, a
+        chapter *owner* does not own, an orphan, or when no store / nlp is
         configured (404).
         """
         store = self._store(owner)
@@ -524,7 +526,7 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
             if not store.chapter_exists(document.title, ch.act, ch.title, ch.category):
                 with measure("stage.materialize"):
                     self._materialize_chapter(store, document, ch)
-            else:
+            elif not readonly:
                 with measure("stage.apply_chapter_file"):
                     apply_chapter_file(
                         document,

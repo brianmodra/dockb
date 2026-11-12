@@ -116,10 +116,11 @@ def get_chapter(
 @router.get("/{chapter_id}/document")
 def get_chapter_document(
     chapter_id: str,
+    readonly: bool = False,
     svc: Any = Depends(get_ch_service),
     owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
-    content = svc.open_document(chapter_id, owner=owner)
+    content = svc.open_document(chapter_id, owner=owner, readonly=readonly)
     if content is None:
         raise HTTPException(status_code=404, detail=f"chapter_not_found: {chapter_id}")
     return ChapterDocumentResponse(content=content).model_dump()

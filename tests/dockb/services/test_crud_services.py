@@ -1196,6 +1196,44 @@ class TestChapterService:  # pylint: disable=too-many-public-methods,too-many-lo
         assert content is not None
         assert "Edited." in content
 
+    def test_open_document_readonly_returns_the_file_as_is(self, tmp_path, nlp, doc_repo) -> None:
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        store = self._git_store(tmp_path)
+        raw = "# Intro\n\nA hand-edited body, not canonical.\n"
+        store.write_chapter("Faith", "", "Intro", raw)
+        svc = self._service_with_store(tmp_path, nlp=nlp, doc_repo=doc_repo)
+
+        content = svc.open_document("c1", owner=self._OWNER, readonly=True)
+
+        assert content == raw  # byte-for-byte, not reconciled
+        assert not self.uow.committed  # no apply_chapter_file ran
+
+    def test_open_document_readonly_materialises_a_missing_file(self, tmp_path, nlp, doc_repo) -> None:
+        from dockb.models.token import Token
+
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        paragraph = Paragraph(id="p1", state=DataState.SYNC)
+        sentence = Sentence(state=DataState.SYNC)
+        sentence.tokens.append(Token(text="Body.", trailing_ws=" ", state=DataState.SYNC))
+        paragraph.sentences.append(sentence)
+        ch.paragraphs.append(paragraph)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        doc.chapters.append(ch)
+        doc_repo._store["d1"] = doc
+        svc = self._service_with_store(tmp_path, nlp=nlp, doc_repo=doc_repo)
+
+        content = svc.open_document("c1", owner=self._OWNER, readonly=True)
+
+        assert content is not None
+        assert "Body." in content
+
     def test_save_document_uses_shell_load(self, tmp_path, nlp, doc_repo) -> None:
         ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
         self.repo._store["c1"] = ch
