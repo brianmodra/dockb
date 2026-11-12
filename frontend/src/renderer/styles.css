@@ -144,6 +144,7 @@ body {
   border-bottom: 1px solid #ccc;
   background: #f2f2f0;
   user-select: none;
+  font-size: 12px;
 }
 
 [data-testid="user-label"] {
