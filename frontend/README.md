@@ -10,7 +10,9 @@ share an origin and the signed-in session reaches every route. Proofreading star
 backend's default language and checks a paragraph at a time. The chapter list's right-click menu
 renames, moves, renumbers, and assigns a point-of-view character; the selected chapter stays
 selected through those list changes, and re-clicking the chapter shown in the editor saves and
-reads nothing. A read-only identity line tracks
+reads nothing. The right panel is a read-only reference shelf: writer-added chapters (or the
+characters the paragraph under the cursor mentions) in tabs over one chapter, shown from its
+markdown file without touching the graph. A read-only identity line tracks
 the front matter; and the message panel's response strip answers AI chat prompts (opening a
 named chapter and highlighting its sentences), right-clicks on selected text (marking or
 clearing a paragraph's quote type), and right-clicks on a proofreading squiggle (applying a
