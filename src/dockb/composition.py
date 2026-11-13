@@ -242,13 +242,6 @@ def wire(  # pylint: disable=too-many-locals
     document_store_factory = DocumentStoreFactory(base_dir=document_base_dir) if document_base_dir is not None else None
     nlp = spacy.load("en_core_web_sm") if (document_base_dir is not None or snapshot_base_dir is not None) else None
     document_locks = DocumentLocks()
-    doc_svc = DocumentService(
-        uow_factory=uow_factory,
-        document_repo=repos[Document],
-        document_store_factory=document_store_factory,
-        nlp=nlp,
-        document_locks=document_locks,
-    )
     ch_svc = ChapterService(
         uow_factory=uow_factory,
         chapter_repo=repos[Chapter],
@@ -257,6 +250,15 @@ def wire(  # pylint: disable=too-many-locals
         nlp=nlp,
         mentions_repo=MentionsRepository(mentions_session),
         mentions_chapter_repo=mentions_chapter_repo,
+        document_locks=document_locks,
+    )
+    doc_svc = DocumentService(
+        uow_factory=uow_factory,
+        document_repo=repos[Document],
+        document_store_factory=document_store_factory,
+        nlp=nlp,
+        document_locks=document_locks,
+        chapter_service=ch_svc,
     )
     para_svc = ParagraphService(uow_factory=uow_factory, paragraph_repo=repos[Paragraph])
     sent_svc = SentenceService(uow_factory=uow_factory, sentence_repo=repos[Sentence])

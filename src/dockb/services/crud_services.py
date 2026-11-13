@@ -32,7 +32,7 @@ from dockb.exceptions import (
     ParagraphNotFoundError,
 )
 from dockb.infrastructure.document_store.journal import JournalRecord
-from dockb.infrastructure.document_store.store import DocumentMetadata
+from dockb.infrastructure.document_store.store import ChapterRename, DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
@@ -94,12 +94,14 @@ class DocumentService:
         document_store_factory: DocumentStoreFactory | None = None,
         nlp: Language | None = None,
         document_locks: DocumentLocks | None = None,
+        chapter_service: ChapterService | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._document_repo = document_repo
         self._document_store_factory = document_store_factory
         self._nlp = nlp
         self._document_locks = document_locks or DocumentLocks()
+        self._chapter_service = chapter_service
 
     def _store(self, owner: str) -> DocumentStore | None:
         """Return *owner*'s document store, or None when no store is configured."""
@@ -315,10 +317,15 @@ class DocumentService:
 
     def _recover_record(self, record: JournalRecord) -> None:
         """Apply one journal record's desired end state."""
-        handler = {"document-rename": self._recover_document_rename}.get(record.op)
-        if handler is None:
-            raise ValueError(f"unknown journal operation {record.op!r}")
-        handler(record)
+        if record.op == "document-rename":
+            self._recover_document_rename(record)
+            return
+        if record.op in ("chapter-rename", "chapter-renumber"):
+            if self._chapter_service is None:
+                raise ValueError(f"{record.op!r} record needs a chapter service")
+            self._chapter_service.recover_record(record)
+            return
+        raise ValueError(f"unknown journal operation {record.op!r}")
 
     def _recover_document_rename(self, record: JournalRecord) -> None:
         """Drive a document rename to ``payload['to']`` across the store and the graph.
@@ -364,18 +371,20 @@ class DocumentService:
         The store directory (``git rm`` + commit) goes first so a failure leaves
         the graph intact for a retry. The graph DELETED write cascades to every
         chapter, paragraph, sentence, and token. Returns False when *owner* does not
-        own the document, leaving both the tree and the graph untouched.
+        own the document, leaving both the tree and the graph untouched. The whole
+        delete holds the document's exclusive lock.
         """
         doc = self._document_repo.load(document_id, owner)
         if doc is None:
             return False
-        store = self._store(owner)
-        if store is not None:
-            store.remove_document(doc.title)
-        doc.state = DataState.DELETED
-        uow = self._uow_factory.get_unit_of_work()
-        uow.register(doc)
-        uow.commit()
+        with self._document_locks.exclusive(document_id):
+            store = self._store(owner)
+            if store is not None:
+                store.remove_document(doc.title)
+            doc.state = DataState.DELETED
+            uow = self._uow_factory.get_unit_of_work()
+            uow.register(doc)
+            uow.commit()
         return True
 
 
@@ -423,6 +432,7 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         session_context: SessionContext | None = None,
         mentions_scheduler: MentionsScheduler | None = None,
         mentions_chapter_repo: ChapterRepository | None = None,
+        document_locks: DocumentLocks | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._chapter_repo = chapter_repo
@@ -436,9 +446,67 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         self._mentions_chapter_repo = mentions_chapter_repo if mentions_chapter_repo is not None else chapter_repo
         self._mentions_scheduler = mentions_scheduler or MentionsScheduler()
         self._session_context = session_context
+        self._document_locks = document_locks or DocumentLocks()
         self._save_locks: dict[str, threading.Lock] = {}
         self._save_users: dict[str, int] = {}
         self._save_registry_guard = threading.Lock()
+
+    def recover_record(self, record: JournalRecord) -> None:
+        """Apply one chapter-scoped journal record's desired end state."""
+        if record.op == "chapter-rename":
+            self._recover_chapter_rename(record)
+            return
+        if record.op == "chapter-renumber":
+            self._recover_chapter_renumber(record)
+            return
+        raise ValueError(f"unknown journal operation {record.op!r}")
+
+    def _recover_chapter_rename(self, record: JournalRecord) -> None:
+        """Drive a chapter rename to ``payload['to']`` across the store and the graph."""
+        payload = record.payload
+        chapter_id = payload.get("chapter_id")
+        document_title = payload.get("document_title")
+        from_title = payload.get("from")
+        to_title = payload.get("to")
+        if not (chapter_id and document_title and from_title and to_title):
+            raise ValueError("chapter-rename record is incomplete")
+        factory = self._document_store_factory
+        if factory is None:
+            raise RuntimeError("a document store is required to replay a chapter rename")
+        store = factory.for_account(record.account_id)
+        act = str(payload.get("act") or "")
+        category = str(payload.get("category") or "Chapter")
+        store.rename_chapter(document_title, act, from_title, to_title, category)
+        ch = self._chapter_repo.load(chapter_id, record.account_id)
+        if ch is not None and ch.title != to_title:
+            ch.title = to_title
+            ch.state = DataState.CHANGED
+            uow = self._uow_factory.get_unit_of_work()
+            uow.register(ch, document_id=record.document_id or "", owner=record.account_id)
+            uow.commit()
+
+    def _recover_chapter_renumber(self, record: JournalRecord) -> None:
+        """Drive a chapter renumber to its planned titles across the store and the graph."""
+        payload = record.payload
+        document_title = payload.get("document_title")
+        if not document_title:
+            raise ValueError("chapter-renumber record is incomplete")
+        factory = self._document_store_factory
+        if factory is None:
+            raise RuntimeError("a document store is required to replay a renumber")
+        store = factory.for_account(record.account_id)
+        moves = [
+            ChapterRename(
+                act=str(move.get("act") or ""),
+                category=str(move.get("category") or "Chapter"),
+                old_title=str(move["old_title"]),
+                new_title=str(move["new_title"]),
+            )
+            for move in payload.get("moves") or []
+        ]
+        entries = [{"id": str(entry["id"]), "title": str(entry["title"])} for entry in payload.get("entries") or []]
+        store.renumber_chapters(document_title, moves)
+        self._chapter_repo.retitle(record.document_id, entries, record.account_id)
 
     def _store(self, owner: str) -> DocumentStore | None:
         """Return *owner*'s document store, or None when no store is configured."""
@@ -558,7 +626,7 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
             document = self._document_repo.load_shell(document_id, owner)
         if document is None:
             return None
-        with self._save_scope(chapter_id):
+        with self._document_locks.shared(document_id), self._save_scope(chapter_id):
             updates = {"id": chapter_id, "title": ch.title}
             if ch.act:
                 updates["act"] = ch.act
@@ -660,7 +728,7 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
             document = self._document_repo.load_shell(document_id, owner)
         if document is None:
             return None
-        with self._save_scope(chapter_id):
+        with self._document_locks.shared(document_id), self._save_scope(chapter_id):
             if not store.chapter_exists(document.title, ch.act, ch.title, ch.category):
                 with measure("stage.materialize"):
                     self._materialize_chapter(store, document, ch)
@@ -822,10 +890,12 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         carry no number — but their titles still count when the new titles are
         checked for duplicates, so a renumber cannot quietly walk over one. The
         whole renumber is planned before anything is written: a case-insensitive
-        duplicate raises ``DuplicateTitleError`` and nothing changes. The graph
-        titles are rewritten first (one transaction), then the
-        markdown files move through the store's own git commit; a document with
-        no store still has its graph retitled.
+        duplicate raises ``DuplicateTitleError`` and nothing changes. The graph titles
+        are rewritten (one transaction) and the markdown files move through the store's
+        own git commit; a document with no store still has its graph retitled. With both
+        a graph and a store the renumber is journaled first, so a crash between the two
+        leaves a record the next boot replays. The whole renumber holds the document's
+        exclusive lock.
 
         Returns one ``{id, old_title, new_title}`` per chapter whose title
         changed, ``[]`` when nothing needed changing, and ``None`` when *owner*
@@ -834,14 +904,32 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         document = self._document_repo.load_shell(document_id, owner) if self._document_repo is not None else None
         if document is None:
             return None
-        entries, renames, moves = plan_renumber(self._chapter_repo.list_by_document(document_id, owner), start=start)
-        if not entries:
-            return []
-        self._chapter_repo.retitle(document_id, entries, owner)
-        store = self._store(owner)
-        if store is not None:
+        with self._document_locks.exclusive(document_id):
+            entries, renames, moves = plan_renumber(self._chapter_repo.list_by_document(document_id, owner), start=start)
+            if not entries:
+                return []
+            store = self._store(owner)
+            if store is None:
+                self._chapter_repo.retitle(document_id, entries, owner)
+                return renames
+            record = JournalRecord.new(
+                "chapter-renumber",
+                account_id=owner,
+                document_id=document_id,
+                payload={
+                    "document_title": document.title,
+                    "entries": entries,
+                    "moves": [
+                        {"act": move.act, "category": move.category, "old_title": move.old_title, "new_title": move.new_title}
+                        for move in moves
+                    ],
+                },
+            )
+            store.journal().write(record)
             store.renumber_chapters(document.title, moves)
-        return renames
+            self._chapter_repo.retitle(document_id, entries, owner)
+            store.journal().remove(record.op_id)
+            return renames
 
     def update(
         self,
@@ -852,29 +940,51 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
     ) -> Chapter | None:
         """Update the chapter title, renaming its owned file and refreshing the graph.
 
-        Returns None if not found. The graph is updated first; a title change
-        then git mv's the markdown file and rewrites the front matter title to
-        match. *owner* scopes which account's tree the rename happens in.
+        Returns None if not found. A title change with a document store is journaled
+        before anything moves: the record names the old and new titles, so a crash
+        between the git mv and the graph commit is repaired at the next boot. The
+        whole update holds the document's exclusive lock, so a rename never interleaves
+        with a save of one of its sibling chapters.
         """
         ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return None
         document_id = self._chapter_repo.find_document_id(chapter_id, owner)
-        if document_id is not None:
-            for row in self._chapter_repo.list_by_document(document_id, owner):
-                if row["id"] != chapter_id and str(row.get("title") or "").lower() == title.lower():
-                    raise DuplicateTitleError(title)
-        old_title = ch.title
-        ch.title = title
-        ch.state = DataState.CHANGED
-        uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id=document_id or "", owner=owner)
-        uow.commit()
-        store = self._store(owner)
-        if store is not None and self._document_repo is not None and document_id is not None and title != old_title:
-            document = self._document_repo.load_shell(document_id, owner)
-            if document is not None:
-                store.rename_chapter(document.title, ch.act, old_title, title, ch.category)
+        with self._document_locks.exclusive(document_id or chapter_id):
+            if document_id is not None:
+                for row in self._chapter_repo.list_by_document(document_id, owner):
+                    if row["id"] != chapter_id and str(row.get("title") or "").lower() == title.lower():
+                        raise DuplicateTitleError(title)
+            old_title = ch.title
+            ch.title = title
+            ch.state = DataState.CHANGED
+            uow = self._uow_factory.get_unit_of_work()
+            uow.register(ch, document_id=document_id or "", owner=owner)
+            store = self._store(owner)
+            if store is None or title == old_title or document_id is None or self._document_repo is None:
+                uow.commit()
+                return ch
+            store_document = self._document_repo.load_shell(document_id, owner)
+            if store_document is None:
+                uow.commit()
+                return ch
+            record = JournalRecord.new(
+                "chapter-rename",
+                account_id=owner,
+                document_id=document_id,
+                payload={
+                    "chapter_id": chapter_id,
+                    "document_title": store_document.title,
+                    "act": ch.act or "",
+                    "category": ch.category or "Chapter",
+                    "from": old_title,
+                    "to": title,
+                },
+            )
+            store.journal().write(record)
+            store.rename_chapter(store_document.title, ch.act, old_title, title, ch.category)
+            uow.commit()
+            store.journal().remove(record.op_id)
         return ch
 
     def delete(self, chapter_id: str, *, owner: str) -> bool:
@@ -883,20 +993,22 @@ class ChapterService:  # pylint: disable=too-many-instance-attributes
         The markdown file (``git rm`` + commit) goes first so a failure leaves
         the graph intact for a retry. The graph DELETED write cascades to the
         chapter's paragraphs, sentences, and tokens. Returns False if not found.
+        The whole delete holds the document's exclusive lock.
         """
         ch = self._chapter_repo.load(chapter_id, owner)
         if ch is None:
             return False
         document_id = self._chapter_repo.find_document_id(chapter_id, owner)
-        store = self._store(owner)
-        if store is not None and self._document_repo is not None and document_id is not None:
-            document = self._document_repo.load_shell(document_id, owner)
-            if document is not None:
-                store.remove_chapter(document.title, ch.act, ch.title, ch.category)
-        ch.state = DataState.DELETED
-        uow = self._uow_factory.get_unit_of_work()
-        uow.register(ch, document_id=document_id or "", owner=owner)
-        uow.commit()
+        with self._document_locks.exclusive(document_id or chapter_id):
+            store = self._store(owner)
+            if store is not None and self._document_repo is not None and document_id is not None:
+                document = self._document_repo.load_shell(document_id, owner)
+                if document is not None:
+                    store.remove_chapter(document.title, ch.act, ch.title, ch.category)
+            ch.state = DataState.DELETED
+            uow = self._uow_factory.get_unit_of_work()
+            uow.register(ch, document_id=document_id or "", owner=owner)
+            uow.commit()
         return True
 
 

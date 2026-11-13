@@ -36,6 +36,19 @@ class TestJournalRecord:  # pylint: disable=too-few-public-methods
         assert first.op_id and second.op_id
         assert first.op_id != second.op_id
 
+    def test_nested_payload_round_trips(self, journal):
+        payload = {
+            "from": "Opening 1",
+            "to": "Opening 2",
+            "moves": [{"act": "Act I", "old_title": "A", "new_title": "B"}],
+            "entries": [{"id": "c1", "title": "B"}],
+        }
+        journal.write(JournalRecord(op="chapter-renumber", op_id="op-9", account_id="acct-1", document_id="d1", payload=payload))
+
+        record = journal.pending()[0]
+
+        assert record.payload == payload
+
 
 class TestJournalWrite:
     def test_write_then_pending_round_trips(self, journal):

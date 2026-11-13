@@ -1046,15 +1046,21 @@ class TestDocumentRenameJournal:  # pylint: disable=too-many-public-methods
 
 
 class _RecordingLocks(DocumentLocks):
-    """A lock registry that records exclusive acquisitions instead of blocking."""
+    """A lock registry that records acquisitions instead of blocking."""
 
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[str] = []
+        self.shared_calls: list[str] = []
 
     @contextmanager
     def exclusive(self, document_id: str) -> Iterator[None]:  # type: ignore[override]
         self.calls.append(document_id)
+        yield
+
+    @contextmanager
+    def shared(self, document_id: str) -> Iterator[None]:  # type: ignore[override]
+        self.shared_calls.append(document_id)
         yield
 
 
@@ -2555,6 +2561,248 @@ class TestSentenceService:
 
 
 _OTHER = "acct-2"
+
+
+class TestChapterJournalAndRecovery:  # pylint: disable=too-many-public-methods
+    _OWNER = "acct-1"
+
+    def setup_method(self) -> None:
+        self.repo = StubChapterRepo()
+        self.doc_repo = StubDocumentRepo()
+        self.uow = StubUnitOfWork(repo=self.repo)
+        self.factory = StubUnitOfWorkFactory(self.uow)
+
+    def _service(self, tmp_path) -> ChapterService:
+        return ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=self.doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+        )
+
+    def _seed_rename(self, tmp_path, title: str = "Opening 1") -> tuple[DocumentStore, Document, Chapter]:
+        doc = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        self.doc_repo._store["d1"] = doc
+        ch = Chapter(id="c1", title=title, category="Chapter", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        self.repo.set_index("c1", 0)
+        store = DocumentStore(base_dir=tmp_path, account_id=self._OWNER)
+        store.write_metadata("Faith", DocumentMetadata(title="Faith", author="Paul"))
+        store.write_chapter("Faith", "", title, "# front\n\nbody\n", "Chapter")
+        store.git_commit("Faith", "materialize: doc")
+        return store, doc, ch
+
+    def _rename_record(self, store, from_title: str = "Opening 1", to_title: str = "Wheels") -> JournalRecord:
+        record = JournalRecord(
+            op="chapter-rename",
+            op_id="op-1",
+            account_id=self._OWNER,
+            document_id="d1",
+            payload={
+                "chapter_id": "c1",
+                "document_title": "Faith",
+                "act": "",
+                "category": "Chapter",
+                "from": from_title,
+                "to": to_title,
+            },
+        )
+        store.journal().write(record)
+        return record
+
+    def test_rename_writes_then_removes_the_record(self, tmp_path, git_identity, monkeypatch) -> None:  # pylint: disable=unused-argument
+        store, _, _ = self._seed_rename(tmp_path)
+        svc = self._service(tmp_path)
+        written: list[JournalRecord] = []
+        original = Journal.write
+
+        def capture(self, record):
+            written.append(record)
+            return original(self, record)
+
+        monkeypatch.setattr(Journal, "write", capture)
+
+        svc.update("c1", title="Wheels", owner=self._OWNER)
+
+        assert [r.op for r in written] == ["chapter-rename"]
+        assert not store.journal().pending()
+        assert store.chapter_exists("Faith", "", "Wheels", "Chapter")
+        assert not store.chapter_exists("Faith", "", "Opening 1", "Chapter")
+        assert self.uow.committed
+
+    def test_rename_failure_leaves_the_record(self, tmp_path, git_identity, monkeypatch) -> None:  # pylint: disable=unused-argument
+        store, _, _ = self._seed_rename(tmp_path)
+        svc = self._service(tmp_path)
+
+        def boom(*_args, **_kwargs):
+            raise SnapshotError("disk full")
+
+        monkeypatch.setattr(DocumentStore, "rename_chapter", boom)
+        with pytest.raises(SnapshotError):
+            svc.update("c1", title="Wheels", owner=self._OWNER)
+
+        pending = store.journal().pending()
+        assert [r.op for r in pending] == ["chapter-rename"]
+        assert pending[0].payload["from"] == "Opening 1"
+        assert not self.uow.committed
+        assert store.chapter_exists("Faith", "", "Opening 1", "Chapter")
+
+    def test_document_service_repairs_a_chapter_record(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _, _ = self._seed_rename(tmp_path)
+        self._rename_record(store)
+        ch_svc = self._service(tmp_path)
+        doc_svc = DocumentService(
+            uow_factory=self.factory,
+            document_repo=self.doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+            chapter_service=ch_svc,
+        )
+
+        warnings = doc_svc.recover()
+
+        assert not warnings
+        assert store.chapter_exists("Faith", "", "Wheels", "Chapter")
+        assert not store.chapter_exists("Faith", "", "Opening 1", "Chapter")
+        assert not store.journal().pending()
+        assert any(model.title == "Wheels" for model, _ in self.uow.registered)
+
+    def test_renumber_writes_then_removes_the_record(self, tmp_path, git_identity, monkeypatch) -> None:  # pylint: disable=unused-argument
+        store, doc, _ = self._seed_rename(tmp_path, title="Opening 2")
+        doc.id = "d1"
+        second = Chapter(id="c2", title="Opening 3", category="Chapter", state=DataState.SYNC)
+        self.repo._store["c2"] = second
+        self.repo.set_document("c2", "d1")
+        self.repo.set_index("c2", 1)
+        store.write_chapter("Faith", "", "Opening 3", "# front\n\nbody\n", "Chapter")
+        store.git_commit("Faith", "materialize: doc")
+        svc = self._service(tmp_path)
+        written: list[JournalRecord] = []
+        original = Journal.write
+
+        def capture(self, record):
+            written.append(record)
+            return original(self, record)
+
+        monkeypatch.setattr(Journal, "write", capture)
+
+        svc.renumber("d1", owner=self._OWNER)
+
+        assert [r.op for r in written] == ["chapter-renumber"]
+        assert not store.journal().pending()
+        assert store.chapter_exists("Faith", "", "Opening 1", "Chapter")
+        assert store.chapter_exists("Faith", "", "Opening 2", "Chapter")
+        assert not store.chapter_exists("Faith", "", "Opening 3", "Chapter")
+
+    def test_recover_replays_a_renumber(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _, _ = self._seed_rename(tmp_path, title="Opening 2")
+        second = Chapter(id="c2", title="Opening 3", category="Chapter", state=DataState.SYNC)
+        self.repo._store["c2"] = second
+        self.repo.set_document("c2", "d1")
+        self.repo.set_index("c2", 1)
+        store.write_chapter("Faith", "", "Opening 3", "# front\n\nbody\n", "Chapter")
+        store.git_commit("Faith", "materialize: doc")
+        record = JournalRecord(
+            op="chapter-renumber",
+            op_id="op-2",
+            account_id=self._OWNER,
+            document_id="d1",
+            payload={
+                "document_title": "Faith",
+                "entries": [
+                    {"id": "c2", "title": "Opening 1"},
+                    {"id": "c1", "title": "Opening 2"},
+                ],
+                "moves": [
+                    {"act": "", "category": "Chapter", "old_title": "Opening 2", "new_title": "Opening 1"},
+                    {"act": "", "category": "Chapter", "old_title": "Opening 3", "new_title": "Opening 2"},
+                ],
+            },
+        )
+        store.journal().write(record)
+        ch_svc = self._service(tmp_path)
+        doc_svc = DocumentService(
+            uow_factory=self.factory,
+            document_repo=self.doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+            chapter_service=ch_svc,
+        )
+
+        warnings = doc_svc.recover()
+
+        assert not warnings
+        assert store.chapter_exists("Faith", "", "Opening 1", "Chapter")
+        assert store.chapter_exists("Faith", "", "Opening 2", "Chapter")
+        assert not store.journal().pending()
+        assert self.repo._retitles
+
+    def test_rename_holds_the_exclusive_lock(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Opening 1", category="Chapter", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        locks = _RecordingLocks()
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=self.doc_repo,
+            document_locks=locks,
+        )
+
+        svc.update("c1", title="Wheels", owner=self._OWNER)
+
+        assert locks.calls == ["d1"]
+
+    def test_renumber_holds_the_exclusive_lock(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Opening 2", category="Chapter", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        self.doc_repo._store["d1"] = Document(id="d1", title="Faith", author="A", owner=self._OWNER, state=DataState.SYNC)
+        locks = _RecordingLocks()
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=self.doc_repo,
+            document_locks=locks,
+        )
+
+        svc.renumber("d1", owner=self._OWNER)
+
+        assert locks.calls == ["d1"]
+
+    def test_delete_holds_the_exclusive_lock(self) -> None:
+        self.repo._store["c1"] = Chapter(id="c1", title="Opening 1", category="Chapter", state=DataState.SYNC)
+        self.repo.set_document("c1", "d1")
+        locks = _RecordingLocks()
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=self.doc_repo,
+            document_locks=locks,
+        )
+
+        svc.delete("c1", owner=self._OWNER)
+
+        assert locks.calls == ["d1"]
+
+    def test_open_holds_the_shared_lock(self, tmp_path, nlp, doc_repo, git_identity) -> None:  # pylint: disable=unused-argument
+        ch = Chapter(id="c1", title="Intro", state=DataState.SYNC)
+        self.repo._store["c1"] = ch
+        self.repo.set_document("c1", "d1")
+        doc_repo._store["d1"] = Document(id="d1", title="Faith", author="Paul", owner=self._OWNER, state=DataState.SYNC)
+        store = DocumentStore(base_dir=tmp_path, account_id=self._OWNER)
+        store.write_chapter("Faith", "", "Intro", "# Intro\n\nbody\n")
+        store.git_commit("Faith", "materialize: doc")
+        locks = _RecordingLocks()
+        svc = ChapterService(
+            uow_factory=self.factory,
+            chapter_repo=self.repo,
+            document_repo=doc_repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+            nlp=nlp,
+            document_locks=locks,
+        )
+
+        svc.open_document("c1", owner=self._OWNER, readonly=True)
+
+        assert locks.shared_calls == ["d1"]
 
 
 class TestChapterServiceOwnership:

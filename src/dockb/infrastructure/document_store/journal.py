@@ -42,10 +42,10 @@ class JournalRecord:
     op_id: str
     account_id: str
     document_id: str
-    payload: dict[str, str] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def new(cls, op: str, account_id: str, document_id: str, payload: dict[str, str] | None = None) -> JournalRecord:
+    def new(cls, op: str, account_id: str, document_id: str, payload: dict[str, Any] | None = None) -> JournalRecord:
         """Build a record with a freshly minted, unique ``op_id``."""
         return cls(op=op, op_id=uuid.uuid4().hex, account_id=account_id, document_id=document_id, payload=payload or {})
 
@@ -79,7 +79,7 @@ class JournalRecord:
             op_id=op_id,
             account_id=account_id,
             document_id=document_id,
-            payload={str(key): str(value) for key, value in payload.items()},
+            payload={str(key): value for key, value in payload.items()},
         )
 
 

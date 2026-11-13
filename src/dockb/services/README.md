@@ -37,6 +37,27 @@ warning, and the remaining records still replay. `composition.wire` runs
 `recover` once per process, so a restart repairs an interrupted rename before any
 request can see the half-finished pair.
 
+Chapter rename and renumber use the same journal: `ChapterService.update` and
+`ChapterService.renumber` write `chapter-rename` / `chapter-renumber` records
+carrying the on-disk document title, the move list, and the graph retitle entries,
+and `DocumentService.recover` hands those records to `ChapterService.recover_record`
+to drive the store and the graph (`ChapterRepository.retitle`) to the recorded end
+state. A chapter record names the document it belongs to, so the drain can replay
+it even after the document itself moved. When no document store is configured, a
+chapter rename or renumber only touches the graph — one transaction — and never
+journaled.
+
+### Per-document locking
+
+Structural edits and saves of one document must not interleave: a chapter file
+being moved and one being written cannot race. Each document has a
+writer-preferring read/write lock in `services/document_locks.py` (`DocumentLocks`,
+one per document id, evicted when idle). Structural mutations — document and
+chapter rename, renumber, and delete — hold the lock **exclusively**; chapter saves
+and reads (`save_document`, `open_document`) hold it **shared**, nested under the
+existing per-chapter save lock. Distinct documents stay independent, and the
+writer preference means a pending rename is never starved by a stream of saves.
+
 ### Chapter front matter: character properties and POV
 
 `services/chapter_front_matter.py` owns the sync between a chapter file's YAML
