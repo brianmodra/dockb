@@ -235,6 +235,7 @@ def wire(  # pylint: disable=too-many-locals
         repos=repos,
         session_factory=session_factory,
         reconstructor=None,
+        session=session,
     )
 
     document_store_factory = DocumentStoreFactory(base_dir=document_base_dir) if document_base_dir is not None else None

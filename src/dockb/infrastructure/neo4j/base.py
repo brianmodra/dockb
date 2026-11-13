@@ -24,6 +24,11 @@ class BaseRepository(ABC, Generic[M]):  # pylint: disable=too-few-public-methods
     def __init__(self, session: SessionLike) -> None:
         self._session = session
 
+    @property
+    def session(self) -> SessionLike:
+        """The session this repository runs through, so a unit of work can find it."""
+        return self._session
+
     @staticmethod
     def _child_count(model: M) -> int:
         """Count the immediate children of *model*, regardless of concrete type."""
@@ -33,26 +38,27 @@ class BaseRepository(ABC, Generic[M]):  # pylint: disable=too-few-public-methods
                 return len(children)
         return 0
 
-    def save(self, model: M, **parent_ids: str) -> None:
-        """Persist *model* based on its DataState."""
+    def save(self, model: M, *, session: SessionLike | None = None, **parent_ids: str) -> None:
+        """Persist *model* based on its DataState, through *session* or the repository's own."""
         if model.dirty:
             raise ValueError(f"{type(model).__name__} is dirty, cannot save")
 
+        session = session or self._session
         match model.state:
             case DataState._ | DataState.SYNC:
                 logger.debug("Skip %s (state=%s)", type(model).__name__, model.state.value)
                 return
             case DataState.NEW:
                 logger.debug("Create %s (%d children)", type(model).__name__, self._child_count(model))
-                self._session.run(self._new_cypher, self._build_params(model, **parent_ids))
+                session.run(self._new_cypher, self._build_params(model, **parent_ids))
             case DataState.CHANGED:
                 logger.debug("Update %s (%d children)", type(model).__name__, self._child_count(model))
-                self._session.run(self._changed_cypher, self._build_params(model, **parent_ids))
+                session.run(self._changed_cypher, self._build_params(model, **parent_ids))
             case DataState.DELETED:
                 logger.debug("Delete %s", type(model).__name__)
-                self._session.run(self._delete_cypher, self._build_params(model, **parent_ids))
+                session.run(self._delete_cypher, self._build_params(model, **parent_ids))
 
-    def save_many(self, entries: list[tuple[M, dict[str, str]]]) -> None:
+    def save_many(self, entries: list[tuple[M, dict[str, str]]], *, session: SessionLike | None = None) -> None:
         """Persist a batch of like-typed models in registration order.
 
         The default issues one :meth:`save` per entry; repositories whose write
@@ -60,12 +66,13 @@ class BaseRepository(ABC, Generic[M]):  # pylint: disable=too-few-public-methods
         single query. Entries of a batch always share the repository (the unit
         of work dispatches by model type) but may span states."""
         for model, parent_ids in entries:
-            self.save(model, **parent_ids)
+            self.save(model, session=session, **parent_ids)
 
-    def _run_batched(self, cypher: str, rows: list[dict[str, Any]]) -> None:
+    def _run_batched(self, cypher: str, rows: list[dict[str, Any]], *, session: SessionLike | None = None) -> None:
         """Run *cypher* once per ``_BATCH_SIZE`` slice of *rows* under ``$rows``."""
+        session = session or self._session
         for start in range(0, len(rows), _BATCH_SIZE):
-            self._session.run(cypher, {"rows": rows[start : start + _BATCH_SIZE]})
+            session.run(cypher, {"rows": rows[start : start + _BATCH_SIZE]})
 
     @property
     @abstractmethod

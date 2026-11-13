@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from dockb.infrastructure.neo4j.base import BaseRepository
+from dockb.infrastructure.neo4j.serialized_session import SessionLike
 from dockb.models.base import DataState
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
@@ -172,7 +173,12 @@ class SentenceRepository(BaseRepository[Sentence]):
             "index": index,
         }
 
-    def save_many(self, entries: list[tuple[Sentence, dict[str, str]]]) -> None:
+    def save_many(
+        self,
+        entries: list[tuple[Sentence, dict[str, str]]],
+        *,
+        session: SessionLike | None = None,
+    ) -> None:
         """Persist many sentences — one UNWIND query per data state."""
         for model, _ in entries:
             if model.dirty:
@@ -183,7 +189,7 @@ class SentenceRepository(BaseRepository[Sentence]):
             (DataState.DELETED, _DELETE_ROWS_CYPHER),
         ):
             rows = [self._build_params(model, **parent_ids) for model, parent_ids in entries if model.state is state]
-            self._run_batched(cypher, rows)
+            self._run_batched(cypher, rows, session=session)
 
     def owns_paragraph(self, paragraph_id: str, owner: str) -> bool:
         """Return whether *paragraph_id* — the parent this repository writes through — is *owner*'s.

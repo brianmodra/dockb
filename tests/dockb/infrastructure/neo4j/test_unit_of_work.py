@@ -10,6 +10,42 @@ from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.repositories.document_repository import DocumentRepository
+
+
+class FakeTransaction:  # pylint: disable=too-few-public-methods
+    """A stand-in for a managed Neo4j transaction, recording commit or rollback."""
+
+    def __init__(self) -> None:
+        self.runs: list[tuple[str, object]] = []
+        self.committed = False
+        self.rolled_back = False
+
+    def __enter__(self) -> "FakeTransaction":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        if exc_type is None:
+            self.committed = True
+        else:
+            self.rolled_back = True
+        return False
+
+    def run(self, query: str, parameters: object = None, **_kwargs: object) -> None:
+        self.runs.append((query, parameters))
+
+
+class FakeSession:  # pylint: disable=too-few-public-methods
+    """A stand-in for the shared session, handing out one transaction per begin."""
+
+    def __init__(self) -> None:
+        self.transactions: list[FakeTransaction] = []
+
+    def begin_transaction(self, *_args: object, **_kwargs: object) -> FakeTransaction:
+        tx = FakeTransaction()
+        self.transactions.append(tx)
+        return tx
+
 
 # ---------------------------------------------------------------------------
 # register()
@@ -232,6 +268,84 @@ class TestUnitOfWorkCommit:
         uow.register(model)
         uow.commit()
         repo.save_many.assert_called_once_with([(model, {})])
+
+
+# ---------------------------------------------------------------------------
+# commit() inside one transaction
+# ---------------------------------------------------------------------------
+
+
+class TestUnitOfWorkTransaction:
+    def test_commit_runs_every_batch_in_one_transaction(self):
+        session = FakeSession()
+        doc = Document()
+        doc.state = DataState.NEW
+        chapter = Chapter()
+        chapter.state = DataState.NEW
+        doc_repo = MagicMock()
+        ch_repo = MagicMock()
+        uow = UnitOfWork(session=session)
+        uow.register(doc)
+        uow.register(chapter, document_id="d1")
+        uow.commit({Document: doc_repo, Chapter: ch_repo})
+
+        assert len(session.transactions) == 1
+        tx = session.transactions[0]
+        assert tx.committed and not tx.rolled_back
+        doc_repo.save_many.assert_called_once_with([(doc, {})], session=tx)
+        ch_repo.save_many.assert_called_once_with([(chapter, {"document_id": "d1"})], session=tx)
+
+    def test_commit_rolls_back_and_keeps_lists_when_a_batch_fails(self):
+        session = FakeSession()
+        on_commit = MagicMock()
+        doc = Document()
+        doc.state = DataState.NEW
+        chapter = Chapter()
+        chapter.state = DataState.NEW
+        doc_repo = MagicMock()
+        ch_repo = MagicMock()
+        ch_repo.save_many.side_effect = RuntimeError("boom")
+        uow = UnitOfWork(session=session, on_commit=on_commit)
+        uow.register(doc)
+        uow.register(chapter, document_id="d1")
+        with pytest.raises(RuntimeError, match="boom"):
+            uow.commit({Document: doc_repo, Chapter: ch_repo})
+
+        assert len(session.transactions) == 1
+        assert session.transactions[0].rolled_back and not session.transactions[0].committed
+        on_commit.assert_not_called()
+        assert uow._new
+
+    def test_commit_derives_the_session_from_a_real_repository(self):
+        session = FakeSession()
+        doc = Document(id="d1", title="T", author="A", owner="acct-1")
+        doc.state = DataState.NEW
+        uow = UnitOfWork(repos={Document: DocumentRepository(session)})
+        uow.register(doc)
+        uow.commit()
+
+        assert len(session.transactions) == 1
+        assert session.transactions[0].committed
+        assert session.transactions[0].runs
+
+    def test_flush_pending_runs_deleted_and_rest_in_one_transaction(self):
+        session = FakeSession()
+        doc = Document()
+        doc.state = DataState.DELETED
+        chapter = Chapter()
+        chapter.state = DataState.NEW
+        doc_repo = MagicMock()
+        ch_repo = MagicMock()
+        uow = UnitOfWork(repos={Document: doc_repo, Chapter: ch_repo}, session=session)
+        uow.register(doc)
+        uow.register(chapter, document_id="d1")
+        uow.flush_pending()
+
+        assert len(session.transactions) == 1
+        tx = session.transactions[0]
+        assert tx.committed
+        doc_repo.save.assert_called_once_with(doc, session=tx)
+        ch_repo.save_many.assert_called_once_with([(chapter, {"document_id": "d1"})], session=tx)
 
 
 # ---------------------------------------------------------------------------

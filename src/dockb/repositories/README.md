@@ -131,3 +131,7 @@ The text properties of Sentence, Paragraph, Chapter, and Document should not be 
 
 Each repository class constructor will be passed a Session object. For mopre information about them,
 see @src/dockb/infrastructure/neo4j/README.md
+
+The write methods — `save`, `save_many`, and the batching `_run_batched` — also accept an optional
+`session`. A unit of work passes its open transaction here so a whole commit runs in one transaction;
+without it, a write runs through the repository's own session.

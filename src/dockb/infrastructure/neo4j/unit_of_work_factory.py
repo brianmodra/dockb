@@ -2,8 +2,9 @@
 
 from typing import Any
 
+from dockb.infrastructure.neo4j.serialized_session import SessionLike
 from dockb.infrastructure.neo4j.session_factory import SessionFactory
-from dockb.infrastructure.neo4j.unit_of_work import UnitOfWork
+from dockb.infrastructure.neo4j.unit_of_work import UnitOfWork, session_from_repos
 from dockb.models.base import DockbModel
 
 
@@ -15,10 +16,12 @@ class UnitOfWorkFactory:
         repos: dict[type[DockbModel], Any],
         session_factory: SessionFactory,
         reconstructor: Any,
+        session: SessionLike | None = None,
     ) -> None:
         self._repos = repos
         self._session_factory = session_factory
         self._reconstructor = reconstructor
+        self._session = session if session is not None else session_from_repos(repos)
         self._current: UnitOfWork | None = None
 
     def get_unit_of_work(self) -> UnitOfWork:
@@ -28,6 +31,7 @@ class UnitOfWorkFactory:
                 repos=self._repos,
                 reconstructor=self._reconstructor,
                 on_commit=self._on_committed,
+                session=self._session,
             )
         return self._current
 

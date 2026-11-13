@@ -52,13 +52,24 @@ In the repository classes then the only things that vary are:
   `DocumentRepository` and `ChapterRepository` inherit the default of one `save()` per
   model.
 
+`save()`, `save_many()`, and the batching `_run_batched()` all take an optional keyword
+`session`. When the unit of work is committing, it passes the open transaction here, so
+every statement — including each chunk of a batched `UNWIND` — runs inside that one
+transaction; when it is absent, a statement runs through the repository's own session.
+
 ## UnitOfWork
 
 Groups model saves into a single Neo4j transaction, so partial failure rolls everything back.
 Maps model type → repository instance (e.g. {Sentence: SentenceRepository(...)}).
 The register(model) adds a model to the unit of work.
-Opens a session via SessionFactory, wraps all repo.save() calls in a transaction, commits on success.
-If any save fails, the transaction is rolled back and tracked changes are discarded.
+
+At commit the UoW opens **one** transaction on the shared session and runs every batch's writes through it, so
+the whole commit lands or none of it does. It finds that session from the repositories it was built with — the
+first one exposing a `session` — or takes one passed to its constructor; a repository that has none (a test
+double) is written to directly. Each `save`/`save_many` accepts an optional `session`, and the UoW passes the
+open transaction down so a batch never opens a transaction of its own. The managed transaction commits on a
+clean exit and rolls back when any write raises; only after it commits are the tracking lists cleared, so a
+failed commit keeps every model for the next attempt.
 The UoW holds a list of models whose state == DELETED, ensuring they aren't garbage-collected before the Cypher runs.
 
 At commit time the UoW partitions each state list (`_new`, `_changed`, `_deleted`) by model type in
@@ -155,8 +166,9 @@ model is skipped from `_deleted` because its state has changed, `flush_pending()
 current `DataState`, ensuring it is not silently dropped.
 
 `flush_pending()` never calls the reconstructor on DELETED models — reconstruction
-is meaningless for deletion. It handles `_deleted` directly, clears the list,
-then delegates `_new` and `_changed` to `commit()`.
+is meaningless for deletion. It skips the resurrected, writes the surviving deletions
+one at a time (so a dirty model can still be removed), and commits `_new`, `_changed`,
+and `_deleted` together in one transaction through the same path `commit()` uses.
 
 | Scenario | `commit()` | `flush_pending()` |
 |---|---|---|
