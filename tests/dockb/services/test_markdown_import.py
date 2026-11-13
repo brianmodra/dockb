@@ -904,6 +904,16 @@ class TestDocumentMetadata:
         assert metadata.title == "Linchpin"
         assert metadata.author == "Brian"
 
+    def test_reads_the_narrative_perspective_from_yaml(self, tmp_path):
+        (tmp_path / "document_metadata.yaml").write_text("title: Linchpin\nauthor: Brian\nnarrative_perspective: first_person\n")
+        metadata = _read_document_metadata(tmp_path, "User")
+        assert metadata.narrative_perspective == "first_person"
+
+    def test_missing_narrative_perspective_reads_as_empty(self, tmp_path):
+        (tmp_path / "document_metadata.yaml").write_text("title: Linchpin\nauthor: Brian\n")
+        metadata = _read_document_metadata(tmp_path, "User")
+        assert metadata.narrative_perspective == ""
+
     def test_missing_file_defaults_to_dir_name_and_user(self, tmp_path):
         metadata = _read_document_metadata(tmp_path, "User")
         assert metadata.title == tmp_path.name
@@ -1027,6 +1037,22 @@ class TestResolveDocument:
         assert result.state is DataState.NEW
         uow.register.assert_called_once_with(result)
         uow.commit.assert_called_once()
+
+    def test_new_document_carries_the_metadata_narrative_perspective(self, tmp_path):
+        repo = self._repo_with([])
+        uow = MagicMock()
+        uow_factory = MagicMock()
+        uow_factory.get_unit_of_work.return_value = uow
+
+        result = _resolve_document(
+            tmp_path,
+            DocumentMetadata("Linchpin", "User", narrative_perspective="epistolary"),
+            repo,
+            uow_factory,
+            owner=_OWNER,
+        )
+
+        assert result.narrative_perspective == "epistolary"
 
     def test_creates_when_load_misses(self, tmp_path):
         repo = self._repo_with([{"id": "d1", "title": "Linchpin", "author": "A"}])

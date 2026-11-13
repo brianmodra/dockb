@@ -477,6 +477,7 @@ def _read_document_metadata(document_dir: Path, user_name: str) -> DocumentMetad
     return DocumentMetadata(
         title=str(attrs.get("title") or document_dir.name),
         author=str(attrs.get("author") or user_name),
+        narrative_perspective=str(attrs.get("narrative_perspective") or ""),
     )
 
 
@@ -507,7 +508,13 @@ def _resolve_document(  # pylint: disable=too-many-arguments,too-many-positional
         if document is not None:
             return document
         logger.warning("Document %r listed but could not be loaded", matches[0]["id"])
-    document = Document(title=metadata.title, author=metadata.author, owner=owner, state=DataState.NEW)
+    document = Document(
+        title=metadata.title,
+        author=metadata.author,
+        owner=owner,
+        narrative_perspective=metadata.narrative_perspective,
+        state=DataState.NEW,
+    )
     uow = uow_factory.get_unit_of_work()
     uow.register(document)
     uow.commit()

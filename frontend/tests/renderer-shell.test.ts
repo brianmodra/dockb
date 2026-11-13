@@ -21,6 +21,7 @@ function localModeApi(
     listDocuments: vi.fn(async () => []),
     listChapters: vi.fn(async () => []),
     getDocument: vi.fn(async () => ({ attrs: { id: "d1", title: "", author: "" } })),
+    getDocumentAttrs: vi.fn(async () => ({ id: "d1", title: "", author: "", narrative_perspective: "" })),
     getNarrativePerspectives: vi.fn(async () => ({ perspectives: [] })),
     getDocumentMentions: vi.fn(async () => ({ mentions: {} })),
     ...overrides,
@@ -760,8 +761,14 @@ describe("renderer shell", () => {
 
   it("Settings → Document edits the open document through the same modal", async () => {
     const getDocument = vi.fn(async () => ({
-      attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "first_person" },
+      attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "" },
       chapter_summaries: [],
+    }));
+    const getDocumentAttrs = vi.fn(async () => ({
+      id: "d1",
+      title: "Faith",
+      author: "Paul",
+      narrative_perspective: "first_person",
     }));
     const getNarrativePerspectives = vi.fn(async () => ({
       perspectives: [
@@ -774,6 +781,7 @@ describe("renderer shell", () => {
       getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
       listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
       getDocument,
+      getDocumentAttrs,
       getNarrativePerspectives,
       updateDocument,
     });
@@ -789,7 +797,8 @@ describe("renderer shell", () => {
     const perspective = document.querySelector<HTMLSelectElement>(
       "[data-testid='modal-select-narrative-perspective']",
     )!;
-    expect(getDocument).toHaveBeenCalledWith("d1");
+    expect(getDocumentAttrs).toHaveBeenCalledWith("d1");
+    expect(getDocument).not.toHaveBeenCalled();
     expect(getNarrativePerspectives).toHaveBeenCalledTimes(1);
     expect(titleInput.value).toBe("Faith");
     expect(authorInput.value).toBe("Paul");
@@ -817,12 +826,14 @@ describe("renderer shell", () => {
   });
 
   it("Settings → Document asks the writer to open a document when none is open", async () => {
-    const getDocument = vi.fn(async () => ({
-      attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "" },
-      chapter_summaries: [],
+    const getDocumentAttrs = vi.fn(async () => ({
+      id: "d1",
+      title: "Faith",
+      author: "Paul",
+      narrative_perspective: "",
     }));
     const getNarrativePerspectives = vi.fn(async () => ({ perspectives: [] }));
-    const { api, bridge } = localModeApi({ getDocument, getNarrativePerspectives });
+    const { api, bridge } = localModeApi({ getDocumentAttrs, getNarrativePerspectives });
     mountShell(document.body, { api: api as never, bridge: bridge as never });
     await new Promise((r) => setTimeout(r, 0));
 
@@ -830,7 +841,7 @@ describe("renderer shell", () => {
     (document.querySelector<HTMLElement>("[data-testid='menu-item-document']")!).click();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(getDocument).not.toHaveBeenCalled();
+    expect(getDocumentAttrs).not.toHaveBeenCalled();
     expect(getNarrativePerspectives).not.toHaveBeenCalled();
     expect(document.querySelector<HTMLElement>("[data-testid='panel-message']")?.textContent).toContain(
       "Open a document first.",

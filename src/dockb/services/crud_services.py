@@ -133,6 +133,15 @@ class DocumentService:
         """Load a full document hierarchy, or None when *owner* does not own it."""
         return self._document_repo.load(document_id, owner)
 
+    def get_attrs(self, document_id: str, *, owner: str) -> dict[str, str] | None:
+        """Return a document's attrs only, without loading the hierarchy or touching the store.
+
+        Mirrors the expensive ``get``/``open`` paths but reads just the document
+        node; it materializes nothing and writes no file tree, which keeps the
+        settings dialog cheap.
+        """
+        return self._document_repo.load_attrs(document_id, owner)
+
     def open(self, document_id: str, *, owner: str) -> Document | None:
         """Load a document, materializing its owned file tree when absent.
 
@@ -149,10 +158,15 @@ class DocumentService:
             return None
         store = self._store(owner)
         if store is not None:
+            metadata = DocumentMetadata(
+                title=doc.title,
+                author=doc.author,
+                narrative_perspective=doc.narrative_perspective,
+            )
             if not store.document_exists(doc.title):
                 self._materialize(store, doc)
             else:
-                store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
+                store.write_metadata(doc.title, metadata)
         return doc
 
     def _materialize(self, store: DocumentStore, doc: Document) -> None:
@@ -164,7 +178,14 @@ class DocumentService:
         nothing (the character chapter was deleted) writes no pov line at all.
         """
         titles = {chapter.id: chapter.title for chapter in doc.chapters if chapter.category == "Character"}
-        store.write_metadata(doc.title, DocumentMetadata(title=doc.title, author=doc.author))
+        store.write_metadata(
+            doc.title,
+            DocumentMetadata(
+                title=doc.title,
+                author=doc.author,
+                narrative_perspective=doc.narrative_perspective,
+            ),
+        )
         for chapter in doc.chapters:
             attrs: dict[str, object] = {"id": chapter.id, "title": chapter.title}
             if chapter.act:
@@ -214,7 +235,10 @@ class DocumentService:
         uow.commit()
         store = self._store(owner)
         if store is not None:
-            store.write_metadata(title, DocumentMetadata(title=title, author=author))
+            store.write_metadata(
+                title,
+                DocumentMetadata(title=title, author=author, narrative_perspective=narrative_perspective),
+            )
         return doc
 
     def update(  # pylint: disable=too-many-arguments,too-many-positional-arguments

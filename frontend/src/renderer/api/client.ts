@@ -8,6 +8,7 @@ import type {
   ChapterNode,
   ChapterRelations,
   ChatResponse,
+  DocumentAttrs,
   DocumentContentResponse,
   DocumentMentionsResponse,
   DocumentWire,
@@ -102,6 +103,11 @@ export class ApiClient {
 
   async getDocument(documentId: string): Promise<DocumentWire> {
     return request<DocumentWire>(this.url(`/documents/${encodeURIComponent(documentId)}`));
+  }
+
+  /** Return just a document's attrs (no chapter summaries / hierarchy load). */
+  async getDocumentAttrs(documentId: string): Promise<DocumentAttrs> {
+    return request<DocumentAttrs>(this.url(`/documents/${encodeURIComponent(documentId)}/attrs`));
   }
 
   async createDocument(data: CreateDocumentData): Promise<MutationResponse> {

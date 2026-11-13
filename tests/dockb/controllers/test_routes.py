@@ -72,6 +72,17 @@ class MockDocumentService:
     def get(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
+    def get_attrs(self, document_id: str, owner: str = "") -> dict[str, str] | None:
+        doc = self._docs.get(document_id)
+        if doc is None:
+            return None
+        return {
+            "id": doc.id,
+            "title": doc.title,
+            "author": doc.author,
+            "narrative_perspective": doc.narrative_perspective,
+        }
+
     def open(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
@@ -323,8 +334,9 @@ class TestDocumentRoutes:  # pylint: disable=too-many-public-methods
     def test_narrative_perspectives_route_lists_the_vocabulary(self) -> None:
         resp = self.client.get("/api/documents/narrative-perspectives")
         perspectives = resp.json()["perspectives"]
-        assert len(perspectives) == 20
+        assert len(perspectives) == 21
         assert perspectives[0] == {"code": "first_person", "label": "First Person"}
+        assert {"code": "third_person_deep_pov", "label": "Third Person Deep POV"} in perspectives
         assert {"code": "epistolary", "label": "Epistolary"} in perspectives
 
     def test_get_document_not_found(self) -> None:
@@ -345,6 +357,21 @@ class TestDocumentRoutes:  # pylint: disable=too-many-public-methods
         self.svc.create("d1", "Faith", "Paul", narrative_perspective="third_person_limited")
         resp = self.client.get("/api/documents/d1")
         assert resp.json()["attrs"]["narrative_perspective"] == "third_person_limited"
+
+    def test_get_document_attrs(self) -> None:
+        self.svc.create("d1", "Faith", "Paul", narrative_perspective="first_person")
+        resp = self.client.get("/api/documents/d1/attrs")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "id": "d1",
+            "title": "Faith",
+            "author": "Paul",
+            "narrative_perspective": "first_person",
+        }
+
+    def test_get_document_attrs_not_found(self) -> None:
+        resp = self.client.get("/api/documents/nonexistent/attrs")
+        assert resp.status_code == 404
 
     def test_create_document_passes_the_narrative_perspective(self) -> None:
         resp = self.client.post(

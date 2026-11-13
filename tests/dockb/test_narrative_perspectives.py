@@ -9,8 +9,8 @@ from dockb.narrative_perspectives import (
 )
 
 
-def test_has_twenty_perspectives() -> None:
-    assert len(NARRATIVE_PERSPECTIVES) == 20
+def test_has_twenty_one_perspectives() -> None:
+    assert len(NARRATIVE_PERSPECTIVES) == 21
 
 
 def test_codes_are_unique() -> None:
@@ -37,6 +37,7 @@ def test_codes_keep_the_approved_order() -> None:
         "third_person_limited_present",
         "third_person_limited_past",
         "third_person_limited_multiple",
+        "third_person_deep_pov",
         "third_person_objective",
         "third_person_omniscient",
         "third_person_omniscient_present",

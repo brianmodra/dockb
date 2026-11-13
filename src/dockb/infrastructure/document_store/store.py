@@ -64,10 +64,11 @@ class ChapterRename:
 
 @dataclass
 class DocumentMetadata:
-    """A document's on-disk title and author."""
+    """A document's on-disk title, author, and narrative perspective."""
 
     title: str
     author: str
+    narrative_perspective: str = ""
 
 
 class DocumentStore:  # pylint: disable=too-many-public-methods
@@ -191,7 +192,11 @@ class DocumentStore:  # pylint: disable=too-many-public-methods
         if not path.is_file():
             return None
         attrs = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        return DocumentMetadata(title=str(attrs.get("title") or ""), author=str(attrs.get("author") or ""))
+        return DocumentMetadata(
+            title=str(attrs.get("title") or ""),
+            author=str(attrs.get("author") or ""),
+            narrative_perspective=str(attrs.get("narrative_perspective") or ""),
+        )
 
     def write_metadata(self, document_title: str, metadata: DocumentMetadata) -> None:
         """Write *metadata*, preserving any other keys already in the file."""
@@ -203,6 +208,7 @@ class DocumentStore:  # pylint: disable=too-many-public-methods
                 attrs = dict(parsed)
         attrs["title"] = metadata.title
         attrs["author"] = metadata.author
+        attrs["narrative_perspective"] = metadata.narrative_perspective
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             yaml.dump(attrs, default_flow_style=False, allow_unicode=True, sort_keys=False),
@@ -342,7 +348,14 @@ class DocumentStore:  # pylint: disable=too-many-public-methods
         self._git("mv", "--", old_title, new_title)
         metadata = self.read_metadata(new_title)
         if metadata is not None:
-            self.write_metadata(new_title, DocumentMetadata(title=new_title, author=metadata.author))
+            self.write_metadata(
+                new_title,
+                DocumentMetadata(
+                    title=new_title,
+                    author=metadata.author,
+                    narrative_perspective=metadata.narrative_perspective,
+                ),
+            )
         self.git_commit(new_title, f"rename: {old_title} -> {new_title}")
 
     def rename_chapter(  # pylint: disable=too-many-arguments,too-many-positional-arguments

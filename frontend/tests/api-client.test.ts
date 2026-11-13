@@ -74,6 +74,14 @@ describe("ApiClient documents", () => {
     expect(fetchCalls()[0].url).toBe("/api/documents/d-1");
   });
 
+  it("gets a document's attrs without the chapter summaries", async () => {
+    mockFetch(200, { id: "d-1", title: "Faith", author: "A", narrative_perspective: "first_person" });
+    const client = new ApiClient();
+    const attrs = await client.getDocumentAttrs("d-1");
+    expect(attrs).toEqual({ id: "d-1", title: "Faith", author: "A", narrative_perspective: "first_person" });
+    expect(fetchCalls()[0].url).toBe("/api/documents/d-1/attrs");
+  });
+
   it("creates a document with the attrs body", async () => {
     mockFetch(200, { status: { code: "ok", message: "success" } });
     const client = new ApiClient();

@@ -110,6 +110,17 @@ class StubDocumentRepo(StubRepo):
             if isinstance(m, Document) and m.owner == owner
         ]
 
+    def load_attrs(self, model_id: str, owner: str) -> dict[str, str] | None:
+        model = self._store.get(model_id)
+        if not isinstance(model, Document) or model.owner != owner:
+            return None
+        return {
+            "id": model.id,
+            "title": model.title,
+            "author": model.author,
+            "narrative_perspective": model.narrative_perspective,
+        }
+
     def find_summary(self, model_id: str) -> dict[str, str | None] | None:
         model = self._store.get(model_id)
         if not isinstance(model, Document):
@@ -360,6 +371,26 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         result = self.svc.get("d1", owner=self._OWNER)
         assert result is doc
 
+    def test_get_attrs_returns_document_properties(self) -> None:
+        doc = Document(
+            owner=self._OWNER,
+            id="d1",
+            title="T",
+            author="A",
+            state=DataState.SYNC,
+            narrative_perspective="third_person_limited",
+        )
+        self.repo._store["d1"] = doc
+        assert self.svc.get_attrs("d1", owner=self._OWNER) == {
+            "id": "d1",
+            "title": "T",
+            "author": "A",
+            "narrative_perspective": "third_person_limited",
+        }
+
+    def test_get_attrs_returns_none_when_missing(self) -> None:
+        assert self.svc.get_attrs("nonexistent", owner=self._OWNER) is None
+
     def test_create_registers_new_document(self) -> None:
         doc = self.svc.create("d1", title="Faith", author="Paul", owner=self._OWNER)
         assert doc.id == "d1"
@@ -422,6 +453,12 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         svc = self._service_with_store(tmp_path)
         svc.create("d1", title="Faith", author="Paul", owner=self._OWNER)
         assert store.read_metadata("Faith") == DocumentMetadata(title="Faith", author="Paul")
+
+    def test_create_writes_the_narrative_perspective_to_metadata(self, tmp_path) -> None:
+        store = self._store(tmp_path)
+        svc = self._service_with_store(tmp_path)
+        svc.create("d1", title="Faith", author="Paul", owner=self._OWNER, narrative_perspective="first_person")
+        assert store.read_metadata("Faith") == DocumentMetadata(title="Faith", author="Paul", narrative_perspective="first_person")
 
     def test_create_without_store_skips_metadata(self) -> None:
         doc = self.svc.create("d1", title="Faith", author="Paul", owner=self._OWNER)
@@ -549,6 +586,23 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         )
         assert result.returncode == 0
         assert result.stdout.strip()
+
+    def test_open_writes_the_narrative_perspective_to_metadata(self, tmp_path, nlp) -> None:
+        doc = Document(
+            owner=self._OWNER,
+            id="d1",
+            title="Faith",
+            author="Paul",
+            narrative_perspective="second_person",
+            state=DataState.SYNC,
+        )
+        self.repo._store["d1"] = doc
+        store = self._store(tmp_path)
+        svc = self._service_with_store(tmp_path, nlp)
+
+        svc.open("d1", owner=self._OWNER)
+
+        assert store.read_metadata("Faith") == DocumentMetadata(title="Faith", author="Paul", narrative_perspective="second_person")
 
     def test_open_materializes_the_pov_title_into_the_front_matter(self, tmp_path, nlp) -> None:
         from dockb.models.token import Token
@@ -710,8 +764,19 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         assert store.chapter_exists("New", "Act I", "Opening 1")
         assert git_status() == ""
 
-    def test_update_author_only_writes_metadata(self, tmp_path) -> None:
+    def test_update_writes_the_narrative_perspective_to_metadata(self, tmp_path) -> None:
+        store = self._store(tmp_path)
+        store.write_metadata("T", DocumentMetadata(title="T", author="A"))
+        store.git_commit("T", "materialize: doc")
+        doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        svc = self._service_with_store(tmp_path)
 
+        svc.update("d1", title="T", author="B", owner=self._OWNER, narrative_perspective="third_person_limited")
+
+        assert store.read_metadata("T") == DocumentMetadata(title="T", author="B", narrative_perspective="third_person_limited")
+
+    def test_update_author_only_writes_metadata(self, tmp_path) -> None:
         def git_status() -> str:
             return subprocess.run(
                 ["git", "status", "--porcelain"], cwd=str(tmp_path), capture_output=True, text=True, check=False

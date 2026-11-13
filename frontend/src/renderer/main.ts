@@ -25,7 +25,7 @@ import { defaultProofreadingLanguage } from "./state/language";
 import { quitApp, confirmUnsaved } from "./state/quit";
 import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
-import type { DocumentAttrs } from "./api/types";
+import type { DocumentAttrs, NarrativePerspective } from "./api/types";
 
 export interface MountShellOptions {
   api?: ApiClient;
@@ -429,14 +429,16 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         });
     };
 
-    const editDocument = async (attrs: DocumentAttrs): Promise<void> => {
+    const editDocumentWith = async (
+      attrs: DocumentAttrs,
+      perspectives: NarrativePerspective[],
+    ): Promise<void> => {
       try {
-        const response = await options.api!.getNarrativePerspectives();
         const values = await editDocumentModal({
           title: attrs.title,
           author: attrs.author,
           narrative_perspective: attrs.narrative_perspective,
-          perspectives: response.perspectives,
+          perspectives,
         });
         if (values === null) {
           return;
@@ -448,6 +450,15 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         });
         layout.pushMessage(`Updated "${values.title}".`);
         void panel.reload();
+      } catch (error) {
+        reportError("Edit document", error, (text) => layout.pushMessage(text));
+      }
+    };
+
+    const editDocument = async (attrs: DocumentAttrs): Promise<void> => {
+      try {
+        const response = await options.api!.getNarrativePerspectives();
+        await editDocumentWith(attrs, response.perspectives);
       } catch (error) {
         reportError("Edit document", error, (text) => layout.pushMessage(text));
       }
@@ -467,9 +478,12 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         layout.pushMessage("Open a document first.");
         return;
       }
-      void options.api!.getDocument(documentId).then(
-        (document) => {
-          void editDocument(document.attrs);
+      void Promise.all([
+        options.api!.getDocumentAttrs(documentId),
+        options.api!.getNarrativePerspectives(),
+      ]).then(
+        ([attrs, response]) => {
+          void editDocumentWith(attrs, response.perspectives);
         },
         (error) => reportError("Edit document", error, (text) => layout.pushMessage(text)),
       );

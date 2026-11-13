@@ -255,6 +255,7 @@ A non-error response will have code `"ok"` and message `"success"` and a 2xx HTT
 | `POST` | `/api/documents` | Create document from the supplied data (See **POST Document Data**) |
 | `GET` | `/api/documents/narrative-perspectives` | List the fixed narrative-perspective choices (See **Narrative Perspectives**) |
 | `GET` | `/api/documents/{id}` | Returns the document attrs and chapter summaries (plain JSON — see **Wire Format**) |
+| `GET` | `/api/documents/{id}/attrs` | Returns just the document attrs — no chapter summaries and no hierarchy/file-tree load (see **GET Document Attrs**) |
 | `PUT` | `/api/documents/{id}` | Replace the document attributes (title, author, narrative perspective — see **PUT Document Data**). Chapters and their content are not affected |
 | `DELETE` | `/api/documents/{id}` | Delete doc + all children |
 | `GET` | `/api/documents/{id}/mentions` | Return the paragraph → mentioned-character-chapter map from the cached MENTIONS verdicts |
@@ -263,6 +264,23 @@ The mention map answers `{ "mentions": { "<paragraph_id>": ["<character_id>", �
 only paragraphs with a valid (state 3) verdict appear, and only their mentioned
 characters. It is the cached verdicts the mention pipeline writes, so an unsaved
 paragraph is absent until a save re-evaluates it.
+
+#### GET Document Attrs
+
+`GET /api/documents/{id}/attrs` returns just the document's attributes, and is the cheap
+read the settings dialog uses. It reads only the `Document` node — no chapters,
+paragraphs, sentences or tokens are loaded, and no file tree is materialized or written —
+so it is much faster than `GET /api/documents/{id}`. It answers `404` when the caller's
+account owns no document with `{id}`, exactly as the full read does.
+
+``` json
+{
+  "id": "d-uuid-1",
+  "title": "Faith",
+  "author": "Sha'ul ha-Tarsi",
+  "narrative_perspective": "first_person"
+}
+```
 
 #### POST Document Data
 
@@ -330,8 +348,9 @@ document id.
 ```
 
 `code` is the stable value stored on the document; `label` is what the editor shows. The list
-has twenty entries, including `third_person_limited`, `third_person_omniscient`, and
-`third_person_cinematic`. The editor adds its own **None** option for `""`.
+has twenty-one entries, including `third_person_limited`, `third_person_deep_pov`,
+`third_person_omniscient`, and `third_person_cinematic`. The editor adds its own **None**
+option for `""`.
 
 ### Chapter CRUD
 

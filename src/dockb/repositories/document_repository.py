@@ -85,6 +85,12 @@ RETURN
   c.id AS chapter_id
 """
 
+_LOAD_ATTRS_CYPHER = """
+MATCH (d:Document {id: $document_id, owner: $owner})
+RETURN d.id AS id, d.title AS title, d.author AS author,
+       d.narrative_perspective AS narrative_perspective
+"""
+
 _FIND_SUMMARY_CYPHER = """
 MATCH (d:Document {id: $document_id})
 RETURN d.id AS id, d.title AS title, d.owner AS owner
@@ -203,6 +209,25 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
         if not records:
             return False
         return int(records[0].get("assigned") or 0) > 0
+
+    def load_attrs(self, id: str, owner: str) -> dict[str, str] | None:  # pylint: disable=redefined-builtin
+        """Return a Document's ``{id, title, author, narrative_perspective}`` — nothing else.
+
+        Deliberately reads only the ``Document`` node: no chapters, paragraphs,
+        sentences or tokens. Callers that only need the attrs (for example the
+        document settings dialog) should use this instead of ``load`` or
+        ``load_shell``. Returns None when *owner* owns no document with *id*.
+        """
+        records = list(self._session.run(_LOAD_ATTRS_CYPHER, {"document_id": id, "owner": owner}))
+        if not records:
+            return None
+        rec = records[0]
+        return {
+            "id": str(rec["id"]),
+            "title": str(rec["title"]),
+            "author": str(rec["author"]),
+            "narrative_perspective": str(rec.get("narrative_perspective") or ""),
+        }
 
     def load_shell(self, id: str, owner: str) -> Document | None:  # pylint: disable=redefined-builtin
         """Load a Document's attrs and chapter ids from Neo4j — no paragraphs/sentences/tokens.

@@ -21,6 +21,7 @@ NARRATIVE_PERSPECTIVES: tuple[tuple[str, str], ...] = (
     ("third_person_limited_present", "Third Person Limited Present"),
     ("third_person_limited_past", "Third Person Limited Past"),
     ("third_person_limited_multiple", "Third Person Limited Multiple"),
+    ("third_person_deep_pov", "Third Person Deep POV"),
     ("third_person_objective", "Third Person Objective"),
     ("third_person_omniscient", "Third Person Omniscient"),
     ("third_person_omniscient_present", "Third Person Omniscient Present"),

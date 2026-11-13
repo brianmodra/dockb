@@ -12,6 +12,7 @@ from dockb.controllers.auth import get_owner
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.documents import (
     CreateDocumentRequest,
+    DocumentAttrs,
     NarrativePerspective,
     NarrativePerspectivesResponse,
     UpdateDocumentRequest,
@@ -99,6 +100,18 @@ def get_document(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}")
     return serialize_document(doc)
+
+
+@router.get("/{document_id}/attrs", response_model=DocumentAttrs)
+def get_document_attrs(
+    document_id: str,
+    svc: Any = Depends(get_doc_service),
+    owner: str = Depends(get_owner),
+) -> Any:
+    attrs = svc.get_attrs(document_id, owner=owner)
+    if attrs is None:
+        raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}")
+    return attrs
 
 
 @router.put("/{document_id}")

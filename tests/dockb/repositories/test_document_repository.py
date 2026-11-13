@@ -461,6 +461,52 @@ class TestDocumentOwnership:
 
 
 # ---------------------------------------------------------------------------
+# load_attrs
+# ---------------------------------------------------------------------------
+
+
+class TestLoadDocumentAttrs:
+    """Behaviour of DocumentRepository.load_attrs() — properties only."""
+
+    def test_runs_attrs_cypher_without_hierarchy(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        document_repo.load_attrs("d-1", "acct-1")
+        cypher, params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
+        assert "d.title AS title" in cypher
+        assert "d.author AS author" in cypher
+        assert "d.narrative_perspective AS narrative_perspective" in cypher
+        assert "Chapter" not in cypher
+        assert "Paragraph" not in cypher
+        assert "Sentence" not in cypher
+        assert "Token" not in cypher
+        assert params == {"document_id": "d-1", "owner": "acct-1"}
+
+    def test_returns_the_document_attrs(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "d-1", "title": "Faith", "author": "Paul", "narrative_perspective": "first_person"},
+        ]
+        assert document_repo.load_attrs("d-1", "acct-1") == {
+            "id": "d-1",
+            "title": "Faith",
+            "author": "Paul",
+            "narrative_perspective": "first_person",
+        }
+
+    def test_missing_narrative_perspective_reads_as_empty(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {"id": "d-1", "title": "Faith", "author": "Paul", "narrative_perspective": None},
+        ]
+        attrs = document_repo.load_attrs("d-1", "acct-1")
+        assert attrs is not None
+        assert attrs["narrative_perspective"] == ""
+
+    def test_returns_none_when_document_missing(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = []
+        assert document_repo.load_attrs("ghost", "acct-1") is None
+
+
+# ---------------------------------------------------------------------------
 # load_shell
 # ---------------------------------------------------------------------------
 

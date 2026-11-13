@@ -176,6 +176,22 @@ def test_write_and_read_metadata_roundtrip(store):
     assert metadata == DocumentMetadata(title="Linchpin", author="Author")
 
 
+def test_write_and_read_metadata_carries_the_narrative_perspective(store):
+    store.write_metadata(
+        _SAFE_TITLE,
+        DocumentMetadata(title="Linchpin", author="Author", narrative_perspective="third_person_limited"),
+    )
+    metadata = store.read_metadata(_SAFE_TITLE)
+    assert metadata == DocumentMetadata(title="Linchpin", author="Author", narrative_perspective="third_person_limited")
+
+
+def test_read_metadata_missing_narrative_perspective_reads_as_empty(store):
+    store.write_metadata(_SAFE_TITLE, DocumentMetadata(title="Linchpin", author="Author"))
+    metadata = store.read_metadata(_SAFE_TITLE)
+    assert metadata is not None
+    assert metadata.narrative_perspective == ""
+
+
 def test_read_metadata_missing_returns_none(store):
     assert store.read_metadata(_SAFE_TITLE) is None
 
@@ -459,6 +475,19 @@ def test_rename_document_git_mvs_dir_and_rewrites_metadata(git_store):
         check=False,
     )
     assert any(f"rename: {_SAFE_TITLE} -> Tome" in line for line in log.stdout.splitlines())
+
+
+def test_rename_document_preserves_the_narrative_perspective(git_store):
+    git_store.write_metadata(
+        _SAFE_TITLE,
+        DocumentMetadata(title=_SAFE_TITLE, author="Test", narrative_perspective="epistolary"),
+    )
+    git_store.write_chapter(_SAFE_TITLE, "Act I", _SAFE_CHAPTER, "# body\n")
+    git_store.git_commit(_SAFE_TITLE, "materialize: doc")
+
+    git_store.rename_document(_SAFE_TITLE, "Tome")
+
+    assert git_store.read_metadata("Tome") == DocumentMetadata(title="Tome", author="Test", narrative_perspective="epistolary")
 
 
 def test_rename_document_missing_dir_is_noop(git_store):

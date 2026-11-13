@@ -33,6 +33,7 @@ How files and the database work is in `README_markdown_redesign.md`, and login i
   - delete → `DELETE /api/chapters/{id}`
   - open document → `GET /api/documents/{id}`
   - edit document → `PUT /api/documents/{id}` (title, author, narrative perspective)
+  - document attrs (Settings → Document) → `GET /api/documents/{id}/attrs` (attrs only, no hierarchy load)
   - perspective choices → `GET /api/documents/narrative-perspectives`
   - delete document → `DELETE /api/documents/{id}`
   The document-level renames and deletes additionally move or remove the document's
@@ -277,8 +278,9 @@ response-area function that opens a chapter scrolled to a paragraph, is in
   stay in the modal until **Save** (disabled while the title is blank). **Save** sends all three
   fields via `PUT /api/documents/{id}` — which renames the document's store directory when the
   title changed — then reloads the chapter list; **Cancel** discards the edits. **Settings →
-  Document…** opens the same modal for the open document without the picker; when none is open
-  it asks the writer to open one first.
+  Document…** opens the same modal for the open document without the picker; it reads only the
+  document attrs (`GET /api/documents/{id}/attrs`) so the dialog does not wait on the full
+  document, and when none is open it asks the writer to open one first.
 - **Edit chapter** (File → Edit → Chapter) — a single title field pre-filled with the
   selected chapter's title and **Cancel / Save**. **Save** updates the title via
   `PUT /api/chapters/{id}` (renaming the chapter's store file) and reloads the chapter list;
