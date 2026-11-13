@@ -53,6 +53,7 @@ from dockb.repositories.sentence_repository import SentenceRepository
 from dockb.services.ai_chat import AiChatService
 from dockb.services.auth_service import AuthService
 from dockb.services.crud_services import ChapterService, DocumentService, ParagraphService, SentenceService
+from dockb.services.document_locks import DocumentLocks
 from dockb.services.glossary_service import GlossaryService
 from dockb.services.history_service import HistoryService
 from dockb.services.import_service import ImportService
@@ -240,11 +241,13 @@ def wire(  # pylint: disable=too-many-locals
 
     document_store_factory = DocumentStoreFactory(base_dir=document_base_dir) if document_base_dir is not None else None
     nlp = spacy.load("en_core_web_sm") if (document_base_dir is not None or snapshot_base_dir is not None) else None
+    document_locks = DocumentLocks()
     doc_svc = DocumentService(
         uow_factory=uow_factory,
         document_repo=repos[Document],
         document_store_factory=document_store_factory,
         nlp=nlp,
+        document_locks=document_locks,
     )
     ch_svc = ChapterService(
         uow_factory=uow_factory,

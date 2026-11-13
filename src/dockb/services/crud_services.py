@@ -43,6 +43,7 @@ from dockb.models.sentence import Sentence
 from dockb.narrative_perspectives import validate_narrative_perspective
 from dockb.services.chapter_front_matter import set_pov as apply_set_pov
 from dockb.services.chapter_renumber import plan_renumber
+from dockb.services.document_locks import DocumentLocks
 from dockb.services.markdown_import import ChapterImportSummary, apply_chapter_file
 from dockb.services.mentions import DocumentMentionsJob, MentionsJob
 from dockb.services.mentions_scheduler import MentionsScheduler
@@ -86,17 +87,19 @@ class DocumentService:
     pass one: an id that *owner* does not own reads as absent.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         uow_factory: UnitOfWorkFactory,
         document_repo: DocumentRepository,
         document_store_factory: DocumentStoreFactory | None = None,
         nlp: Language | None = None,
+        document_locks: DocumentLocks | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._document_repo = document_repo
         self._document_store_factory = document_store_factory
         self._nlp = nlp
+        self._document_locks = document_locks or DocumentLocks()
 
     def _store(self, owner: str) -> DocumentStore | None:
         """Return *owner*'s document store, or None when no store is configured."""
@@ -227,8 +230,21 @@ class DocumentService:
         store is journaled before anything moves: the record names the old and new
         titles, so a crash between the git mv and the graph commit is repaired at the
         next boot by ``recover``. Without a store, or when the title is unchanged,
-        there is no cross-store state to repair and the graph commits directly.
+        there is no cross-store state to repair and the graph commits directly. The
+        whole update runs under the document's exclusive lock, so a structural rename
+        never interleaves with a save of one of its chapters.
         """
+        with self._document_locks.exclusive(document_id):
+            return self._update(document_id, title, author, owner, narrative_perspective)
+
+    def _update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        document_id: str,
+        title: str,
+        author: str,
+        owner: str,
+        narrative_perspective: str = "",
+    ) -> Document | None:
         doc = self._document_repo.load(document_id, owner)
         if doc is None:
             return None

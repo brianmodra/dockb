@@ -8,6 +8,8 @@ from __future__ import annotations
 
 # pylint: disable=too-many-lines
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,7 @@ from dockb.services.crud_services import (
     ParagraphService,
     SentenceService,
 )
+from dockb.services.document_locks import DocumentLocks
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -1029,8 +1032,30 @@ class TestDocumentRenameJournal:  # pylint: disable=too-many-public-methods
         assert not store.document_exists("Linchpin")
         assert not store.journal().pending()
 
+    def test_update_holds_the_exclusive_document_lock(self) -> None:
+        self.repo._store["d1"] = Document(owner=self._OWNER, id="d1", title="Linchpin", author="A", state=DataState.SYNC)
+        locks = _RecordingLocks()
+        svc = DocumentService(uow_factory=self.factory, document_repo=self.repo, document_locks=locks)
+
+        svc.update("d1", title="Wheels", author="A", owner=self._OWNER)
+
+        assert locks.calls == ["d1"]
+
     def test_recover_without_a_store_returns_no_warnings(self) -> None:
         assert not self.svc.recover()
+
+
+class _RecordingLocks(DocumentLocks):
+    """A lock registry that records exclusive acquisitions instead of blocking."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    @contextmanager
+    def exclusive(self, document_id: str) -> Iterator[None]:  # type: ignore[override]
+        self.calls.append(document_id)
+        yield
 
 
 # ---------------------------------------------------------------------------

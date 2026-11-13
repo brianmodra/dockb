@@ -341,6 +341,7 @@ class TestWireServices:
         # pylint: disable=protected-access
         assert svc._document_store_factory is not None
         assert svc._document_store_factory.for_account("acct-1").account_dir() == tmp_path / "acct-1"
+        assert svc._document_locks is not None
 
     @patch("dockb.composition.DocumentService")
     @patch("dockb.composition.SentenceRepository")
