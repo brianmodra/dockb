@@ -18,7 +18,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -31,6 +31,7 @@ from dockb.exceptions import (
     DuplicateTitleError,
     ParagraphNotFoundError,
 )
+from dockb.infrastructure.document_store.journal import JournalRecord
 from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.infrastructure.markdown import front_matter
 from dockb.infrastructure.markdown import writer as markdown_writer
@@ -102,6 +103,22 @@ class DocumentService:
         if self._document_store_factory is None:
             return None
         return self._document_store_factory.for_account(owner)
+
+    @staticmethod
+    def _metadata_for(store: DocumentStore, title: str, author: str, narrative_perspective: str) -> DocumentMetadata:
+        """Build a metadata record for *title*, preserving fields this build does not know.
+
+        Replacing the existing record rather than constructing a fresh one keeps any
+        extra keys a newer metadata format wrote, which this service must not drop
+        when it only means to change the title or author.
+        """
+        existing = store.read_metadata(title)
+        if existing is None:
+            return DocumentMetadata(title=title, author=author)
+        updates: dict[str, str] = {"title": title, "author": author}
+        if hasattr(existing, "narrative_perspective"):
+            updates["narrative_perspective"] = narrative_perspective
+        return replace(existing, **updates)
 
     def list_all(self, *, owner: str) -> list[dict[str, str]]:
         """Return lightweight summaries for every document *owner* owns."""
@@ -206,9 +223,11 @@ class DocumentService:
         """Update document attrs, renaming the owned tree and refreshing the graph.
 
         Returns None when *owner* does not own the document, which is deliberately the
-        same answer as when no such document exists. The graph is updated first; a title
-        change then git mv's the owned directory (metadata rewritten with the new
-        title), and the metadata file is always brought in line with the graph.
+        same answer as when no such document exists. A title change with a document
+        store is journaled before anything moves: the record names the old and new
+        titles, so a crash between the git mv and the graph commit is repaired at the
+        next boot by ``recover``. Without a store, or when the title is unchanged,
+        there is no cross-store state to repair and the graph commits directly.
         """
         doc = self._document_repo.load(document_id, owner)
         if doc is None:
@@ -222,16 +241,106 @@ class DocumentService:
         doc.author = author
         doc.narrative_perspective = narrative_perspective
         doc.state = DataState.CHANGED
+        store = self._store(owner)
         uow = self._uow_factory.get_unit_of_work()
         uow.register(doc)
+        if store is None or title == old_title:
+            uow.commit()
+            if store is not None:
+                store.write_metadata(
+                    title,
+                    self._metadata_for(store, title, author, narrative_perspective),
+                )
+                store.git_commit(title, f"update: document {document_id[:8]}")
+            return doc
+        journal = store.journal()
+        record = JournalRecord.new(
+            "document-rename",
+            account_id=owner,
+            document_id=document_id,
+            payload={"from": old_title, "to": title},
+        )
+        journal.write(record)
+        store.rename_document(old_title, title)
         uow.commit()
-        store = self._store(owner)
-        if store is not None:
-            if title != old_title:
-                store.rename_document(old_title, title)
-            store.write_metadata(title, DocumentMetadata(title=title, author=author))
-            store.git_commit(title, f"update: document {document_id[:8]}")
+        store.write_metadata(
+            title,
+            self._metadata_for(store, title, author, narrative_perspective),
+        )
+        store.git_commit(title, f"update: document {document_id[:8]}")
+        journal.remove(record.op_id)
         return doc
+
+    def recover(self) -> list[str]:
+        """Drain every account's intent journal, driving each record to its end state.
+
+        Idempotent: a record whose operation already completed is a no-op, so this is
+        safe to run on every boot. Returns human-readable warnings for records that
+        could not be applied; those are quarantined rather than silently dropped, and
+        never stop the remaining records from being replayed.
+        """
+        factory = self._document_store_factory
+        if factory is None:
+            return []
+        warnings: list[str] = []
+        for account_id in factory.journal_accounts():
+            journal = factory.journal_for(account_id)
+            for record in journal.pending():
+                try:
+                    self._recover_record(record)
+                except Exception as exc:  # pylint: disable=broad-except
+                    journal.quarantine(record.op_id)
+                    warning = f"journal record {record.op_id} ({record.op}) for {account_id}: {exc}"
+                    logger.warning(warning)
+                    warnings.append(warning)
+                else:
+                    journal.remove(record.op_id)
+        return warnings
+
+    def _recover_record(self, record: JournalRecord) -> None:
+        """Apply one journal record's desired end state."""
+        handler = {"document-rename": self._recover_document_rename}.get(record.op)
+        if handler is None:
+            raise ValueError(f"unknown journal operation {record.op!r}")
+        handler(record)
+
+    def _recover_document_rename(self, record: JournalRecord) -> None:
+        """Drive a document rename to ``payload['to']`` across the store and the graph.
+
+        The git mv is idempotent only when the source is already gone; two existing
+        directories are ambiguous and raise, which quarantines the record. Metadata is
+        always refreshed from the graph so an author change that landed in the graph
+        but not on disk is healed too.
+        """
+        from_title = record.payload.get("from")
+        to_title = record.payload.get("to")
+        if not from_title or not to_title:
+            raise ValueError("document-rename record needs both 'from' and 'to'")
+        factory = self._document_store_factory
+        if factory is None:
+            raise RuntimeError("a document store is required to replay a rename")
+        store = factory.for_account(record.account_id)
+        store.rename_document(from_title, to_title)
+        shell = self._document_repo.load_shell(record.document_id, record.account_id)
+        if shell is None:
+            return
+        if shell.title != to_title:
+            doc = Document(
+                id=record.document_id,
+                title=to_title,
+                author=shell.author,
+                owner=record.account_id,
+                narrative_perspective=shell.narrative_perspective,
+                state=DataState.CHANGED,
+            )
+            uow = self._uow_factory.get_unit_of_work()
+            uow.register(doc)
+            uow.commit()
+        store.write_metadata(
+            to_title,
+            self._metadata_for(store, to_title, shell.author, shell.narrative_perspective),
+        )
+        store.git_commit(to_title, f"recover: document {record.document_id[:8]}")
 
     def delete(self, document_id: str, *, owner: str) -> bool:
         """Delete a document: remove its owned store tree, then the graph subtree.

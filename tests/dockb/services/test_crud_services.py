@@ -21,8 +21,10 @@ from dockb.exceptions import (
     DocumentOwnershipError,
     DuplicateTitleError,
     ParagraphNotFoundError,
+    SnapshotError,
 )
 from dockb.infrastructure.document_store import DocumentStore, DocumentStoreFactory
+from dockb.infrastructure.document_store.journal import Journal, JournalRecord
 from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.models.base import DataState, DockbModel
 from dockb.models.chapter import Chapter
@@ -253,17 +255,25 @@ class StubSentenceRepo(StubOwnedRepo):
 
 
 class StubUnitOfWork:
-    """Captures registered models without touching Neo4j."""
+    """Captures registered models without touching Neo4j.
 
-    def __init__(self) -> None:
+    When given a *repo*, a successful commit writes the registered models back into
+    it, so a test that replays a journal sees the graph move as a real commit would.
+    """
+
+    def __init__(self, repo: StubRepo | None = None) -> None:
         self.registered: list[tuple[DockbModel, dict[str, str]]] = []
         self.committed = False
+        self._repo = repo
 
     def register(self, model: DockbModel, **parent_ids: str) -> None:
         self.registered.append((model, parent_ids))
 
     def commit(self) -> None:
         self.committed = True
+        if self._repo is not None:
+            for model, _ in self.registered:
+                self._repo._store[model.id] = model
 
     def flush_pending(self) -> None:
         self.committed = True
@@ -756,6 +766,271 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
         assert doc.state == DataState.DELETED
         assert self.uow.committed
         assert git_status() == ""
+
+
+# ---------------------------------------------------------------------------
+# DocumentService — journaled rename and recovery
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentRenameJournal:  # pylint: disable=too-many-public-methods
+    _OWNER = "acct-1"
+
+    def setup_method(self) -> None:
+        self.repo = StubDocumentRepo()
+        self.uow = StubUnitOfWork(repo=self.repo)
+        self.factory = StubUnitOfWorkFactory(self.uow)
+        self.svc = DocumentService(uow_factory=self.factory, document_repo=self.repo)
+
+    def _service(self, tmp_path) -> DocumentService:
+        return DocumentService(
+            uow_factory=self.factory,
+            document_repo=self.repo,
+            document_store_factory=DocumentStoreFactory(base_dir=tmp_path),
+        )
+
+    def _seed(self, tmp_path, title: str = "Linchpin", author: str = "A") -> tuple[DocumentStore, Document]:
+        """A document whose graph title and on-disk tree both say *title*."""
+        store = DocumentStore(base_dir=tmp_path, account_id=self._OWNER)
+        store.write_metadata(title, DocumentMetadata(title=title, author=author))
+        store.write_chapter(title, "Act I", "Opening 1", "# body\n")
+        store.git_commit(title, "materialize: doc")
+        doc = Document(owner=self._OWNER, id="d1", title=title, author=author, state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        return store, doc
+
+    def _journal_record(self, store, from_title="Linchpin", to_title="Wheels", *, op="document-rename", payload=None):
+        record = JournalRecord(
+            op=op,
+            op_id="op-1",
+            account_id=self._OWNER,
+            document_id="d1",
+            payload=payload if payload is not None else {"from": from_title, "to": to_title},
+        )
+        store.journal().write(record)
+        return record
+
+    def test_successful_rename_removes_the_record(self, tmp_path, git_identity, monkeypatch) -> None:  # pylint: disable=unused-argument
+        store, doc = self._seed(tmp_path)
+        svc = self._service(tmp_path)
+        written: list[JournalRecord] = []
+        original = Journal.write
+
+        def capture(self, record):
+            written.append(record)
+            return original(self, record)
+
+        monkeypatch.setattr(Journal, "write", capture)
+
+        result = svc.update("d1", title="Wheels", author="A", owner=self._OWNER)
+
+        assert [r.op for r in written] == ["document-rename"]
+        assert result is doc
+        assert not store.journal().pending()
+        assert store.document_exists("Wheels")
+        assert not store.document_exists("Linchpin")
+        assert doc.title == "Wheels"
+        assert self.uow.committed
+
+    def test_author_only_update_writes_no_record(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        svc = self._service(tmp_path)
+
+        svc.update("d1", title="Linchpin", author="B", owner=self._OWNER)
+
+        assert not store.journal().pending()
+        assert store.read_metadata("Linchpin") == DocumentMetadata(title="Linchpin", author="B")
+
+    def test_rename_without_a_store_commits_the_graph_only(self) -> None:
+        self.repo._store["d1"] = Document(owner=self._OWNER, id="d1", title="Linchpin", author="A", state=DataState.SYNC)
+
+        self.svc.update("d1", title="Wheels", author="A", owner=self._OWNER)
+
+        assert self.uow.committed
+
+    def test_fs_failure_leaves_the_record_for_recovery(  # pylint: disable=unused-argument
+        self, tmp_path, git_identity, monkeypatch
+    ) -> None:
+        store, _ = self._seed(tmp_path)
+        svc = self._service(tmp_path)
+
+        def boom(*_args, **_kwargs):
+            raise SnapshotError("disk full")
+
+        monkeypatch.setattr(DocumentStore, "rename_document", boom)
+        with pytest.raises(SnapshotError):
+            svc.update("d1", title="Wheels", author="A", owner=self._OWNER)
+
+        pending = store.journal().pending()
+        assert [r.op for r in pending] == ["document-rename"]
+        assert pending[0].payload == {"from": "Linchpin", "to": "Wheels"}
+        assert pending[0].document_id == "d1"
+        assert pending[0].account_id == self._OWNER
+        assert not self.uow.committed
+        assert store.document_exists("Linchpin")
+
+    def test_graph_failure_after_the_fs_rename_leaves_the_record(  # pylint: disable=unused-argument
+        self, tmp_path, git_identity, monkeypatch
+    ) -> None:
+        store, _ = self._seed(tmp_path)
+        svc = self._service(tmp_path)
+
+        def boom():
+            raise RuntimeError("neo4j down")
+
+        monkeypatch.setattr(self.uow, "commit", boom)
+        with pytest.raises(RuntimeError):
+            svc.update("d1", title="Wheels", author="A", owner=self._OWNER)
+
+        assert store.document_exists("Wheels")
+        assert len(store.journal().pending()) == 1
+
+    def test_final_metadata_failure_leaves_the_record(self, tmp_path, git_identity, monkeypatch) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        svc = self._service(tmp_path)
+        original = DocumentStore.write_metadata
+
+        def flaky(self, title, metadata):
+            if metadata.author == "B":
+                raise SnapshotError("disk full")
+            return original(self, title, metadata)
+
+        monkeypatch.setattr(DocumentStore, "write_metadata", flaky)
+        with pytest.raises(SnapshotError):
+            svc.update("d1", title="Wheels", author="B", owner=self._OWNER)
+
+        assert store.document_exists("Wheels")
+        assert len(store.journal().pending()) == 1
+
+    def test_recover_replays_a_rename_from_the_start(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        self._journal_record(store)
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert not warnings
+        assert store.document_exists("Wheels")
+        assert not store.document_exists("Linchpin")
+        assert not store.journal().pending()
+        assert any(model.title == "Wheels" for model, _ in self.uow.registered)
+
+    def test_recover_finishes_when_the_fs_already_moved(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        store.rename_document("Linchpin", "Wheels")
+        self._journal_record(store)
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert not warnings
+        assert store.document_exists("Wheels")
+        assert not store.document_exists("Linchpin")
+        assert not store.journal().pending()
+        assert any(model.title == "Wheels" for model, _ in self.uow.registered)
+
+    def test_recover_is_idempotent(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        self._journal_record(store)
+        svc = self._service(tmp_path)
+
+        svc.recover()
+        second = svc.recover()
+
+        assert not second
+        assert store.document_exists("Wheels")
+        assert not store.document_exists("Linchpin")
+        assert not store.journal().pending()
+
+    def test_recover_quarantines_an_unknown_operation(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        self._journal_record(store, op="mystery-op")
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert warnings
+        assert (store.journal().directory / "quarantine" / "op-1.yaml").is_file()
+        assert not store.journal().pending()
+
+    def test_recover_quarantines_a_record_missing_its_payload(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        self._journal_record(store, payload={})
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert warnings
+        assert (store.journal().directory / "quarantine" / "op-1.yaml").is_file()
+
+    def test_recover_quarantines_an_ambiguous_rename(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        store.write_metadata("Wheels", DocumentMetadata(title="Wheels", author="A"))
+        self._journal_record(store)
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert warnings
+        assert (store.journal().directory / "quarantine" / "op-1.yaml").is_file()
+        assert store.document_exists("Linchpin")
+        assert store.document_exists("Wheels")
+
+    def test_recover_renames_the_tree_when_the_document_is_gone(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        self.repo._store.clear()
+        self._journal_record(store)
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert not warnings
+        assert store.document_exists("Wheels")
+        assert not store.document_exists("Linchpin")
+        assert not store.journal().pending()
+        assert not self.uow.registered
+
+    def test_recover_quarantines_when_the_graph_step_fails(  # pylint: disable=unused-argument
+        self, tmp_path, git_identity, monkeypatch
+    ) -> None:
+        store, _ = self._seed(tmp_path)
+        self._journal_record(store)
+        svc = self._service(tmp_path)
+
+        def boom():
+            raise RuntimeError("neo4j down")
+
+        monkeypatch.setattr(self.uow, "commit", boom)
+
+        warnings = svc.recover()
+
+        assert warnings
+        assert (store.journal().directory / "quarantine" / "op-1.yaml").is_file()
+        assert not store.journal().pending()
+
+    def test_recover_continues_after_a_failed_record(self, tmp_path, git_identity) -> None:  # pylint: disable=unused-argument
+        store, _ = self._seed(tmp_path)
+        self._journal_record(store, op="mystery-op")
+        store.journal().write(
+            JournalRecord(
+                op="document-rename",
+                op_id="op-2",
+                account_id=self._OWNER,
+                document_id="d1",
+                payload={"from": "Linchpin", "to": "Wheels"},
+            )
+        )
+        svc = self._service(tmp_path)
+
+        warnings = svc.recover()
+
+        assert len(warnings) == 1
+        assert store.document_exists("Wheels")
+        assert not store.document_exists("Linchpin")
+        assert not store.journal().pending()
+
+    def test_recover_without_a_store_returns_no_warnings(self) -> None:
+        assert not self.svc.recover()
 
 
 # ---------------------------------------------------------------------------

@@ -300,6 +300,7 @@ def wire(  # pylint: disable=too-many-locals
         set_auth_service(_build_auth_service(account_store, secret))
         set_glossary_service(GlossaryService(account_store, repos[Document], repos[Chapter]))
 
+    doc_svc.recover()
     return ctx
 
 

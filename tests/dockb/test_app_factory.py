@@ -342,6 +342,30 @@ class TestWireServices:
         assert svc._document_store_factory is not None
         assert svc._document_store_factory.for_account("acct-1").account_dir() == tmp_path / "acct-1"
 
+    @patch("dockb.composition.DocumentService")
+    @patch("dockb.composition.SentenceRepository")
+    @patch("dockb.composition.ParagraphRepository")
+    @patch("dockb.composition.ChapterRepository")
+    @patch("dockb.composition.DocumentRepository")
+    @patch("dockb.composition.UnitOfWorkFactory")
+    def test_wire_drains_the_intent_journal(
+        self,
+        mock_uow_factory: MagicMock,
+        mock_doc_repo: MagicMock,
+        mock_ch_repo: MagicMock,
+        mock_para_repo: MagicMock,
+        mock_sent_repo: MagicMock,
+        mock_doc_service: MagicMock,
+    ) -> None:
+        from dockb.composition import wire
+
+        mock_sf = MagicMock()
+        mock_sf.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+
+        wire(mock_sf)
+
+        mock_doc_service.return_value.recover.assert_called_once_with()
+
     def test_unwire_clears_services(self) -> None:
         from dockb.composition import unwire
         from dockb.controllers.chapters import get_ch_service

@@ -17,6 +17,26 @@ Chapter-level paths (open, save, create, rename, delete, and the store export) l
 document through `DocumentRepository.load_shell` — attrs and chapter ids only — because they read
 the title, never the hierarchy. The full load is reserved for document-level paths.
 
+### Journaled renames and recovery
+
+A document title change moves two stores that cannot share a transaction: the
+account's git tree (`git mv`) and the graph. `DocumentService.update` writes an
+intent-journal record naming the old and new titles before anything moves, then
+moves the tree, commits the graph, refreshes metadata, and removes the record.
+A crash in between leaves the record behind; the next boot replays it. An
+author-only update, or one with no document store configured, has no cross-store
+state to repair and commits the graph directly.
+
+`DocumentService.recover` drains every account's journal (`journal_accounts` →
+`journal_for` → `pending`) before the listeners serve: each rename is driven to
+its recorded end state, the git mv being a no-op when the source is already gone,
+and the graph title only written when it still differs. A recorded operation that
+cannot be applied — an unknown op, a missing payload, two existing directories, a
+failing graph write — is moved to the journal's `quarantine/` and reported as a
+warning, and the remaining records still replay. `composition.wire` runs
+`recover` once per process, so a restart repairs an interrupted rename before any
+request can see the half-finished pair.
+
 ### Chapter front matter: character properties and POV
 
 `services/chapter_front_matter.py` owns the sync between a chapter file's YAML
