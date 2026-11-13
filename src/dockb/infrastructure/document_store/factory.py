@@ -6,6 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
+from dockb.infrastructure.document_store.journal import JOURNAL_DIRNAME, Journal
 from dockb.infrastructure.document_store.store import DocumentStore
 from dockb.titles import validate_segment
 
@@ -41,6 +42,16 @@ class DocumentStoreFactory:
     def for_account(self, account_id: str) -> DocumentStore:
         """Return the store for *account_id* — an internal account id, not a username."""
         return DocumentStore(base_dir=self._base_dir, account_id=account_id)
+
+    def journal_for(self, account_id: str) -> Journal:
+        """Return *account_id*'s intent journal, whether or not it exists yet."""
+        return self.for_account(account_id).journal()
+
+    def journal_accounts(self) -> list[str]:
+        """Return every account id that has a journal directory, sorted."""
+        if not self._base_dir.is_dir():
+            return []
+        return sorted(entry.name for entry in self._base_dir.iterdir() if entry.is_dir() and (entry / JOURNAL_DIRNAME).is_dir())
 
     def legacy_document_dir(self, document_title: str) -> Path:
         """Return ``<base>/<title>``, where a document's directory sat before accounts did.

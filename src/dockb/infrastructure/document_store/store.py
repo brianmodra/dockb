@@ -41,6 +41,7 @@ from pathlib import Path
 import yaml
 
 from dockb.exceptions import SnapshotError
+from dockb.infrastructure.document_store.journal import JOURNAL_DIRNAME, Journal
 from dockb.infrastructure.markdown import front_matter
 from dockb.titles import is_unsafe_segment, validate_segment
 
@@ -106,6 +107,10 @@ class DocumentStore:  # pylint: disable=too-many-public-methods
     def account_dir(self) -> Path:
         """Return the directory holding *account_id*'s repositories and documents (not created)."""
         return self._base_dir / self._account_id
+
+    def journal(self) -> Journal:
+        """Return this account's intent journal, outside any movable document directory."""
+        return Journal(self.account_dir() / JOURNAL_DIRNAME)
 
     def document_dir(self, document_title: str) -> Path:
         """Return the directory owned by *document_title* (not created)."""

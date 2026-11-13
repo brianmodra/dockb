@@ -144,6 +144,35 @@ regardless, and the editor materializes a tree on first open.
 image: a title rename moves the owned directory or markdown file, so a rename
 never leaves a stale title-keyed tree behind.
 
+## Intent journal
+
+Some operations write both Neo4j and this tree, and the two cannot share one commit.
+The one that matters most is a rename: the graph can be told the new title before
+`git mv` runs, and a crash in between leaves the graph pointing at a directory that
+does not exist while the old directory is orphaned forever. Neo4j cannot roll back a
+`git mv`, so the joint operation is made recoverable instead of atomic.
+
+`DocumentStore.journal()` returns the account's intent journal
+(`<account>/.dockb-journal/`), which sits outside every document directory a rename
+could move. A journal record is one small YAML file named `<op_id>.yaml`, holding the
+operation name, its unique id, the account and document ids, and a payload such as
+`from`/`to`. It records the **desired end state**, not a step plan, so replaying it is
+idempotent: the caller writes the record before the first mutation and removes it once
+both stores agree.
+
+`Journal.write` is durable and atomic — a temp file in the same directory, flushed and
+fsynced, then `os.replace`d into place and the directory fsynced — so a crash leaves
+either the old record or the new one, never a torn file. `pending()` returns the records
+sorted by id. A file that cannot be read as a record, or whose content names a different
+`op_id` than its filename, is moved under `quarantine/` rather than dropped or acted on;
+`op_id` is validated as a single path segment so a record can never name a file outside
+the journal. `remove(op_id)` deletes a completed record, and `quarantine(op_id)` moves a
+file aside.
+
+`DocumentStoreFactory.journal_for(account_id)` hands out one account's journal, and
+`journal_accounts()` lists every account that has one, which is how a startup drain finds
+pending work without being told which accounts exist.
+
 `renumber_chapters(document_title, moves)` is the bulk form of a chapter rename.
 Every file `git mv`s to its renumbered title with the front matter title
 rewritten, and the whole renumber is one `renumber: chapters` commit, so the
