@@ -393,7 +393,7 @@ def test_reconstruct_job_cancels_tokenization_via_queue():
     tokenizer_started = threading.Event()
 
     class BlockingTokenizer(SentenceTokenizer):
-        def tokenize(self, text, doc_cache):
+        def tokenize(self, text, doc_cache, format_runs=()):
             tokenizer_started.set()
             blocked.wait()
             if self._cancel_event.is_set():

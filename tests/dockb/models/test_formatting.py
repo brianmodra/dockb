@@ -2,7 +2,7 @@
 
 import pytest
 
-from dockb.models.formatting import Family, FormatRun, Style, Weight, validate_size
+from dockb.models.formatting import Family, FormatRun, Style, Weight, slice_runs, validate_size
 
 
 def test_style_values():
@@ -41,3 +41,40 @@ def test_validate_size_accepts(size):
 def test_validate_size_rejects(size):
     with pytest.raises(ValueError):
         validate_size(size)
+
+
+@pytest.mark.parametrize("start,end", [(-1, 2), (2, 1)])
+def test_format_run_rejects_a_bad_range(start, end):
+    with pytest.raises(ValueError):
+        FormatRun(start, end)
+
+
+def test_format_run_rejects_a_bad_size():
+    with pytest.raises(ValueError):
+        FormatRun(0, 1, size="large")
+
+
+def test_slice_runs_keeps_runs_fully_inside_and_rebases_them():
+    runs = [FormatRun(0, 5, style=Style.ITALIC), FormatRun(5, 10, weight=Weight.BOLD)]
+
+    assert slice_runs(runs, 3, 8) == [
+        FormatRun(0, 2, style=Style.ITALIC),
+        FormatRun(2, 5, weight=Weight.BOLD),
+    ]
+
+
+def test_slice_runs_drops_runs_outside_the_window():
+    runs = [FormatRun(0, 5, style=Style.ITALIC)]
+
+    assert not slice_runs(runs, 5, 10)
+    assert not slice_runs(runs, 10, 20)
+
+
+def test_slice_runs_clips_a_straddling_run():
+    runs = [FormatRun(2, 12, family=Family.MONOSPACE)]
+
+    assert slice_runs(runs, 3, 8) == [FormatRun(0, 5, family=Family.MONOSPACE)]
+
+
+def test_slice_runs_accepts_no_runs():
+    assert not slice_runs([], 0, 10)

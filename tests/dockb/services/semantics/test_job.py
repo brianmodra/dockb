@@ -1,6 +1,7 @@
 import threading
 from unittest.mock import MagicMock
 
+from dockb.models.formatting import FormatRun, Style
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
 from dockb.services.semantics.delete_job import DeleteJob
@@ -191,3 +192,23 @@ def test_reconstruct_job_on_cancel_with_tokenizer():
 def test_reconstruct_job_on_cancel_without_tokenizer_does_nothing():
     job = ReconstructJob()
     job.on_cancel()
+
+
+def test_delete_then_reconstruct_keeps_the_sentence_format_run(nlp):
+    cache = DocCache(nlp)
+    sentence = Sentence(text="Hello world!")
+    sentence.dirty = True
+    sentence.format_runs = [FormatRun(0, 5, style=Style.ITALIC)]
+
+    delete_job = DeleteJob()
+    delete_job.set(sentence)
+    delete_job.run()
+    assert len(sentence.tokens) == 0
+    assert sentence.format_runs
+
+    reconstruct_job = ReconstructJob()
+    reconstruct_job.set(sentence, cache)
+    reconstruct_job.run()
+
+    assert sentence.tokens[0].style is Style.ITALIC
+    assert not sentence.format_runs

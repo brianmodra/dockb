@@ -4,10 +4,10 @@
 
 This note explains the background jobs that turn edited text into structured, searchable words — for someone changing sentence splitting, tokenization, or how those jobs run. A Job is a unit of work that a single background worker runs one at a time from a queue; ReconstructJob and DeleteJob are the two concrete jobs, and the SentenceTokenizer turns sentence text into Token objects carrying part of speech, lemma, and whitespace.
 
-The tokenizer can also hand back tokens from an already-parsed paragraph, so an import never re-runs spaCy once per sentence. Jobs can be cancelled cooperatively, time out, and report a status, and the queue lets a newer job for the same model replace the older one so rapid edits never pile up duplicate work.
+The tokenizer can also hand back tokens from an already-parsed paragraph, so an import never re-runs spaCy once per sentence. Both paths fold transient formatting runs onto whole tokens, and hydration slices paragraph runs onto each sentence before tokenizing so formatting survives a sentence split. Jobs can be cancelled cooperatively, time out, and report a status, and the queue lets a newer job for the same model replace the older one so rapid edits never pile up duplicate work.
 
 DeleteJob clears existing sentence tokens before reconstruction.
-ReconstructJob performs sentence-boundary detection, tokenization, and semantic reconstruction.
+ReconstructJob hydrates a document, chapter, or paragraph, or tokenizes a sentence.
 
 Both are enqueued to the JobQueue and executed by the single background worker.
 Jobs are populated via their `set()` method before being enqueued.
@@ -86,20 +86,31 @@ DeleteJob entries are never stored in the `reconstruct_jobs` dict.
 Tokenizes raw sentence text into `Token` objects using spaCy via a `DocCache`.
 Both `ReconstructJob` and `SyncReconstructor` delegate to this class,
 keeping the `models` layer free of spaCy awareness. The `tokenize()` method
-takes `(text: str, doc_cache: DocCache)` and returns a `list[Token]` with POS,
-lemma, whitespace, and other spaCy-derived attributes populated. The
-`tokens_from_doc()` method builds the same tokens from an already-parsed
-`Doc` or sentence `Span`, which lets the markdown import tokenize every
-sentence of a paragraph from that paragraph's single parse instead of
-re-running spaCy per sentence.
+takes `(text: str, doc_cache: DocCache, format_runs=())` and returns a
+`list[Token]` with POS, lemma, whitespace, and other spaCy-derived attributes
+populated. The `tokens_from_doc()` method builds the same tokens from an
+already-parsed `Doc` or sentence `Span`, with the same optional runs, which
+lets the markdown import tokenize every sentence of a paragraph from that
+paragraph's single parse instead of re-running spaCy per sentence.
+
+`apply_format_runs()` maps each run onto the tokens whose character extent it
+touches. A token's extent includes its trailing whitespace, and a run that
+touches any part of a token formats the whole token. Runs do not overlap, so at
+most one applies. Callers clear the source `format_runs` after a successful
+tokenization so a retry can still apply them.
 
 # Sentence split detection
 
-The ReconstructJob also detects sentence splits. It runs spaCy on the sentence
-text to find linguistic sentence boundaries. If the text contains multiple
-sentences, it creates new Sentence model objects, updates the parent paragraph's
-children, and queues a `sentence_split` notification in the SessionContext
-(see controllers/README_API.md **Async Notifications**).
+The ParagraphHydrator splits paragraph text at spaCy sentence boundaries during
+import. It slices the paragraph's formatting runs onto each new sentence with
+`slice_runs()`, rebasing each sentence's runs to start at zero, so formatting is
+preserved across the split.
+
+ReconstructJob does not currently split an edited sentence into several; it
+tokenizes the sentence text it is given. A future split should use `slice_runs()`
+for the same run-preserving behavior. The SessionContext can still deliver a
+`sentence_split` notification (see controllers/README_API.md **Async
+Notifications**).
 
 # Cancelling a ReconstructJob
 
@@ -115,6 +126,8 @@ the process, because it sets an event which is checked in the loop.
 These are already introduced in @src/dockb/services/README.md
 
 These hydrators will use the model's text, and split it up into the constituent parts.
+ParagraphHydrator also distributes the paragraph's transient `format_runs` onto
+the sentences it creates, then clears them from the paragraph.
 
 # Reconstructors
 

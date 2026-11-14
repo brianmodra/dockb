@@ -6,14 +6,19 @@ import spacy
 from spacy.language import Language
 from spacy.tokens import Doc
 
+from dockb.models.formatting import FormatRun, Style, Weight
 from dockb.models.sentence import Sentence
-from dockb.models.token import Type
+from dockb.models.token import Token, Type
 from dockb.services.semantics.delete_job import DeleteJob
 from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.job import JobStatus
 from dockb.services.semantics.job_queue import JobQueue
 from dockb.services.semantics.reconstruct_job import ReconstructJob
-from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer, TokenizationCancelled
+from dockb.services.semantics.sentence_tokenizer import (
+    SentenceTokenizer,
+    TokenizationCancelled,
+    apply_format_runs,
+)
 
 STRESS_NUM_THREADS = 10
 STRESS_JOBS_PER_THREAD = 20
@@ -396,3 +401,62 @@ def test_tokens_from_doc_builds_tokens_from_a_span(nlp):
     assert tokens[2].trailing_ws == " "
     assert tokens[0].type == Type.WORD
     assert tokens[2].type == Type.PUNCTUATION
+
+
+def _token(text: str, trailing_ws: str = " ") -> Token:
+    return Token(text=text, trailing_ws=trailing_ws)
+
+
+def test_apply_format_runs_formats_only_intersecting_tokens():
+    tokens = [_token("The"), _token("cat"), _token("sat.", "")]
+
+    apply_format_runs(tokens, [FormatRun(0, 4, style=Style.ITALIC)])
+
+    assert [token.style for token in tokens] == [Style.ITALIC, Style._, Style._]
+
+
+def test_apply_format_runs_expands_a_partial_overlap_to_whole_tokens():
+    tokens = [_token("The"), _token("cat"), _token("sat.", "")]
+
+    apply_format_runs(tokens, [FormatRun(1, 5, weight=Weight.BOLD)])
+
+    assert [token.weight for token in tokens] == [Weight.BOLD, Weight.BOLD, Weight._]
+
+
+def test_apply_format_runs_includes_trailing_whitespace_in_the_token_extent():
+    tokens = [_token("The"), _token("cat"), _token("sat.", "")]
+
+    apply_format_runs(tokens, [FormatRun(3, 4, style=Style.UNDERLINE)])
+
+    assert [token.style for token in tokens] == [Style.UNDERLINE, Style._, Style._]
+
+
+def test_apply_format_runs_keeps_an_explicit_normal():
+    tokens = [_token("The")]
+
+    apply_format_runs(tokens, [FormatRun(0, 4, weight=Weight.NORMAL)])
+
+    assert tokens[0].weight is Weight.NORMAL
+
+
+def test_tokenize_with_a_format_run_marks_the_first_word(nlp):
+    tokens = SentenceTokenizer().tokenize(
+        "The cat sat.",
+        DocCache(nlp),
+        [FormatRun(0, 4, style=Style.ITALIC)],
+    )
+
+    assert tokens[0].style is Style.ITALIC
+    assert tokens[1].style is Style._
+
+
+def test_apply_format_runs_applies_each_adjacent_run_to_its_own_tokens():
+    tokens = [_token("The"), _token("cat"), _token("sat.", "")]
+
+    apply_format_runs(
+        tokens,
+        [FormatRun(0, 4, style=Style.ITALIC), FormatRun(4, 8, weight=Weight.BOLD)],
+    )
+
+    assert (tokens[0].style, tokens[0].weight) == (Style.ITALIC, Weight._)
+    assert (tokens[1].style, tokens[1].weight) == (Style._, Weight.BOLD)

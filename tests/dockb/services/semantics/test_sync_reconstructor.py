@@ -1,5 +1,6 @@
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import FormatRun, Style
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.services.semantics.doc_cache import DocCache
@@ -84,3 +85,16 @@ def test_sync_reconstructor_always_tokenizes_sentence(nlp):
     reconstructor.run(sentence)
     assert len(sentence.tokens) > 0
     assert not sentence.dirty
+
+
+def test_sync_reconstructor_applies_and_clears_a_sentence_format_run(nlp):
+    cache = DocCache(nlp)
+    reconstructor = SyncReconstructor(cache, nlp)
+    sentence = Sentence(text="Hello world!")
+    sentence.dirty = True
+    sentence.format_runs = [FormatRun(0, 5, style=Style.ITALIC)]
+
+    reconstructor.run(sentence)
+
+    assert sentence.tokens[0].style is Style.ITALIC
+    assert not sentence.format_runs

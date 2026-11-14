@@ -1,7 +1,10 @@
 import pytest
 
+from dockb.models.formatting import FormatRun, Style, Weight
 from dockb.models.paragraph import Paragraph
+from dockb.services.semantics.doc_cache import DocCache
 from dockb.services.semantics.paragraph_hydrator import ParagraphHydrator
+from dockb.services.semantics.sentence_tokenizer import SentenceTokenizer
 
 
 def test_rehydrate_a_paragraph_creates_the_child_sentences(nlp):
@@ -72,3 +75,45 @@ def test_rehydrate_a_paragraph_ignores_stray_punctuation_between_sentences(nlp):
     hydrator = ParagraphHydrator(nlp=nlp)
     hydrator.hydrate(paragraph)
     assert len(paragraph.sentences) == 2
+
+
+def test_hydrate_splits_paragraph_runs_onto_the_sentences(nlp):
+    paragraph = Paragraph(text="Hello world. Goodbye moon.")
+    paragraph.format_runs = [
+        FormatRun(0, 6, weight=Weight.BOLD),
+        FormatRun(13, 20, style=Style.ITALIC),
+    ]
+
+    ParagraphHydrator(nlp=nlp).hydrate(paragraph)
+
+    assert not paragraph.format_runs
+    assert paragraph.sentences[0].format_runs == [FormatRun(0, 6, weight=Weight.BOLD)]
+    assert paragraph.sentences[1].format_runs == [FormatRun(0, 7, style=Style.ITALIC)]
+
+
+def test_hydrate_clips_a_run_that_straddles_a_sentence_boundary(nlp):
+    paragraph = Paragraph(text="Hello world. Goodbye moon.")
+    paragraph.format_runs = [FormatRun(0, 15, style=Style.UNDERLINE)]
+
+    ParagraphHydrator(nlp=nlp).hydrate(paragraph)
+
+    assert paragraph.sentences[0].format_runs == [FormatRun(0, 12, style=Style.UNDERLINE)]
+    assert paragraph.sentences[1].format_runs == [FormatRun(0, 2, style=Style.UNDERLINE)]
+
+
+def test_hydrate_then_tokenize_keeps_formatting_across_a_sentence_split(nlp):
+    paragraph = Paragraph(text="Hello world. Goodbye moon.")
+    paragraph.format_runs = [FormatRun(0, 15, style=Style.UNDERLINE)]
+    ParagraphHydrator(nlp=nlp).hydrate(paragraph)
+
+    tokenizer = SentenceTokenizer()
+    doc_cache = DocCache(nlp)
+    for sentence in paragraph.sentences:
+        sentence.tokens[:] = tokenizer.tokenize(
+            sentence.get_text(),
+            doc_cache,
+            sentence.format_runs,
+        )
+
+    assert paragraph.sentences[0].tokens[0].style is Style.UNDERLINE
+    assert paragraph.sentences[1].tokens[0].style is Style.UNDERLINE

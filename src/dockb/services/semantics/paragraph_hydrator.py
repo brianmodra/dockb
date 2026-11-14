@@ -2,6 +2,7 @@
 
 from spacy.language import Language
 
+from dockb.models.formatting import slice_runs
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 
@@ -19,5 +20,14 @@ class ParagraphHydrator:  # pylint: disable=too-few-public-methods
         """
         text = paragraph.get_text()
         doc = self._nlp(text)
-        sentences = [Sentence(text=sent.text) for sent in doc.sents if sent.text.strip()]
+        runs = paragraph.format_runs
+        sentences = []
+        for sent in doc.sents:
+            if not sent.text.strip():
+                continue
+            sentence = Sentence(text=sent.text)
+            if runs:
+                sentence.format_runs = slice_runs(runs, sent.start_char, sent.end_char)
+            sentences.append(sentence)
         paragraph.sentences[:] = sentences
+        paragraph.format_runs = []

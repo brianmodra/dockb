@@ -32,5 +32,10 @@ class SyncReconstructor(Reconstructor):  # pylint: disable=too-few-public-method
             ParagraphHydrator(nlp=self._nlp).hydrate(model)
         elif isinstance(model, Sentence):
             tokenizer = SentenceTokenizer()
-            model.tokens[:] = tokenizer.tokenize(model.get_text(), self.doc_cache)
+            model.tokens[:] = tokenizer.tokenize(
+                model.get_text(),
+                self.doc_cache,
+                model.format_runs,
+            )
+            model.format_runs = []
         model.dirty = False

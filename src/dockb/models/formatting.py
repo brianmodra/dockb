@@ -8,6 +8,7 @@ exist the runs are folded onto them and cleared.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, TypeAlias
@@ -71,3 +72,30 @@ class FormatRun:
     weight: Weight = Weight._
     family: Family = Family._
     size: str = ""
+
+    def __post_init__(self) -> None:
+        """Reject an inverted, negative, or invalid run."""
+        if self.start < 0 or self.end < self.start:
+            raise ValueError("a format run needs a non-negative, ordered range")
+        validate_size(self.size)
+
+
+def slice_runs(runs: Sequence[FormatRun], start: int, end: int) -> list[FormatRun]:
+    """Clip *runs* to ``[start, end)`` and rebase their offsets to *start*."""
+    clipped: list[FormatRun] = []
+    for run in runs:
+        overlap_start = max(run.start, start)
+        overlap_end = min(run.end, end)
+        if overlap_start >= overlap_end:
+            continue
+        clipped.append(
+            FormatRun(
+                overlap_start - start,
+                overlap_end - start,
+                style=run.style,
+                weight=run.weight,
+                family=run.family,
+                size=run.size,
+            )
+        )
+    return clipped
