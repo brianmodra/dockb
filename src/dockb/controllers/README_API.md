@@ -91,13 +91,20 @@ E.g. `GET /api/chapters/{id}`:
   "content": [
     {
       "type": "paragraph",
-      "attrs": { "id": "p-uuid" },
+      "attrs": { "id": "p-uuid", "layout": { "kind": "normal", "variant": "" } },
       "content": [
         {
           "type": "sentence",
           "attrs": { "id": "s-uuid" },
           "content": [
-            { "type": "text", "text": "Hello world." }
+            {
+              "type": "text",
+              "text": "Hello ",
+              "marks": [
+                { "type": "format", "attrs": { "style": "italic", "weight": "", "family": "", "size": "" } }
+              ]
+            },
+            { "type": "text", "text": "world." }
           ]
         }
       ]
@@ -105,6 +112,14 @@ E.g. `GET /api/chapters/{id}`:
   ]
 }
 ```
+
+A paragraph carries its structured layout in `attrs.layout` (`kind` is `normal`
+or `quoted`; a quote also names a `variant` of `reading` or `writing`). Text
+nodes carry inline formatting as a single `format` mark whose attrs are
+`style`, `weight`, `family`, and `size`; unset attributes are empty, and an
+unformatted text node omits `marks` entirely. The server folds the marks onto
+whole tokens; the client sends a mark on a text node it wants formatted that
+way.
 
 `GET /api/paragraphs/{id}` returns a paragraph node with its full sentence tree.
 `GET /api/sentences/{id}` returns a sentence node with its text content.
@@ -496,21 +511,25 @@ Note that the GET list of paragraphs is filtered by chapter_id.
 The body of a POST method to the /api/paragraph endpoint will conform to the following schema:
 
 ```
-paragraph: { attrs: { id: string }, content: "sentence+", relations: { chapter_id: string, after_paragraph_id?: string } }
+paragraph: { attrs: { id: string, layout?: { kind: "normal"|"quoted", variant: ""|"reading"|"writing" } }, content: "sentence+", relations: { chapter_id: string, after_paragraph_id?: string } }
 sentence:  { content: "text*", attrs: { id: string } }
-text:      { inline: true }
+text:      { inline: true, marks?: format+ }
+format:    { type: "format", attrs: { style, weight, family, size } }
 ```
 
 E.g.
 ``` json
 {
-  "attrs": { "id": "p-uuid-1" },
+  "attrs": { "id": "p-uuid-1", "layout": { "kind": "quoted", "variant": "reading" } },
   "content": [
     {
       "type": "sentence",
       "attrs": { "id": "s-uuid-1" },
       "content": [
-        { "type": "text", "text": "Hello world." }
+        {
+          "type": "text",
+          "text": "Hello world."
+        }
       ]
     }
   ],
@@ -546,7 +565,7 @@ The body of a PUT method to the /api/paragraph endpoint will conform to the foll
 ```
 paragraph: { attrs: { id?: string }, content: "sentence+", relations?: { chapter_id?: string, after_paragraph_id?: string } }
 sentence:  { content: "text*", attrs: { id: string } }
-text:      { inline: true }
+text:      { inline: true, marks?: format+ }
 ```
 
 The id is optional, but if it is included, it must match the id used in the URL.
@@ -648,7 +667,8 @@ The body of a POST method to the /api/sentence endpoint will conform to the foll
 
 ```
 sentence:  { attrs: { id: string }, content: "text+", relations: { paragraph_id: string, after_sentence_id?: string } }
-text:      { inline: true }
+text:      { inline: true, marks?: format+ }
+format:    { type: "format", attrs: { style, weight, family, size } }
 ```
 
 E.g.
@@ -656,7 +676,14 @@ E.g.
 {
   "attrs": { "id": "s-uuid-1" },
   "content": [
-    { "type": "text", "text": "First sentence." }
+    {
+      "type": "text",
+      "text": "First ",
+      "marks": [
+        { "type": "format", "attrs": { "style": "italic", "weight": "", "family": "", "size": "" } }
+      ]
+    },
+    { "type": "text", "text": "sentence." }
   ],
   "relations": {
     "paragraph_id": "p-uuid-1"
@@ -683,7 +710,7 @@ The body of a PUT method to the /api/sentence endpoint will conform to the follo
 
 ```
 sentence:  { attrs: { id?: string }, content: "text+", relations?: { paragraph_id?: string, after_sentence_id?: string } }
-text:      { inline: true }
+text:      { inline: true, marks?: format+ }
 ```
 
 The id is optional, but if includede, must match teh id in the URL.

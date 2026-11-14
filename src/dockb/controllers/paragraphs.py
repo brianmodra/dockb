@@ -55,6 +55,8 @@ def create_paragraph(
             content=sentences,
             chapter_id=body.relations.chapter_id,
             owner=owner,
+            layout_kind=body.attrs.layout.kind,
+            layout_variant=body.attrs.layout.variant,
         )
     except ChapterNotFoundError as exc:
         # A chapter of another account's is reported as one that does not exist,
@@ -90,6 +92,8 @@ def update_paragraph(
         content=sentences,
         chapter_id=chapter_id,
         owner=owner,
+        layout_kind=body.attrs.layout.kind,
+        layout_variant=body.attrs.layout.variant,
     )
     if para is None:
         raise HTTPException(status_code=404, detail=f"paragraph_not_found: {paragraph_id}")

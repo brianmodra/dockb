@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from dockb.controllers.auth import get_owner
-from dockb.controllers.desugar import extract_text_from_nodes
+from dockb.controllers.desugar import extract_format_runs, extract_text_from_nodes
 from dockb.controllers.notifications import get_session_context, mutation_response
 from dockb.controllers.schemas.sentences import CreateSentenceRequest, UpdateSentenceRequest
 from dockb.controllers.serializers import serialize_sentence
@@ -49,12 +49,14 @@ def create_sentence(
     if body.attrs.id is None:
         raise HTTPException(status_code=422, detail="attrs.id is required")
     text = extract_text_from_nodes(body.content)
+    format_runs = extract_format_runs(body.content)
     try:
         svc.create(
             sentence_id=body.attrs.id,
             text=text,
             paragraph_id=body.relations.paragraph_id,
             owner=owner,
+            format_runs=format_runs,
         )
     except ParagraphNotFoundError as exc:
         # A paragraph of another account's is reported as one that does not exist,
@@ -84,12 +86,14 @@ def update_sentence(
     owner: str = Depends(get_owner),
 ) -> dict[str, Any]:
     text = extract_text_from_nodes(body.content)
+    format_runs = extract_format_runs(body.content)
     paragraph_id = body.relations.paragraph_id if body.relations else None
     sent = svc.update(
         sentence_id=sentence_id,
         text=text,
         paragraph_id=paragraph_id,
         owner=owner,
+        format_runs=format_runs,
     )
     if sent is None:
         raise HTTPException(status_code=404, detail=f"sentence_not_found: {sentence_id}")

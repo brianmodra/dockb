@@ -48,6 +48,15 @@ class Family(Enum):
 _SIZE_RE = re.compile(r"^\d+(\.\d+)?em$")
 
 
+def validate_layout(kind: LayoutKind, variant: LayoutVariant) -> None:
+    """Reject a layout whose variant does not match its kind."""
+    if kind == "quoted":
+        if variant not in ("reading", "writing"):
+            raise ValueError("a quoted paragraph needs a 'reading' or 'writing' variant")
+    elif variant:
+        raise ValueError("a normal paragraph must not have a layout variant")
+
+
 def validate_size(value: str) -> str:
     """Validate a font size expressed in ``em``; ``""`` means unset.
 

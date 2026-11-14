@@ -3,7 +3,7 @@
 Uses mocked services and ``TestClient`` — no Neo4j required.
 """
 
-# pylint: disable=unused-argument
+# pylint: disable=unused-argument,too-many-lines
 
 from __future__ import annotations
 
@@ -17,8 +17,10 @@ from dockb.exceptions import ChapterAfterNotFoundError, ChapterCategoryMismatchE
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import FormatRun, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.models.token import Token
 
 # ---------------------------------------------------------------------------
 # Helpers: mock services
@@ -213,17 +215,37 @@ class MockParagraphService:
     def get(self, paragraph_id: str, owner: str = "") -> Paragraph | None:
         return self._paragraphs.get(paragraph_id)
 
-    def create(self, paragraph_id: str, content: list[Sentence], chapter_id: str, owner: str = "") -> Paragraph:
+    def create(
+        self,
+        paragraph_id: str,
+        content: list[Sentence],
+        chapter_id: str,
+        owner: str = "",
+        layout_kind: str = "normal",
+        layout_variant: str = "",
+    ) -> Paragraph:
         p = _make_paragraph(paragraph_id)
+        p.layout_kind = layout_kind
+        p.layout_variant = layout_variant
         for s in content:
             p.append_child(s)
         self._paragraphs[paragraph_id] = p
         return p
 
-    def update(self, paragraph_id: str, content: list[Sentence], chapter_id: str | None = None, owner: str = "") -> Paragraph | None:
+    def update(
+        self,
+        paragraph_id: str,
+        content: list[Sentence],
+        chapter_id: str | None = None,
+        owner: str = "",
+        layout_kind: str = "normal",
+        layout_variant: str = "",
+    ) -> Paragraph | None:
         p = self._paragraphs.get(paragraph_id)
         if p is None:
             return None
+        p.layout_kind = layout_kind
+        p.layout_variant = layout_variant
         for s in content:
             p.append_child(s)
         return p
@@ -242,16 +264,32 @@ class MockSentenceService:
     def get(self, sentence_id: str, owner: str = "") -> Sentence | None:
         return self._sentences.get(sentence_id)
 
-    def create(self, sentence_id: str, text: str, paragraph_id: str, owner: str = "") -> Sentence:
+    def create(
+        self,
+        sentence_id: str,
+        text: str,
+        paragraph_id: str,
+        owner: str = "",
+        format_runs: list[FormatRun] | tuple[FormatRun, ...] = (),
+    ) -> Sentence:
         s = _make_sentence(sentence_id, text)
+        s.format_runs = list(format_runs)
         self._sentences[sentence_id] = s
         return s
 
-    def update(self, sentence_id: str, text: str, paragraph_id: str | None = None, owner: str = "") -> Sentence | None:
+    def update(
+        self,
+        sentence_id: str,
+        text: str,
+        paragraph_id: str | None = None,
+        owner: str = "",
+        format_runs: list[FormatRun] | tuple[FormatRun, ...] = (),
+    ) -> Sentence | None:
         s = self._sentences.get(sentence_id)
         if s is None:
             return None
         s.set_text(text)
+        s.format_runs = list(format_runs)
         return s
 
     def delete(self, sentence_id: str, owner: str = "") -> bool:
@@ -897,6 +935,75 @@ class TestParagraphRoutes:
         resp = self.client.delete("/api/paragraphs/nonexistent")
         assert resp.status_code == 404
 
+    def test_create_paragraph_with_layout(self) -> None:
+        resp = self.client.post(
+            "/api/paragraphs",
+            json={
+                "attrs": {"id": "p1", "layout": {"kind": "quoted", "variant": "reading"}},
+                "content": [
+                    {
+                        "type": "sentence",
+                        "attrs": {"id": "s1"},
+                        "content": [{"type": "text", "text": "Hi."}],
+                    }
+                ],
+                "relations": {"chapter_id": "c1"},
+            },
+        )
+
+        assert resp.status_code == 200
+        p = self.para_svc._paragraphs["p1"]
+        assert (p.layout_kind, p.layout_variant) == ("quoted", "reading")
+
+    def test_update_paragraph_with_layout(self) -> None:
+        self.para_svc.create("p1", [], "c1")
+        resp = self.client.put(
+            "/api/paragraphs/p1",
+            json={
+                "attrs": {"layout": {"kind": "quoted", "variant": "writing"}},
+                "content": [
+                    {
+                        "type": "sentence",
+                        "attrs": {"id": "s2"},
+                        "content": [{"type": "text", "text": "New."}],
+                    }
+                ],
+            },
+        )
+
+        assert resp.status_code == 200
+        p = self.para_svc._paragraphs["p1"]
+        assert (p.layout_kind, p.layout_variant) == ("quoted", "writing")
+
+    def test_get_paragraph_returns_layout(self) -> None:
+        p = _make_paragraph("p1")
+        p.layout_kind = "quoted"
+        p.layout_variant = "reading"
+        self.para_svc._paragraphs["p1"] = p
+
+        resp = self.client.get("/api/paragraphs/p1")
+
+        assert resp.status_code == 200
+        assert resp.json()["attrs"]["layout"] == {"kind": "quoted", "variant": "reading"}
+
+    def test_create_paragraph_rejects_an_inconsistent_layout(self) -> None:
+        resp = self.client.post(
+            "/api/paragraphs",
+            json={
+                "attrs": {"id": "p1", "layout": {"kind": "normal", "variant": "reading"}},
+                "content": [
+                    {
+                        "type": "sentence",
+                        "attrs": {"id": "s1"},
+                        "content": [{"type": "text", "text": "Hi."}],
+                    }
+                ],
+                "relations": {"chapter_id": "c1"},
+            },
+        )
+
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # Sentence routes
@@ -967,3 +1074,73 @@ class TestSentenceRoutes:
     def test_delete_sentence_not_found(self) -> None:
         resp = self.client.delete("/api/sentences/nonexistent")
         assert resp.status_code == 404
+
+    def test_create_sentence_passes_format_runs_to_the_service(self) -> None:
+        resp = self.client.post(
+            "/api/sentences",
+            json={
+                "attrs": {"id": "s1"},
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hello",
+                        "marks": [{"type": "format", "attrs": {"style": "italic"}}],
+                    }
+                ],
+                "relations": {"paragraph_id": "p1"},
+            },
+        )
+
+        assert resp.status_code == 200
+        assert self.sent_svc._sentences["s1"].format_runs == [FormatRun(0, 5, style=Style.ITALIC)]
+
+    def test_update_sentence_passes_format_runs_to_the_service(self) -> None:
+        self.sent_svc.create("s1", "Old.", "p1")
+        resp = self.client.put(
+            "/api/sentences/s1",
+            json={
+                "attrs": {},
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "New.",
+                        "marks": [{"type": "format", "attrs": {"weight": "bold"}}],
+                    }
+                ],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert self.sent_svc._sentences["s1"].format_runs == [FormatRun(0, 4, weight=Weight.BOLD)]
+
+    def test_get_sentence_returns_formatting_marks(self) -> None:
+        s = Sentence(id="s1", state=DataState.SYNC)
+        s.tokens.append(Token(text="Hello", trailing_ws="", style=Style.ITALIC))
+        s.dirty = False
+        self.sent_svc._sentences["s1"] = s
+
+        resp = self.client.get("/api/sentences/s1")
+
+        assert resp.status_code == 200
+        assert resp.json()["content"][0]["marks"][0]["attrs"]["style"] == "italic"
+
+    def test_create_sentence_rejects_two_format_marks(self) -> None:
+        resp = self.client.post(
+            "/api/sentences",
+            json={
+                "attrs": {"id": "s1"},
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hello",
+                        "marks": [
+                            {"type": "format", "attrs": {"style": "italic"}},
+                            {"type": "format", "attrs": {"weight": "bold"}},
+                        ],
+                    }
+                ],
+                "relations": {"paragraph_id": "p1"},
+            },
+        )
+
+        assert resp.status_code == 422

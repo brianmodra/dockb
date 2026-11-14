@@ -9,8 +9,10 @@ from dockb.controllers.serializers import (
 )
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
+from dockb.models.token import Token
 
 
 def _make_sentence(sid: str = "s-1", text: str = "Hello world.") -> Sentence:
@@ -93,9 +95,49 @@ def test_serialize_paragraph_empty():
     d = node.model_dump()
     assert d == {
         "type": "paragraph",
-        "attrs": {"id": "p-1"},
+        "attrs": {"id": "p-1", "layout": {"kind": "normal", "variant": ""}},
         "content": [],
     }
+
+
+def test_serialize_sentence_groups_tokens_by_formatting():
+    s = Sentence(id="s-1")
+    s.tokens.append(Token(text="Hello", trailing_ws=" ", style=Style.ITALIC))
+    s.tokens.append(Token(text="world", trailing_ws=" ", style=Style.ITALIC))
+    s.tokens.append(Token(text="again", trailing_ws=""))
+    s.dirty = False
+
+    d = serialize_sentence(s).model_dump(mode="json")
+
+    assert d["content"] == [
+        {
+            "type": "text",
+            "text": "Hello world ",
+            "marks": [{"type": "format", "attrs": {"style": "italic", "weight": "", "family": "", "size": ""}}],
+        },
+        {"type": "text", "text": "again"},
+    ]
+
+
+def test_serialize_sentence_keeps_adjacent_different_formats_separate():
+    s = Sentence(id="s-1")
+    s.tokens.append(Token(text="Hello", trailing_ws=" ", style=Style.ITALIC))
+    s.tokens.append(Token(text="world", trailing_ws="", weight=Weight.BOLD))
+    s.dirty = False
+
+    d = serialize_sentence(s).model_dump(mode="json")
+
+    assert [node["text"] for node in d["content"]] == ["Hello ", "world"]
+    assert [node["marks"][0]["attrs"]["style"] for node in d["content"]] == ["italic", ""]
+    assert [node["marks"][0]["attrs"]["weight"] for node in d["content"]] == ["", "bold"]
+
+
+def test_serialize_paragraph_carries_layout():
+    p = Paragraph(id="p-1", layout_kind="quoted", layout_variant="writing")
+
+    d = serialize_paragraph(p).model_dump(mode="json")
+
+    assert d["attrs"]["layout"] == {"kind": "quoted", "variant": "writing"}
 
 
 def test_serialize_paragraph_with_sentences():

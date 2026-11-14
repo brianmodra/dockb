@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
@@ -38,6 +38,7 @@ from dockb.infrastructure.markdown import writer as markdown_writer
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant, validate_layout
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.narrative_perspectives import validate_narrative_perspective
@@ -1070,13 +1071,15 @@ class ParagraphService:
         """
         return self._paragraph_repo.load(paragraph_id, owner)
 
-    def create(
+    def create(  # pylint: disable=too-many-arguments
         self,
         paragraph_id: str,
         content: list[Sentence],
         chapter_id: str,
         *,
         owner: str,
+        layout_kind: LayoutKind = "normal",
+        layout_variant: LayoutVariant = "",
     ) -> Paragraph:
         """Create a new paragraph with content and commit it.
 
@@ -1087,7 +1090,12 @@ class ParagraphService:
         """
         if not self._paragraph_repo.owns_chapter(chapter_id, owner):
             raise ChapterNotFoundError(chapter_id)
-        para = Paragraph(id=paragraph_id, state=DataState.NEW)
+        para = Paragraph(
+            id=paragraph_id,
+            state=DataState.NEW,
+            layout_kind=layout_kind,
+            layout_variant=layout_variant,
+        )
         for sent in content:
             para.append_child(sent)
 
@@ -1099,13 +1107,15 @@ class ParagraphService:
             uow.commit()
         return para
 
-    def update(
+    def update(  # pylint: disable=too-many-arguments
         self,
         paragraph_id: str,
         content: list[Sentence],
         chapter_id: str | None = None,
         *,
         owner: str,
+        layout_kind: LayoutKind = "normal",
+        layout_variant: LayoutVariant = "",
     ) -> Paragraph | None:
         """Replace paragraph content.  Handles sentence gain/loss.
 
@@ -1115,6 +1125,9 @@ class ParagraphService:
         para = self._paragraph_repo.load(paragraph_id, owner)
         if para is None:
             return None
+        validate_layout(layout_kind, layout_variant)
+        para.layout_kind = layout_kind
+        para.layout_variant = layout_variant
 
         existing_ids = {s.id for s in para.sentences}
         new_ids = {s.id for s in content}
@@ -1207,13 +1220,14 @@ class SentenceService:
         """
         return self._sentence_repo.load(sentence_id, owner)
 
-    def create(
+    def create(  # pylint: disable=too-many-arguments
         self,
         sentence_id: str,
         text: str,
         paragraph_id: str,
         *,
         owner: str,
+        format_runs: Sequence[FormatRun] = (),
     ) -> Sentence:
         """Create a new sentence with text and commit it.
 
@@ -1230,6 +1244,7 @@ class SentenceService:
             raise ParagraphNotFoundError(paragraph_id)
         sent = Sentence(id=sentence_id)
         sent.set_text(text)
+        sent.format_runs = list(format_runs)
 
         if self._can_use_async():
             self._enqueue_content_jobs(sent, paragraph_id=paragraph_id, owner=owner)
@@ -1239,13 +1254,14 @@ class SentenceService:
             uow.flush_pending()
         return sent
 
-    def update(
+    def update(  # pylint: disable=too-many-arguments
         self,
         sentence_id: str,
         text: str,
         paragraph_id: str | None = None,
         *,
         owner: str,
+        format_runs: Sequence[FormatRun] = (),
     ) -> Sentence | None:
         """Replace sentence text.
 
@@ -1257,6 +1273,7 @@ class SentenceService:
             return None
 
         sent.set_text(text)
+        sent.format_runs = list(format_runs)
 
         if self._can_use_async():
             self._enqueue_content_jobs(sent, paragraph_id=paragraph_id or "", owner=owner)

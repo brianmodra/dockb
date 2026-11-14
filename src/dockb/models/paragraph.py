@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field, PrivateAttr, model_validator
 
-from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant
+from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant, validate_layout
 from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import DockbCollection, DockbModelBase, InsertionMode
 
@@ -22,11 +22,7 @@ class Paragraph(DockbModel):
     @model_validator(mode="after")
     def layout_is_consistent(self) -> Paragraph:
         """Require a variant exactly when the paragraph is quoted."""
-        if self.layout_kind == "quoted":
-            if self.layout_variant not in ("reading", "writing"):
-                raise ValueError("a quoted paragraph needs a 'reading' or 'writing' variant")
-        elif self.layout_variant:
-            raise ValueError("a normal paragraph must not have a layout variant")
+        validate_layout(self.layout_kind, self.layout_variant)
         return self
 
     @property

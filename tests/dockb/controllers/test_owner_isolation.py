@@ -137,14 +137,30 @@ class StubParagraphService(_Recording):
         self._record("list_by_chapter", owner=owner, chapter_id=chapter_id)
         return []
 
-    def create(self, paragraph_id: str, content: Any, chapter_id: str, owner: str = "") -> None:
+    def create(
+        self,
+        paragraph_id: str,
+        content: Any,
+        chapter_id: str,
+        owner: str = "",
+        layout_kind: str = "normal",
+        layout_variant: str = "",
+    ) -> None:
         self._record("create", owner=owner, paragraph_id=paragraph_id, chapter_id=chapter_id)
         raise ChapterNotFoundError(chapter_id)
 
     def get(self, paragraph_id: str, owner: str = "") -> None:
         self._record("get", owner=owner, paragraph_id=paragraph_id)
 
-    def update(self, paragraph_id: str, content: Any, chapter_id: str | None = None, owner: str = "") -> None:
+    def update(
+        self,
+        paragraph_id: str,
+        content: Any,
+        chapter_id: str | None = None,
+        owner: str = "",
+        layout_kind: str = "normal",
+        layout_variant: str = "",
+    ) -> None:
         self._record("update", owner=owner, paragraph_id=paragraph_id)
 
     def delete(self, paragraph_id: str, owner: str = "") -> bool:
@@ -157,14 +173,28 @@ class StubSentenceService(_Recording):
         self._record("list_by_paragraph", owner=owner, paragraph_id=paragraph_id)
         return []
 
-    def create(self, sentence_id: str, text: str, paragraph_id: str, owner: str = "") -> None:
+    def create(
+        self,
+        sentence_id: str,
+        text: str,
+        paragraph_id: str,
+        owner: str = "",
+        format_runs: Any = (),
+    ) -> None:
         self._record("create", owner=owner, sentence_id=sentence_id, paragraph_id=paragraph_id)
         raise ParagraphNotFoundError(paragraph_id)
 
     def get(self, sentence_id: str, owner: str = "") -> None:
         self._record("get", owner=owner, sentence_id=sentence_id)
 
-    def update(self, sentence_id: str, text: str, paragraph_id: str | None = None, owner: str = "") -> None:
+    def update(
+        self,
+        sentence_id: str,
+        text: str,
+        paragraph_id: str | None = None,
+        owner: str = "",
+        format_runs: Any = (),
+    ) -> None:
         self._record("update", owner=owner, sentence_id=sentence_id)
 
     def delete(self, sentence_id: str, owner: str = "") -> bool:

@@ -31,6 +31,7 @@ from dockb.infrastructure.document_store.store import DocumentMetadata
 from dockb.models.base import DataState, DockbModel
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import FormatRun, Style
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.services.crud_services import (
@@ -2561,6 +2562,47 @@ class TestParagraphService:
         self.svc.delete("p1", owner=self._OWNER)
         assert p.state == DataState.DELETED
 
+    def test_create_accepts_a_layout(self) -> None:
+        p = self.svc.create(
+            "p1",
+            content=[],
+            chapter_id="ch1",
+            owner=self._OWNER,
+            layout_kind="quoted",
+            layout_variant="reading",
+        )
+        assert (p.layout_kind, p.layout_variant) == ("quoted", "reading")
+
+    def test_update_replaces_the_layout(self) -> None:
+        p = Paragraph(id="p1", state=DataState.SYNC)
+        self.repo._store["p1"] = p
+
+        result = self.svc.update(
+            "p1",
+            content=[],
+            chapter_id="ch1",
+            owner=self._OWNER,
+            layout_kind="quoted",
+            layout_variant="writing",
+        )
+
+        assert result is p
+        assert (p.layout_kind, p.layout_variant) == ("quoted", "writing")
+
+    def test_update_rejects_an_inconsistent_layout(self) -> None:
+        p = Paragraph(id="p1", state=DataState.SYNC)
+        self.repo._store["p1"] = p
+
+        with pytest.raises(ValueError):
+            self.svc.update(
+                "p1",
+                content=[],
+                chapter_id="ch1",
+                owner=self._OWNER,
+                layout_kind="normal",
+                layout_variant="reading",
+            )
+
 
 # ---------------------------------------------------------------------------
 # SentenceService
@@ -2618,6 +2660,24 @@ class TestSentenceService:
         self.repo._store["s1"] = s
         self.svc.delete("s1", owner=self._OWNER)
         assert s.state == DataState.DELETED
+
+    def test_create_accepts_format_runs(self) -> None:
+        runs = [FormatRun(0, 5, style=Style.ITALIC)]
+
+        s = self.svc.create("s1", text="Hello", paragraph_id="p1", owner=self._OWNER, format_runs=runs)
+
+        assert s.format_runs == runs
+        assert s.dirty
+
+    def test_update_accepts_format_runs(self) -> None:
+        s = Sentence(id="s1", state=DataState.SYNC)
+        self.repo._store["s1"] = s
+        runs = [FormatRun(0, 5, style=Style.ITALIC)]
+
+        result = self.svc.update("s1", text="Hello", paragraph_id="p1", owner=self._OWNER, format_runs=runs)
+
+        assert result is s
+        assert s.format_runs == runs
 
 
 # ---------------------------------------------------------------------------

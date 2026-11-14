@@ -178,3 +178,72 @@ def test_chapter_summary():
     s = ChapterSummary(id="ch-1", title="Intro")
     d = s.model_dump()
     assert d == {"id": "ch-1", "title": "Intro", "act": "", "category": "Chapter"}
+
+
+# ---------------------------------------------------------------------------
+# Inline formatting marks
+# ---------------------------------------------------------------------------
+
+
+def test_text_node_with_a_format_mark_round_trips():
+    node = TextNode(
+        text="Hi",
+        marks=[{"type": "format", "attrs": {"style": "italic", "weight": "bold"}}],
+    )
+    d = node.model_dump(mode="json")
+
+    assert d["marks"] == [{"type": "format", "attrs": {"style": "italic", "weight": "bold", "family": "", "size": ""}}]
+
+
+def test_text_node_omits_empty_marks_from_the_wire():
+    assert "marks" not in TextNode(text="Hi").model_dump()
+
+
+def test_text_node_rejects_two_format_marks():
+    with pytest.raises(ValidationError):
+        TextNode(
+            text="Hi",
+            marks=[
+                {"type": "format", "attrs": {"style": "italic"}},
+                {"type": "format", "attrs": {"weight": "bold"}},
+            ],
+        )
+
+
+def test_format_mark_rejects_an_unknown_type():
+    with pytest.raises(ValidationError):
+        TextNode(text="Hi", marks=[{"type": "bold", "attrs": {}}])
+
+
+def test_format_mark_rejects_a_bad_size():
+    with pytest.raises(ValidationError):
+        TextNode(text="Hi", marks=[{"type": "format", "attrs": {"size": "large"}}])
+
+
+# ---------------------------------------------------------------------------
+# Paragraph layout
+# ---------------------------------------------------------------------------
+
+
+def test_paragraph_attrs_layout_defaults_to_normal():
+    d = ParagraphAttrs(id="p-1").model_dump(mode="json")
+
+    assert d["layout"] == {"kind": "normal", "variant": ""}
+
+
+def test_paragraph_attrs_accepts_a_quoted_layout():
+    attrs = ParagraphAttrs(id="p-1", layout={"kind": "quoted", "variant": "reading"})
+    d = attrs.model_dump(mode="json")
+
+    assert d["layout"]["kind"] == "quoted"
+    assert d["layout"]["variant"] == "reading"
+
+
+def test_paragraph_attrs_rejects_a_normal_layout_with_a_variant():
+    with pytest.raises(ValidationError):
+        ParagraphAttrs(id="p-1", layout={"kind": "normal", "variant": "reading"})
+
+
+def test_paragraph_attrs_rejects_an_unknown_layout_variant():
+    with pytest.raises(ValidationError):
+        ParagraphAttrs(id="p-1", layout={"kind": "quoted", "variant": "sideways"})
