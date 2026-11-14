@@ -1,8 +1,10 @@
 """Tests for Paragraph model."""
 
 import pytest
+from pydantic import ValidationError
 
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import FormatRun, Style
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import InsertionMode
@@ -97,3 +99,39 @@ def test_insert_child_raises_type_error_for_wrong_type(paragraph):
         paragraph.insert_child(Chapter(), InsertionMode.LAST)
     with pytest.raises(TypeError, match="Expected Sentence"):
         paragraph.insert_child(Chapter(), InsertionMode.LAST)
+
+
+def test_layout_defaults_to_normal():
+    paragraph = Paragraph()
+    assert paragraph.layout_kind == "normal"
+    assert paragraph.layout_variant == ""
+
+
+def test_quoted_layout_requires_a_variant():
+    with pytest.raises(ValidationError):
+        Paragraph(layout_kind="quoted", layout_variant="")
+
+
+@pytest.mark.parametrize("variant", ["reading", "writing"])
+def test_quoted_layout_accepts_reading_or_writing(variant):
+    paragraph = Paragraph(layout_kind="quoted", layout_variant=variant)
+    assert paragraph.layout_kind == "quoted"
+    assert paragraph.layout_variant == variant
+
+
+def test_normal_layout_rejects_a_variant():
+    with pytest.raises(ValidationError):
+        Paragraph(layout_kind="normal", layout_variant="reading")
+
+
+def test_format_runs_are_transient_and_not_dumped():
+    paragraph = Paragraph()
+    run = FormatRun(0, 5, style=Style.ITALIC)
+    paragraph.format_runs = [run]
+    assert paragraph.format_runs == [run]
+    assert "format_runs" not in paragraph.model_dump()
+    assert "_format_runs" not in paragraph.model_dump()
+
+
+def test_paragraph_no_longer_has_quote_type():
+    assert not hasattr(Paragraph(), "quote_type")

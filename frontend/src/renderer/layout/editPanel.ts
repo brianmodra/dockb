@@ -22,7 +22,8 @@ import {
 import {
   WysiwygView,
   chapterBody,
-  quoteSignatureOf,
+  isParagraphLayout,
+  layoutSignatureOf,
   type ProofreadingParagraph,
   type SelectionContext,
   type WysiwygDiagnostic,
@@ -198,16 +199,16 @@ export class EditPanel {
 
   /**
    * Apply a quote action chosen from the response area: set, change, or clear
-   * the quote type of the named paragraphs. The args come from outside the
-   * editor, so the type and identities are checked before anything changes.
+   * the layout of the named paragraphs. The args come from outside the editor,
+   * so the layout and identities are checked before anything changes.
    */
   applyQuote(rawArgs: unknown): boolean {
     if (this.mode !== "wysiwyg" || typeof rawArgs !== "object" || rawArgs === null) {
       return false;
     }
     const args = rawArgs as Record<string, unknown>;
-    const quoteType = args.quote_type;
-    if (quoteType !== "" && quoteType !== "reading" && quoteType !== "writing") {
+    const layout = args.layout;
+    if (!isParagraphLayout(layout)) {
       return false;
     }
     if (!Array.isArray(args.paragraph_ids) || args.paragraph_ids.length === 0) {
@@ -222,7 +223,7 @@ export class EditPanel {
           typeof value === "number" && Number.isInteger(value) ? value : Number.NaN,
         )
       : [];
-    return this.wysiwyg.setQuoteTypeByIds(ids, indexes, quoteType);
+    return this.wysiwyg.setLayoutByIds(ids, indexes, layout);
   }
 
   setMode(mode: Mode): void {
@@ -281,7 +282,7 @@ export class EditPanel {
     return this.mode === "raw"
       ? this.view.state.doc.toString() !== this.lastCanonicalText
       : this.wysiwyg.plainContent() !== chapterBody(this.lastCanonicalText) ||
-          this.wysiwyg.quoteSignature() !== quoteSignatureOf(this.lastCanonicalText);
+          this.wysiwyg.layoutSignature() !== layoutSignatureOf(this.lastCanonicalText);
   }
 
   lastCanonical(): string | null {

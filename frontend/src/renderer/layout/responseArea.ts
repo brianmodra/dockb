@@ -1,5 +1,5 @@
 import { createSpinner } from "./spinner";
-import type { SelectionContext, WysiwygDiagnostic } from "./wysiwyg";
+import { NORMAL_LAYOUT, type ParagraphLayout, type SelectionContext, type WysiwygDiagnostic } from "./wysiwyg";
 
 export const PROOFREADING_REPLACE_FUNCTION = "proofreading-replace";
 export const PROOFREADING_ADD_WORD_FUNCTION = "proofreading-add-word";
@@ -65,20 +65,21 @@ export function parseResponseReply(reply: string): ResponseObject[] | null {
 
 const SELECTION_SNIPPET_LIMIT = 40;
 
-const QUOTE_CHOICES: ReadonlyArray<{ quoteType: string; label: string }> = [
-  { quoteType: "", label: "Remove quote" },
-  { quoteType: "reading", label: "Quote read" },
-  { quoteType: "writing", label: "Quote written" },
+const LAYOUT_CHOICES: ReadonlyArray<{ layout: ParagraphLayout; label: string }> = [
+  { layout: NORMAL_LAYOUT, label: "Remove quote" },
+  { layout: { kind: "quoted", variant: "reading" }, label: "Quote read" },
+  { layout: { kind: "quoted", variant: "writing" }, label: "Quote written" },
 ];
 
-function quoteStateLabel(quoteType: string): string {
-  if (quoteType === "reading") {
-    return "quoted as read";
-  }
-  if (quoteType === "writing") {
-    return "quoted as written";
+function layoutStateLabel(layout: ParagraphLayout): string {
+  if (layout.kind === "quoted") {
+    return layout.variant === "reading" ? "quoted as read" : "quoted as written";
   }
   return "unquoted";
+}
+
+function sameLayout(left: ParagraphLayout, right: ParagraphLayout): boolean {
+  return left.kind === right.kind && left.variant === right.variant;
 }
 
 /**
@@ -92,7 +93,7 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
     collapsed.length > SELECTION_SNIPPET_LIMIT
       ? `${collapsed.slice(0, SELECTION_SNIPPET_LIMIT)}…`
       : collapsed;
-  const state = quoteStateLabel(context.quoteType);
+  const state = layoutStateLabel(context.layout);
   const start = {
     paragraph_id: context.start.paragraphId,
     paragraph_index: context.start.paragraphIndex,
@@ -105,14 +106,14 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
     sentence_index: context.end.sentenceIndex,
     offset: context.end.offset,
   };
-  const buttons: ResponseObject[] = QUOTE_CHOICES.filter(
-    (choice) => choice.quoteType !== context.quoteType,
+  const buttons: ResponseObject[] = LAYOUT_CHOICES.filter(
+    (choice) => !sameLayout(choice.layout, context.layout),
   ).map((choice) => ({
     button: {
       label: choice.label,
       function: "quote",
       args: {
-        quote_type: choice.quoteType,
+        layout: choice.layout,
         paragraph_ids: context.paragraphIds,
         paragraph_indexes: context.paragraphIndexes,
         start,

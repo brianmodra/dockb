@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note explains how a saved chapter file is compared with the knowledge graph and written back — for someone changing the import or the change detection. Alongside the text, each paragraph's quote type and the chapter's hand-maintained front matter (a character's name parts, a chapter's point-of-view character) take part in the comparison: a front-matter-only change still updates the graph, and a point-of-view title that matches nothing warns while the stored value waits.
+This note explains how a saved chapter file is compared with the knowledge graph and written back — for someone changing the import or the change detection. Alongside the text, each paragraph's layout and the chapter's hand-maintained front matter (a character's name parts, a chapter's point-of-view character) take part in the comparison: a front-matter-only change still updates the graph, and a point-of-view title that matches nothing warns while the stored value waits.
 
 A folder of chapter files becomes one document. Act chapters line up by the numbers in their names; character chapters need none. Changed files are rewritten so the next import can match them, and with write-back off the graph updates while the source files stay as they were. A folder reaches this package either as a path — from the shell command or the API's upload route, which stages the files in a temporary directory first — or one file at a time, and the caller hands over the chapter model it already loaded rather than reading it twice.
 
@@ -127,8 +127,10 @@ old chapter to diff against: `get_chapter` is not called and `create_chapter` bu
 - A **span-bearing block** holds one `<span data-par-id="…">` wrapping the whole paragraph; the
   span's inner text minus the structural newlines after the open tag and before the close tag is
   the paragraph text. `data-par-id` is paragraph identity **only** — never part of the paragraph
-  text. A `data-quote-type="…"` attribute on that span is the paragraph's quote type (""/absent
-  when it is not a quote); like the id it is never part of the paragraph text. Loose (unspanned)
+  text. `data-layout-kind="quoted"` plus `data-layout-variant="reading"`/`"writing"` on that
+  span describe the paragraph's layout (absent means normal); a legacy
+  `data-quote-type="…"` is still accepted. Like the id they are never part of the paragraph
+  text. Loose (unspanned)
   text before, between, and after spans is kept at its position; nothing
   is dropped. The paragraph id is taken from the first `data-par-id` span in the block.
 - A **span-free block** (hand-typed, pre-hydration) yields no paragraph id.
@@ -155,13 +157,15 @@ into fake paragraphs. The write-back is always canonical.
 ## Classification
 
 - **changed** — id present in the DB chapter and in the new file, and the sentence texts differ
-  **or the span's `data-quote-type` differs from the old side's** (`ChangedParagraph.quote_type`
-  carries the file's value, `""` when the attribute is absent — so clearing a quote is a change
-  too)
-  → `ChangedParagraph(id, new_sentence_texts, quote_type)`. The paragraph's whole new sentence list is carried;
-  every sentence is replaced by the caller.
-- **unchanged** — id in both, sentence texts identical **and** the quote type the same → **omitted entirely**.
-- **new** — no id, or an id not present in the DB chapter → `NewParagraph(sentence_texts, …, quote_type)`.
+  **or the span's layout differs from the old side's** (`ChangedParagraph.layout_kind`/
+  `layout_variant` carry the file's values, `normal`/`""` when the attributes are absent — so
+  clearing a quote is a change too)
+  → `ChangedParagraph(id, new_sentence_texts, layout_kind, layout_variant)`. The paragraph's whole
+  new sentence list is carried; every sentence is replaced by the caller.
+- **unchanged** — id in both, sentence texts identical **and** the layout the same → **omitted
+  entirely**.
+- **new** — no id, or an id not present in the DB chapter →
+  `NewParagraph(sentence_texts, …, layout_kind, layout_variant)`.
   A stale/unknown `data-par-id` is ignored: never reported, never stripped, never mutated.
   Positioning is described under "Data structures" below.
 - **deleted** — DB paragraph ids absent from the new file → listed as ids only.

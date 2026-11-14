@@ -25,7 +25,7 @@ import {
   docToCanonical,
   docToString,
   findHeadingLines,
-  quoteSignatureOf,
+  layoutSignatureOf,
 } from "../src/renderer/layout/wysiwyg";
 import MarkdownIt from "markdown-it";
 
@@ -386,7 +386,7 @@ describe("WysiwygView canonical round trip", () => {
     expect(view.plainContent()).toBe("One.\nTwo.\n\nThree.");
   });
 
-  it("compares the quote signature like the loaded doc for a canonical file ending in a newline", () => {
+  it("reads legacy data-quote-type and compares the layout signature for a file ending in a newline", () => {
     const buffer = [
       "---",
       "id: c1",
@@ -407,11 +407,15 @@ describe("WysiwygView canonical round trip", () => {
     view.setContent(buffer);
 
     expect(view.plainContent()).toBe(chapterBody(buffer));
-    expect(view.quoteSignature().split("\u241F").filter(Boolean)).toEqual(["reading"]);
-    expect(view.quoteSignature()).toBe(quoteSignatureOf(buffer));
+    expect(view.layoutSignature().split("\u241F")).toEqual([
+      "quoted\u241Ereading",
+      "normal\u241E",
+      "normal\u241E",
+    ]);
+    expect(view.layoutSignature()).toBe(layoutSignatureOf(buffer));
 
-    expect(view.setQuoteTypeByIds(["p-1"], [0], "writing")).toBe(true);
-    expect(view.quoteSignature()).not.toBe(quoteSignatureOf(buffer));
+    expect(view.setLayoutByIds(["p-1"], [0], { kind: "quoted", variant: "writing" })).toBe(true);
+    expect(view.layoutSignature()).not.toBe(layoutSignatureOf(buffer));
   });
 
   it("lets a duplicated paragraph id fall back to a new (span-free) paragraph", () => {
@@ -419,21 +423,27 @@ describe("WysiwygView canonical round trip", () => {
     expect(docToCanonical(doc)).toBe('<span data-par-id="dup">\nX.\n</span>\n\nY.');
   });
 
-  it("carries the span's data-quote-type into the paragraph's quoteType attribute", () => {
+  it("carries the span's data-layout-kind and data-layout-variant into the paragraph attrs", () => {
     const doc = bufferToDocWithIds(
       "Quoted.\n\nPlain.",
       ["p1", "p2"],
-      ["reading", null],
+      [{ kind: "quoted", variant: "reading" }, null],
     );
     const [quoted, plain] = doc.children;
-    expect(quoted.attrs.quoteType).toBe("reading");
-    expect(plain.attrs.quoteType).toBe("");
+    expect(quoted.attrs.layoutKind).toBe("quoted");
+    expect(quoted.attrs.layoutVariant).toBe("reading");
+    expect(plain.attrs.layoutKind).toBe("normal");
+    expect(plain.attrs.layoutVariant).toBe("");
   });
 
-  it("emits data-quote-type on the span of a quoted paragraph", () => {
-    const doc = bufferToDocWithIds("Quoted.\n\nPlain.", ["p1", "p2"], ["writing", null]);
+  it("emits the layout attributes on the span of a quoted paragraph", () => {
+    const doc = bufferToDocWithIds(
+      "Quoted.\n\nPlain.",
+      ["p1", "p2"],
+      [{ kind: "quoted", variant: "writing" }, null],
+    );
     expect(docToCanonical(doc)).toBe(
-      '<span data-par-id="p1" data-quote-type="writing">\nQuoted.\n</span>\n\n<span data-par-id="p2">\nPlain.\n</span>',
+      '<span data-par-id="p1" data-layout-kind="quoted" data-layout-variant="writing">\nQuoted.\n</span>\n\n<span data-par-id="p2">\nPlain.\n</span>',
     );
   });
 
@@ -447,10 +457,12 @@ describe("WysiwygView quoted paragraphs", () => {
   it("renders quoted paragraphs indented and unquoted ones untouched", () => {
     const view = new WysiwygView();
     view.setContent(
-      '<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>\n\n<span data-par-id="p-2">\nPlain.\n</span>',
+      '<span data-par-id="p-1" data-layout-kind="quoted" data-layout-variant="reading">\nQuoted.\n</span>\n\n<span data-par-id="p-2">\nPlain.\n</span>',
     );
 
-    const quoted = view.element.querySelector("p.quoted[data-quote-type='reading']");
+    const quoted = view.element.querySelector(
+      "p.quoted[data-layout-kind='quoted'][data-layout-variant='reading']",
+    );
     expect(quoted).not.toBeNull();
     expect(quoted!.textContent).toBe("Quoted.");
     const paragraphs = view.element.querySelectorAll("p");
@@ -460,21 +472,23 @@ describe("WysiwygView quoted paragraphs", () => {
 
   it("round-trips the quote type through content()", () => {
     const view = new WysiwygView();
-    view.setContent('<span data-par-id="p-1" data-quote-type="writing">\nQuoted.\n</span>');
+    view.setContent('<span data-par-id="p-1" data-layout-kind="quoted" data-layout-variant="writing">\nQuoted.\n</span>');
 
-    expect(view.content()).toBe('<span data-par-id="p-1" data-quote-type="writing">\nQuoted.\n</span>');
+    expect(view.content()).toBe(
+      '<span data-par-id="p-1" data-layout-kind="quoted" data-layout-variant="writing">\nQuoted.\n</span>',
+    );
   });
 
   it("keeps the quote type when the paragraph's text is edited", () => {
     const view = new WysiwygView();
-    view.setContent('<span data-par-id="p-1" data-quote-type="reading">\nQuoted.\n</span>');
+    view.setContent('<span data-par-id="p-1" data-layout-kind="quoted" data-layout-variant="reading">\nQuoted.\n</span>');
 
     const paragraph = view.element.querySelector("p.quoted")!;
     // type into the paragraph: replace its text content
     const viewAny = view as unknown as { view: { dispatch: (tr: unknown) => void; state: { tr: { insertText: (t: string, from: number, to: number) => unknown } } } };
     viewAny.view.dispatch(viewAny.view.state.tr.insertText(" Also.", 8, 8));
 
-    expect(view.content()).toContain('data-quote-type="reading"');
+    expect(view.content()).toContain('data-layout-variant="reading"');
     void paragraph;
   });
 
@@ -530,16 +544,16 @@ describe("WysiwygView quoted paragraphs", () => {
     expect(view.selectionContext()).toBeNull();
   });
 
-  it("reports a uniform quote type and treats a mixed selection as unquoted", () => {
+  it("reports a uniform layout and treats a mixed selection as normal", () => {
     const view = new WysiwygView();
     view.setContent(
-      '<span data-par-id="p-1" data-quote-type="reading">\nOne.\n</span>\n\n<span data-par-id="p-2" data-quote-type="reading">\nTwo.\n</span>\n\n<span data-par-id="p-3">\nThree.\n</span>',
+      '<span data-par-id="p-1" data-layout-kind="quoted" data-layout-variant="reading">\nOne.\n</span>\n\n<span data-par-id="p-2" data-layout-kind="quoted" data-layout-variant="reading">\nTwo.\n</span>\n\n<span data-par-id="p-3">\nThree.\n</span>',
     );
     select(view, 3, 9);
-    expect(view.selectionContext()!.quoteType).toBe("reading");
+    expect(view.selectionContext()!.layout).toEqual({ kind: "quoted", variant: "reading" });
 
     select(view, 3, 16);
-    expect(view.selectionContext()!.quoteType).toBe("");
+    expect(view.selectionContext()!.layout).toEqual({ kind: "normal", variant: "" });
   });
 
   it("quotes the named paragraphs, matching ids before indexes", () => {
@@ -548,11 +562,13 @@ describe("WysiwygView quoted paragraphs", () => {
       '<span data-par-id="p-1">\nOne.\n</span>\n\n<span data-par-id="p-2">\nTwo.\n</span>',
     );
 
-    expect(view.setQuoteTypeByIds(["p-2"], [0], "writing")).toBe(true);
+    expect(view.setLayoutByIds(["p-2"], [0], { kind: "quoted", variant: "writing" })).toBe(true);
 
     const blocks = view.content().split("\n\n");
     expect(blocks[0]).toBe('<span data-par-id="p-1">\nOne.\n</span>');
-    expect(blocks[1]).toBe('<span data-par-id="p-2" data-quote-type="writing">\nTwo.\n</span>');
+    expect(blocks[1]).toBe(
+      '<span data-par-id="p-2" data-layout-kind="quoted" data-layout-variant="writing">\nTwo.\n</span>',
+    );
   });
 
   it("falls back to the paragraph index when an unsaved paragraph has no id", () => {
@@ -561,27 +577,31 @@ describe("WysiwygView quoted paragraphs", () => {
     select(view, 1, 9);
 
     expect(view.selectionContext()!.paragraphIds).toEqual([null, null]);
-    expect(view.setQuoteTypeByIds([null, null], [1], "reading")).toBe(true);
+    expect(view.setLayoutByIds([null, null], [1], { kind: "quoted", variant: "reading" })).toBe(true);
 
     const blocks = view.content().split("\n\n");
     expect(blocks[0]).toBe("One.");
-    expect(blocks[1]).toMatch(/<span data-par-id="[^"]+" data-quote-type="reading">\nTwo.\n<\/span>/);
+    expect(blocks[1]).toMatch(
+      /<span data-par-id="[^"]+" data-layout-kind="quoted" data-layout-variant="reading">\nTwo.\n<\/span>/,
+    );
   });
 
   it("assigns an id to a paragraph that had none when quoting it", () => {
     const view = new WysiwygView();
     view.setContent("Plain.");
 
-    expect(view.setQuoteTypeByIds([null], [0], "reading")).toBe(true);
+    expect(view.setLayoutByIds([null], [0], { kind: "quoted", variant: "reading" })).toBe(true);
 
-    expect(view.content()).toMatch(/<span data-par-id="[^"]+" data-quote-type="reading">\nPlain.\n<\/span>/);
+    expect(view.content()).toMatch(
+      /<span data-par-id="[^"]+" data-layout-kind="quoted" data-layout-variant="reading">\nPlain.\n<\/span>/,
+    );
   });
 
-  it("clears the quote type when asked for the empty one", () => {
+  it("clears the layout when asked for the normal one", () => {
     const view = new WysiwygView();
-    view.setContent('<span data-par-id="p-1" data-quote-type="reading">\nPlain.\n</span>');
+    view.setContent('<span data-par-id="p-1" data-layout-kind="quoted" data-layout-variant="reading">\nPlain.\n</span>');
 
-    expect(view.setQuoteTypeByIds(["p-1"], [0], "")).toBe(true);
+    expect(view.setLayoutByIds(["p-1"], [0], { kind: "normal", variant: "" })).toBe(true);
 
     expect(view.content()).toBe('<span data-par-id="p-1">\nPlain.\n</span>');
   });

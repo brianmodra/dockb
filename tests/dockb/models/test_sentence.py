@@ -6,6 +6,7 @@ import pytest
 import spacy
 
 from dockb.models.base import DataState
+from dockb.models.formatting import FormatRun, Style
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
 from dockb.models.utils.dockb_collection import InsertionMode
@@ -231,3 +232,16 @@ def test_set_text_on_sync_sentence_changes_state_to_changed(sentence):
     sentence.state = DataState.SYNC  # reset it to SYNC and this time change the existing
     sentence.set_text("Hello World!")
     assert sentence.state == DataState.CHANGED
+
+
+def test_format_runs_are_transient_and_not_dumped():
+    sentence = Sentence()
+    run = FormatRun(0, 5, style=Style.ITALIC)
+    sentence.format_runs = [run]
+    assert sentence.format_runs == [run]
+    assert "format_runs" not in sentence.model_dump()
+    assert "_format_runs" not in sentence.model_dump()
+
+
+def test_format_runs_default_to_empty():
+    assert not Sentence().format_runs

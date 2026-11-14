@@ -48,10 +48,17 @@ class TestSerializeBody:
         chapter = _chapter(_make_paragraph("First sentence.", "Second sentence.", p_id="p1"))
         assert writer.serialize_body(chapter, nlp) == ('<span data-par-id="p1">\nFirst sentence.\nSecond sentence.\n</span>')
 
-    def test_spans_carry_the_quote_type(self, nlp):
+    def test_spans_carry_the_layout(self, nlp):
         chapter = _chapter(_make_paragraph("Quoted.", p_id="p1"))
-        chapter.paragraphs[0].quote_type = "reading"
-        assert writer.serialize_body(chapter, nlp) == ('<span data-par-id="p1" data-quote-type="reading">\nQuoted.\n</span>')
+        chapter.paragraphs[0].layout_kind = "quoted"
+        chapter.paragraphs[0].layout_variant = "reading"
+        assert writer.serialize_body(chapter, nlp) == (
+            '<span data-par-id="p1" data-layout-kind="quoted" data-layout-variant="reading">\nQuoted.\n</span>'
+        )
+
+    def test_normal_layout_writes_no_layout_attributes(self, nlp):
+        chapter = _chapter(_make_paragraph("Plain.", p_id="p1"))
+        assert writer.serialize_body(chapter, nlp) == '<span data-par-id="p1">\nPlain.\n</span>'
 
     def test_character_front_matter_is_written_back(self, nlp):
         chapter = _chapter(_make_paragraph("Name: Kiral Karakas.", p_id="p1"), c_id="ch1", title="Karakas")

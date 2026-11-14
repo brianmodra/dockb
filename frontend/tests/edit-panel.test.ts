@@ -253,7 +253,7 @@ describe("EditPanel", () => {
     expect(onSelectionActions.mock.calls[0][0]).toMatchObject({
       paragraphIds: ["p-1", "p-2"],
       paragraphIndexes: [0, 1],
-      quoteType: "",
+      layout: { kind: "normal", variant: "" },
       text: "e. Tw",
     });
     expect(document.querySelector("[data-testid='context-menu']")).toBeNull();
@@ -322,15 +322,23 @@ describe("EditPanel", () => {
     await panel.load("c1");
 
     expect(
-      panel.applyQuote({ quote_type: "reading", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+      panel.applyQuote({
+        layout: { kind: "quoted", variant: "reading" },
+        paragraph_ids: ["p-1"],
+        paragraph_indexes: [0],
+      }),
     ).toBe(true);
-    expect(panel.content()).toContain('data-quote-type="reading"');
+    expect(panel.content()).toContain('data-layout-variant="reading"');
     expect(panel.isDirty()).toBe(true);
 
     expect(
-      panel.applyQuote({ quote_type: "", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+      panel.applyQuote({
+        layout: { kind: "normal", variant: "" },
+        paragraph_ids: ["p-1"],
+        paragraph_indexes: [0],
+      }),
     ).toBe(true);
-    expect(panel.content()).not.toContain("data-quote-type");
+    expect(panel.content()).not.toContain("data-layout-kind");
   });
 
   it("falls back to the paragraph index when a quoted paragraph has no id", async () => {
@@ -340,12 +348,16 @@ describe("EditPanel", () => {
     await panel.load("c1");
 
     expect(
-      panel.applyQuote({ quote_type: "writing", paragraph_ids: [null, null], paragraph_indexes: [1] }),
+      panel.applyQuote({
+        layout: { kind: "quoted", variant: "writing" },
+        paragraph_ids: [null, null],
+        paragraph_indexes: [1],
+      }),
     ).toBe(true);
 
     const blocks = panel.content().split("\n\n");
     expect(blocks[0]).toBe("One.");
-    expect(blocks[1]).toMatch(/data-quote-type="writing"/);
+    expect(blocks[1]).toMatch(/data-layout-variant="writing"/);
   });
 
   it("refuses a quote action with an unknown type or a malformed identity", async () => {
@@ -357,13 +369,21 @@ describe("EditPanel", () => {
     await panel.load("c1");
 
     expect(
-      panel.applyQuote({ quote_type: "read", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+      panel.applyQuote({
+        layout: { kind: "quoted", variant: "read" },
+        paragraph_ids: ["p-1"],
+        paragraph_indexes: [0],
+      }),
     ).toBe(false);
     expect(
-      panel.applyQuote({ quote_type: "reading", paragraph_ids: [7], paragraph_indexes: [0] }),
+      panel.applyQuote({
+        layout: { kind: "quoted", variant: "reading" },
+        paragraph_ids: [7],
+        paragraph_indexes: [0],
+      }),
     ).toBe(false);
     expect(panel.applyQuote(null)).toBe(false);
-    expect(panel.content()).not.toContain("data-quote-type");
+    expect(panel.content()).not.toContain("data-layout-kind");
   });
 
   it("refuses a quote action in the raw view", async () => {
@@ -376,9 +396,13 @@ describe("EditPanel", () => {
     panel.setMode("raw");
 
     expect(
-      panel.applyQuote({ quote_type: "reading", paragraph_ids: ["p-1"], paragraph_indexes: [0] }),
+      panel.applyQuote({
+        layout: { kind: "quoted", variant: "reading" },
+        paragraph_ids: ["p-1"],
+        paragraph_indexes: [0],
+      }),
     ).toBe(false);
-    expect(panel.content()).not.toContain("data-quote-type");
+    expect(panel.content()).not.toContain("data-layout-kind");
   });
 
   it("notifies onSelectionChange when the selection changes or another chapter loads", async () => {

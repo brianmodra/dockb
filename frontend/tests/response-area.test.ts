@@ -133,7 +133,7 @@ function sampleContext(overrides: Partial<SelectionContext> = {}): SelectionCont
     text: "Rain fell on the plain.",
     paragraphIds: ["p1"],
     paragraphIndexes: [0],
-    quoteType: "",
+    layout: { kind: "normal", variant: "" },
     start: { paragraphId: "p1", paragraphIndex: 0, sentenceIndex: 0, offset: 0 },
     end: { paragraphId: "p1", paragraphIndex: 0, sentenceIndex: 0, offset: 23 },
     ...overrides,
@@ -151,7 +151,7 @@ describe("selectionActionObjects", () => {
           label: "Quote read",
           function: "quote",
           args: {
-            quote_type: "reading",
+            layout: { kind: "quoted", variant: "reading" },
             paragraph_ids: ["p1"],
             paragraph_indexes: [0],
             start: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 0 },
@@ -165,7 +165,7 @@ describe("selectionActionObjects", () => {
           label: "Quote written",
           function: "quote",
           args: {
-            quote_type: "writing",
+            layout: { kind: "quoted", variant: "writing" },
             paragraph_ids: ["p1"],
             paragraph_indexes: [0],
             start: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 0 },
@@ -178,7 +178,7 @@ describe("selectionActionObjects", () => {
   });
 
   it("offers Remove quote and Quote written when the text is quoted as read", () => {
-    const objects = selectionActionObjects(sampleContext({ quoteType: "reading" }));
+    const objects = selectionActionObjects(sampleContext({ layout: { kind: "quoted", variant: "reading" } }));
 
     expect(objects[0]).toEqual({
       text: 'What do you want to do with this quoted as read text: "Rain fell on the plain."',
@@ -187,14 +187,16 @@ describe("selectionActionObjects", () => {
       "Remove quote",
       "Quote written",
     ]);
-    expect(objects.slice(1).map((item) => (item.button?.args as { quote_type: string }).quote_type)).toEqual([
-      "",
-      "writing",
+    expect(
+      objects.slice(1).map((item) => (item.button?.args as { layout: unknown }).layout),
+    ).toEqual([
+      { kind: "normal", variant: "" },
+      { kind: "quoted", variant: "writing" },
     ]);
   });
 
   it("offers Remove quote and Quote read when the text is quoted as written", () => {
-    const objects = selectionActionObjects(sampleContext({ quoteType: "writing" }));
+    const objects = selectionActionObjects(sampleContext({ layout: { kind: "quoted", variant: "writing" } }));
 
     expect(objects[0]).toEqual({
       text: 'What do you want to do with this quoted as written text: "Rain fell on the plain."',
@@ -203,9 +205,11 @@ describe("selectionActionObjects", () => {
       "Remove quote",
       "Quote read",
     ]);
-    expect(objects.slice(1).map((item) => (item.button?.args as { quote_type: string }).quote_type)).toEqual([
-      "",
-      "reading",
+    expect(
+      objects.slice(1).map((item) => (item.button?.args as { layout: unknown }).layout),
+    ).toEqual([
+      { kind: "normal", variant: "" },
+      { kind: "quoted", variant: "reading" },
     ]);
   });
 

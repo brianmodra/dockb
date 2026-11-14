@@ -23,8 +23,8 @@ def _token(text: str) -> Token:
     return Token(text=text, trailing_ws=" ", state=DataState.SYNC)
 
 
-def _paragraph(par_id: str, text: str, quote_type: str = "") -> Paragraph:
-    paragraph = Paragraph(id=par_id, quote_type=quote_type, state=DataState.SYNC)
+def _paragraph(par_id: str, text: str, layout_kind: str = "normal", layout_variant: str = "") -> Paragraph:
+    paragraph = Paragraph(id=par_id, layout_kind=layout_kind, layout_variant=layout_variant, state=DataState.SYNC)
     sentence = Sentence(state=DataState.SYNC)
     for word in text.split():
         sentence.tokens.append(_token(word))
@@ -36,7 +36,7 @@ def _document() -> Document:
     document = Document(id="d1", state=DataState.SYNC)
     chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
     chapter.paragraphs.append(_paragraph("p1", "The murder was discovered at dawn."))
-    chapter.paragraphs.append(_paragraph("p2", "Kiral inspected the study.", quote_type="reading"))
+    chapter.paragraphs.append(_paragraph("p2", "Kiral inspected the study.", layout_kind="quoted", layout_variant="reading"))
     chapter.paragraphs.append(_paragraph("p3", "Nothing else moved."))
     document.chapters.append(chapter)
     return document
@@ -164,7 +164,8 @@ class _StubSearchRepo:
 
 _ROW = {
     "id": "p1",
-    "quote_type": "reading",
+    "layout_kind": "quoted",
+    "layout_variant": "reading",
     "index": 0,
     "chapter_id": "c1",
     "chapter_title": "Opening 1",
@@ -191,7 +192,7 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
     assert found[0]["chapter_title"] == "Opening 1"
     assert found[0]["index"] == 0
     assert found[0]["chapter_index"] == 3
-    assert found[0]["quote_type"] == "reading"
+    assert found[0]["layout"] == {"kind": "quoted", "variant": "reading"}
     assert found[0]["sentences"] == [{"id": "s1", "index": 0, "text": "The murder was discovered at dawn."}]
     # the search's own sentence is marked, so the model can name it in a button
     assert found[0]["matched_sentence_ids"] == ["s1"]
@@ -211,7 +212,8 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
 def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
     multi = {
         "id": "p2",
-        "quote_type": "",
+        "layout_kind": "normal",
+        "layout_variant": "",
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
@@ -266,7 +268,8 @@ def test_find_paragraphs_marks_every_sentence_the_criteria_selects() -> None:
 def test_find_paragraphs_marks_a_sentence_whose_text_leaf_is_a_substring() -> None:
     multi = {
         "id": "p2",
-        "quote_type": "",
+        "layout_kind": "normal",
+        "layout_variant": "",
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
@@ -291,7 +294,8 @@ def test_find_paragraphs_marks_the_sentences_the_search_terms_select() -> None:
     """Character leaves are paragraph-wide: the search's own words pick the sentences."""
     multi = {
         "id": "p2",
-        "quote_type": "",
+        "layout_kind": "normal",
+        "layout_variant": "",
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
@@ -326,7 +330,8 @@ def test_find_paragraphs_marks_the_sentences_the_search_terms_select() -> None:
 def test_find_paragraphs_marks_no_sentence_when_only_characters_were_searched() -> None:
     multi = {
         "id": "p2",
-        "quote_type": "",
+        "layout_kind": "normal",
+        "layout_variant": "",
         "index": 1,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",

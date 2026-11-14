@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart. The body wraps every paragraph in an identity span; a paragraph may also carry a quote type on its span (`data-quote-type`), which reads and writes exactly like the id — an attribute, never text. The header (front matter) carries a character chapter's name parts and a manuscript chapter's point-of-view character by title.
+This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart. The body wraps every paragraph in an identity span; a paragraph may also carry a layout on its span (`data-layout-kind` plus `data-layout-variant` for a quote), which reads and writes exactly like the id — attributes, never text. A legacy `data-quote-type` is still read. The header (front matter) carries a character chapter's name parts and a manuscript chapter's point-of-view character by title.
 
 It does not talk to the database. Whoever calls it loads the chapter first, then asks this package to read or write the text.
 
@@ -71,11 +71,13 @@ Rendering rules:
 - Every paragraph is exactly one `<span data-par-id>` element. The newlines
   after the open tag and before the close tag are structural, not content; the
   parser strips them.
-- A paragraph with a quote type (`Paragraph.quote_type`, e.g. `reading` or
-  `writing`) writes its `data-quote-type` on that span; a paragraph without one
-  writes no attribute, so an unquoted paragraph renders byte-for-byte as it did
-  before quotes existed. The reader takes the quote from the first
-  `data-par-id` span of the block.
+- A quoted paragraph (`layout_kind="quoted"`, `layout_variant` `reading` or
+  `writing`) writes both `data-layout-kind="quoted"` and
+  `data-layout-variant` on that span; a normal paragraph writes neither
+  attribute, so an unquoted paragraph renders byte-for-byte as it did before
+  layouts existed. The reader takes the layout from the first `data-par-id`
+  span of the block and still accepts a legacy `data-quote-type` (`reading` or
+  `writing` maps to a quoted layout; absent or empty maps to normal).
 - A paragraph with sentences emits one rstripped sentence per line.
 - A paragraph without sentences, and a `dirty` chapter's blank-line block, is
   wrapped as raw text in a **fresh-id** span (a paragraph id is never reused);

@@ -39,7 +39,7 @@ def paragraph_payload(paragraph: Paragraph, index: int, chapter_id: str, chapter
         "index": index,
         "chapter_id": chapter_id,
         "chapter_title": chapter_title,
-        "quote_type": paragraph.quote_type,
+        "layout": {"kind": paragraph.layout_kind, "variant": paragraph.layout_variant},
         "sentences": [sentence_payload(sentence, order) for order, sentence in enumerate(paragraph.sentences)],
     }
 

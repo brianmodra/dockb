@@ -82,7 +82,8 @@ class TestMatchParagraphs:
         session.run.return_value = [
             {
                 "id": "p1",
-                "quote_type": "reading",
+                "layout_kind": "quoted",
+                "layout_variant": "reading",
                 "index": 0,
                 "chapter_id": "c1",
                 "chapter_title": "Opening 1",
@@ -96,7 +97,8 @@ class TestMatchParagraphs:
         assert rows == [
             {
                 "id": "p1",
-                "quote_type": "reading",
+                "layout_kind": "quoted",
+                "layout_variant": "reading",
                 "index": 0,
                 "chapter_id": "c1",
                 "chapter_title": "Opening 1",

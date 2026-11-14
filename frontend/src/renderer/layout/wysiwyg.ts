@@ -18,15 +18,50 @@ const insertHardBreak: Command = (state, dispatch) => {
   return true;
 };
 
+export type LayoutKind = "normal" | "quoted";
+export type LayoutVariant = "" | "reading" | "writing";
+
+export interface ParagraphLayout {
+  kind: LayoutKind;
+  variant: LayoutVariant;
+}
+
+export const NORMAL_LAYOUT: ParagraphLayout = { kind: "normal", variant: "" };
+
+/** Whether *value* is a layout the model would accept: quoted needs a variant. */
+export function isParagraphLayout(value: unknown): value is ParagraphLayout {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const layout = value as Record<string, unknown>;
+  if (layout.kind === "normal") {
+    return layout.variant === "";
+  }
+  return layout.kind === "quoted" && (layout.variant === "reading" || layout.variant === "writing");
+}
+
 const schema = new Schema({
   nodes: {
     doc: { content: "paragraph+" },
     paragraph: {
       content: "inline*",
-      attrs: { blanksBefore: { default: 0 }, id: { default: null }, quoteType: { default: "" } },
+      attrs: {
+        blanksBefore: { default: 0 },
+        id: { default: null },
+        layoutKind: { default: "normal" },
+        layoutVariant: { default: "" },
+      },
       toDOM: (node) =>
-        node.attrs.quoteType
-          ? ["p", { class: "quoted", "data-quote-type": node.attrs.quoteType }, 0]
+        node.attrs.layoutKind === "quoted"
+          ? [
+              "p",
+              {
+                class: "quoted",
+                "data-layout-kind": node.attrs.layoutKind,
+                "data-layout-variant": node.attrs.layoutVariant,
+              },
+              0,
+            ]
           : ["p", 0],
     },
     text: { group: "inline" },
@@ -67,7 +102,29 @@ export function escapeHtml(text: string): string {
 
 interface SpanAttrs {
   ids: Array<string | null>;
-  quoteTypes: Array<string | null>;
+  layouts: Array<ParagraphLayout | null>;
+}
+
+/** Read a span's layout, accepting legacy `data-quote-type` as final fallback. */
+function layoutFromAttributes(attrs: string): ParagraphLayout | null {
+  const kind = attrs.match(/\bdata-layout-kind="([^"]*)"/);
+  const variant = attrs.match(/\bdata-layout-variant="([^"]*)"/);
+  if (kind || variant) {
+    const layout = {
+      kind: unescapeHtml(kind?.[1] ?? "normal"),
+      variant: unescapeHtml(variant?.[1] ?? ""),
+    };
+    return isParagraphLayout(layout) ? layout : null;
+  }
+  const legacy = attrs.match(/\bdata-quote-type="([^"]*)"/);
+  if (!legacy) {
+    return null;
+  }
+  const type = unescapeHtml(legacy[1]);
+  if (type === "reading" || type === "writing") {
+    return { kind: "quoted", variant: type };
+  }
+  return type === "" ? NORMAL_LAYOUT : null;
 }
 
 function extractSpanAttrs(buffer: string): SpanAttrs {
@@ -75,33 +132,44 @@ function extractSpanAttrs(buffer: string): SpanAttrs {
   const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
   const body = hadFrontMatter ? withoutFrontMatter.replace(/^\n/, "") : withoutFrontMatter;
   const ids: Array<string | null> = [];
-  const quoteTypes: Array<string | null> = [];
+  const layouts: Array<ParagraphLayout | null> = [];
   body.split("\n\n").forEach((block) => {
     const open = block.match(/<span\b([^>]*)>/);
     if (!open) {
       ids.push(null);
-      quoteTypes.push(null);
+      layouts.push(null);
       return;
     }
     const attr = open[1].match(/\bdata-par-id="([^"]*)"/);
     ids.push(attr ? unescapeHtml(attr[1]) : null);
-    const quote = open[1].match(/\bdata-quote-type="([^"]*)"/);
-    quoteTypes.push(quote ? unescapeHtml(quote[1]) : null);
+    layouts.push(layoutFromAttributes(open[1]));
   });
-  return { ids, quoteTypes };
+  return { ids, layouts };
 }
 
-/** The per-paragraph quote types of *doc*, in order — the dirty check's comparison. */
+function layoutKey(layout: ParagraphLayout): string {
+  return `${layout.kind}\u241E${layout.variant}`;
+}
+
+function layoutOf(paragraph: Node): ParagraphLayout {
+  const layout = {
+    kind: paragraph.attrs.layoutKind ?? "normal",
+    variant: paragraph.attrs.layoutVariant ?? "",
+  };
+  return isParagraphLayout(layout) ? layout : NORMAL_LAYOUT;
+}
+
+/** The per-paragraph layouts of *doc*, in order — the dirty check's comparison. */
 function signatureFromDoc(doc: Node): string {
   const types: string[] = [];
-  doc.forEach((paragraph) => types.push(paragraph.attrs.quoteType ?? ""));
+  doc.forEach((paragraph) => types.push(layoutKey(layoutOf(paragraph))));
   return types.join("\u241F");
 }
 
-/** The canonical *buffer*'s per-paragraph quote types, in order — see `WysiwygView.quoteSignature`. */
-export function quoteSignatureOf(buffer: string): string {
-  const { ids, quoteTypes } = extractSpanAttrs(buffer);
-  return signatureFromDoc(bufferToDocWithIds(chapterBody(buffer), ids, quoteTypes));
+/** The canonical *buffer*'s per-paragraph layouts, in order — see `WysiwygView.layoutSignature`. */
+export function layoutSignatureOf(buffer: string): string {
+  const { ids, layouts } = extractSpanAttrs(buffer);
+  return signatureFromDoc(bufferToDocWithIds(chapterBody(buffer), ids, layouts));
 }
 
 export function chapterBody(buffer: string): string {
@@ -200,18 +268,35 @@ export function bufferToDoc(body: string) {
   return bufferToDocWithIds(body, []);
 }
 
-export function bufferToDocWithIds(body: string, ids: Array<string | null>, quoteTypes: Array<string | null> = []) {
+export function bufferToDocWithIds(
+  body: string,
+  ids: Array<string | null>,
+  layouts: Array<ParagraphLayout | null> = [],
+) {
   const blocks = parseBodyBlocks(body);
   const paragraphs =
     blocks.length > 0
-      ? blocks.map((block, index) =>
-          schema.node(
+      ? blocks.map((block, index) => {
+          const layout = layouts[index] ?? NORMAL_LAYOUT;
+          return schema.node(
             "paragraph",
-            { blanksBefore: block.blanksBefore, id: ids[index] ?? null, quoteType: quoteTypes[index] ?? "" },
+            {
+              blanksBefore: block.blanksBefore,
+              id: ids[index] ?? null,
+              layoutKind: layout.kind,
+              layoutVariant: layout.variant,
+            },
             paragraphContent(block),
-          ),
-        )
-      : [schema.node("paragraph", { blanksBefore: 0, id: null, quoteType: "" })];
+          );
+        })
+      : [
+          schema.node("paragraph", {
+            blanksBefore: 0,
+            id: null,
+            layoutKind: NORMAL_LAYOUT.kind,
+            layoutVariant: NORMAL_LAYOUT.variant,
+          }),
+        ];
   return schema.node("doc", {}, paragraphs);
 }
 
@@ -263,7 +348,10 @@ export function docToCanonical(doc: Node): string {
       }
     }
     const lines = serializeParagraph(paragraph);
-    const quote = paragraph.attrs.quoteType ? ` data-quote-type="${escapeHtml(paragraph.attrs.quoteType)}"` : "";
+    const quote =
+      paragraph.attrs.layoutKind === "quoted"
+        ? ` data-layout-kind="quoted" data-layout-variant="${escapeHtml(paragraph.attrs.layoutVariant)}"`
+        : "";
     const body =
       id !== null
         ? `<span data-par-id="${escapeHtml(id)}"${quote}>\n${escapeHtml(lines)}\n</span>`
@@ -390,7 +478,7 @@ export interface SelectionContext {
   text: string;
   paragraphIds: Array<string | null>;
   paragraphIndexes: number[];
-  quoteType: string;
+  layout: ParagraphLayout;
   start: SelectionPoint;
   end: SelectionPoint;
 }
@@ -659,12 +747,13 @@ export class WysiwygView {
     }
     const startSpan = this.paragraphAt(spans, from) ?? touched[0];
     const endSpan = this.paragraphAt(spans, to) ?? touched[touched.length - 1];
-    const quoteTypes = touched.map((span) => span.node.attrs.quoteType ?? "");
+    const layouts = touched.map((span) => layoutOf(span.node));
+    const first = layoutKey(layouts[0]);
     return {
       text: doc.textBetween(from, to, " "),
       paragraphIds: touched.map((span) => span.node.attrs.id ?? null),
       paragraphIndexes: touched.map((span) => span.index),
-      quoteType: quoteTypes.every((type) => type === quoteTypes[0]) ? quoteTypes[0] : "",
+      layout: layouts.every((layout) => layoutKey(layout) === first) ? layouts[0] : NORMAL_LAYOUT,
       start: this.selectionPoint(startSpan, from),
       end: this.selectionPoint(endSpan, to),
     };
@@ -696,15 +785,15 @@ export class WysiwygView {
   }
 
   /**
-   * Set the quote type of the paragraphs named by *ids* (falling back to
-   * *indexes* when an id is null, as on a paragraph not yet saved), in one
-   * transaction. A paragraph that has no id gains one now, because the quote
-   * type lives in the canonical span.
+   * Set the layout of the paragraphs named by *ids* (falling back to *indexes*
+   * when an id is null, as on a paragraph not yet saved), in one transaction. A
+   * paragraph that has no id gains one now, because the layout lives in the
+   * canonical span.
    */
-  setQuoteTypeByIds(
+  setLayoutByIds(
     ids: Array<string | null>,
     indexes: number[],
-    quoteType: string,
+    layout: ParagraphLayout,
   ): boolean {
     if (!this.innerView || ids.length === 0) {
       return false;
@@ -738,7 +827,8 @@ export class WysiwygView {
       }
       tr.setNodeMarkup(pos, null, {
         id: node.attrs.id ?? crypto.randomUUID(),
-        quoteType,
+        layoutKind: layout.kind,
+        layoutVariant: layout.variant,
         blanksBefore: node.attrs.blanksBefore,
       });
     });
@@ -747,13 +837,13 @@ export class WysiwygView {
   }
 
   setContent(buffer: string): void {
-    const { ids, quoteTypes } = extractSpanAttrs(buffer);
+    const { ids, layouts } = extractSpanAttrs(buffer);
     const display = chapterBody(buffer);
     this.lastFrontMatter = buffer.match(FRONT_MATTER_RE)?.[0] ?? null;
     if (!this.innerView) {
       const state = EditorState.create({
         schema,
-        doc: bufferToDocWithIds(display, ids, quoteTypes),
+        doc: bufferToDocWithIds(display, ids, layouts),
         plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
       });
       this.innerView = new EditorView(this.element, {
@@ -777,7 +867,7 @@ export class WysiwygView {
     this.innerView.updateState(
       EditorState.create({
         schema,
-        doc: bufferToDocWithIds(display, ids, quoteTypes),
+        doc: bufferToDocWithIds(display, ids, layouts),
         plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
       }),
     );
@@ -794,12 +884,12 @@ export class WysiwygView {
   }
 
   /**
-   * The open doc's per-paragraph quote types, in order.
+   * The open doc's per-paragraph layouts, in order.
    *
    * `plainContent()` cannot see them — they are node attributes, not text —
    * so the dirty check reads this beside it.
    */
-  quoteSignature(): string {
+  layoutSignature(): string {
     if (!this.innerView) {
       return "";
     }

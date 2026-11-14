@@ -6,7 +6,7 @@ This module renders interactive prompts and answers inside the message panel's r
 serves three flows through the same strip and function registry: the model's structured reply to a
 chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
 sentences; the editor's own prompt when the writer right-clicks selected text, which offers
-buttons to mark or clear the touched paragraphs' quote type; and the corrections for a
+buttons to mark or clear the touched paragraphs' layout; and the corrections for a
 right-clicked proofreading squiggle, which offer its replacements and Add to dictionary. In every
 flow, outside or selected text never enters the DOM as markup, and each button passes plain-data
 arguments to a registered editor function. Any new right-click menu belongs here too, in the
@@ -88,10 +88,13 @@ staying put.
 Right-clicking selected WYSIWYG text reuses the response strip to ask what to do with the
 selection (`unquoted`, `quoted as read`, or `quoted as written`, with a 40-character snippet) and
 shows the two buttons from `Remove quote`, `Quote read`, and `Quote written` that would change it.
-Because the button click happens later, `quote` identifies the paragraphs by their canonical ids
-(falling back to their document-order index when an unsaved paragraph has no id yet, so merely
-right-clicking never dirties the buffer) rather than by document positions that an intervening edit
-would shift. Choosing a button applies the quote type in one transaction and clears the strip;
+Each button's args carry the target `layout` as `{ kind, variant }`, so a quoted paragraph is always
+`kind: "quoted"` with a `reading`/`writing` variant and an unquoted one is `{ kind: "normal",
+variant: "" }`. Because the button click happens later, `quote` identifies the paragraphs by their
+canonical ids (falling back to their document-order index when an unsaved paragraph has no id yet,
+so merely right-clicking never dirties the buffer) rather than by document positions that an
+intervening edit would shift. Choosing a button applies the layout in one transaction and clears
+the strip;
 changing the selection or loading another chapter while the quote prompt is open clears the strip
 as well, while an AI reply in the strip stays open across chapter loads and highlights.
 

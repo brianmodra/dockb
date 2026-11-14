@@ -476,7 +476,7 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
         assert ch is not None
         assert ch.act == "Act I"
 
-    def test_loads_paragraph_quote_type_from_graph(self, chapter_repo, neo4j_session):
+    def test_loads_paragraph_layout_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
             {
                 "chapter_id": "ch-1",
@@ -485,7 +485,8 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
                 "chapter_category": "Chapter",
                 "paragraph_id": "p-1",
                 "paragraph_index": 0,
-                "paragraph_quote_type": "reading",
+                "paragraph_layout_kind": "quoted",
+                "paragraph_layout_variant": "reading",
                 "sentence_id": None,
                 "sentence_index": None,
                 "token_id": None,
@@ -503,7 +504,7 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
         ]
         ch = chapter_repo.load("ch-1", _OWNER)
         assert ch is not None
-        assert ch.paragraphs[0].quote_type == "reading"
+        assert (ch.paragraphs[0].layout_kind, ch.paragraphs[0].layout_variant) == ("quoted", "reading")
 
     def test_loads_category_from_graph(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [
@@ -722,7 +723,8 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
                 "chapter_pov": None,
                 "paragraph_id": None,
                 "paragraph_index": None,
-                "paragraph_quote_type": None,
+                "paragraph_layout_kind": None,
+                "paragraph_layout_variant": None,
                 "sentence_id": None,
                 "sentence_index": None,
                 "token_id": None,

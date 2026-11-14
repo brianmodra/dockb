@@ -1,7 +1,9 @@
 import pytest
+from pydantic import ValidationError
 
 from dockb.exceptions import TokenInvalidError
 from dockb.models.base import DataState
+from dockb.models.formatting import Family, Style, Weight
 from dockb.models.token import POS, Token, Type
 from dockb.models.utils.dockb_collection import InsertionMode
 
@@ -488,3 +490,40 @@ def test_set_text_on_sync_token_changes_state_to_changed(token):
     token.state = DataState.SYNC
     token.set_text("Hello")
     assert token.state == DataState.CHANGED
+
+
+def test_formatting_defaults_to_unset():
+    token = Token()
+    assert token.style is Style._
+    assert token.weight is Weight._
+    assert token.family is Family._
+    assert token.size == ""
+    assert token.format_key() == (Style._, Weight._, Family._, "")
+
+
+def test_explicit_normal_differs_from_unset():
+    token = Token(style=Style.NORMAL, weight=Weight.NORMAL, family=Family.NORMAL)
+    assert token.style is Style.NORMAL
+    assert token.format_key() != (Style._, Weight._, Family._, "")
+
+
+def test_format_key_groups_by_all_four_attributes():
+    token = Token(style=Style.ITALIC, weight=Weight.BOLD, family=Family.MONOSPACE, size="2em")
+    assert token.format_key() == (Style.ITALIC, Weight.BOLD, Family.MONOSPACE, "2em")
+
+
+@pytest.mark.parametrize("size", ["0.5em", "1em", "2em", "12.25em"])
+def test_size_accepts_positive_em_values(size):
+    assert Token(size=size).size == size
+
+
+@pytest.mark.parametrize("size", ["0em", "0.0em", "-1em", "1", "em", "1.5", "1 px", "1EM", "1rem"])
+def test_size_rejects_invalid_values(size):
+    with pytest.raises(ValidationError):
+        Token(size=size)
+
+
+def test_set_text_preserves_formatting():
+    token = Token(style=Style.ITALIC, weight=Weight.BOLD, family=Family.MONOSPACE, size="2em")
+    token.set_text("Hello")
+    assert token.format_key() == (Style.ITALIC, Weight.BOLD, Family.MONOSPACE, "2em")

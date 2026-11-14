@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
+from dockb.models.formatting import FormatRun
 from dockb.models.token import Token
 from dockb.models.utils.dockb_collection import DockbCollection, DockbModelBase, InsertionMode
 
@@ -18,6 +19,16 @@ class Sentence(DockbModel):
     """
 
     tokens: DockbCollection[Token] = Field(default_factory=DockbCollection)
+    _format_runs: list[FormatRun] = PrivateAttr(default_factory=list)
+
+    @property
+    def format_runs(self) -> list[FormatRun]:
+        """Transient formatting runs, consumed when tokens are built."""
+        return self._format_runs
+
+    @format_runs.setter
+    def format_runs(self, value: list[FormatRun]) -> None:
+        self._format_runs = value
 
     def get_text(self) -> str:
         if self.dirty:

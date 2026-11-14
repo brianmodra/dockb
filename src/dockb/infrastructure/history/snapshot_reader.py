@@ -10,8 +10,9 @@ from pathlib import Path
 from spacy.language import Language
 
 from dockb.exceptions import ChapterMismatchError, SnapshotError
-from dockb.infrastructure.markdown import front_matter
+from dockb.infrastructure.markdown import front_matter, layout
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import LayoutKind, LayoutVariant
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 
@@ -86,6 +87,8 @@ class SnapshotReader:
 
         parts: list[str] = []
         paragraph_id: str | None = None
+        layout_kind: LayoutKind = "normal"
+        layout_variant: LayoutVariant = ""
         position = 0
         for match in matches:
             parts.append(text[position : match.start()])
@@ -93,14 +96,22 @@ class SnapshotReader:
             par_id = self._span_attr(tag, "data-par-id")
             if paragraph_id is None and par_id:
                 paragraph_id = par_id
+                layout_kind, layout_variant = layout.parse_layout(
+                    self._span_attr(tag, layout.LAYOUT_KIND_ATTR),
+                    self._span_attr(tag, layout.LAYOUT_VARIANT_ATTR),
+                    self._span_attr(tag, layout.LEGACY_QUOTE_ATTR),
+                )
             parts.append(html.unescape(match.group(2)).strip("\n"))
             position = match.end()
         parts.append(text[position:])
         paragraph_text = "".join(parts)
 
         if paragraph_id is None:
-            return Paragraph(), self._split_sentences(paragraph_text)
-        return Paragraph(id=paragraph_id), self._split_sentences(paragraph_text)
+            return Paragraph(layout_kind=layout_kind, layout_variant=layout_variant), self._split_sentences(paragraph_text)
+        return (
+            Paragraph(id=paragraph_id, layout_kind=layout_kind, layout_variant=layout_variant),
+            self._split_sentences(paragraph_text),
+        )
 
     @staticmethod
     def _span_attr(tag: str, name: str) -> str | None:

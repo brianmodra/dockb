@@ -113,8 +113,8 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
   and reporting failures to it.
 - `editPanel.ts` / `wysiwyg.ts` — CodeMirror raw and ProseMirror WYSIWYG views
   of the same canonical buffer; dirty = buffer vs last canonical, where the
-  quote types count too (  `quoteSignature`), so a quote-only change is still
-  saved. The canonical side's signature is read from the same paragraphs the
+  paragraph layouts count too (`layoutSignature`), so a quote-only change is
+  still saved. The canonical side's signature is read from the same paragraphs the
   loaded doc has — a file's trailing newline shows as an empty final paragraph
   there too — so a freshly loaded writer-canonical file is clean and switching
   chapters does not save it. Right-clicking a proofreading squiggle hands the
@@ -123,7 +123,9 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
   the selection's context to the same strip to offer quote actions for the
   touched paragraphs (see `layout/README_response_area.md`), while an empty
   selection leaves the browser menu alone; a quoted paragraph renders indented
-  (`4ch`) and its span carries `data-quote-type` in the canonical text. While a save
+  (`4ch`) and its span carries `data-layout-kind="quoted"` and
+  `data-layout-variant` in the canonical text (legacy `data-quote-type` is still
+  read). While a save
   or load is in flight the panel is greyed (`is-busy`) and frozen: clicks turn
   away, both editors read contenteditable=false, and focus leaves the buffer,
   until the operation completes or fails. The raw view

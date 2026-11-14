@@ -8,8 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from dockb.infrastructure.markdown import front_matter
+from dockb.infrastructure.markdown import front_matter, layout
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import LayoutKind, LayoutVariant
 from dockb.models.paragraph import Paragraph
 
 _SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
@@ -17,11 +18,12 @@ _SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
 
 @dataclass
 class ChangedParagraph:
-    """A paragraph present on both sides whose text or quote type differs."""
+    """A paragraph present on both sides whose text or layout differs."""
 
     par_id: str
     text: str
-    quote_type: str = ""
+    layout_kind: LayoutKind = "normal"
+    layout_variant: LayoutVariant = ""
 
 
 @dataclass
@@ -31,7 +33,8 @@ class NewParagraph:
     text: str
     after_id: str | None = None
     at_start: bool = False
-    quote_type: str = ""
+    layout_kind: LayoutKind = "normal"
+    layout_variant: LayoutVariant = ""
 
 
 @dataclass
@@ -100,8 +103,8 @@ def detect_changes(  # pylint: disable=too-many-locals
         created = True
 
     old_texts = {paragraph.id: _old_texts(paragraph) for paragraph in old_chapter.paragraphs}
-    old_quotes = {paragraph.id: paragraph.quote_type for paragraph in old_chapter.paragraphs}
-    changed, new, seen_ids = _classify_blocks(body, old_texts, old_quotes, bool(old_chapter.paragraphs), single_newline_paragraphs)
+    old_layouts = {paragraph.id: (paragraph.layout_kind, paragraph.layout_variant) for paragraph in old_chapter.paragraphs}
+    changed, new, seen_ids = _classify_blocks(body, old_texts, old_layouts, bool(old_chapter.paragraphs), single_newline_paragraphs)
 
     return ChapterDiff(
         changed=changed,
@@ -120,7 +123,7 @@ def detect_changes(  # pylint: disable=too-many-locals
 def _classify_blocks(
     body: str,
     old_texts: dict[str, str],
-    old_quotes: dict[str, str],
+    old_layouts: dict[str, tuple[LayoutKind, LayoutVariant]],
     chapter_has_paragraphs: bool,
     single_newline_paragraphs: bool,
 ) -> tuple[list[ChangedParagraph], list[NewParagraph], set[str]]:
@@ -130,8 +133,8 @@ def _classify_blocks(
     changed paragraph); consecutive new blocks all carry the same anchor, and a
     leading-new block is flagged ``at_start`` only when the old chapter already
     has paragraphs (so placement at the start matters). A paragraph whose text
-    is unchanged but whose span's ``data-quote-type`` differs from the old
-    side's counts as changed too — the quote lives beside the text.
+    is unchanged but whose span's layout differs from the old side's counts as
+    changed too — the layout lives beside the text.
     """
     changed: list[ChangedParagraph] = []
     new: list[NewParagraph] = []
@@ -140,7 +143,7 @@ def _classify_blocks(
     for block in _paragraph_blocks(body, single_newline_paragraphs):
         if not block:
             continue
-        par_id, quote_type, text = _parse_block(block)
+        par_id, layout_kind, layout_variant, text = _parse_block(block)
         if not text.strip():
             if par_id is not None:
                 seen_ids.add(par_id)
@@ -151,12 +154,14 @@ def _classify_blocks(
                     text,
                     after_id=anchor,
                     at_start=anchor is None and chapter_has_paragraphs,
-                    quote_type=quote_type,
+                    layout_kind=layout_kind,
+                    layout_variant=layout_variant,
                 )
             )
         else:
-            if text != old_texts[par_id] or quote_type != old_quotes.get(par_id, ""):
-                changed.append(ChangedParagraph(par_id, text, quote_type))
+            old_layout = old_layouts.get(par_id, ("normal", ""))
+            if text != old_texts[par_id] or (layout_kind, layout_variant) != old_layout:
+                changed.append(ChangedParagraph(par_id, text, layout_kind, layout_variant))
             anchor = par_id
         if par_id is not None:
             seen_ids.add(par_id)
@@ -202,25 +207,26 @@ def _paragraph_blocks(body: str, single_newline: bool) -> list[str]:
     return blocks
 
 
-def _parse_block(block: str) -> tuple[str | None, str, str]:
-    """Parse one paragraph block into ``(par_id, quote_type, text)``.
+def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str]:
+    """Parse one paragraph block into ``(par_id, layout_kind, layout_variant, text)``.
 
     One identity span usually wraps the whole paragraph; its inner text minus the
     structural newlines after the open tag and before the close tag is the
-    paragraph text, and its ``data-quote-type`` attribute — when present — is the
-    paragraph's quote. Loose text before, between, and after spans is kept at its
-    position, so hand-typed content appended after the closing span still belongs
-    to the same paragraph.
+    paragraph text, and its layout attributes — when present — are the
+    paragraph's layout. A legacy ``data-quote-type`` is accepted. Loose text
+    before, between, and after spans is kept at its position, so hand-typed
+    content appended after the closing span still belongs to the same paragraph.
     """
     matches = list(_SPAN_RE.finditer(block))
     if not matches:
-        return None, "", block
+        return None, "normal", "", block
     if len(matches) == 1 and not _span_attr(matches[0].group(1), "data-par-id"):
-        return None, "", block
+        return None, "normal", "", block
 
     parts: list[str] = []
     par_id: str | None = None
-    quote_type = ""
+    layout_kind: LayoutKind = "normal"
+    layout_variant: LayoutVariant = ""
     position = 0
     for match in matches:
         parts.append(block[position : match.start()])
@@ -228,14 +234,18 @@ def _parse_block(block: str) -> tuple[str | None, str, str]:
         span_par_id = _span_attr(tag, "data-par-id")
         if par_id is None and span_par_id:
             par_id = span_par_id
-            quote_type = _span_attr(tag, "data-quote-type") or ""
+            layout_kind, layout_variant = layout.parse_layout(
+                _span_attr(tag, layout.LAYOUT_KIND_ATTR),
+                _span_attr(tag, layout.LAYOUT_VARIANT_ATTR),
+                _span_attr(tag, layout.LEGACY_QUOTE_ATTR),
+            )
         parts.append(html.unescape(match.group(2)).strip("\n"))
         position = match.end()
     parts.append(block[position:])
 
     if par_id is None:
-        return None, "", "".join(parts)
-    return par_id, quote_type, "".join(parts)
+        return None, "normal", "", "".join(parts)
+    return par_id, layout_kind, layout_variant, "".join(parts)
 
 
 def _span_attr(tag: str, name: str) -> str | None:

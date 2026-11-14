@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr, model_validator
 
+from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant
 from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import DockbCollection, DockbModelBase, InsertionMode
 
@@ -14,9 +15,28 @@ class Paragraph(DockbModel):
     """A paragraph containing a list of sentences."""
 
     sentences: DockbCollection[Sentence] = Field(default_factory=DockbCollection)
-    # Empty when the paragraph is not a quote; otherwise the quote's type name
-    # ("reading", "writing"), as the canonical span's data-quote-type attribute.
-    quote_type: str = ""
+    layout_kind: LayoutKind = "normal"
+    layout_variant: LayoutVariant = ""
+    _format_runs: list[FormatRun] = PrivateAttr(default_factory=list)
+
+    @model_validator(mode="after")
+    def layout_is_consistent(self) -> Paragraph:
+        """Require a variant exactly when the paragraph is quoted."""
+        if self.layout_kind == "quoted":
+            if self.layout_variant not in ("reading", "writing"):
+                raise ValueError("a quoted paragraph needs a 'reading' or 'writing' variant")
+        elif self.layout_variant:
+            raise ValueError("a normal paragraph must not have a layout variant")
+        return self
+
+    @property
+    def format_runs(self) -> list[FormatRun]:
+        """Transient formatting runs, consumed when sentences are hydrated."""
+        return self._format_runs
+
+    @format_runs.setter
+    def format_runs(self, value: list[FormatRun]) -> None:
+        self._format_runs = value
 
     def get_text(self) -> str:
         if self.dirty:

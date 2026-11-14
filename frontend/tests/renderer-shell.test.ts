@@ -350,7 +350,9 @@ describe("renderer shell", () => {
     quoteRead.click();
 
     expect(
-      document.querySelector("[data-testid='wysiwyg-view'] p.quoted[data-quote-type='reading']"),
+      document.querySelector(
+        "[data-testid='wysiwyg-view'] p.quoted[data-layout-kind='quoted'][data-layout-variant='reading']",
+      ),
     ).not.toBeNull();
     expect(area.hidden).toBe(true);
 

@@ -37,7 +37,7 @@ WITH c, rc, p, rp, text, sentences, checked,
      [r IN rels WHERE NOT r.stale | r.cid] AS valid,
      any(r IN rels WHERE r.stale) AS hasStale
 WHERE %s
-RETURN p.id AS id, p.quote_type AS quote_type, rp.index AS index,
+RETURN p.id AS id, p.layout_kind AS layout_kind, p.layout_variant AS layout_variant, rp.index AS index,
        c.id AS chapter_id, c.title AS chapter_title, rc.index AS chapter_index,
        sentences
 ORDER BY chapter_index, index
@@ -117,7 +117,8 @@ class ParagraphSearchRepository:
         return [
             {
                 "id": str(record["id"]),
-                "quote_type": str(record.get("quote_type") or ""),
+                "layout_kind": str(record.get("layout_kind") or "normal"),
+                "layout_variant": str(record.get("layout_variant") or ""),
                 "index": int(record.get("index") or 0),
                 "chapter_id": str(record["chapter_id"]),
                 "chapter_title": str(record.get("chapter_title") or ""),

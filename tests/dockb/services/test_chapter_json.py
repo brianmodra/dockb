@@ -19,7 +19,7 @@ def _sentence(*token_texts: str) -> Sentence:
 
 def _chapter() -> Chapter:
     chapter = Chapter(id="c1", title="Opening 1", act="Act I", state=DataState.SYNC)
-    quoted = Paragraph(id="p1", quote_type="reading", state=DataState.SYNC)
+    quoted = Paragraph(id="p1", layout_kind="quoted", layout_variant="reading", state=DataState.SYNC)
     quoted.sentences.append(_sentence("Hello", "world."))
     plain = Paragraph(id="p2", state=DataState.SYNC)
     plain.sentences.append(_sentence("Second", "sentence."))
@@ -40,8 +40,8 @@ def test_paragraphs_carry_their_properties_and_references() -> None:
     assert [p["index"] for p in paragraphs] == [0, 1]
     assert all(p["chapter_id"] == "c1" for p in paragraphs)
     assert all(p["chapter_title"] == "Opening 1" for p in paragraphs)
-    assert paragraphs[0]["quote_type"] == "reading"
-    assert paragraphs[1]["quote_type"] == ""
+    assert paragraphs[0]["layout"] == {"kind": "quoted", "variant": "reading"}
+    assert paragraphs[1]["layout"] == {"kind": "normal", "variant": ""}
 
 
 def test_sentences_carry_their_properties_and_canonical_text() -> None:

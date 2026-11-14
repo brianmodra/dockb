@@ -5,7 +5,10 @@ from __future__ import annotations
 import string
 from enum import Enum
 
+from pydantic import field_validator
+
 from dockb.exceptions import TokenInvalidError
+from dockb.models.formatting import Family, Style, Weight, validate_size
 from dockb.models.utils.dockb_collection import DockbModelBase, InsertionMode
 
 from .base import DockbModel
@@ -57,6 +60,20 @@ class Token(DockbModel):  # pylint: disable=too-many-instance-attributes
     is_stop: bool = False
     lemma: str = ""
     pos: POS = POS._
+    style: Style = Style._
+    weight: Weight = Weight._
+    family: Family = Family._
+    size: str = ""
+
+    @field_validator("size")
+    @classmethod
+    def size_is_valid(cls, value: str) -> str:
+        """Reject a size that is not a positive ``em`` length."""
+        return validate_size(value)
+
+    def format_key(self) -> tuple[Style, Weight, Family, str]:
+        """Return the attributes that group consecutive tokens for rendering."""
+        return (self.style, self.weight, self.family, self.size)
 
     def get_text(self) -> str:
         return self.text

@@ -52,7 +52,8 @@ class _StubSearchRepo:
 def _murder_row() -> dict[str, Any]:
     return {
         "id": "p1",
-        "quote_type": "reading",
+        "layout_kind": "quoted",
+        "layout_variant": "reading",
         "index": 0,
         "chapter_id": "c1",
         "chapter_title": "Opening 1",
@@ -64,7 +65,7 @@ def _murder_row() -> dict[str, Any]:
 def _chapter_document() -> Document:
     document = Document(id="d1", state=DataState.SYNC)
     chapter = Chapter(id="c1", title="Opening 1", state=DataState.SYNC)
-    paragraph = Paragraph(id="p1", quote_type="reading", state=DataState.SYNC)
+    paragraph = Paragraph(id="p1", layout_kind="quoted", layout_variant="reading", state=DataState.SYNC)
     sentence = Sentence(state=DataState.SYNC)
     for word in ("The", "murder", "was", "discovered."):
         sentence.tokens.append(Token(text=word, trailing_ws=" ", state=DataState.SYNC))
