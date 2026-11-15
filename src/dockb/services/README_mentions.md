@@ -109,7 +109,9 @@ searches.
 
 Matches come back in reading order: `chapter_index` is the chapter's position
 in the document and `index` the paragraph's position within it, and every row
-carries both.
+carries both, plus `mentions` — the titles of the characters whose valid,
+stale-free MENTIONS verdicts name the paragraph, so the caller can treat the
+people as if they were written into the text.
 
 ## 6. Phase 2 work for later
 

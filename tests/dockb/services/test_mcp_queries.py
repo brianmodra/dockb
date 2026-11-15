@@ -171,6 +171,7 @@ _ROW = {
     "chapter_title": "Opening 1",
     "chapter_index": 3,
     "sentences": [{"id": "s1", "text": "The murder was discovered at dawn."}],
+    "mentions": ["Karakas"],
 }
 
 
@@ -194,6 +195,8 @@ def test_find_paragraphs_returns_the_querys_rows_as_payloads() -> None:
     assert found[0]["chapter_index"] == 3
     assert found[0]["layout"] == {"kind": "quoted", "variant": "reading"}
     assert found[0]["sentences"] == [{"id": "s1", "index": 0, "text": "The murder was discovered at dawn."}]
+    # the paragraph's mentioned characters ride along, as names the reader would see
+    assert found[0]["mentions"] == ["Karakas"]
     # the search's own sentence is marked, so the model can name it in a button
     assert found[0]["matched_sentence_ids"] == ["s1"]
     assert found[0]["matched_sentence_indexes"] == [0]

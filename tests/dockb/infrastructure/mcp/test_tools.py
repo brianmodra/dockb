@@ -59,6 +59,7 @@ def _murder_row() -> dict[str, Any]:
         "chapter_title": "Opening 1",
         "chapter_index": 4,
         "sentences": [{"id": "s1", "text": "The murder was discovered."}],
+        "mentions": ["Karakas"],
     }
 
 
@@ -387,6 +388,7 @@ async def test_find_paragraphs_answers_the_selection(repos) -> None:
     assert paragraphs[0]["id"] == "p1"
     assert paragraphs[0]["chapter_id"] == "c1"
     assert paragraphs[0]["chapter_index"] == 4
+    assert paragraphs[0]["mentions"] == ["Karakas"]
 
     await mcp.call_tool(
         "find_paragraphs",

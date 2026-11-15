@@ -32,14 +32,15 @@ WITH c, rc, p, rp, sentences,
        CASE WHEN i = 0 THEN sentences[i].text ELSE txt + "\\n" + sentences[i].text END) AS text
 OPTIONAL MATCH (p)-[m:MENTIONS]->(target:Chapter)
 WITH c, rc, p, rp, text, sentences, p.mentions_checked_at AS checked,
-     collect({cid: target.id, stale: coalesce(m.stale, false)}) AS rels
+     collect({cid: target.id, title: target.title, stale: coalesce(m.stale, false)}) AS rels
 WITH c, rc, p, rp, text, sentences, checked,
      [r IN rels WHERE NOT r.stale | r.cid] AS valid,
+     [r IN rels WHERE NOT r.stale AND r.title IS NOT NULL | r.title] AS mentions,
      any(r IN rels WHERE r.stale) AS hasStale
 WHERE %s
 RETURN p.id AS id, p.layout_kind AS layout_kind, p.layout_variant AS layout_variant, rp.index AS index,
        c.id AS chapter_id, c.title AS chapter_title, rc.index AS chapter_index,
-       sentences
+       mentions, sentences
 ORDER BY chapter_index, index
 """
 
@@ -123,6 +124,7 @@ class ParagraphSearchRepository:
                 "chapter_id": str(record["chapter_id"]),
                 "chapter_title": str(record.get("chapter_title") or ""),
                 "chapter_index": int(record.get("chapter_index") or 0),
+                "mentions": list(record.get("mentions") or []),
                 "sentences": [
                     {"id": str(sentence["id"]), "text": str(sentence.get("text") or "")} for sentence in (record.get("sentences") or [])
                 ],

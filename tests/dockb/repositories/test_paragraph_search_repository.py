@@ -88,6 +88,7 @@ class TestMatchParagraphs:
                 "chapter_id": "c1",
                 "chapter_title": "Opening 1",
                 "chapter_index": 0,
+                "mentions": ["Karakas"],
                 "sentences": [{"id": "s1", "text": "The murder was discovered."}],
             }
         ]
@@ -103,6 +104,7 @@ class TestMatchParagraphs:
                 "chapter_id": "c1",
                 "chapter_title": "Opening 1",
                 "chapter_index": 0,
+                "mentions": ["Karakas"],
                 "sentences": [{"id": "s1", "text": "The murder was discovered."}],
             }
         ]

@@ -182,6 +182,7 @@ def _row_payload(row: dict[str, Any], criteria: Criterion) -> dict[str, object]:
         "chapter_index": row["chapter_index"],
         "layout": {"kind": row["layout_kind"], "variant": row["layout_variant"]},
         "sentences": [{"id": sentence["id"], "index": order, "text": sentence["text"]} for order, sentence in enumerate(row["sentences"])],
+        "mentions": row.get("mentions") or [],
         "matched_sentence_ids": _marked_sentence_ids(criteria, row["sentences"]),
         "matched_sentence_indexes": _marked_sentence_indexes(criteria, row["sentences"]),
     }
