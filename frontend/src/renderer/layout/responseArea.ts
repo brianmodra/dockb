@@ -1,5 +1,12 @@
 import { createSpinner } from "./spinner";
-import { NORMAL_LAYOUT, type ParagraphLayout, type SelectionContext, type WysiwygDiagnostic } from "./wysiwyg";
+import {
+  NORMAL_LAYOUT,
+  UNSET_FORMAT,
+  type FormatPatch,
+  type ParagraphLayout,
+  type SelectionContext,
+  type WysiwygDiagnostic,
+} from "./wysiwyg";
 
 export const PROOFREADING_REPLACE_FUNCTION = "proofreading-replace";
 export const PROOFREADING_ADD_WORD_FUNCTION = "proofreading-add-word";
@@ -71,6 +78,16 @@ const LAYOUT_CHOICES: ReadonlyArray<{ layout: ParagraphLayout; label: string }> 
   { layout: { kind: "quoted", variant: "writing" }, label: "Quote written" },
 ];
 
+const FORMAT_CHOICES: ReadonlyArray<{ patch: FormatPatch; label: string }> = [
+  { patch: { style: "italic" }, label: "Italic" },
+  { patch: { weight: "bold" }, label: "Bold" },
+  { patch: { style: "underline" }, label: "Underline" },
+  { patch: { family: "monospace" }, label: "Monospace" },
+  { patch: { style: "", weight: "", family: "", size: "" }, label: "Clear formatting" },
+];
+
+const FORMAT_KEYS: ReadonlyArray<keyof FormatPatch> = ["style", "weight", "family", "size"];
+
 function layoutStateLabel(layout: ParagraphLayout): string {
   if (layout.kind === "quoted") {
     return layout.variant === "reading" ? "quoted as read" : "quoted as written";
@@ -122,9 +139,21 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
       },
     },
   }));
+  const formatButtons: ResponseObject[] = FORMAT_CHOICES.map((choice) => ({
+    button: {
+      label: choice.label,
+      function: "format",
+      args: { changes: choice.patch },
+    },
+  }));
+  const format = context.format ?? UNSET_FORMAT;
+  const formatting = FORMAT_KEYS.map((key) => format[key]).filter(Boolean);
+  const formatState = formatting.length > 0 ? formatting.join(", ") : "unformatted";
   return [
     { text: `What do you want to do with this ${state} text: "${snippet}"` },
+    { text: `Formatting: ${formatState}` },
     ...buttons,
+    ...formatButtons,
   ];
 }
 

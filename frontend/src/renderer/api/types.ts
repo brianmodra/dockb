@@ -69,9 +69,24 @@ export interface ChapterNodeAttrs {
   category?: "Chapter" | "Character";
 }
 
+export interface FormatMarkAttrs {
+  style: "" | "italic" | "underline" | "normal";
+  weight: "" | "bold" | "normal";
+  family: "" | "monospace" | "normal";
+  size: string;
+}
+
+export interface FormatMark {
+  type: "format";
+  attrs: FormatMarkAttrs;
+}
+
+export type Mark = FormatMark;
+
 export interface TextNode {
   type: "text";
   text: string;
+  marks?: Mark[];
 }
 
 export interface SentenceNode {
@@ -80,9 +95,14 @@ export interface SentenceNode {
   content: TextNode[];
 }
 
+export interface ParagraphLayout {
+  kind: "normal" | "quoted";
+  variant: "" | "reading" | "writing";
+}
+
 export interface ParagraphNode {
   type: "paragraph";
-  attrs: { id: string | null };
+  attrs: { id: string | null; layout?: ParagraphLayout };
   content: SentenceNode[];
 }
 

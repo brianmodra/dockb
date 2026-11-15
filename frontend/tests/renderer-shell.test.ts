@@ -342,7 +342,15 @@ describe("renderer shell", () => {
     const buttons = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map(
       (el) => el.textContent,
     );
-    expect(buttons).toEqual(["Quote read", "Quote written"]);
+    expect(buttons).toEqual([
+      "Quote read",
+      "Quote written",
+      "Italic",
+      "Bold",
+      "Underline",
+      "Monospace",
+      "Clear formatting",
+    ]);
 
     const quoteRead = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
       (el) => el.textContent === "Quote read",
@@ -366,7 +374,15 @@ describe("renderer shell", () => {
     const nextButtons = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map(
       (el) => el.textContent,
     );
-    expect(nextButtons).toEqual(["Remove quote", "Quote written"]);
+    expect(nextButtons).toEqual([
+      "Remove quote",
+      "Quote written",
+      "Italic",
+      "Bold",
+      "Underline",
+      "Monospace",
+      "Clear formatting",
+    ]);
 
     const removeQuote = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
       (el) => el.textContent === "Remove quote",

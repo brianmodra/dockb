@@ -144,36 +144,26 @@ describe("selectionActionObjects", () => {
   it("offers Quote read and Quote written for unquoted text", () => {
     const objects = selectionActionObjects(sampleContext());
 
-    expect(objects).toEqual([
-      { text: 'What do you want to do with this unquoted text: "Rain fell on the plain."' },
-      {
-        button: {
-          label: "Quote read",
-          function: "quote",
-          args: {
-            layout: { kind: "quoted", variant: "reading" },
-            paragraph_ids: ["p1"],
-            paragraph_indexes: [0],
-            start: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 0 },
-            end: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 23 },
-            text: "Rain fell on the plain.",
-          },
-        },
-      },
-      {
-        button: {
-          label: "Quote written",
-          function: "quote",
-          args: {
-            layout: { kind: "quoted", variant: "writing" },
-            paragraph_ids: ["p1"],
-            paragraph_indexes: [0],
-            start: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 0 },
-            end: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 23 },
-            text: "Rain fell on the plain.",
-          },
-        },
-      },
+    expect(objects[0]).toEqual({
+      text: 'What do you want to do with this unquoted text: "Rain fell on the plain."',
+    });
+    expect(objects[1]).toEqual({ text: "Formatting: unformatted" });
+    const quotes = objects.filter((item) => item.button?.function === "quote");
+    expect(quotes.map((item) => item.button?.label)).toEqual(["Quote read", "Quote written"]);
+    expect(quotes[0].button?.args).toEqual({
+      layout: { kind: "quoted", variant: "reading" },
+      paragraph_ids: ["p1"],
+      paragraph_indexes: [0],
+      start: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 0 },
+      end: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 23 },
+      text: "Rain fell on the plain.",
+    });
+    expect(objects.filter((item) => item.button?.function === "format").map((item) => item.button?.label)).toEqual([
+      "Italic",
+      "Bold",
+      "Underline",
+      "Monospace",
+      "Clear formatting",
     ]);
   });
 
@@ -183,12 +173,12 @@ describe("selectionActionObjects", () => {
     expect(objects[0]).toEqual({
       text: 'What do you want to do with this quoted as read text: "Rain fell on the plain."',
     });
-    expect(objects.slice(1).map((item) => item.button?.label)).toEqual([
+    expect(objects.filter((item) => item.button?.function === "quote").map((item) => item.button?.label)).toEqual([
       "Remove quote",
       "Quote written",
     ]);
     expect(
-      objects.slice(1).map((item) => (item.button?.args as { layout: unknown }).layout),
+      objects.filter((item) => item.button?.function === "quote").map((item) => (item.button?.args as { layout: unknown }).layout),
     ).toEqual([
       { kind: "normal", variant: "" },
       { kind: "quoted", variant: "writing" },
@@ -201,12 +191,12 @@ describe("selectionActionObjects", () => {
     expect(objects[0]).toEqual({
       text: 'What do you want to do with this quoted as written text: "Rain fell on the plain."',
     });
-    expect(objects.slice(1).map((item) => item.button?.label)).toEqual([
+    expect(objects.filter((item) => item.button?.function === "quote").map((item) => item.button?.label)).toEqual([
       "Remove quote",
       "Quote read",
     ]);
     expect(
-      objects.slice(1).map((item) => (item.button?.args as { layout: unknown }).layout),
+      objects.filter((item) => item.button?.function === "quote").map((item) => (item.button?.args as { layout: unknown }).layout),
     ).toEqual([
       { kind: "normal", variant: "" },
       { kind: "quoted", variant: "reading" },
@@ -224,7 +214,8 @@ describe("selectionActionObjects", () => {
     expect(objects[0]).toEqual({
       text: `What do you want to do with this unquoted text: "${forty}…"`,
     });
-    expect((objects[1].button?.args as { text: string }).text).toBe(longer);
+    const quote = objects.find((item) => item.button?.function === "quote");
+    expect((quote!.button?.args as { text: string }).text).toBe(longer);
   });
 });
 

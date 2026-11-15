@@ -732,3 +732,42 @@ describe("WysiwygView proofreading", () => {
     expect(view.element.querySelector(".proofreading-warning")?.textContent).toBe("teh");
   });
 });
+describe("inline formatting", () => {
+  it("parses nested style spans into format marks", () => {
+    const buffer = '<span data-par-id="p1">\nHello <span style="font-style: italic">wide </span>world.\n</span>';
+    const doc = bufferToDocWithIds(buffer, ["p1"]);
+    const paragraph = doc.child(0);
+    const children: Array<{ text: string; marks: string[] }> = [];
+    paragraph.forEach((node) => {
+      if (node.isText && node.text) {
+        children.push({ text: node.text, marks: node.marks.map((mark) => mark.type.name) });
+      }
+    });
+    expect(children).toContainEqual({ text: "wide ", marks: ["format"] });
+  });
+
+  it("combines nested style spans", () => {
+    const buffer =
+      '<span data-par-id="p1">\n<span style="font-style: italic">it <span style="font-weight: bold">both</span></span> plain.\n</span>';
+    const canonical = docToCanonical(bufferToDocWithIds(buffer, ["p1"]));
+    expect(canonical).toContain('<span style="font-style: italic">it </span>');
+    expect(canonical).toContain('<span style="font-style: italic; font-weight: bold">both</span>');
+  });
+
+  it("round-trips formatting spans through canonical markdown", () => {
+    const buffer =
+      '<span data-par-id="p1">\nHello <span style="font-style: italic; font-weight: bold">wide </span>world.\n</span>';
+    expect(docToCanonical(bufferToDocWithIds(buffer, ["p1"]))).toBe(buffer);
+  });
+
+  it("applies a formatting patch to the current selection", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent('<span data-par-id="p1">\nHello world.\n</span>');
+    select(view, 1, 6);
+
+    expect(view.applyFormat({ weight: "bold" })).toBe(true);
+    expect(view.content()).toContain('<span style="font-weight: bold">Hello</span>');
+    expect(view.selectionContext()!.format.weight).toBe("bold");
+  });
+});

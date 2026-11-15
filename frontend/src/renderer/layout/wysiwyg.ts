@@ -28,6 +28,21 @@ export interface ParagraphLayout {
 
 export const NORMAL_LAYOUT: ParagraphLayout = { kind: "normal", variant: "" };
 
+export type FormatStyle = "" | "italic" | "underline" | "normal";
+export type FormatWeight = "" | "bold" | "normal";
+export type FormatFamily = "" | "monospace" | "normal";
+
+export interface FormatAttrs {
+  style: FormatStyle;
+  weight: FormatWeight;
+  family: FormatFamily;
+  size: string;
+}
+
+export type FormatPatch = Partial<FormatAttrs>;
+
+export const UNSET_FORMAT: FormatAttrs = { style: "", weight: "", family: "", size: "" };
+
 /** Whether *value* is a layout the model would accept: quoted needs a variant. */
 export function isParagraphLayout(value: unknown): value is ParagraphLayout {
   if (typeof value !== "object" || value === null) {
@@ -69,10 +84,20 @@ const schema = new Schema({
   },
   marks: {
     sentenceBreak: { toDOM: () => ["span", { class: "wysiwyg-sb" }] },
+    format: {
+      attrs: {
+        style: { default: "" },
+        weight: { default: "" },
+        family: { default: "" },
+        size: { default: "" },
+      },
+      toDOM: (mark) => ["span", { style: formatCss(mark.attrs as FormatAttrs) }],
+    },
   },
 });
 
 const SENTENCE_BREAK = "sentenceBreak";
+const FORMAT = "format";
 
 const FRONT_MATTER_RE = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
 const SPAN_TAG_RE = /<\/?span(\s[^>]*)?>/g;
@@ -89,6 +114,54 @@ const ENTITIES: Record<string, string> = {
 
 export function unescapeHtml(text: string): string {
   return text.replace(/&(amp|lt|gt|quot|#x27|#39);/g, (match) => ENTITIES[match] ?? match);
+}
+
+function formatCss(attrs: FormatAttrs): string {
+  const declarations: string[] = [];
+  if (attrs.style) declarations.push(`font-style: ${attrs.style}`);
+  if (attrs.weight) declarations.push(`font-weight: ${attrs.weight}`);
+  if (attrs.family) declarations.push(`font-family: ${attrs.family}`);
+  if (attrs.size) declarations.push(`font-size: ${attrs.size}`);
+  return declarations.join("; ");
+}
+
+function formatKey(attrs: FormatAttrs): string {
+  return `${attrs.style}\u241E${attrs.weight}\u241E${attrs.family}\u241E${attrs.size}`;
+}
+
+function hasFormat(attrs: FormatAttrs): boolean {
+  return Boolean(attrs.style || attrs.weight || attrs.family || attrs.size);
+}
+
+function formatFromStyle(style: string): FormatAttrs {
+  const attrs: FormatAttrs = { ...UNSET_FORMAT };
+  style.split(";").forEach((declaration) => {
+    const [rawName, rawValue] = declaration.split(":", 2);
+    if (rawValue === undefined) return;
+    const name = rawName.trim().toLowerCase();
+    const value = rawValue.trim();
+    if (name === "font-style" && (value === "italic" || value === "underline" || value === "normal")) {
+      attrs.style = value;
+    } else if (name === "font-weight" && (value === "bold" || value === "normal")) {
+      attrs.weight = value;
+    } else if (name === "font-family" && (value === "monospace" || value === "normal")) {
+      attrs.family = value;
+    } else if (name === "font-size" && /^\d+(\.\d+)?em$/.test(value) && Number.parseFloat(value) > 0) {
+      attrs.size = value;
+    }
+  });
+  return attrs;
+}
+
+function formatFromAttributes(attrs: string): FormatAttrs | null {
+  const style = attrs.match(/\bstyle="([^"]*)"/);
+  if (!style) return null;
+  const parsed = formatFromStyle(unescapeHtml(style[1]));
+  return hasFormat(parsed) ? parsed : null;
+}
+
+function markFormat(attrs: FormatAttrs): FormatAttrs {
+  return { ...attrs };
 }
 
 export function escapeHtml(text: string): string {
@@ -172,6 +245,16 @@ export function layoutSignatureOf(buffer: string): string {
   return signatureFromDoc(bufferToDocWithIds(chapterBody(buffer), ids, layouts));
 }
 
+function bodyWithoutFrontMatter(buffer: string): string {
+  const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
+  const body = buffer.replace(FRONT_MATTER_RE, "");
+  return hadFrontMatter ? body.replace(/^\n/, "") : body;
+}
+
+export function editorBody(buffer: string): string {
+  return bodyWithoutFrontMatter(buffer);
+}
+
 export function chapterBody(buffer: string): string {
   const hadFrontMatter = FRONT_MATTER_RE.test(buffer);
   const withoutFrontMatter = buffer.replace(FRONT_MATTER_RE, "");
@@ -245,19 +328,87 @@ function parseBodyBlocks(body: string): BodyBlock[] {
   return blocks;
 }
 
+interface TextSegment {
+  text: string;
+  format: FormatAttrs | null;
+}
+
+function appendSegment(segments: TextSegment[], text: string, format: FormatAttrs | null): void {
+  if (!text) return;
+  const previous = segments[segments.length - 1];
+  if (previous && formatKey(previous.format ?? UNSET_FORMAT) === formatKey(format ?? UNSET_FORMAT)) {
+    previous.text += text;
+  } else {
+    segments.push({ text, format });
+  }
+}
+
+function parseLine(line: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  const stack: FormatAttrs[] = [];
+  const tag = /<span\b([^>]*)>|<\/span>/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tag.exec(line)) !== null) {
+    appendSegment(segments, unescapeHtml(line.slice(cursor, match.index)), stack[stack.length - 1] ?? null);
+    if (match[0].startsWith("</")) {
+      stack.pop();
+    } else {
+      const format = formatFromAttributes(match[1]);
+      if (format) {
+        const merged = { ...(stack[stack.length - 1] ?? UNSET_FORMAT) };
+        if (format.style) merged.style = format.style;
+        if (format.weight) merged.weight = format.weight;
+        if (format.family) merged.family = format.family;
+        if (format.size) merged.size = format.size;
+        stack.push(merged);
+      }
+    }
+    cursor = tag.lastIndex;
+  }
+  appendSegment(segments, unescapeHtml(line.slice(cursor)), stack[stack.length - 1] ?? null);
+  return segments;
+}
+
+function trimSegmentsEnd(segments: TextSegment[]): TextSegment[] {
+  const trimmed = segments.map((segment) => ({ ...segment }));
+  const last = trimmed[trimmed.length - 1];
+  if (last) last.text = last.text.replace(/[ \t]+$/, "");
+  return trimmed.filter((segment) => segment.text !== "");
+}
+
+function lineContent(line: string): { segments: TextSegment[]; hardBreak: boolean } {
+  const segments = trimSegmentsEnd(parseLine(line));
+  const visible = segments.map((segment) => segment.text).join("");
+  if (!visible.endsWith("\\")) return { segments, hardBreak: false };
+  const withoutBreak = segments.map((segment) => ({ ...segment }));
+  const last = withoutBreak[withoutBreak.length - 1];
+  if (last) last.text = last.text.slice(0, -1);
+  return { segments: withoutBreak.filter((segment) => segment.text !== ""), hardBreak: true };
+}
+
+function segmentsToNodes(segments: TextSegment[]): Node[] {
+  return segments
+    .filter((segment) => segment.text)
+    .map((segment) =>
+      schema.text(
+        segment.text,
+        segment.format ? [schema.mark(FORMAT, markFormat(segment.format))] : [],
+      ),
+    );
+}
+
 function paragraphContent(block: BodyBlock): Node[] {
   const content: Node[] = [];
-  block.lines.forEach((line, index) => {
-    const trimmed = line.replace(/[ \t]+$/, "");
-    const escaped = trimmed.endsWith("\\");
-    const text = escaped ? trimmed.slice(0, -1) : trimmed;
-    if (text) {
-      content.push(schema.text(text));
-    }
-    const isLast = index === block.lines.length - 1;
-    if (escaped) {
+  const lines = block.lines.filter((line) => !PURE_SPAN_LINE_RE.test(line));
+  lines.forEach((line, index) => {
+    const { segments, hardBreak } = lineContent(line);
+    content.push(...segmentsToNodes(segments));
+    if (hardBreak) {
       content.push(schema.node("hardBreak"));
-    } else if (!isLast) {
+      return;
+    }
+    if (index < lines.length - 1) {
       content.push(schema.text(" ", [schema.mark(SENTENCE_BREAK)]));
     }
   });
@@ -300,23 +451,51 @@ export function bufferToDocWithIds(
   return schema.node("doc", {}, paragraphs);
 }
 
-function serializeParagraph(paragraph: Node): string {
+function formatOfNode(node: Node): FormatAttrs | null {
+  const mark = node.marks.find((candidate) => candidate.type.name === FORMAT);
+  if (!mark) return null;
+  return {
+    style: mark.attrs.style ?? "",
+    weight: mark.attrs.weight ?? "",
+    family: mark.attrs.family ?? "",
+    size: mark.attrs.size ?? "",
+  };
+}
+
+function segmentsToMarkdown(segments: TextSegment[], escapeText = true): string {
+  const parts: string[] = [];
+  segments.forEach((segment) => {
+    const text = escapeText ? escapeHtml(segment.text) : segment.text;
+    if (!segment.format || !hasFormat(segment.format)) {
+      parts.push(text);
+    } else {
+      parts.push(`<span style="${escapeHtml(formatCss(segment.format))}">${text}</span>`);
+    }
+  });
+  return parts.join("");
+}
+
+function serializeParagraph(paragraph: Node, escapeText = true): string {
   const sentences: string[] = [];
-  let pending = "";
+  let pending: TextSegment[] = [];
+  const flush = (suffix = ""): void => {
+    const trimmed = trimSegmentsEnd(pending);
+    if (suffix) appendSegment(trimmed, suffix, null);
+    sentences.push(segmentsToMarkdown(trimmed, escapeText));
+    pending = [];
+  };
   paragraph.forEach((node) => {
     if (node.isText && node.text) {
       if (node.text === " " && node.marks.some((mark) => mark.type.name === SENTENCE_BREAK)) {
-        sentences.push(pending.replace(/[ \t]+$/, ""));
-        pending = "";
+        flush();
       } else {
-        pending += node.text;
+        appendSegment(pending, node.text, formatOfNode(node));
       }
     } else if (node.type.name === "hardBreak") {
-      sentences.push(pending.replace(/[ \t]+$/, "") + "\\");
-      pending = "";
+      flush("\\");
     }
   });
-  sentences.push(pending.replace(/[ \t]+$/, ""));
+  flush();
   return sentences.join("\n");
 }
 
@@ -347,14 +526,14 @@ export function docToCanonical(doc: Node): string {
         seen.add(id);
       }
     }
-    const lines = serializeParagraph(paragraph);
+    const lines = serializeParagraph(paragraph, id !== null);
     const quote =
       paragraph.attrs.layoutKind === "quoted"
         ? ` data-layout-kind="quoted" data-layout-variant="${escapeHtml(paragraph.attrs.layoutVariant)}"`
         : "";
     const body =
       id !== null
-        ? `<span data-par-id="${escapeHtml(id)}"${quote}>\n${escapeHtml(lines)}\n</span>`
+        ? `<span data-par-id="${escapeHtml(id)}"${quote}>\n${lines}\n</span>`
         : lines;
     parts.push("\n".repeat(separator) + body);
     isFirst = false;
@@ -479,6 +658,7 @@ export interface SelectionContext {
   paragraphIds: Array<string | null>;
   paragraphIndexes: number[];
   layout: ParagraphLayout;
+  format: FormatAttrs;
   start: SelectionPoint;
   end: SelectionPoint;
 }
@@ -751,12 +931,39 @@ export class WysiwygView {
     const first = layoutKey(layouts[0]);
     return {
       text: doc.textBetween(from, to, " "),
+      format: this.formatAt(from, to),
       paragraphIds: touched.map((span) => span.node.attrs.id ?? null),
       paragraphIndexes: touched.map((span) => span.index),
       layout: layouts.every((layout) => layoutKey(layout) === first) ? layouts[0] : NORMAL_LAYOUT,
       start: this.selectionPoint(startSpan, from),
       end: this.selectionPoint(endSpan, to),
     };
+  }
+
+  private formatAt(from: number, to: number): FormatAttrs {
+    let found: FormatAttrs | null = null;
+    this.innerView!.state.doc.nodesBetween(from, to, (node) => {
+      if (found === null && node.isText) found = formatOfNode(node);
+    });
+    return found ?? { ...UNSET_FORMAT };
+  }
+
+  /**
+   * Merge *patch* into every selected text node's formatting, one transaction.
+   * A patch that clears everything removes the mark.
+   */
+  applyFormat(patch: FormatPatch): boolean {
+    if (!this.innerView) return false;
+    const { from, to, empty } = this.innerView.state.selection;
+    if (empty || from >= to) return false;
+    const base = this.formatAt(from, to);
+    const attrs: FormatAttrs = { ...base, ...patch };
+    if (!hasFormat(attrs)) {
+      this.innerView.dispatch(this.innerView.state.tr.removeMark(from, to, schema.marks.format));
+      return true;
+    }
+    this.innerView.dispatch(this.innerView.state.tr.addMark(from, to, schema.mark(FORMAT, attrs)));
+    return true;
   }
 
   private paragraphAt(spans: ParagraphSpan[], pos: number): ParagraphSpan | null {
@@ -838,7 +1045,7 @@ export class WysiwygView {
 
   setContent(buffer: string): void {
     const { ids, layouts } = extractSpanAttrs(buffer);
-    const display = chapterBody(buffer);
+    const display = editorBody(buffer);
     this.lastFrontMatter = buffer.match(FRONT_MATTER_RE)?.[0] ?? null;
     if (!this.innerView) {
       const state = EditorState.create({

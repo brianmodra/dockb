@@ -120,12 +120,14 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
   chapters does not save it. Right-clicking a proofreading squiggle hands the
   diagnostic to the response strip to offer its corrections before the quote
   actions; right-clicking selected text hands
-  the selection's context to the same strip to offer quote actions for the
-  touched paragraphs (see `layout/README_response_area.md`), while an empty
-  selection leaves the browser menu alone; a quoted paragraph renders indented
-  (`4ch`) and its span carries `data-layout-kind="quoted"` and
+  the selection's context to the same strip to offer quote and formatting
+  actions for the selection (see `layout/README_response_area.md`), while an
+  empty selection leaves the browser menu alone; a quoted paragraph renders
+  indented (`4ch`) and its span carries `data-layout-kind="quoted"` and
   `data-layout-variant` in the canonical text (legacy `data-quote-type` is still
-  read). While a save
+  read). Inline formatting is one ProseMirror `format` mark: the editor parses
+  nested `<span style>` runs into marks and writes merged marks back as spans,
+  while a fresh load keeps unformatted canonical text byte-identical. While a save
   or load is in flight the panel is greyed (`is-busy`) and frozen: clicks turn
   away, both editors read contenteditable=false, and focus leaves the buffer,
   until the operation completes or fails. The raw view

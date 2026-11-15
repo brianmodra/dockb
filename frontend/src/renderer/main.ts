@@ -71,6 +71,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   let runQuote: (rawArgs: unknown) => void = () => {};
+  let runFormat: (rawArgs: unknown) => void = () => {};
   let runReadonlyScroll: (rawArgs: unknown) => void = () => {};
   let loadDocumentMentions: (documentId: string) => void = () => {};
   let proofreading: ProofreadingController | null = null;
@@ -166,6 +167,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     responseFunctions: {
       highlight: (args) => void runHighlight(args),
       quote: (args) => runQuote(args),
+      format: (args) => runFormat(args),
       "readonly-scroll": (args) => runReadonlyScroll(args),
       [PROOFREADING_REPLACE_FUNCTION]: (args) => {
         const replacement =
@@ -356,6 +358,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       layout.cancelResponse();
       if (!editPanel || !editPanel.applyQuote(rawArgs)) {
         layout.pushMessage("Quoting works in WYSIWYG chapters.");
+      }
+    };
+
+    runFormat = (rawArgs: unknown): void => {
+      editorPromptOpen = false;
+      layout.cancelResponse();
+      if (!editPanel || !editPanel.applyFormat(rawArgs)) {
+        layout.pushMessage("Formatting works in WYSIWYG chapters.");
       }
     };
 

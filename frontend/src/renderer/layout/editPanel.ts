@@ -25,6 +25,7 @@ import {
   isParagraphLayout,
   layoutSignatureOf,
   type ProofreadingParagraph,
+  type FormatPatch,
   type SelectionContext,
   type WysiwygDiagnostic,
 } from "./wysiwyg";
@@ -224,6 +225,39 @@ export class EditPanel {
         )
       : [];
     return this.wysiwyg.setLayoutByIds(ids, indexes, layout);
+  }
+
+  /**
+   * Apply a formatting patch chosen from the response area to the current
+   * selection. The patch comes from outside the editor, so its values are
+   * checked before anything changes.
+   */
+  applyFormat(rawArgs: unknown): boolean {
+    if (this.mode !== "wysiwyg" || typeof rawArgs !== "object" || rawArgs === null) {
+      return false;
+    }
+    const changes = (rawArgs as Record<string, unknown>).changes;
+    if (typeof changes !== "object" || changes === null) {
+      return false;
+    }
+    const patch: FormatPatch = {};
+    for (const [key, value] of Object.entries(changes)) {
+      if (typeof value !== "string") {
+        return false;
+      }
+      if (key === "style" && (value === "" || value === "italic" || value === "underline" || value === "normal")) {
+        patch.style = value;
+      } else if (key === "weight" && (value === "" || value === "bold" || value === "normal")) {
+        patch.weight = value;
+      } else if (key === "family" && (value === "" || value === "monospace" || value === "normal")) {
+        patch.family = value;
+      } else if (key === "size" && (value === "" || /^\d+(\.\d+)?em$/.test(value))) {
+        patch.size = value;
+      } else {
+        return false;
+      }
+    }
+    return this.wysiwyg.applyFormat(patch);
   }
 
   setMode(mode: Mode): void {

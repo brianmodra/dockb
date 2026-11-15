@@ -6,8 +6,9 @@ This module renders interactive prompts and answers inside the message panel's r
 serves three flows through the same strip and function registry: the model's structured reply to a
 chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
 sentences; the editor's own prompt when the writer right-clicks selected text, which offers
-buttons to mark or clear the touched paragraphs' layout; and the corrections for a
-right-clicked proofreading squiggle, which offer its replacements and Add to dictionary. In every
+buttons to change the touched paragraphs' layout and the selection's inline formatting; and the
+corrections for a right-clicked proofreading squiggle, which offer its replacements and Add to
+dictionary. In every
 flow, outside or selected text never enters the DOM as markup, and each button passes plain-data
 arguments to a registered editor function. Any new right-click menu belongs here too, in the
 strip — never in a floating popover.
@@ -88,6 +89,8 @@ staying put.
 Right-clicking selected WYSIWYG text reuses the response strip to ask what to do with the
 selection (`unquoted`, `quoted as read`, or `quoted as written`, with a 40-character snippet) and
 shows the two buttons from `Remove quote`, `Quote read`, and `Quote written` that would change it.
+A second line reports the selection's current formatting, then the formatting buttons follow the
+quote buttons.
 Each button's args carry the target `layout` as `{ kind, variant }`, so a quoted paragraph is always
 `kind: "quoted"` with a `reading`/`writing` variant and an unquoted one is `{ kind: "normal",
 variant: "" }`. Because the button click happens later, `quote` identifies the paragraphs by their
@@ -97,6 +100,15 @@ intervening edit would shift. Choosing a button applies the layout in one transa
 the strip;
 changing the selection or loading another chapter while the quote prompt is open clears the strip
 as well, while an AI reply in the strip stays open across chapter loads and highlights.
+
+## `format` — selected-text formatting in the strip
+
+The same selected-text prompt offers **Italic**, **Bold**, **Underline**, **Monospace**, and
+**Clear formatting**. Each button's args are `{ changes }`, a partial `FormatAttrs` object
+(`style`, `weight`, `family`, `size`). The editor merges those changes into the selection's
+existing format and applies one `format` mark in one transaction; clearing every attribute removes
+the mark. `applyFormat` re-checks every value before touching the buffer, because the args come
+from the response strip as plain data, and refuses sizes that are not a positive `em` value.
 
 ## `proofreading-replace` / `proofreading-fix-pair` / `proofreading-add-word` — a squiggle's corrections in the strip
 
