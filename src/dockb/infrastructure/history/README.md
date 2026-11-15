@@ -68,10 +68,12 @@ Paragraph two first sentence.
   tag and before the close tag are structural, not content. Text that arrived
   without spans (hand-typed, legacy files, dirty chapters) is wrapped raw in a
   freshly generated-id span.
-- **Spans only mark identity.** The same span mechanism later carries any other
-  attribute the NLP layer derives (`data-triple` / `data-spo`, etc.), per the
-  markdown redesign. Only `data-par-id` is interpreted by the serializer and
-  parser today.
+- **The identity span can contain formatting spans.** Inline `<span style="…">`
+  elements nested inside the paragraph span carry token formatting; they never
+  end the paragraph span. The parser turns them into transient `FormatRun`s on
+  the paragraph and its sentences, and the serializer renders those runs when a
+  sentence has no tokens. Other attributes the NLP layer may derive
+  (`data-triple` / `data-spo`, etc.) are not interpreted today.
 - **Newlines join sentences, never sentence delimiters.** The canonical layout
   is one sentence per line inside the span; the parser keeps the inter-sentence
   newline as trailing whitespace of the previous sentence, so the paragraph
@@ -85,7 +87,9 @@ Paragraph two first sentence.
 
 Writing normalizes to the one-span-per-paragraph form; reading restores paragraph
 UUIDs from the spans, re-derives sentences with spaCy from the paragraph text,
-and falls back to a spaCy split (fresh UUIDs) for span-free blocks. Both directions
+and falls back to a spaCy split (fresh UUIDs) for span-free blocks. Formatting
+runs are sliced to each sentence, keeping the read model renderable without
+tokens. Both directions
 are idempotent, so paragraphs the caller
 did not change serialize unchanged — the minimal-diff property the rehydration
 loop relies on. Both classes take the same injected spaCy pipeline

@@ -6,7 +6,7 @@ import re
 
 from dockb.infrastructure.markdown import writer
 from dockb.models.chapter import Chapter
-from dockb.models.formatting import Family, Style, Weight
+from dockb.models.formatting import Family, FormatRun, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
@@ -126,6 +126,16 @@ class TestSerializeBody:
     def test_unformatted_output_stays_byte_identical(self, nlp):
         paragraph = _make_paragraph("Plain text.", p_id="p1")
         assert writer.serialize_body(_chapter(paragraph), nlp) == '<span data-par-id="p1">\nPlain text.\n</span>'
+
+    def test_falls_back_to_transient_runs_when_tokens_are_absent(self, nlp):
+        sentence = Sentence(text="Hello wide world.")
+        sentence.format_runs = [FormatRun(6, 11, style=Style.ITALIC)]
+        paragraph = Paragraph(id="p1")
+        paragraph.sentences.append(sentence)
+
+        body = writer.serialize_body(_chapter(paragraph), nlp)
+
+        assert body == ('<span data-par-id="p1">\n' 'Hello <span style="font-style: italic">wide </span>world.\n' "</span>")
 
     def test_html_escapes_sentence_text(self, nlp):
         chapter = _chapter(_make_paragraph('A <span> tag & "quotes".', p_id="p1"))

@@ -9,7 +9,7 @@ from spacy.language import Language
 
 from dockb.infrastructure.markdown import front_matter, layout, spans
 from dockb.models.chapter import Chapter
-from dockb.models.formatting import Family, LayoutKind, LayoutVariant, Style, Weight
+from dockb.models.formatting import Family, FormatRun, LayoutKind, LayoutVariant, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 
@@ -117,7 +117,7 @@ def _serialize_paragraph(paragraph: Paragraph) -> str:
 def _serialize_sentence(sentence: Sentence) -> str:
     """Serialize a sentence, wrapping runs of equally formatted tokens."""
     if not sentence.tokens:
-        return html.escape(sentence.get_text(), quote=True)
+        return _serialize_transient_runs(sentence.get_text(), sentence.format_runs)
     if not any(token.format_key() != (Style._, Weight._, Family._, "") for token in sentence.tokens):
         return html.escape(sentence.get_text(), quote=True)
     parts: list[str] = []
@@ -132,6 +132,22 @@ def _serialize_sentence(sentence: Sentence) -> str:
         buffer += token.text + token.trailing_ws
     if buffer:
         parts.append(_render_run(buffer, key))
+    return "".join(parts)
+
+
+def _serialize_transient_runs(text: str, runs: list[FormatRun]) -> str:
+    """Render text with formatting runs when it has no tokens to group."""
+    parts: list[str] = []
+    position = 0
+    for run in runs:
+        start = max(position, min(run.start, len(text)))
+        end = max(start, min(run.end, len(text)))
+        if start > position:
+            parts.append(html.escape(text[position:start], quote=True))
+        if end > start:
+            parts.append(_render_run(text[start:end], (run.style, run.weight, run.family, run.size)))
+        position = end
+    parts.append(html.escape(text[position:], quote=True))
     return "".join(parts)
 
 

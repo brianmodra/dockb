@@ -13,7 +13,7 @@ from dockb.exceptions import ChapterMismatchError, SnapshotError
 from dockb.infrastructure.markdown import front_matter, layout
 from dockb.infrastructure.markdown import spans as span_markup
 from dockb.models.chapter import Chapter
-from dockb.models.formatting import LayoutKind, LayoutVariant
+from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant, slice_runs
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 
@@ -70,7 +70,7 @@ class SnapshotReader:
 
         return chapter
 
-    def _parse_paragraph(self, text: str) -> tuple[Paragraph, list[Sentence]]:
+    def _parse_paragraph(self, text: str) -> tuple[Paragraph, list[Sentence]]:  # pylint: disable=too-many-locals
         """Parse one paragraph block into a Paragraph and its Sentences.
 
         The paragraph's UUID is restored from the ``data-par-id`` span attribute;
@@ -85,12 +85,16 @@ class SnapshotReader:
             return Paragraph(), self._split_sentences(text)
 
         parts: list[str] = []
+        runs: list[FormatRun] = []
+        length = 0
         paragraph_id: str | None = None
         layout_kind: LayoutKind = "normal"
         layout_variant: LayoutVariant = ""
         position = 0
         for match in matches:
-            parts.append(text[position : match.start])
+            loose = html.unescape(text[position : match.start])
+            parts.append(loose)
+            length += len(loose)
             tag = match.attrs
             par_id = self._span_attr(tag, "data-par-id")
             if paragraph_id is None and par_id:
@@ -100,17 +104,21 @@ class SnapshotReader:
                     self._span_attr(tag, layout.LAYOUT_VARIANT_ATTR),
                     self._span_attr(tag, layout.LEGACY_QUOTE_ATTR),
                 )
-            parts.append(span_markup.plain_text(match.inner).strip("\n"))
+            inner_text, inner_runs = span_markup.formatting_from_markup(match.inner.strip("\n"))
+            parts.append(inner_text)
+            runs.extend(span_markup.shift_runs(inner_runs, length))
+            length += len(inner_text)
             position = match.end
-        parts.append(text[position:])
+        parts.append(html.unescape(text[position:]))
         paragraph_text = "".join(parts)
+        runs = span_markup.merge_runs(runs)
 
         if paragraph_id is None:
-            return Paragraph(layout_kind=layout_kind, layout_variant=layout_variant), self._split_sentences(paragraph_text)
-        return (
-            Paragraph(id=paragraph_id, layout_kind=layout_kind, layout_variant=layout_variant),
-            self._split_sentences(paragraph_text),
-        )
+            paragraph = Paragraph(layout_kind=layout_kind, layout_variant=layout_variant)
+        else:
+            paragraph = Paragraph(id=paragraph_id, layout_kind=layout_kind, layout_variant=layout_variant)
+        paragraph.format_runs = runs
+        return paragraph, self._split_sentences(paragraph_text, runs)
 
     @staticmethod
     def _span_attr(tag: str, name: str) -> str | None:
@@ -119,7 +127,7 @@ class SnapshotReader:
             return None
         return html.unescape(match.group(1))
 
-    def _split_sentences(self, text: str) -> list[Sentence]:
+    def _split_sentences(self, text: str, format_runs: list[FormatRun] | None = None) -> list[Sentence]:
         """Split *text* into Sentence objects using spaCy sentence boundaries.
 
         Newlines are never sentence delimiters: a mid-sentence newline stays inside
@@ -133,7 +141,9 @@ class SnapshotReader:
             end = spans[idx + 1].start_char if idx + 1 < len(spans) else len(text)
             sentence_text = text[span.start_char : end]
             if sentence_text.strip():
-                sentences.append(Sentence(text=sentence_text))
+                sentence = Sentence(text=sentence_text)
+                sentence.format_runs = slice_runs(format_runs or [], span.start_char, end)
+                sentences.append(sentence)
         return sentences
 
     def list_commits(self, chapter_id: str, *, limit: int = 20, offset: int = 0) -> list[dict[str, str]]:

@@ -10,6 +10,7 @@ import pytest
 from dockb.exceptions import SnapshotError
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
 from dockb.infrastructure.history.snapshot_writer import SnapshotWriter
+from dockb.models.formatting import FormatRun, Style
 
 
 @pytest.fixture()
@@ -253,6 +254,17 @@ def test_read_nested_formatting_spans_inside_the_identity_span(reader, git_repo)
     assert paragraph.layout_kind == "quoted"
     assert paragraph.layout_variant == "reading"
     assert "".join(sentence.get_text() for sentence in paragraph.sentences) == "Hello wide world."
+
+
+def test_read_nested_formatting_spans_into_transient_runs(reader, git_repo):
+    body = '<span data-par-id="par-1">\n' 'Hello <span style="font-style: italic">wide </span>world.\n</span>'
+    _write_snapshot(git_repo, chapter_id="c-runs", title="T", body=body)
+
+    chapter = reader.read_chapter("c-runs")
+
+    paragraph = chapter.paragraphs[0]
+    assert paragraph.format_runs == [FormatRun(6, 11, style=Style.ITALIC)]
+    assert paragraph.sentences[0].format_runs == [FormatRun(6, 11, style=Style.ITALIC)]
 
 
 def test_read_mixed_spans_and_plain_text(reader, git_repo):
