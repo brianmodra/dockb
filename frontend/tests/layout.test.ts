@@ -118,11 +118,10 @@ describe("AppLayout", () => {
     expect(onOpenLanguageSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("reports mode through the menubar and updates the edit panel", () => {
+  it("reports mode through the mode toggle and updates the edit panel", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
-    layout.element.querySelector<HTMLElement>('[data-testid="menu-Mode"]')?.click();
-    layout.element.querySelector('[data-testid="menu-item-raw"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    layout.element.querySelector<HTMLElement>('[data-testid="mode-toggle"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const edit = layout.element.querySelector<HTMLElement>('[data-testid="panel-edit"]')!;
     expect(layout.mode).toBe("raw");
     expect(edit.getAttribute("data-mode")).toBe("raw");

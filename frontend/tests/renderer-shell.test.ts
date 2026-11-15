@@ -433,10 +433,7 @@ describe("renderer shell", () => {
     const paragraph = document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!;
     paragraph.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
 
-    document.querySelector<HTMLButtonElement>("[data-testid='menu-Mode']")!.click();
-    Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='menu-Mode-dropdown'] button"))
-      .find((el) => el.textContent?.includes("Raw"))!
-      .click();
+    document.querySelector<HTMLButtonElement>("[data-testid='mode-toggle']")!.click();
 
     const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
     Array.from(area.querySelectorAll<HTMLButtonElement>("button"))

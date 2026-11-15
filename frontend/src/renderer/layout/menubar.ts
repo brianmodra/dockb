@@ -1,3 +1,5 @@
+import { createALargeSmallIcon, createMarkdownIcon } from "./modeIcons";
+
 export type Mode = "wysiwyg" | "raw";
 
 export interface MenubarOptions {
@@ -48,14 +50,6 @@ const MENUS: MenuSpec[] = [
     ],
   },
   {
-    key: "Mode",
-    label: "Mode",
-    items: [
-      { key: "wysiwyg", label: "WYSIWYG" },
-      { key: "raw", label: "Raw MD" },
-    ],
-  },
-  {
     key: "Settings",
     label: "⚙",
     items: [
@@ -70,7 +64,12 @@ export interface Menubar {
   element: HTMLElement;
   /** The right-aligned group holding Settings, and the editor's status labels. */
   right: HTMLElement;
+  /** Redraw the mode toggle for *mode* (icon and tooltip). */
+  setMode: (mode: Mode) => void;
 }
+
+const WYSIWYG_TOOLTIP = "Switch editor to raw markdown mode";
+const RAW_TOOLTIP = "Switch editor to WYSIWYG";
 
 export function buildMenubar(options: MenubarOptions): Menubar {
   const element = document.createElement("div");
@@ -81,12 +80,45 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   right.className = "menubar-right";
   right.dataset.testid = "menubar-right";
 
+  const toggle = buildModeToggle(options.mode ?? "wysiwyg", options.onMode);
+
   for (const menu of MENUS) {
-    (menu.key === "Settings" ? right : element).append(buildMenu(menu, options));
+    if (menu.key === "Settings") {
+      right.append(buildMenu(menu, options));
+    } else {
+      element.append(buildMenu(menu, options));
+      if (menu.key === "File") {
+        element.append(toggle);
+      }
+    }
   }
   element.append(right);
 
-  return { element, right };
+  return {
+    element,
+    right,
+    setMode: (mode) => applyMode(toggle, mode),
+  };
+}
+
+function buildModeToggle(initial: Mode, onMode?: (mode: Mode) => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "mode-toggle";
+  button.dataset.testid = "mode-toggle";
+  button.addEventListener("click", () => {
+    onMode?.(button.dataset.mode === "raw" ? "wysiwyg" : "raw");
+  });
+  applyMode(button, initial);
+  return button;
+}
+
+function applyMode(button: HTMLButtonElement, mode: Mode): void {
+  button.dataset.mode = mode;
+  button.replaceChildren(mode === "wysiwyg" ? createMarkdownIcon() : createALargeSmallIcon());
+  const title = mode === "wysiwyg" ? WYSIWYG_TOOLTIP : RAW_TOOLTIP;
+  button.title = title;
+  button.setAttribute("aria-label", title);
 }
 
 function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
@@ -189,10 +221,7 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
 }
 
 function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOptions): void {
-  if (menu.key === "Mode") {
-    const mode: Mode = item.key === "raw" ? "raw" : "wysiwyg";
-    options.onMode?.(mode);
-  } else if (menu.key === "File" && item.key === "open") {
+  if (menu.key === "File" && item.key === "open") {
     options.onOpen?.();
   } else if (menu.key === "File" && item.key === "import") {
     options.onImport?.();

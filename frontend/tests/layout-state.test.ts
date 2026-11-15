@@ -33,6 +33,16 @@ describe("AppLayout state restore", () => {
     expect(onMode).toHaveBeenCalledWith("raw");
   });
 
+  it("updates the mode toggle icon when the saved mode is restored", () => {
+    const layout = new AppLayout();
+    document.body.append(layout.element);
+    layout.restoreState({ panel_widths: null, edit_mode: "raw" });
+
+    const toggle = layout.element.querySelector<HTMLButtonElement>("[data-testid='mode-toggle']")!;
+    expect(toggle.dataset.mode).toBe("raw");
+    expect(toggle.title).toBe("Switch editor to WYSIWYG");
+  });
+
   it("wires File → Open in the menubar to onOpen", () => {
     const onOpen = vi.fn();
     const layout = new AppLayout({ onOpen });

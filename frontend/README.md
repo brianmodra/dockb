@@ -176,8 +176,11 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
 - `menubar.ts` — File (Open, Import…, Delete ▸ Document, Edit ▸ Document/Chapter,
-  Sign out, Quit) and Mode on the left; Settings (Document…, Language…, Dictionary…) is the cog in
-  the right-aligned group. `layout.ts` puts the save button before the cog and the username after
+  Sign out, Quit) and a mode toggle on the left; Settings (Document…, Language…, Dictionary…) is the cog in
+  the right-aligned group. The mode toggle sits right of File: in WYSIWYG mode it shows a
+  markdown icon (tooltip "Switch editor to raw markdown mode") and clicking it switches to raw;
+  in raw mode it shows an Aa icon (tooltip "Switch editor to WYSIWYG") and clicking it switches
+  back. `layout.ts` puts the save button before the cog and the username after
   it; the save button appears only while the buffer is dirty, carries the tooltip
   "Save the chapter", and calls `onSave`. Dropdowns and nested submenus dismiss on outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
   `confirmUnsaved`, so they share one unsaved-buffer question rather than two.

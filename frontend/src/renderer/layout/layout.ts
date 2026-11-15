@@ -1,6 +1,6 @@
 import { ResizeHandle } from "./ResizeHandle";
 import { ResponseArea, type ResponseFunctions, type ResponseObject } from "./responseArea";
-import { buildMenubar, type Mode } from "./menubar";
+import { buildMenubar, type Menubar, type Mode } from "./menubar";
 import { createSaveIcon } from "./saveIcon";
 
 export interface AppLayoutOptions {
@@ -44,6 +44,7 @@ export class AppLayout {
   private editPanel!: HTMLElement;
   private readonly saveButton: HTMLButtonElement;
   private readonly userLabel: HTMLElement;
+  private readonly menubar: Menubar;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
   }
@@ -89,6 +90,7 @@ export class AppLayout {
       onEditChapter: options.onEditChapter,
       onSignOut: options.onSignOut,
     });
+    this.menubar = menubar;
 
     this.leftPanel = this.panel("panel-left");
 
@@ -346,5 +348,6 @@ export class AppLayout {
   private applyMode(): void {
     const edit = this.element.querySelector<HTMLElement>("[data-testid='panel-edit']");
     edit?.setAttribute("data-mode", this.mode);
+    this.menubar.setMode(this.mode);
   }
 }

@@ -154,7 +154,8 @@ body {
   margin-left: auto;
 }
 
-.save-button {
+.save-button,
+.mode-toggle {
   display: inline-flex;
   align-items: center;
   border: none;
@@ -165,7 +166,8 @@ body {
   cursor: pointer;
 }
 
-.save-button:hover {
+.save-button:hover,
+.mode-toggle:hover {
   background: #e0e0dd;
 }
 

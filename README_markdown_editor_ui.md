@@ -46,11 +46,11 @@ How files and the database work is in `README_markdown_redesign.md`, and login i
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│  File ▾   Mode ▾   ⚙ ▾                                      [ –   ☐   ✕ ]    │
+│  File ▾  [M▾]   ⚙ ▾                                        [ –   ☐   ✕ ]    │
 ├──────────────────────┬──────────────────────────────────────────────┬────────┤
 │ 📚 document ▾        │                                              │ ║      │
 │   ▸ Act I ▾          │           E D I T   P A N E L                 │ ║ right│
-│     · Chapter 1      │    WYSIWYG shown; Mode ▾ switches to Raw MD   │ │ 3px  │
+│     · Chapter 1      │    WYSIWYG shown; the [M▾] toggle switches to Raw MD   │ │ 3px  │
 │     · Chapter 2      │                                              │ ║ 10px │
 │   ▾ Act II           │                                              │ ║ floor│
 │     · Chapter 3      │              <same canonical doc>            │ ║ │││ ▓ │
@@ -65,7 +65,7 @@ How files and the database work is in `README_markdown_redesign.md`, and login i
 
 Regions:
 
-1. **Top menu bar** (in-window, full width): File and Mode on the left; on the
+1. **Top menu bar** (in-window, full width): File and a mode toggle on the left; on the
    right, a save icon (shown only while the chapter has unsaved changes), the
    Settings cog, and the signed-in username at the right edge.
 2. **Left panel**: document and chapter selector, resizable.
@@ -102,7 +102,11 @@ message console at 24px minimum height), and the right panel starts at its 10px 
   `PUT /api/documents/{id}` / `PUT /api/chapters/{id}`), **Sign out** (offer to save an unsaved buffer, end the session
   with `POST /api/auth/logout`, clear what the session owned, and show the gate again) and
   **Quit**.
-- **Mode ▾** — **WYSIWYG** and **Raw MD**: switch the edit panel's view of the same document.
+- **Mode toggle** (an icon button just right of File) — switches the edit panel's view of the
+  same document. In WYSIWYG mode it shows the markdown icon (an "M" over a down arrow,
+  tooltip "Switch editor to raw markdown mode") and clicking it switches to Raw MD; in raw
+  mode it shows an Aa icon (tooltip "Switch editor to WYSIWYG") and clicking it switches
+  back.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". **Document…** edits the
   currently open document through the same modal as File → Edit → Document; with no document
   open it says to open one first. **Language…** opens

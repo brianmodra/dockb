@@ -14,23 +14,26 @@ function dropdown(bar: { element: HTMLElement }, key: string): HTMLElement {
 }
 
 describe("menubar", () => {
-  it("renders the in-window File, Mode and Settings (cog) menus", () => {
+  it("renders the in-window File menu, mode toggle and Settings (cog) menu", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     expect(bar.element.getAttribute("data-testid")).toBe("menubar");
     expect(bar.element.querySelector('[data-testid="menu-File"]')?.textContent).toBe("File");
-    expect(bar.element.querySelector('[data-testid="menu-Mode"]')?.textContent).toBe("Mode");
+    expect(bar.element.querySelector('[data-testid="mode-toggle"]')).not.toBeNull();
+    expect(bar.element.querySelector('[data-testid="menu-Mode"]')).toBeNull();
     expect(bar.element.querySelector('[data-testid="menu-Settings"]')?.textContent).toBe("⚙");
   });
 
-  it("groups the Settings cog on the right, away from File and Mode", () => {
+  it("groups the Settings cog on the right, away from File and the mode toggle", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     const right = bar.element.querySelector<HTMLElement>(".menubar-right")!;
     expect(right).not.toBeNull();
     expect(right.querySelector('[data-testid="menu-Settings"]')).not.toBeNull();
+    expect(bar.element.querySelector('[data-testid="menu-File"]')).not.toBeNull();
+    expect(bar.element.querySelector('[data-testid="mode-toggle"]')).not.toBeNull();
     expect(right.querySelector('[data-testid="menu-File"]')).toBeNull();
-    expect(right.querySelector('[data-testid="menu-Mode"]')).toBeNull();
+    expect(right.querySelector('[data-testid="mode-toggle"]')).toBeNull();
   });
 
   it("opens File with Open, Import, Delete, Edit, Sign out and Quit", () => {
@@ -103,20 +106,54 @@ describe("menubar", () => {
     ).not.toThrow();
   });
 
-  it("offers WYSIWYG and Raw MD modes, reporting the selection", () => {
+  it("shows the markdown icon and its tooltip in WYSIWYG mode, switching to raw on click", () => {
     const onMode = vi.fn();
     const bar = buildMenubar({ onMode });
     document.body.append(bar.element);
-    openMenu(bar, "Mode");
-    const items = Array.from(dropdown(bar, "Mode").querySelectorAll(".menu-item")).map(
-      (n) => n.textContent,
-    );
-    expect(items).toEqual(["WYSIWYG", "Raw MD"]);
-    bar.element.querySelector('[data-testid="menu-item-raw"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
+    expect(toggle.dataset.mode).toBe("wysiwyg");
+    expect(toggle.querySelector("svg")).not.toBeNull();
+    expect(toggle.title).toBe("Switch editor to raw markdown mode");
+    expect(toggle.getAttribute("aria-label")).toBe("Switch editor to raw markdown mode");
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onMode).toHaveBeenCalledWith("raw");
-    openMenu(bar, "Mode");
-    bar.element.querySelector('[data-testid="menu-item-wysiwyg"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  it("shows the Aa icon and its tooltip in raw mode, switching back to WYSIWYG on click", () => {
+    const onMode = vi.fn();
+    const bar = buildMenubar({ mode: "raw", onMode });
+    document.body.append(bar.element);
+    const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
+    expect(toggle.dataset.mode).toBe("raw");
+    expect(toggle.querySelector("svg")).not.toBeNull();
+    expect(toggle.title).toBe("Switch editor to WYSIWYG");
+    expect(toggle.getAttribute("aria-label")).toBe("Switch editor to WYSIWYG");
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onMode).toHaveBeenCalledWith("wysiwyg");
+  });
+
+  it("updates the icon and tooltip when setMode is called", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
+    expect(toggle.dataset.mode).toBe("wysiwyg");
+    expect(toggle.title).toBe("Switch editor to raw markdown mode");
+
+    bar.setMode("raw");
+    expect(toggle.dataset.mode).toBe("raw");
+    expect(toggle.title).toBe("Switch editor to WYSIWYG");
+
+    bar.setMode("wysiwyg");
+    expect(toggle.dataset.mode).toBe("wysiwyg");
+    expect(toggle.title).toBe("Switch editor to raw markdown mode");
+  });
+
+  it("sits on the left, immediately after the File menu", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    const [file, toggle] = Array.from(bar.element.children) as HTMLElement[];
+    expect(file.querySelector('[data-testid="menu-File"]')).not.toBeNull();
+    expect(toggle.dataset.testid).toBe("mode-toggle");
   });
 
   it("closes the dropdown when clicking outside the menu", () => {
