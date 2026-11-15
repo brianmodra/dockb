@@ -10,7 +10,7 @@ from typing import Any
 
 from dockb.infrastructure.markdown import front_matter, layout, spans
 from dockb.models.chapter import Chapter
-from dockb.models.formatting import LayoutKind, LayoutVariant
+from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant
 from dockb.models.paragraph import Paragraph
 
 
@@ -22,6 +22,7 @@ class ChangedParagraph:
     text: str
     layout_kind: LayoutKind = "normal"
     layout_variant: LayoutVariant = ""
+    format_runs: list[FormatRun] = field(default_factory=list)
 
 
 @dataclass
@@ -33,6 +34,7 @@ class NewParagraph:
     at_start: bool = False
     layout_kind: LayoutKind = "normal"
     layout_variant: LayoutVariant = ""
+    format_runs: list[FormatRun] = field(default_factory=list)
 
 
 @dataclass
@@ -102,7 +104,10 @@ def detect_changes(  # pylint: disable=too-many-locals
 
     old_texts = {paragraph.id: _old_texts(paragraph) for paragraph in old_chapter.paragraphs}
     old_layouts = {paragraph.id: (paragraph.layout_kind, paragraph.layout_variant) for paragraph in old_chapter.paragraphs}
-    changed, new, seen_ids = _classify_blocks(body, old_texts, old_layouts, bool(old_chapter.paragraphs), single_newline_paragraphs)
+    old_runs = {paragraph.id: _old_format_runs(paragraph) for paragraph in old_chapter.paragraphs}
+    changed, new, seen_ids = _classify_blocks(
+        body, old_texts, old_layouts, old_runs, bool(old_chapter.paragraphs), single_newline_paragraphs
+    )
 
     return ChapterDiff(
         changed=changed,
@@ -118,10 +123,11 @@ def detect_changes(  # pylint: disable=too-many-locals
     )
 
 
-def _classify_blocks(
+def _classify_blocks(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     body: str,
     old_texts: dict[str, str],
     old_layouts: dict[str, tuple[LayoutKind, LayoutVariant]],
+    old_runs: dict[str, list[FormatRun]],
     chapter_has_paragraphs: bool,
     single_newline_paragraphs: bool,
 ) -> tuple[list[ChangedParagraph], list[NewParagraph], set[str]]:
@@ -141,7 +147,7 @@ def _classify_blocks(
     for block in _paragraph_blocks(body, single_newline_paragraphs):
         if not block:
             continue
-        par_id, layout_kind, layout_variant, text = _parse_block(block)
+        par_id, layout_kind, layout_variant, text, format_runs = _parse_block(block)
         if not text.strip():
             if par_id is not None:
                 seen_ids.add(par_id)
@@ -154,17 +160,52 @@ def _classify_blocks(
                     at_start=anchor is None and chapter_has_paragraphs,
                     layout_kind=layout_kind,
                     layout_variant=layout_variant,
+                    format_runs=format_runs,
                 )
             )
         else:
             old_layout = old_layouts.get(par_id, ("normal", ""))
-            if text != old_texts[par_id] or (layout_kind, layout_variant) != old_layout:
-                changed.append(ChangedParagraph(par_id, text, layout_kind, layout_variant))
+            if text != old_texts[par_id] or (layout_kind, layout_variant) != old_layout or format_runs != old_runs.get(par_id, []):
+                changed.append(ChangedParagraph(par_id, text, layout_kind, layout_variant, format_runs))
             anchor = par_id
         if par_id is not None:
             seen_ids.add(par_id)
 
     return changed, new, seen_ids
+
+
+def _old_format_runs(paragraph: Paragraph) -> list[FormatRun]:
+    """Formatting runs over one hydrated paragraph's canonical text."""
+    if paragraph.dirty or not paragraph.sentences:
+        return []
+    runs: list[FormatRun] = []
+    offset = 0
+    for sentence in paragraph.sentences:
+        text = sentence.get_text().rstrip()
+        if not text.strip():
+            continue
+        position = 0
+        for token in sentence.tokens:
+            start = position
+            end = position + len(token.text) + len(token.trailing_ws)
+            position = end
+            style, weight, family, size = token.format_key()
+            if any((style.value, weight.value, family.value, size)):
+                clipped_start = max(start, 0)
+                clipped_end = min(end, len(text))
+                if clipped_start < clipped_end:
+                    runs.append(
+                        FormatRun(
+                            offset + clipped_start,
+                            offset + clipped_end,
+                            style,
+                            weight,
+                            family,
+                            size,
+                        )
+                    )
+        offset += len(text) + 1
+    return spans.merge_runs(runs)
 
 
 def _old_texts(paragraph: Paragraph) -> str:
@@ -205,7 +246,9 @@ def _paragraph_blocks(body: str, single_newline: bool) -> list[str]:
     return blocks
 
 
-def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str]:
+def _parse_block(  # pylint: disable=too-many-locals
+    block: str,
+) -> tuple[str | None, LayoutKind, LayoutVariant, str, list[FormatRun]]:
     """Parse one paragraph block into ``(par_id, layout_kind, layout_variant, text)``.
 
     One identity span usually wraps the whole paragraph; its inner text minus the
@@ -217,17 +260,21 @@ def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str
     """
     matches = spans.find_spans(block)
     if not matches:
-        return None, "normal", "", block
+        return None, "normal", "", block, []
     if len(matches) == 1 and not _span_attr(matches[0].attrs, "data-par-id"):
-        return None, "normal", "", block
+        return None, "normal", "", block, []
 
     parts: list[str] = []
+    runs: list[FormatRun] = []
+    length = 0
     par_id: str | None = None
     layout_kind: LayoutKind = "normal"
     layout_variant: LayoutVariant = ""
     position = 0
     for match in matches:
-        parts.append(block[position : match.start])
+        loose = html.unescape(block[position : match.start])
+        parts.append(loose)
+        length += len(loose)
         tag = match.attrs
         span_par_id = _span_attr(tag, "data-par-id")
         if par_id is None and span_par_id:
@@ -237,13 +284,17 @@ def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str
                 _span_attr(tag, layout.LAYOUT_VARIANT_ATTR),
                 _span_attr(tag, layout.LEGACY_QUOTE_ATTR),
             )
-        parts.append(spans.plain_text(match.inner).strip("\n"))
+        inner_text, inner_runs = spans.formatting_from_markup(match.inner.strip("\n"))
+        parts.append(inner_text)
+        runs.extend(spans.shift_runs(inner_runs, length))
+        length += len(inner_text)
         position = match.end
-    parts.append(block[position:])
+    tail = html.unescape(block[position:])
+    parts.append(tail)
 
     if par_id is None:
-        return None, "normal", "", "".join(parts)
-    return par_id, layout_kind, layout_variant, "".join(parts)
+        return None, "normal", "", "".join(parts), []
+    return par_id, layout_kind, layout_variant, "".join(parts), spans.merge_runs(runs)
 
 
 def _span_attr(tag: str, name: str) -> str | None:

@@ -156,16 +156,17 @@ into fake paragraphs. The write-back is always canonical.
 
 ## Classification
 
-- **changed** — id present in the DB chapter and in the new file, and the sentence texts differ
-  **or the span's layout differs from the old side's** (`ChangedParagraph.layout_kind`/
-  `layout_variant` carry the file's values, `normal`/`""` when the attributes are absent — so
-  clearing a quote is a change too)
-  → `ChangedParagraph(id, new_sentence_texts, layout_kind, layout_variant)`. The paragraph's whole
-  new sentence list is carried; every sentence is replaced by the caller.
+- **changed** — id present in the DB chapter and in the new file, and the sentence texts differ,
+  **the span's layout differs from the old side's**, **or the inline formatting runs differ**
+  (`ChangedParagraph.layout_kind`/`layout_variant` carry the file's values, `normal`/`""` when the
+  attributes are absent — so clearing a quote is a change too; `format_runs` carries the new file's
+  runs, with the old side's runs derived from its token attributes)
+  → `ChangedParagraph(id, new_sentence_texts, layout_kind, layout_variant, format_runs)`. The
+  paragraph's whole new sentence list is carried; every sentence is replaced by the caller.
 - **unchanged** — id in both, sentence texts identical **and** the layout the same → **omitted
   entirely**.
 - **new** — no id, or an id not present in the DB chapter →
-  `NewParagraph(sentence_texts, …, layout_kind, layout_variant)`.
+  `NewParagraph(sentence_texts, …, layout_kind, layout_variant, format_runs)`.
   A stale/unknown `data-par-id` is ignored: never reported, never stripped, never mutated.
   Positioning is described under "Data structures" below.
 - **deleted** — DB paragraph ids absent from the new file → listed as ids only.
@@ -175,7 +176,11 @@ Merge case: old ids vanish (deleted) while the merged block carries either a sur
 
 ## Data structures
 
-`ChangedParagraph`, `NewParagraph`, and `ChapterDiff` are defined in `detect_changes.py`. Beyond
+`format_runs` offsets index the paragraph text. Inline `<span style>` markup is parsed into
+runs; adjacent runs with equal attributes are merged, and the old side derives equivalent runs
+from its tokens. `markdown_import._split_sentences` clips and rebases those runs per spaCy
+sentence, then folds them onto whole tokens. `ChangedParagraph`, `NewParagraph`, and
+`ChapterDiff` are defined in `detect_changes.py`. Beyond
 the three change lists, `ChapterDiff` carries `chapter_id` — the resolved chapter identity, the
 file's front-matter id or the id `create_chapter` assigned — `title`, `front_id`, and `created`,
 which together let `apply_chapter_file` enforce document membership and learn a generated id.

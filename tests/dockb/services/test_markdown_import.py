@@ -13,6 +13,7 @@ from dockb.exceptions import ChapterMismatchError, DocumentFormatError
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import FormatRun, Style
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
@@ -86,6 +87,14 @@ def _saved_paragraphs(uow):
 
 def _saved_sentences(uow):
     return [(model, kwargs) for model, kwargs in _register_calls(uow) if isinstance(model, Sentence)]
+
+
+def test_split_sentences_applies_format_runs(nlp):
+    text = "Hello world. Second."
+    sentences = markdown_import._split_sentences(text, nlp, [FormatRun(0, 5, style=Style.ITALIC)])
+
+    assert sentences[0].tokens[0].style is Style.ITALIC
+    assert sentences[1].tokens[0].style is Style._
 
 
 def test_split_sentences_builds_tokens_from_the_paragraph_parse(nlp):

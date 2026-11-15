@@ -26,6 +26,7 @@ from dockb.infrastructure.neo4j.unit_of_work_factory import UnitOfWorkFactory
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import FormatRun, slice_runs
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.utils.dockb_collection import InsertionMode
@@ -640,7 +641,7 @@ def _build_paragraph(new: NewParagraph, nlp: Language) -> Paragraph:
     paragraph = Paragraph()
     paragraph.layout_kind = new.layout_kind
     paragraph.layout_variant = new.layout_variant
-    paragraph.sentences[:] = _split_sentences(new.text, nlp)
+    paragraph.sentences[:] = _split_sentences(new.text, nlp, new.format_runs)
     paragraph.state = DataState.NEW
     return paragraph
 
@@ -650,12 +651,12 @@ def _apply_changed(chapter: Chapter, changed: ChangedParagraph, nlp: Language) -
     paragraph = next(p for p in chapter.paragraphs if p.id == changed.par_id)
     paragraph.layout_kind = changed.layout_kind
     paragraph.layout_variant = changed.layout_variant
-    paragraph.sentences[:] = _split_sentences(changed.text, nlp)
+    paragraph.sentences[:] = _split_sentences(changed.text, nlp, changed.format_runs)
     paragraph.state = DataState.CHANGED
     return paragraph
 
 
-def _split_sentences(text: str, nlp: Language) -> list[Sentence]:
+def _split_sentences(text: str, nlp: Language, format_runs: list[FormatRun] | None = None) -> list[Sentence]:
     """Split *text* into Sentence models on spaCy sentence boundaries.
 
     Newlines are never sentence delimiters: a mid-sentence newline stays inside
@@ -673,7 +674,8 @@ def _split_sentences(text: str, nlp: Language) -> list[Sentence]:
         sentence_text = text[span.start_char : end]
         if sentence_text.strip():
             sentence = Sentence(text=sentence_text)
-            sentence.tokens[:] = tokenizer.tokens_from_doc(span)
+            sentence_runs = slice_runs(format_runs or [], span.start_char, end)
+            sentence.tokens[:] = tokenizer.tokens_from_doc(span, sentence_runs)
             sentences.append(sentence)
     return sentences
 

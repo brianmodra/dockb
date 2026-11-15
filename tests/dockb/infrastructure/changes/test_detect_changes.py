@@ -13,6 +13,7 @@ from dockb.infrastructure.changes.detect_changes import (
     detect_changes,
 )
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import FormatRun, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 
@@ -124,6 +125,36 @@ def test_layout_change_with_identical_text_marks_changed():
 
     assert diff.changed == [ChangedParagraph(par_id="par-1", text="First sentence.", layout_kind="quoted", layout_variant="writing")]
     assert not diff.new
+
+
+def test_formatting_change_with_identical_text_marks_changed():
+    old = _chapter([("par-1", ["Hello wide world."])])
+    body = '<span data-par-id="par-1">\nHello <span style="font-style: italic">wide </span>world.\n</span>'
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.changed == [
+        ChangedParagraph(
+            par_id="par-1",
+            text="Hello wide world.",
+            format_runs=[FormatRun(6, 11, style=Style.ITALIC)],
+        )
+    ]
+
+
+def test_new_paragraph_carries_format_runs():
+    old = _chapter([])
+    body = '<span data-par-id="par-9">\nHello <span style="font-weight: bold">wide</span>.\n</span>'
+
+    diff = detect_changes(_front_matter() + body, _get_old(old), _no_create)
+
+    assert diff.new == [
+        NewParagraph(
+            text="Hello wide.",
+            after_id=None,
+            format_runs=[FormatRun(6, 10, weight=Weight.BOLD)],
+        )
+    ]
 
 
 def test_removing_the_layout_marks_changed():

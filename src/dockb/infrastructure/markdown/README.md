@@ -92,7 +92,9 @@ Rendering rules:
   output stays byte-identical. A span includes its tokens' trailing whitespace.
   Style values and sizes are validated by the model, then written directly.
 - The reader treats nested spans as markup: their text stays in the paragraph,
-  and nested tags never end the outer identity span.
+  and nested tags never end the outer identity span. An inner span's `style`
+  attribute becomes a formatting run over the visible paragraph text, with
+  offsets after tag stripping and HTML unescaping; adjacent equal runs merge.
 - The front matter is `attrs` verbatim when given, else the chapter's own identity
   (`render_chapter_markdown`). The front-matter block and body are joined by a blank
   line; an empty chapter renders as the block alone.
