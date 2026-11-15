@@ -239,6 +239,22 @@ def test_read_unescapes_span_content(reader, git_repo):
     assert chapter.paragraphs[0].sentences[0].text == 'A <span> tag & "quotes".'
 
 
+def test_read_nested_formatting_spans_inside_the_identity_span(reader, git_repo):
+    body = (
+        '<span data-par-id="par-1" data-layout-kind="quoted" data-layout-variant="reading">\n'
+        'Hello <span style="font-style: italic">wide </span>world.\n</span>'
+    )
+    _write_snapshot(git_repo, chapter_id="c-nested", title="T", body=body)
+
+    chapter = reader.read_chapter("c-nested")
+
+    paragraph = chapter.paragraphs[0]
+    assert paragraph.id == "par-1"
+    assert paragraph.layout_kind == "quoted"
+    assert paragraph.layout_variant == "reading"
+    assert "".join(sentence.get_text() for sentence in paragraph.sentences) == "Hello wide world."
+
+
 def test_read_mixed_spans_and_plain_text(reader, git_repo):
     body = '<span data-par-id="par-1">\nSpan one.\n</span>\nPlain two. Plain three.'
     _write_snapshot(git_repo, chapter_id="c-qqq", title="T", body=body)

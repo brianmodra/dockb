@@ -11,12 +11,11 @@ from spacy.language import Language
 
 from dockb.exceptions import ChapterMismatchError, SnapshotError
 from dockb.infrastructure.markdown import front_matter, layout
+from dockb.infrastructure.markdown import spans as span_markup
 from dockb.models.chapter import Chapter
 from dockb.models.formatting import LayoutKind, LayoutVariant
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
-
-_SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
 
 
 class SnapshotReader:
@@ -81,7 +80,7 @@ class SnapshotReader:
         Sentences are then re-derived from the whole paragraph text with spaCy and
         receive freshly generated UUIDs.
         """
-        matches = list(_SPAN_RE.finditer(text))
+        matches = span_markup.find_spans(text)
         if not matches:
             return Paragraph(), self._split_sentences(text)
 
@@ -91,8 +90,8 @@ class SnapshotReader:
         layout_variant: LayoutVariant = ""
         position = 0
         for match in matches:
-            parts.append(text[position : match.start()])
-            tag = match.group(1)
+            parts.append(text[position : match.start])
+            tag = match.attrs
             par_id = self._span_attr(tag, "data-par-id")
             if paragraph_id is None and par_id:
                 paragraph_id = par_id
@@ -101,8 +100,8 @@ class SnapshotReader:
                     self._span_attr(tag, layout.LAYOUT_VARIANT_ATTR),
                     self._span_attr(tag, layout.LEGACY_QUOTE_ATTR),
                 )
-            parts.append(html.unescape(match.group(2)).strip("\n"))
-            position = match.end()
+            parts.append(span_markup.plain_text(match.inner).strip("\n"))
+            position = match.end
         parts.append(text[position:])
         paragraph_text = "".join(parts)
 

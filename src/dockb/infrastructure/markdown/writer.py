@@ -7,10 +7,11 @@ from pathlib import Path
 
 from spacy.language import Language
 
-from dockb.infrastructure.markdown import front_matter, layout
+from dockb.infrastructure.markdown import front_matter, layout, spans
 from dockb.models.chapter import Chapter
-from dockb.models.formatting import LayoutKind, LayoutVariant
+from dockb.models.formatting import Family, LayoutKind, LayoutVariant, Style, Weight
 from dockb.models.paragraph import Paragraph
+from dockb.models.sentence import Sentence
 
 
 def serialize_body(chapter: Chapter, _nlp: Language | None) -> str:
@@ -101,7 +102,7 @@ def _serialize_paragraph(paragraph: Paragraph) -> str:
             layout_kind=paragraph.layout_kind,
             layout_variant=paragraph.layout_variant,
         )
-    lines = [sentence.get_text().rstrip() for sentence in paragraph.sentences if sentence.get_text().strip()]
+    lines = [_serialize_sentence(sentence).rstrip() for sentence in paragraph.sentences if sentence.get_text().strip()]
     if not lines:
         return ""
     return _paragraph_span(
@@ -109,7 +110,37 @@ def _serialize_paragraph(paragraph: Paragraph) -> str:
         "\n".join(lines),
         layout_kind=paragraph.layout_kind,
         layout_variant=paragraph.layout_variant,
+        escape=False,
     )
+
+
+def _serialize_sentence(sentence: Sentence) -> str:
+    """Serialize a sentence, wrapping runs of equally formatted tokens."""
+    if not sentence.tokens:
+        return html.escape(sentence.get_text(), quote=True)
+    if not any(token.format_key() != (Style._, Weight._, Family._, "") for token in sentence.tokens):
+        return html.escape(sentence.get_text(), quote=True)
+    parts: list[str] = []
+    key = None
+    buffer = ""
+    for token in sentence.tokens:
+        token_key = token.format_key()
+        if key is not None and token_key != key:
+            parts.append(_render_run(buffer, key))
+            buffer = ""
+        key = token_key
+        buffer += token.text + token.trailing_ws
+    if buffer:
+        parts.append(_render_run(buffer, key))
+    return "".join(parts)
+
+
+def _render_run(text: str, key: tuple[Style, Weight, Family, str] | None) -> str:
+    escaped = html.escape(text, quote=True)
+    if key is None or key == (Style._, Weight._, Family._, ""):
+        return escaped
+    style, weight, family, size = key
+    return f'<span style="{spans.render_style(style, weight, family, size)}">{escaped}</span>'
 
 
 def _serialize_plain_text(text: str, layout_kind: LayoutKind = "normal", layout_variant: LayoutVariant = "") -> str:
@@ -119,8 +150,14 @@ def _serialize_plain_text(text: str, layout_kind: LayoutKind = "normal", layout_
     return _paragraph_span(str(Paragraph().id), text, layout_kind=layout_kind, layout_variant=layout_variant)
 
 
-def _paragraph_span(paragraph_id: str, text: str, layout_kind: LayoutKind = "normal", layout_variant: LayoutVariant = "") -> str:
+def _paragraph_span(
+    paragraph_id: str,
+    text: str,
+    layout_kind: LayoutKind = "normal",
+    layout_variant: LayoutVariant = "",
+    escape: bool = True,
+) -> str:
     par_id = html.escape(paragraph_id, quote=True)
-    escaped = html.escape(text, quote=True)
+    escaped = html.escape(text, quote=True) if escape else text
     layout_attrs = layout.render_layout_attributes(layout_kind, layout_variant)
     return f'<span data-par-id="{par_id}"{layout_attrs}>\n{escaped}\n</span>'

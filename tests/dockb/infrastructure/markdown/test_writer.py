@@ -6,6 +6,7 @@ import re
 
 from dockb.infrastructure.markdown import writer
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import Family, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
@@ -92,6 +93,39 @@ class TestSerializeBody:
         body = writer.serialize_body(chapter, nlp)
         assert body == ('<span data-par-id="para-7">\nAlpha.\nBeta.\n</span>\n\n' '<span data-par-id="para-8">\nGamma.\n</span>')
         assert "data-sen-id" not in body
+
+    def test_wraps_formatted_runs_and_groups_equal_attributes(self, nlp):
+        sentence = Sentence()
+        sentence.tokens.append(Token(text="Hello", trailing_ws=" ", style=Style.ITALIC))
+        sentence.tokens.append(Token(text="wide", trailing_ws=" ", style=Style.ITALIC, weight=Weight.BOLD))
+        sentence.tokens.append(Token(text="world.", trailing_ws="", style=Style.ITALIC, weight=Weight.BOLD))
+        paragraph = Paragraph(id="p1")
+        paragraph.sentences.append(sentence)
+
+        body = writer.serialize_body(_chapter(paragraph), nlp)
+
+        assert body == (
+            '<span data-par-id="p1">\n'
+            '<span style="font-style: italic">Hello </span>'
+            '<span style="font-style: italic; font-weight: bold">wide world.</span>\n'
+            "</span>"
+        )
+
+    def test_formatted_runs_escape_text_and_cover_trailing_whitespace(self, nlp):
+        sentence = Sentence()
+        sentence.tokens.append(Token(text="A <tag>", trailing_ws=" ", family=Family.MONOSPACE, size="2em"))
+        paragraph = Paragraph(id="p1")
+        paragraph.sentences.append(sentence)
+
+        body = writer.serialize_body(_chapter(paragraph), nlp)
+
+        assert body == (
+            '<span data-par-id="p1">\n' '<span style="font-family: monospace; font-size: 2em">A &lt;tag&gt; </span>\n' "</span>"
+        )
+
+    def test_unformatted_output_stays_byte_identical(self, nlp):
+        paragraph = _make_paragraph("Plain text.", p_id="p1")
+        assert writer.serialize_body(_chapter(paragraph), nlp) == '<span data-par-id="p1">\nPlain text.\n</span>'
 
     def test_html_escapes_sentence_text(self, nlp):
         chapter = _chapter(_make_paragraph('A <span> tag & "quotes".', p_id="p1"))

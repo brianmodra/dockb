@@ -8,12 +8,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from dockb.infrastructure.markdown import front_matter, layout
+from dockb.infrastructure.markdown import front_matter, layout, spans
 from dockb.models.chapter import Chapter
 from dockb.models.formatting import LayoutKind, LayoutVariant
 from dockb.models.paragraph import Paragraph
-
-_SPAN_RE = re.compile(r"<span\b([^>]*)>(.*?)</span>", re.DOTALL)
 
 
 @dataclass
@@ -217,10 +215,10 @@ def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str
     before, between, and after spans is kept at its position, so hand-typed
     content appended after the closing span still belongs to the same paragraph.
     """
-    matches = list(_SPAN_RE.finditer(block))
+    matches = spans.find_spans(block)
     if not matches:
         return None, "normal", "", block
-    if len(matches) == 1 and not _span_attr(matches[0].group(1), "data-par-id"):
+    if len(matches) == 1 and not _span_attr(matches[0].attrs, "data-par-id"):
         return None, "normal", "", block
 
     parts: list[str] = []
@@ -229,8 +227,8 @@ def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str
     layout_variant: LayoutVariant = ""
     position = 0
     for match in matches:
-        parts.append(block[position : match.start()])
-        tag = match.group(1)
+        parts.append(block[position : match.start])
+        tag = match.attrs
         span_par_id = _span_attr(tag, "data-par-id")
         if par_id is None and span_par_id:
             par_id = span_par_id
@@ -239,8 +237,8 @@ def _parse_block(block: str) -> tuple[str | None, LayoutKind, LayoutVariant, str
                 _span_attr(tag, layout.LAYOUT_VARIANT_ATTR),
                 _span_attr(tag, layout.LEGACY_QUOTE_ATTR),
             )
-        parts.append(html.unescape(match.group(2)).strip("\n"))
-        position = match.end()
+        parts.append(spans.plain_text(match.inner).strip("\n"))
+        position = match.end
     parts.append(block[position:])
 
     if par_id is None:

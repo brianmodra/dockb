@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart. The body wraps every paragraph in an identity span; a paragraph may also carry a layout on its span (`data-layout-kind` plus `data-layout-variant` for a quote), which reads and writes exactly like the id — attributes, never text. A legacy `data-quote-type` is still read. The header (front matter) carries a character chapter's name parts and a manuscript chapter's point-of-view character by title.
+This note describes the markdown format of one chapter file: a short header, then a body the system can recognize again later. Import, history, and change detection all use this same format so they cannot drift apart. The body wraps every paragraph in an identity span; a paragraph may also carry a layout on its span (`data-layout-kind` plus `data-layout-variant` for a quote), which reads and writes exactly like the id — attributes, never text. Inline formatting is a `<span style="...">` nested inside the paragraph span, so readers scan outermost spans rather than stopping at the first closing tag. A legacy `data-quote-type` is still read. The header (front matter) carries a character chapter's name parts and a manuscript chapter's point-of-view character by title.
 
 It does not talk to the database. Whoever calls it loads the chapter first, then asks this package to read or write the text.
 
@@ -85,6 +85,14 @@ Rendering rules:
   of their own.
 - Sentence text is HTML-escaped; a backslash-newline hard break and soft
   newlines inside a sentence survive because the writer does not re-split text.
+- Runs of consecutive tokens with the same formatting are wrapped in one
+  `<span style="...">` inside the paragraph span. The declaration list uses
+  `font-style`, `font-weight`, `font-family`, and `font-size` only for
+  attributes that are set; an unformatted run writes no span, so unformatted
+  output stays byte-identical. A span includes its tokens' trailing whitespace.
+  Style values and sizes are validated by the model, then written directly.
+- The reader treats nested spans as markup: their text stays in the paragraph,
+  and nested tags never end the outer identity span.
 - The front matter is `attrs` verbatim when given, else the chapter's own identity
   (`render_chapter_markdown`). The front-matter block and body are joined by a blank
   line; an empty chapter renders as the block alone.
