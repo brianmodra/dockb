@@ -171,6 +171,12 @@ body {
   background: #e0e0dd;
 }
 
+/* `display: inline-flex` above would beat the user agent's `[hidden] { display:
+   none }`, so re-assert it: the save icon must stay gone while the buffer is clean. */
+.save-button[hidden] {
+  display: none;
+}
+
 [data-testid="user-label"] {
   padding: 2px 8px;
   color: #555;

@@ -505,7 +505,7 @@ export function docToString(doc: Node): string {
   doc.forEach((paragraph) => {
     const blanks = paragraph.attrs.blanksBefore ?? 0;
     const separator = !isFirst && paragraph.childCount > 0 ? (blanks > 0 ? blanks + 1 : 2) : blanks;
-    parts.push("\n".repeat(separator) + serializeParagraph(paragraph));
+    parts.push("\n".repeat(separator) + serializeParagraph(paragraph, false));
     isFirst = false;
   });
   return parts.join("");

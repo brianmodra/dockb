@@ -386,6 +386,14 @@ describe("WysiwygView canonical round trip", () => {
     expect(view.plainContent()).toBe("One.\nTwo.\n\nThree.");
   });
 
+  it("unescapes HTML entities in the plain body so a clean file stays clean", () => {
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent('<span data-par-id="p-1">\nMiss Adams&#x27; brother.\n</span>');
+
+    expect(view.plainContent()).toBe("Miss Adams' brother.");
+  });
+
   it("reads legacy data-quote-type and compares the layout signature for a file ending in a newline", () => {
     const buffer = [
       "---",
