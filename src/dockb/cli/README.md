@@ -2,20 +2,22 @@
 
 ## Executive Summary
 
-These are DockB's three shell commands, all reached through one `dockb` command. Two work on
+These are DockB's four shell commands, all reached through one `dockb` command. Two work on
 chapter files: one walks a folder of markdown and updates the knowledge graph (act chapters line up
 by the number in their file name, while character chapters need no number), the other writes one
-chapter back out as markdown, either into the server's folder or to a path you name. The third,
-`users`, administers accounts — and because there is no self-registration and no password recovery
-over HTTP, it is the only way to create an account or to get someone back into a lost one.
+chapter back out as markdown, either into the server's folder or to a path you name. `users`
+administers accounts — and because there is no self-registration and no password recovery over
+HTTP, it is the only way to create an account or to get someone back into a lost one.
+`migrate-layout` upgrades a graph written before paragraph layouts were structured.
 
 Use them without opening the editor. Every chapter command names the account the work belongs to
 with `--owner <username-or-user-id>`, because a document is stored under the account that owns it and the
 tree is keyed by an internal account id rather than a name; `users assign` is the way a manuscript
 is handed from one account to another, which is how a document created before accounts existed — or
 one whose account was deleted — becomes visible in an editor again. `users` also creates, resets,
-blocks and deletes accounts. All three read the same database settings as the API server, report a
-refusal as one `error:` line, and never raise a traceback.
+blocks and deletes accounts. Every command that reaches the knowledge graph reads the same database
+settings as the API server; all four report a refusal as one `error:` line, and never raise a
+traceback.
 
 ## Missing settings
 
@@ -146,6 +148,22 @@ graph does not know — a chapter the named account does not
 own, or a chapter with no owning document (so it cannot be placed) —
 prints the error message to stderr and exits non-zero. The serialization itself is the shared format
 owned by `../infrastructure/markdown/`.
+
+## Migrate paragraph layouts
+
+`dockb migrate-layout [--dry-run] [--document-id ID]` upgrades a graph written by an earlier
+release. A paragraph then carried one `quote_type` string — empty for normal prose, `reading` or
+`writing` for a quote — where the model now stores `layout_kind` plus `layout_variant`. The command
+copies the old value into the pair and removes the old property. It is idempotent: a second run
+finds no paragraph carrying `quote_type` and reports `migrated 0 paragraph(s)`.
+
+It needs the same `NEO4J_URL`, `NEO4J_USER` and `NEO4J_PASSWORD` as the chapter commands, but no
+`--owner` and no spaCy model: it walks every paragraph in the graph, or only those under
+`--document-id`. `--dry-run` runs the same scan and reports `would migrate N paragraph(s)` without
+writing. An old value outside `''`, `reading` and `writing` is refused as one `error:` line naming
+the paragraph, and nothing is written, so a hand-edited graph cannot be silently flattened to
+normal prose. Stored chapter markdown needs no migration: a file still carrying `data-quote-type`
+is read compatibly and rewritten with the new attributes on its next save.
 
 Every command is also a module, so `python -m dockb.cli.users` remains an equivalent
 spelling of `dockb users`. Both run the same `main`, so the two cannot drift apart.

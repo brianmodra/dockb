@@ -45,5 +45,15 @@ class TestDispatch:
         """A command nobody can discover is a command nobody will run."""
         dispatcher.main(["typo"])
         err = capsys.readouterr().err
-        for command in ("users", "import-document", "reconstruct-chapter"):
+        for command in ("users", "import-document", "migrate-layout", "reconstruct-chapter"):
             assert command in err
+
+    def test_it_reaches_the_migrate_layout_command(self, capsys, monkeypatch):
+        """The dispatcher reaches the command's own settings check, not a copy of it."""
+        from dockb.cli import migrate_layout
+
+        monkeypatch.setattr(dispatcher, "load_dotenv", lambda *a, **k: None)
+        monkeypatch.setattr(migrate_layout, "load_dotenv", lambda *a, **k: None)
+        monkeypatch.delenv("NEO4J_URL", raising=False)
+        assert dispatcher.main(["migrate-layout", "--dry-run"]) == 1
+        assert "NEO4J_URL" in capsys.readouterr().err

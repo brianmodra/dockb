@@ -83,6 +83,8 @@ paragraph, chapter, and document loaders read them back.
 
 A Paragraph stores its structured layout as `layout_kind` and
 `layout_variant`; a missing property loads as `normal` with an empty variant.
+`dockb migrate-layout` copies a legacy `quote_type` property into that pair and
+removes the old property.
 The paragraph, chapter, document, and paragraph-search queries all expose those
 properties.
 

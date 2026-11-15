@@ -19,11 +19,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from dockb.cli import import_document, mentions, reconstruct_chapter, users
+from dockb.cli import import_document, mentions, migrate_layout, reconstruct_chapter, users
 
 _COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "import-document": import_document.main,
     "mentions": mentions.main,
+    "migrate-layout": migrate_layout.main,
     "reconstruct-chapter": reconstruct_chapter.main,
     "users": users.main,
 }
@@ -31,6 +32,7 @@ _COMMANDS: dict[str, Callable[[list[str]], int]] = {
 _SUMMARIES = {
     "import-document": "walk a directory of markdown and update the knowledge graph",
     "mentions": "sweep a document's paragraphs for character mentions",
+    "migrate-layout": "move legacy paragraph quote types into structured layouts",
     "reconstruct-chapter": "write one chapter back out as markdown",
     "users": "administer accounts",
 }
