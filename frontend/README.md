@@ -96,8 +96,8 @@ Panels keep the dividers grippable: `layout.ts` clamps every panel to a 10px
 minimum (left panel 120px, message console 24px); the right panel starts at the
 same width as the chapter list (240px) and shrinks back to its 10px floor.
 
-- `layout.ts` — window chrome, panel seams, mode, dirty badge, menubar username
-  label, message sink, and the AI chat line: a textarea at the bottom of the
+- `layout.ts` — window chrome, panel seams, mode, the menubar save button (shown
+  while the buffer is dirty), menubar username label, message sink, and the AI chat line: a textarea at the bottom of the
   message panel (greyed "Prompt AI here" placeholder) that is a whole number of
   text lines high — about one third of the panel by default, auto-extended as
   the typed text needs more lines, and the whole panel (24px floor) when the
@@ -175,9 +175,11 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
-- `menubar.ts` — File (Open, Import…, Save, Delete ▸ Document, Edit ▸ Document/Chapter,
-  Sign out, Quit), Mode, Settings (Document…, Language…, Dictionary…); dropdowns and nested submenus dismiss on
-  outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
+- `menubar.ts` — File (Open, Import…, Delete ▸ Document, Edit ▸ Document/Chapter,
+  Sign out, Quit) and Mode on the left; Settings (Document…, Language…, Dictionary…) is the cog in
+  the right-aligned group. `layout.ts` puts the save button before the cog and the username after
+  it; the save button appears only while the buffer is dirty, carries the tooltip
+  "Save the chapter", and calls `onSave`. Dropdowns and nested submenus dismiss on outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
   `confirmUnsaved`, so they share one unsaved-buffer question rather than two.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber/POV.
   Manuscript chapters group under act headers; `Character` chapters sit in a

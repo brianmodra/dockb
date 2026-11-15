@@ -65,8 +65,9 @@ How files and the database work is in `README_markdown_redesign.md`, and login i
 
 Regions:
 
-1. **Top menu bar** (in-window, full width): File, Mode, Settings (cog); the
-   signed-in username sits at the right edge.
+1. **Top menu bar** (in-window, full width): File and Mode on the left; on the
+   right, a save icon (shown only while the chapter has unsaved changes), the
+   Settings cog, and the signed-in username at the right edge.
 2. **Left panel**: document and chapter selector, resizable.
 3. **Edit panel**: the bulk of the window; WYSIWYG or Raw MD source of the current chapter.
 4. **Message panel**: one line by default, growable upward into a scrollback console.
@@ -94,8 +95,7 @@ message console at 24px minimum height), and the right panel starts at its 10px 
 ## 3. Menus (decided)
 
 - **File ▾** — **Open** (the select-document modal, §8), **Import…** (pick a document directory
-  and send it to `POST /api/import`), **Save** (current chapter;
-  `PUT /api/chapters/{id}/document`), **Delete ▸ Document** (delete a whole document:
+  and send it to `POST /api/import`), **Delete ▸ Document** (delete a whole document:
   pick it, confirm, then `DELETE /api/documents/{id}`; if it was the open document the
   editor and chapter list clear), **Edit ▸ Document / Chapter** (edit a document's
   title, author, and narrative perspective, or a chapter's title, saving through
@@ -299,7 +299,9 @@ response-area function that opens a chapter scrolled to a paragraph, is in
 
 "Local changes" for the Quit modal compares the editor text against the last **canonical** text the
 backend returned — not against what the user most recently typed — because the canonical round trip
-reformats. A menubar badge (`● Unsaved`) makes the state visible.
+reformats. A save icon in the menubar makes the state visible: it appears exactly while the
+chapter has unsaved changes, carries the tooltip "Save the chapter", and saves the current chapter
+through `PUT /api/chapters/{id}/document` when clicked.
 
 ## 9. Start-up behaviour (decided)
 
@@ -312,7 +314,7 @@ per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_stat
 `README_auth.md`).
 
 Signing out returns here rather than closing anything: `File → Sign out` ends the session, clears
-the chapter list, the editor buffer, the unsaved badge and the username in the menubar, and the next
+the chapter list, the editor buffer, the save icon and the username in the menubar, and the next
 pass begins again at the sign-in gate above. Cancelling that gate stops the editor instead — with no
 session left, every request that pass would make is a guaranteed 401.
 

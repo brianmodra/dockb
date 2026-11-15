@@ -1,6 +1,7 @@
 import { ResizeHandle } from "./ResizeHandle";
 import { ResponseArea, type ResponseFunctions, type ResponseObject } from "./responseArea";
 import { buildMenubar, type Mode } from "./menubar";
+import { createSaveIcon } from "./saveIcon";
 
 export interface AppLayoutOptions {
   initialMode?: Mode;
@@ -41,7 +42,7 @@ export class AppLayout {
   private readonly options: AppLayoutOptions;
   private readonly leftPanel: HTMLElement;
   private editPanel!: HTMLElement;
-  private readonly dirtyIndicator: HTMLElement;
+  private readonly saveButton: HTMLButtonElement;
   private readonly userLabel: HTMLElement;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
@@ -77,7 +78,6 @@ export class AppLayout {
         this.applyMode();
         options.onMode?.(mode);
       },
-      onSave: options.onSave,
       onOpen: options.onOpen,
       onImport: options.onImport,
       onQuit: options.onQuit,
@@ -117,19 +117,25 @@ export class AppLayout {
     });
     this.chatLine = chat;
 
-    const dirty = document.createElement("div");
-    dirty.dataset.testid = "dirty-indicator";
-    dirty.className = "dirty-indicator";
-    dirty.textContent = "● Unsaved";
-    dirty.hidden = true;
-    menubar.element.append(dirty);
-    this.dirtyIndicator = dirty;
+    const save = document.createElement("button");
+    save.type = "button";
+    save.dataset.testid = "save-button";
+    save.className = "save-button";
+    save.title = "Save the chapter";
+    save.setAttribute("aria-label", "Save the chapter");
+    save.append(createSaveIcon());
+    save.hidden = true;
+    save.addEventListener("click", () => {
+      this.options.onSave?.();
+    });
+    menubar.right.prepend(save);
+    this.saveButton = save;
 
     const user = document.createElement("div");
     user.dataset.testid = "user-label";
     user.className = "user-label";
     user.hidden = true;
-    menubar.element.append(user);
+    menubar.right.append(user);
     this.userLabel = user;
 
     const editPanel = this.panel("panel-edit");
@@ -227,7 +233,7 @@ export class AppLayout {
   }
 
   setDirty(dirty: boolean): void {
-    this.dirtyIndicator.hidden = !dirty;
+    this.saveButton.hidden = !dirty;
   }
 
   setUser(username: string): void {

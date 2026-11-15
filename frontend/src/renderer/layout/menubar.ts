@@ -3,7 +3,6 @@ export type Mode = "wysiwyg" | "raw";
 export interface MenubarOptions {
   mode?: Mode;
   onMode?: (mode: Mode) => void;
-  onSave?: () => void;
   onOpen?: () => void;
   onImport?: () => void;
   onQuit?: () => void;
@@ -35,7 +34,6 @@ const MENUS: MenuSpec[] = [
     items: [
       { key: "open", label: "Open" },
       { key: "import", label: "Import…" },
-      { key: "save", label: "Save" },
       { key: "delete", label: "Delete", children: [{ key: "delete-document", label: "Document" }] },
       {
         key: "edit",
@@ -70,6 +68,8 @@ const MENUS: MenuSpec[] = [
 
 export interface Menubar {
   element: HTMLElement;
+  /** The right-aligned group holding Settings, and the editor's status labels. */
+  right: HTMLElement;
 }
 
 export function buildMenubar(options: MenubarOptions): Menubar {
@@ -77,11 +77,16 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   element.dataset.testid = "menubar";
   element.className = "menubar";
 
-  for (const menu of MENUS) {
-    element.append(buildMenu(menu, options));
-  }
+  const right = document.createElement("div");
+  right.className = "menubar-right";
+  right.dataset.testid = "menubar-right";
 
-  return { element };
+  for (const menu of MENUS) {
+    (menu.key === "Settings" ? right : element).append(buildMenu(menu, options));
+  }
+  element.append(right);
+
+  return { element, right };
 }
 
 function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
@@ -187,8 +192,6 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
   if (menu.key === "Mode") {
     const mode: Mode = item.key === "raw" ? "raw" : "wysiwyg";
     options.onMode?.(mode);
-  } else if (menu.key === "File" && item.key === "save") {
-    options.onSave?.();
   } else if (menu.key === "File" && item.key === "open") {
     options.onOpen?.();
   } else if (menu.key === "File" && item.key === "import") {

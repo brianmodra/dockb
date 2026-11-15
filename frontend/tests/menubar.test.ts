@@ -23,21 +23,38 @@ describe("menubar", () => {
     expect(bar.element.querySelector('[data-testid="menu-Settings"]')?.textContent).toBe("⚙");
   });
 
-  it("opens File with Open, Import, Save, Delete, Edit, Sign out and Quit", () => {
+  it("groups the Settings cog on the right, away from File and Mode", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    const right = bar.element.querySelector<HTMLElement>(".menubar-right")!;
+    expect(right).not.toBeNull();
+    expect(right.querySelector('[data-testid="menu-Settings"]')).not.toBeNull();
+    expect(right.querySelector('[data-testid="menu-File"]')).toBeNull();
+    expect(right.querySelector('[data-testid="menu-Mode"]')).toBeNull();
+  });
+
+  it("opens File with Open, Import, Delete, Edit, Sign out and Quit", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
     const itemLabels = Array.from(dropdown(bar, "File").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(itemLabels).toEqual(["Open", "Import…", "Save", "Delete", "Edit", "Sign out", "Quit"]);
+    expect(itemLabels).toEqual(["Open", "Import…", "Delete", "Edit", "Sign out", "Quit"]);
   });
 
-  it("safely handles File clicks (Open/Save/Quit wire later)", () => {
+  it("has no Save item in the File menu", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
-    for (const key of ["open", "save", "quit"]) {
+    expect(dropdown(bar, "File").querySelector('[data-testid="menu-item-save"]')).toBeNull();
+  });
+
+  it("safely handles File clicks (Open/Quit wire later)", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    openMenu(bar, "File");
+    for (const key of ["open", "quit"]) {
       expect(() =>
         bar.element
           .querySelector(`[data-testid="menu-item-${key}"]`)
@@ -84,15 +101,6 @@ describe("menubar", () => {
         .querySelector('[data-testid="menu-item-sign-out"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     ).not.toThrow();
-  });
-
-  it("reports File → Save to onSave", () => {
-    const onSave = vi.fn();
-    const bar = buildMenubar({ onSave });
-    document.body.append(bar.element);
-    openMenu(bar, "File");
-    bar.element.querySelector('[data-testid="menu-item-save"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it("offers WYSIWYG and Raw MD modes, reporting the selection", () => {

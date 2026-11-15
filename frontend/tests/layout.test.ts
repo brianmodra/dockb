@@ -350,15 +350,48 @@ describe("AppLayout", () => {
     expect(parseInt(panel.style.height, 10)).toBe(100);
   });
 
-  it("shows the dirty indicator when there are unsaved changes", () => {
+  it("shows the save button when there are unsaved changes", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
-    const badge = layout.element.querySelector<HTMLElement>('[data-testid="dirty-indicator"]')!;
-    expect(badge.hidden).toBe(true);
+    const save = layout.element.querySelector<HTMLElement>('[data-testid="save-button"]')!;
+    expect(save.hidden).toBe(true);
     layout.setDirty(true);
-    expect(badge.hidden).toBe(false);
+    expect(save.hidden).toBe(false);
     layout.setDirty(false);
-    expect(badge.hidden).toBe(true);
+    expect(save.hidden).toBe(true);
+  });
+
+  it("describes the save button with an icon and tooltip", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const save = layout.element.querySelector<HTMLButtonElement>('[data-testid="save-button"]')!;
+    expect(save.title).toBe("Save the chapter");
+    expect(save.getAttribute("aria-label")).toBe("Save the chapter");
+    expect(save.querySelector("svg.save-icon")).not.toBeNull();
+    expect(save.textContent).toBe("");
+  });
+
+  it("saves the chapter when the save button is clicked", () => {
+    const onSave = vi.fn();
+    const layout = new AppLayout({ onSave });
+    document.body.append(layout.element);
+    layout.setDirty(true);
+    layout.element
+      .querySelector<HTMLButtonElement>('[data-testid="save-button"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts the save button and username with the cog on the right", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.setDirty(true);
+    layout.setUser("brian");
+    const right = layout.element.querySelector<HTMLElement>(".menubar-right")!;
+    const [save, settings, username] = Array.from(right.children) as HTMLElement[];
+    expect(save.dataset.testid).toBe("save-button");
+    expect(settings.querySelector('[data-testid="menu-Settings"]')).not.toBeNull();
+    expect(username.dataset.testid).toBe("user-label");
   });
 
   it("renders the signed-in username in the menubar", () => {
