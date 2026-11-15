@@ -257,7 +257,7 @@ def test_read_nested_formatting_spans_inside_the_identity_span(reader, git_repo)
 
 
 def test_read_nested_formatting_spans_into_transient_runs(reader, git_repo):
-    body = '<span data-par-id="par-1">\n' 'Hello <span style="font-style: italic">wide </span>world.\n</span>'
+    body = '<span data-par-id="par-1">\nHello <span style="font-style: italic">wide </span>world.\n</span>'
     _write_snapshot(git_repo, chapter_id="c-runs", title="T", body=body)
 
     chapter = reader.read_chapter("c-runs")

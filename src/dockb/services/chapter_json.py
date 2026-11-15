@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import FormatRun
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.services.chapter_front_matter import reconcile_pov_title
@@ -20,16 +21,52 @@ if TYPE_CHECKING:
 
 
 def sentence_payload(sentence: Sentence, index: int) -> dict[str, object]:
-    """One sentence: its node properties plus its tokens rendered as plain text.
+    """One sentence: its properties, canonical text, and inline formatting runs.
 
     The text is the canonical markdown line — the tokens joined by the
-    whitespace each carries, the trailing whitespace of the last dropped.
+    whitespace each carries, the trailing whitespace of the last dropped. Runs
+    use character offsets into that text and are derived from token attributes,
+    or from transient runs when the sentence has no tokens yet.
     """
+    text = sentence.get_text().rstrip()
     return {
         "id": sentence.id,
         "index": index,
-        "text": sentence.get_text().rstrip(),
+        "text": text,
+        "format_runs": _format_runs(sentence, text),
     }
+
+
+def _format_runs(sentence: Sentence, text: str) -> list[dict[str, object]]:
+    """Formatting runs over *text*, merged and clipped to its length."""
+    raw: list[FormatRun] = []
+    if sentence.tokens:
+        position = 0
+        for token in sentence.tokens:
+            start = position
+            position += len(token.text) + len(token.trailing_ws)
+            style, weight, family, size = token.format_key()
+            if any((style.value, weight.value, family.value, size)):
+                raw.append(FormatRun(start, position, style, weight, family, size))
+    else:
+        raw = list(sentence.format_runs)
+    runs: list[dict[str, object]] = []
+    for run in raw:
+        start = max(0, min(run.start, len(text)))
+        end = max(start, min(run.end, len(text)))
+        if start == end:
+            continue
+        attrs = {
+            "style": run.style.value,
+            "weight": run.weight.value,
+            "family": run.family.value,
+            "size": run.size,
+        }
+        if runs and runs[-1]["end"] == start and all(runs[-1][key] == value for key, value in attrs.items()):
+            runs[-1]["end"] = end
+        else:
+            runs.append({"start": start, "end": end, **attrs})
+    return runs
 
 
 def paragraph_payload(paragraph: Paragraph, index: int, chapter_id: str, chapter_title: str = "") -> dict[str, object]:

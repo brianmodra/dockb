@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
+from dockb.models.formatting import Family, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import Token
@@ -54,6 +55,32 @@ def test_sentences_carry_their_properties_and_canonical_text() -> None:
     second = payload["paragraphs"][1]["sentences"]
     assert [s["text"] for s in second] == ["Second sentence."]
     assert second[0]["index"] == 0
+
+
+def test_sentence_payload_exposes_format_runs_over_its_canonical_text() -> None:
+    chapter = Chapter(id="c1", state=DataState.SYNC)
+    paragraph = Paragraph(id="p1", state=DataState.SYNC)
+    sentence = Sentence(state=DataState.SYNC)
+    sentence.tokens.append(Token(text="Hello", trailing_ws=" ", style=Style.ITALIC, state=DataState.SYNC))
+    sentence.tokens.append(Token(text="wide", trailing_ws=" ", weight=Weight.BOLD, state=DataState.SYNC))
+    sentence.tokens.append(Token(text="world.", trailing_ws=" ", family=Family.MONOSPACE, size="2em", state=DataState.SYNC))
+    paragraph.sentences.append(sentence)
+    chapter.paragraphs.append(paragraph)
+
+    payload = chapter_payload(chapter, chapter_id_ref="c1", pov_title=None)
+
+    runs = payload["paragraphs"][0]["sentences"][0]["format_runs"]
+    assert runs == [
+        {"start": 0, "end": 6, "style": "italic", "weight": "", "family": "", "size": ""},
+        {"start": 6, "end": 11, "style": "", "weight": "bold", "family": "", "size": ""},
+        {"start": 11, "end": 17, "style": "", "weight": "", "family": "monospace", "size": "2em"},
+    ]
+
+
+def test_sentence_payload_has_no_format_runs_when_unformatted() -> None:
+    payload = chapter_payload(_chapter(), chapter_id_ref="c1", pov_title=None)
+
+    assert payload["paragraphs"][0]["sentences"][0]["format_runs"] == []
 
 
 def test_sentence_text_strips_the_trailing_whitespace_of_the_last_token() -> None:

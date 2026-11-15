@@ -94,3 +94,13 @@ answer; a request to any other host is refused before any handler runs
 What this deliberately does **not** have: a table of issued tokens, a keypair, a
 revocation command, or a credential that outlives the process. Revocation is the
 TTL and the restart (`README_mcp_auth.md` §7).
+
+## Chapter JSON shape
+
+The chapter tool returns each paragraph with its `layout` object
+(`{"kind": ..., "variant": ...}`) and each sentence with canonical `text` plus
+`format_runs`. A run carries `start` and `end` character offsets into that text
+and the four formatting attributes (`style`, `weight`, `family`, `size`); unset
+attributes are empty strings. Runs are clipped to the canonical text, include a
+token's trailing whitespace, and adjacent equal runs are merged. Sentences without
+formatting return an empty list.
