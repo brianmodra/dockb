@@ -7,6 +7,7 @@ from dockb.infrastructure.neo4j.base import BaseRepository
 from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.document import Document
+from dockb.models.formatting import Family, Style, Weight
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
@@ -65,7 +66,9 @@ RETURN
   t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
   t.lemma AS token_lemma, t.is_digit AS token_is_digit,
   t.like_num AS token_like_num, t.is_alpha AS token_is_alpha,
-  t.is_stop AS token_is_stop
+  t.is_stop AS token_is_stop,
+  t.style AS token_style, t.weight AS token_weight,
+  t.family AS token_family, t.size AS token_size
 ORDER BY chapter_index, paragraph_index, sentence_index, token_index
 """
 
@@ -362,6 +365,10 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
                     like_num=bool(rec.get("token_like_num", False)),
                     is_alpha=bool(rec.get("token_is_alpha", False)),
                     is_stop=bool(rec.get("token_is_stop", False)),
+                    style=Style(rec["token_style"]) if rec.get("token_style") else Style._,
+                    weight=Weight(rec["token_weight"]) if rec.get("token_weight") else Weight._,
+                    family=Family(rec["token_family"]) if rec.get("token_family") else Family._,
+                    size=rec.get("token_size") or "",
                     state=DataState.SYNC,
                 )
                 current_sentence.tokens.append(token)

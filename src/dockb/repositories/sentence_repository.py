@@ -6,6 +6,7 @@ from typing import Any
 from dockb.infrastructure.neo4j.base import BaseRepository
 from dockb.infrastructure.neo4j.serialized_session import SessionLike
 from dockb.models.base import DataState
+from dockb.models.formatting import Family, Style, Weight
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
 from dockb.repositories.ownership import owned_node_exists
@@ -32,7 +33,11 @@ ON CREATE SET
   tok.is_digit = t.is_digit,
   tok.like_num = t.like_num,
   tok.is_alpha = t.is_alpha,
-  tok.is_stop = t.is_stop
+  tok.is_stop = t.is_stop,
+  tok.style = t.style,
+  tok.weight = t.weight,
+  tok.family = t.family,
+  tok.size = t.size
 ON MATCH SET
   tok.text = t.text,
   tok.type = t.type,
@@ -42,7 +47,11 @@ ON MATCH SET
   tok.is_digit = t.is_digit,
   tok.like_num = t.like_num,
   tok.is_alpha = t.is_alpha,
-  tok.is_stop = t.is_stop
+  tok.is_stop = t.is_stop,
+  tok.style = t.style,
+  tok.weight = t.weight,
+  tok.family = t.family,
+  tok.size = t.size
 MERGE (tok)-[r:PART_OF]->(s)
 SET r.index = t.index
 """
@@ -80,7 +89,11 @@ ON CREATE SET
   tok.is_digit = t.is_digit,
   tok.like_num = t.like_num,
   tok.is_alpha = t.is_alpha,
-  tok.is_stop = t.is_stop
+  tok.is_stop = t.is_stop,
+  tok.style = t.style,
+  tok.weight = t.weight,
+  tok.family = t.family,
+  tok.size = t.size
 ON MATCH SET
   tok.text = t.text,
   tok.type = t.type,
@@ -90,7 +103,11 @@ ON MATCH SET
   tok.is_digit = t.is_digit,
   tok.like_num = t.like_num,
   tok.is_alpha = t.is_alpha,
-  tok.is_stop = t.is_stop
+  tok.is_stop = t.is_stop,
+  tok.style = t.style,
+  tok.weight = t.weight,
+  tok.family = t.family,
+  tok.size = t.size
 MERGE (tok)-[r:PART_OF]->(s)
 SET r.index = t.index
 """
@@ -129,7 +146,9 @@ RETURN
   t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
   t.lemma AS token_lemma, t.is_digit AS token_is_digit,
   t.like_num AS token_like_num, t.is_alpha AS token_is_alpha,
-  t.is_stop AS token_is_stop
+  t.is_stop AS token_is_stop,
+  t.style AS token_style, t.weight AS token_weight,
+  t.family AS token_family, t.size AS token_size
 ORDER BY token_index
 """
 
@@ -170,6 +189,10 @@ class SentenceRepository(BaseRepository[Sentence]):
             "like_num": token.like_num,
             "is_alpha": token.is_alpha,
             "is_stop": token.is_stop,
+            "style": token.style.value,
+            "weight": token.weight.value,
+            "family": token.family.value,
+            "size": token.size,
             "index": index,
         }
 
@@ -243,6 +266,10 @@ class SentenceRepository(BaseRepository[Sentence]):
                     like_num=bool(rec.get("token_like_num", False)),
                     is_alpha=bool(rec.get("token_is_alpha", False)),
                     is_stop=bool(rec.get("token_is_stop", False)),
+                    style=Style(rec["token_style"]) if rec.get("token_style") else Style._,
+                    weight=Weight(rec["token_weight"]) if rec.get("token_weight") else Weight._,
+                    family=Family(rec["token_family"]) if rec.get("token_family") else Family._,
+                    size=rec.get("token_size") or "",
                     state=DataState.SYNC,
                 )
                 sentence.tokens.append(token)

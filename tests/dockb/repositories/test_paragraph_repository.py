@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dockb.models.base import DataState
+from dockb.models.formatting import Family, Style
 from dockb.models.paragraph import Paragraph
 from dockb.models.sentence import Sentence
 
@@ -310,6 +311,10 @@ class TestLoadParagraph:
                 "token_like_num": False,
                 "token_is_alpha": True,
                 "token_is_stop": False,
+                "token_style": "italic",
+                "token_weight": "normal",
+                "token_family": "monospace",
+                "token_size": "2em",
             }
         ]
         p = paragraph_repo.load("p-1", _OWNER)
@@ -319,6 +324,9 @@ class TestLoadParagraph:
         assert p.sentences[0].id == "s-1"
         assert len(p.sentences[0].tokens) == 1
         assert p.sentences[0].tokens[0].text == "Hello"
+        assert p.sentences[0].tokens[0].style is Style.ITALIC
+        assert p.sentences[0].tokens[0].family is Family.MONOSPACE
+        assert p.sentences[0].tokens[0].size == "2em"
 
     def test_sets_state_to_sync(self, paragraph_repo, neo4j_session):
         neo4j_session.run.return_value = [{"paragraph_id": "p-1"}]

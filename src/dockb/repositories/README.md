@@ -72,6 +72,20 @@ so it cannot be used to harvest names from another account's manuscript. The nam
 returned deduplicated case-insensitively, because the proofreading glossary only needs the
 set of accepted spellings.
 
+# Stored token properties
+
+Each Token stores its text, type, POS, lemma, whitespace, and the boolean
+flags spaCy derives. It also stores its inline formatting: `style`, `weight`,
+`family`, and `size`. A missing formatting property means unset, so older
+tokens load with inherited formatting rather than an error. The sentence
+repository writes all four properties on every token save, and the sentence,
+paragraph, chapter, and document loaders read them back.
+
+A Paragraph stores its structured layout as `layout_kind` and
+`layout_variant`; a missing property loads as `normal` with an empty variant.
+The paragraph, chapter, document, and paragraph-search queries all expose those
+properties.
+
 # Writing to the database
 
 This will mostly be a Sentence (and all its Tokens) at a time. Each model object has a unique ID,

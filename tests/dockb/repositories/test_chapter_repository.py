@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dockb.models.base import DataState
+from dockb.models.formatting import Family, Style
 from dockb.models.paragraph import Paragraph
 
 _OWNER = "acct-1"
@@ -403,6 +404,10 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
                 "token_like_num": False,
                 "token_is_alpha": True,
                 "token_is_stop": False,
+                "token_style": "italic",
+                "token_weight": "normal",
+                "token_family": "monospace",
+                "token_size": "2em",
             }
         ]
         ch = chapter_repo.load("ch-1", _OWNER)
@@ -415,6 +420,9 @@ class TestLoadChapter:  # pylint: disable=too-many-public-methods
         assert ch.paragraphs[0].sentences[0].id == "s-1"
         assert len(ch.paragraphs[0].sentences[0].tokens) == 1
         assert ch.paragraphs[0].sentences[0].tokens[0].text == "Hello"
+        assert ch.paragraphs[0].sentences[0].tokens[0].style is Style.ITALIC
+        assert ch.paragraphs[0].sentences[0].tokens[0].family is Family.MONOSPACE
+        assert ch.paragraphs[0].sentences[0].tokens[0].size == "2em"
 
     def test_defaults_null_title_to_empty(self, chapter_repo, neo4j_session):
         neo4j_session.run.return_value = [

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dockb.models.base import DataState
+from dockb.models.formatting import Family, Style, Weight
 from dockb.models.sentence import Sentence
 from dockb.models.token import POS, Token, Type
 
@@ -109,6 +110,19 @@ class TestSaveNewSentence:
         tokens = params["tokens"]
         assert len(tokens) == 1
         assert_token_dict(tokens[0], TOKEN_A_DICT, index=0)
+
+    def test_passes_token_formatting_params(self, repo, neo4j_session, sentence):
+        sentence.state = DataState.NEW
+        sentence.tokens.append(make_token("Hello", style=Style.ITALIC, weight=Weight.BOLD, family=Family.MONOSPACE, size="2em"))
+
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
+
+        _, params = extract_call(neo4j_session)
+        token = params["tokens"][0]
+        assert token["style"] == "italic"
+        assert token["weight"] == "bold"
+        assert token["family"] == "monospace"
+        assert token["size"] == "2em"
 
     def test_preserves_token_order(self, repo, neo4j_session, sentence):
         sentence.state = DataState.NEW
@@ -325,6 +339,10 @@ class TestLoadSentence:
                 "token_like_num": False,
                 "token_is_alpha": True,
                 "token_is_stop": False,
+                "token_style": "italic",
+                "token_weight": "bold",
+                "token_family": "monospace",
+                "token_size": "2em",
             }
         ]
         s = repo.load("s-1", _OWNER)
@@ -333,11 +351,41 @@ class TestLoadSentence:
         assert len(s.tokens) == 1
         assert s.tokens[0].text == "Hello"
         assert s.tokens[0].type == Type.WORD
+        assert s.tokens[0].style is Style.ITALIC
+        assert s.tokens[0].weight is Weight.BOLD
+        assert s.tokens[0].family is Family.MONOSPACE
+        assert s.tokens[0].size == "2em"
 
     def test_sets_state_to_sync(self, repo, neo4j_session):
         neo4j_session.run.return_value = [{"sentence_id": "s-1"}]
         s = repo.load("s-1", _OWNER)
         assert s.state == DataState.SYNC
+
+    def test_missing_token_formatting_defaults_to_unset(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "sentence_id": "s-1",
+                "token_id": "t-1",
+                "token_index": 0,
+                "token_text": "Hello",
+                "token_type": "word",
+                "token_trailing_ws": "",
+                "token_pos": "NOUN",
+                "token_lemma": "hello",
+                "token_is_digit": False,
+                "token_like_num": False,
+                "token_is_alpha": True,
+                "token_is_stop": False,
+            }
+        ]
+
+        s = repo.load("s-1", _OWNER)
+
+        assert s is not None
+        assert s.tokens[0].style is Style._
+        assert s.tokens[0].weight is Weight._
+        assert s.tokens[0].family is Family._
+        assert s.tokens[0].size == ""
 
 
 # ---------------------------------------------------------------------------
