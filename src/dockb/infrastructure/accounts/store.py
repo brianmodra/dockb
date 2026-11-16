@@ -21,7 +21,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -117,7 +117,7 @@ def _reject_unknown_user(rowcount: int, username: str) -> None:
         raise UnknownUserError(f"unknown user '{username}'")
 
 
-class AccountStore:
+class AccountStore:  # pylint: disable=too-many-public-methods
     """SQLite store for users, oauth accounts, and per-user app state.
 
     Identities are usernames. ``users`` keeps an internal numeric-style UUID
@@ -584,6 +584,36 @@ class AccountStore:
             connection.close()
         return dict(row) if row is not None else None
 
+    def get_proofreading_language(self, username: str) -> str | None:
+        """Return the proofreading language *username* last chose, if any."""
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT proofreading_language FROM app_state WHERE username = ?",
+                (username,),
+            ).fetchone()
+        finally:
+            connection.close()
+        return None if row is None else cast("str | None", row["proofreading_language"])
+
+    def set_proofreading_language(self, username: str, language: str) -> None:
+        """Store *username*'s proofreading language without touching their other state."""
+        connection = self._connect()
+        try:
+            connection.execute(
+                """
+                INSERT INTO app_state (username, proofreading_language, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (username) DO UPDATE SET
+                    proofreading_language = excluded.proofreading_language,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (username, language),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
     def set_app_state(self, username: str, state: dict[str, Any]) -> None:
         """Replace the per-user app state, inserting when absent."""
         connection = self._connect()
@@ -645,7 +675,7 @@ class AccountStore:
             connection.close()
 
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 # Created by name rather than as an inline UNIQUE on the column, so a fresh database and
 # a migrated one hold it under the same name. SQLite cannot add a constraint with ALTER
@@ -725,6 +755,21 @@ def _add_document_glossary(connection: sqlite3.Connection) -> None:
     connection.executescript(_DOCUMENT_GLOSSARY_MIGRATION)
 
 
+_PROOFREADING_LANGUAGE_MIGRATION = "ALTER TABLE app_state ADD COLUMN proofreading_language TEXT;"
+
+
+def _add_proofreading_language(connection: sqlite3.Connection) -> None:
+    """Add the per-user proofreading language preference to app state.
+
+    ``_SCHEMA`` runs first and creates ``app_state`` with the column already in
+    place when the table was missing entirely, so the ``ALTER`` is skipped there
+    rather than failing on a duplicate column.
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(app_state)")}
+    if "proofreading_language" not in columns:
+        connection.executescript(_PROOFREADING_LANGUAGE_MIGRATION)
+
+
 def _add_password_credentials(connection: sqlite3.Connection) -> None:
     """Add the credential, blocking and deletion columns, and the unique email index.
 
@@ -744,6 +789,7 @@ _MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     (1, lambda _connection: None),
     (2, _add_password_credentials),
     (3, _add_document_glossary),
+    (4, _add_proofreading_language),
 )
 
 _SCHEMA = """
@@ -773,11 +819,12 @@ CREATE TABLE IF NOT EXISTS oauth_accounts (
 );
 
 CREATE TABLE IF NOT EXISTS app_state (
-    username           TEXT PRIMARY KEY,
-    last_document_id   TEXT,
-    panel_widths       TEXT,
-    edit_mode          TEXT,
-    updated_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    username               TEXT PRIMARY KEY,
+    last_document_id       TEXT,
+    panel_widths           TEXT,
+    edit_mode              TEXT,
+    proofreading_language  TEXT,
+    updated_at             TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
 );
 

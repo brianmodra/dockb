@@ -292,6 +292,14 @@ class AuthService:
         """Upsert the user's app state as a whole."""
         self._accounts.set_app_state(user_id, state)
 
+    def get_proofreading_language(self, user_id: str) -> str | None:
+        """Return the proofreading language the user last chose, if any."""
+        return self._accounts.get_proofreading_language(user_id)
+
+    def set_proofreading_language(self, user_id: str, language: str) -> None:
+        """Store the user's chosen proofreading language."""
+        self._accounts.set_proofreading_language(user_id, language)
+
     @property
     def session_ttl_seconds(self) -> int:
         """How long a session cookie stays valid."""

@@ -861,14 +861,22 @@ Note that a paragraph split can include sentence splits, and a sentence operatio
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/check/languages` | List the language codes and labels the checker supports |
+| `PUT` | `/api/check/language` | Store the signed-in writer's chosen proofreading language |
 | `POST` | `/api/check` | Check one paragraph and return its spelling, grammar and style diagnostics |
 
-Session-gated like every editor route. Both are interactive-only: they read the request and
-never write the file, the graph, or a snapshot, so they are not part of the save path.
+Session-gated like every editor route. Both `GET /api/check/languages` and `POST /api/check` are
+interactive-only: they read the request and never write the file, the graph, or a snapshot, so they
+are not part of the save path. `PUT /api/check/language` is the one write: it records the writer's
+preference per account and answers with the same payload as the `GET`.
 `GET /api/check/languages` answers `{ "languages": [{ "code": "en-US", "label": "English (US)"
 }, ...], "default": "en-US" }`, or `503` with `proofreading_unavailable` when proofreading is
-disabled. `default` is the resolved `DOCKB_PROOFREADING_LANGUAGE` — the language the editor
-starts from before a writer picks another.
+disabled. `default` is the language the sign-in account last stored with
+`PUT /api/check/language`, when it is still supported; otherwise the configured
+`DOCKB_PROOFREADING_LANGUAGE`. The editor restores its language from this value on startup.
+
+`PUT /api/check/language` takes `{ "language": "fr" }`, answers the same `{ languages, default }`
+payload, and returns `422` for a code the checker does not support. The stored choice is per user,
+so it survives a server restart without affecting another account.
 
 The body is:
 
@@ -882,9 +890,10 @@ The body is:
 }
 ```
 
-`language` is one of the codes the service supports and falls back to
-`DOCKB_PROOFREADING_LANGUAGE` (default `en-US`) when omitted — the same value the `languages`
-endpoint reports as `default`. `focus` is the sentence the writer is editing,
+`language` is one of the codes the service supports. When omitted it falls back to the account's
+stored choice, then to `DOCKB_PROOFREADING_LANGUAGE` (default `en-US`) — the same value the
+`languages` endpoint reports as `default`. A language in the body always wins over the stored
+choice. `focus` is the sentence the writer is editing,
 as offsets into `text`; diagnostics overlapping it carry `in_focus`. `document_id` and
 `paragraph_id` identify the text so the server can apply that document's glossary, and the
 client can discard a reply that arrived after the text moved.

@@ -182,6 +182,117 @@ def test_app_state_upserts(tmp_path) -> None:
     assert state["edit_mode"] == "wysiwyg"
 
 
+def _app_state_columns(tmp_path) -> set[str]:
+    connection = sqlite3.connect(tmp_path / "dockb_app.db")
+    try:
+        return {row[1] for row in connection.execute("PRAGMA table_info(app_state)")}
+    finally:
+        connection.close()
+
+
+_V3_APP_STATE = """
+CREATE TABLE app_state (
+    username           TEXT PRIMARY KEY,
+    last_document_id   TEXT,
+    panel_widths       TEXT,
+    edit_mode          TEXT,
+    updated_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+def _v3_database(tmp_path) -> None:
+    connection = sqlite3.connect(tmp_path / "dockb_app.db")
+    try:
+        connection.executescript(_V2_USERS)
+        connection.execute(
+            "INSERT INTO users (id, username, display_name) VALUES ('id-abby', 'abby', 'Abby')",
+        )
+        connection.executescript(_V3_APP_STATE)
+        connection.execute("INSERT INTO app_state (username, edit_mode) VALUES ('abby', 'raw')")
+        connection.execute("PRAGMA user_version = 3")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_proofreading_language_defaults_to_none(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+
+    assert store.get_proofreading_language(_USERNAME) is None
+
+
+def test_proofreading_language_round_trip(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+
+    store.set_proofreading_language(_USERNAME, "fr")
+
+    assert store.get_proofreading_language(_USERNAME) == "fr"
+
+
+def test_proofreading_language_survives_a_new_store_instance(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.set_proofreading_language(_USERNAME, "fr")
+
+    restarted = _store(tmp_path)
+
+    assert restarted.get_proofreading_language(_USERNAME) == "fr"
+
+
+def test_proofreading_language_is_per_user(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user("abby", email=_EMAIL, display_name="Abby")
+    store.create_user("brian", email="brian@example.com", display_name="Brian")
+
+    store.set_proofreading_language("abby", "fr")
+    store.set_proofreading_language("brian", "es")
+
+    assert store.get_proofreading_language("abby") == "fr"
+    assert store.get_proofreading_language("brian") == "es"
+
+
+def test_proofreading_language_does_not_disturb_other_app_state(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.set_app_state(_USERNAME, {"last_document_id": "doc-1", "edit_mode": "raw"})
+
+    store.set_proofreading_language(_USERNAME, "de")
+
+    state = store.get_app_state(_USERNAME)
+    assert state is not None
+    assert state["last_document_id"] == "doc-1"
+    assert state["edit_mode"] == "raw"
+    assert state["proofreading_language"] == "de"
+
+
+def test_saving_app_state_keeps_the_proofreading_language(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.set_proofreading_language(_USERNAME, "es")
+
+    store.set_app_state(_USERNAME, {"last_document_id": "doc-1", "edit_mode": "wysiwyg"})
+
+    assert store.get_proofreading_language(_USERNAME) == "es"
+
+
+def test_migration_from_v3_adds_the_proofreading_language(tmp_path) -> None:
+    _v3_database(tmp_path)
+    assert "proofreading_language" not in _app_state_columns(tmp_path)
+
+    store = _store(tmp_path)
+    store.get_user("abby")
+
+    assert "proofreading_language" in _app_state_columns(tmp_path)
+    assert _user_version(tmp_path) == _SCHEMA_VERSION
+    state = store.get_app_state("abby")
+    assert state is not None
+    assert state["edit_mode"] == "raw"
+    assert state["proofreading_language"] is None
+
+
 # ------------------------------------------------------------ encryption
 
 

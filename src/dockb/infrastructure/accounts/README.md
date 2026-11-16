@@ -121,6 +121,10 @@ refuses are gone.
 Version 3 added `document_glossary` for accepted proofreading words. The `IF NOT EXISTS` in the
 migration keeps it idempotent even though `_SCHEMA` also declares the table.
 
+Version 4 added `app_state.proofreading_language`, the language the writer last chose in the
+editor's settings. The migration checks `PRAGMA table_info` before the `ALTER`, because `_SCHEMA`
+runs first and already creates the column when the whole `app_state` table was missing.
+
 ### `app_state`
 
 | Column | Type | Notes |
@@ -129,10 +133,13 @@ migration keeps it idempotent even though `_SCHEMA` also declares the table.
 | `last_document_id` | TEXT | The document the editor last had open. |
 | `panel_widths` | TEXT | Free-form JSON object, opaque to the backend. |
 | `edit_mode` | TEXT | Open string. |
+| `proofreading_language` | TEXT | The LanguageTool code the writer last chose, or `NULL`. |
 | `updated_at` | TEXT | `CURRENT_TIMESTAMP` default. |
 
-`set_app_state` replaces the row wholesale, so the three fields are a snapshot rather
-than a merge.
+`set_app_state` replaces the row wholesale, so the first three fields are a snapshot rather
+than a merge. `set_proofreading_language` writes only its own column — first inserting the
+row when absent — so saving the editor state afterwards cannot erase the writer's language,
+and choosing a language cannot disturb the rest of the state.
 
 ### `document_glossary`
 

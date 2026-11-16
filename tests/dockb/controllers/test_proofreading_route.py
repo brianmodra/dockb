@@ -7,9 +7,9 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dockb.controllers.auth import get_current_user, get_owner
+from dockb.controllers.auth import get_auth_service, get_current_user, get_owner
 from dockb.controllers.glossary import set_glossary_service
-from dockb.controllers.proofreading import check, languages, set_proofreading_service
+from dockb.controllers.proofreading import check, languages, set_language, set_proofreading_service
 from dockb.exceptions import DocumentNotFoundError
 from dockb.services.proofreading import (
     Diagnostic,
@@ -22,13 +22,28 @@ from dockb.services.proofreading import (
 )
 
 
-def _make_app() -> FastAPI:
+def _make_app(auth: _StubAuth) -> FastAPI:
     app = FastAPI()
     app.dependency_overrides[get_owner] = lambda: "account-0"
     app.dependency_overrides[get_current_user] = lambda: "abby"
+    app.dependency_overrides[get_auth_service] = lambda: auth
     app.add_api_route("/api/check", check, methods=["POST"])
     app.add_api_route("/api/check/languages", languages, methods=["GET"])
+    app.add_api_route("/api/check/language", set_language, methods=["PUT"])
     return app
+
+
+class _StubAuth:  # pylint: disable=too-few-public-methods
+    def __init__(self, language: str | None = None) -> None:
+        self.language = language
+        self.saved: list[tuple[str, str]] = []
+
+    def get_proofreading_language(self, _user: str) -> str | None:
+        return self.language
+
+    def set_proofreading_language(self, user: str, language: str) -> None:
+        self.language = language
+        self.saved.append((user, language))
 
 
 class _StubService:  # pylint: disable=too-few-public-methods
@@ -69,15 +84,17 @@ class _StubGlossary:  # pylint: disable=too-few-public-methods
         return self.words
 
 
-class TestCheckRoute:
+class TestCheckRoute:  # pylint: disable=too-many-public-methods
     def setup_method(self) -> None:
-        self.client = TestClient(_make_app())
+        self.auth = _StubAuth()
+        self.client = TestClient(_make_app(self.auth))
 
     def teardown_method(self) -> None:
         set_proofreading_service(None)
         set_glossary_service(None)
         self.client.app.dependency_overrides.pop(get_owner, None)
         self.client.app.dependency_overrides.pop(get_current_user, None)
+        self.client.app.dependency_overrides.pop(get_auth_service, None)
 
     def _wire(self, service: _StubService) -> None:
         set_proofreading_service(service)
@@ -199,6 +216,39 @@ class TestCheckRoute:
         assert resp.status_code == 200
         assert resp.json()["language"] == "en-US"
 
+    def test_the_stored_language_is_used_when_the_request_omits_one(self) -> None:
+        service = _StubService()
+        self.auth.language = "de"
+        self._wire(service)
+
+        resp = self.client.post("/api/check", json={"text": "hallo"})
+
+        assert resp.status_code == 200
+        assert resp.json()["language"] == "de"
+        assert service.calls == [("hallo", "de", None, None, ())]
+
+    def test_the_request_language_wins_over_the_stored_one(self) -> None:
+        service = _StubService()
+        self.auth.language = "de"
+        self._wire(service)
+
+        resp = self.client.post("/api/check", json={"text": "hello", "language": "en-US"})
+
+        assert resp.json()["language"] == "en-US"
+        assert service.calls == [("hello", "en-US", None, None, ())]
+
+    def test_an_unsupported_stored_language_falls_back_to_the_default(self) -> None:
+        service = _StubService()
+        service.default_language = "en-GB"
+        self.auth.language = "klingon"
+        self._wire(service)
+
+        resp = self.client.post("/api/check", json={"text": "hello"})
+
+        assert resp.status_code == 200
+        assert resp.json()["language"] == "en-GB"
+        assert service.calls == [("hello", "en-GB", None, None, ())]
+
     def test_the_documents_effective_glossary_is_forwarded_to_the_checker(self) -> None:
         service = _StubService()
         glossary = _StubGlossary(words=("Karakas",))
@@ -209,7 +259,7 @@ class TestCheckRoute:
 
         assert resp.status_code == 200
         assert glossary.calls == [("doc-1", "account-0", "abby")]
-        assert service.calls == [("Karakas", None, None, None, ("Karakas",))]
+        assert service.calls == [("Karakas", "en-US", None, None, ("Karakas",))]
 
     def test_an_accepted_character_name_suppresses_its_spelling_diagnostic(self) -> None:
         class _SpellingTool:  # pylint: disable=too-few-public-methods
@@ -269,6 +319,47 @@ class TestCheckRoute:
         assert resp.status_code == 200
         assert resp.json()["default"] == "en-GB"
 
+    def test_reports_the_stored_language_as_the_default(self) -> None:
+        self.auth.language = "de"
+        self._wire(_StubService())
+
+        resp = self.client.get("/api/check/languages")
+
+        assert resp.status_code == 200
+        assert resp.json()["default"] == "de"
+
+    def test_an_unsupported_stored_language_is_not_reported_as_the_default(self) -> None:
+        service = _StubService()
+        service.default_language = "en-GB"
+        self.auth.language = "klingon"
+        self._wire(service)
+
+        resp = self.client.get("/api/check/languages")
+
+        assert resp.status_code == 200
+        assert resp.json()["default"] == "en-GB"
+
     def test_languages_without_a_service_answer_503(self) -> None:
         resp = self.client.get("/api/check/languages")
+        assert resp.status_code == 503
+
+    def test_putting_a_language_persists_it_and_reports_it_as_the_default(self) -> None:
+        self._wire(_StubService())
+
+        resp = self.client.put("/api/check/language", json={"language": "de"})
+
+        assert resp.status_code == 200
+        assert resp.json()["default"] == "de"
+        assert self.auth.saved == [("abby", "de")]
+
+    def test_putting_an_unsupported_language_answers_422_and_persists_nothing(self) -> None:
+        self._wire(_StubService())
+
+        resp = self.client.put("/api/check/language", json={"language": "klingon"})
+
+        assert resp.status_code == 422
+        assert not self.auth.saved
+
+    def test_putting_a_language_without_a_service_answers_503(self) -> None:
+        resp = self.client.put("/api/check/language", json={"language": "de"})
         assert resp.status_code == 503

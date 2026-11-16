@@ -202,6 +202,17 @@ def test_get_app_state_and_set_keyed_by_username(tmp_path) -> None:
     assert state["edit_mode"] == "raw"
 
 
+def test_get_and_set_the_proofreading_language(tmp_path) -> None:
+    service, store, _, _ = _build_password_only(tmp_path)
+    store.create_user(username="dave", email=None, display_name="Dave")
+
+    assert service.get_proofreading_language("dave") is None
+
+    service.set_proofreading_language("dave", "fr")
+
+    assert service.get_proofreading_language("dave") == "fr"
+
+
 def test_get_user_unknown_returns_none(tmp_path) -> None:
     service, _, _, _ = _build(tmp_path)
     assert service.get_user("no-such-user") is None

@@ -59,6 +59,12 @@ class LanguageOption(BaseModel):
     label: str
 
 
+class SetLanguageRequest(BaseModel):
+    """PUT /api/check/language: the proofreading language the writer chose."""
+
+    language: str = Field(min_length=1)
+
+
 class LanguagesResponse(BaseModel):
     """The proofreading languages the editor may choose from, and the default."""
 

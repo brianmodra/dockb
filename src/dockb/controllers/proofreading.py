@@ -10,17 +10,18 @@ account supplies the document's glossary and character names (see
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dockb.controllers.auth import get_current_user, get_owner
+from dockb.controllers.auth import get_auth_service, get_current_user, get_owner
 from dockb.controllers.glossary import get_glossary_service
 from dockb.controllers.schemas.proofreading import (
     CheckRequest,
     CheckResponse,
     LanguageOption,
     LanguagesResponse,
+    SetLanguageRequest,
 )
 from dockb.controllers.schemas.proofreading import (
     Diagnostic as DiagnosticWire,
@@ -51,26 +52,65 @@ def set_proofreading_service(service: Any) -> None:
     _proofreading_service = service
 
 
-@router.get("/check/languages")
-def languages(
-    svc: Any = Depends(get_proofreading_service),
-    _user: str = Depends(get_current_user),
-) -> dict[str, Any]:
-    if svc is None:
-        raise HTTPException(status_code=503, detail="proofreading_unavailable")
+def _supported_codes(svc: Any) -> set[str]:
+    """Return the language codes *svc* accepts."""
+    return {code for code, _label in svc.supported_languages()}
+
+
+def _language_for(auth: Any, user: str, svc: Any) -> str:
+    """Return the language to check in when the request names none.
+
+    The writer's stored choice wins when it is still supported; otherwise the
+    service's configured default, so a preference left behind by a removed
+    language cannot make every check fail.
+    """
+    stored = auth.get_proofreading_language(user) if auth is not None else None
+    return stored if stored in _supported_codes(svc) else cast("str", svc.default_language)
+
+
+def _languages_response(svc: Any, default: str) -> dict[str, Any]:
     return LanguagesResponse(
         languages=[LanguageOption(code=code, label=label) for code, label in svc.supported_languages()],
-        default=svc.default_language,
+        default=default,
     ).model_dump()
 
 
+@router.get("/check/languages")
+def languages(
+    svc: Any = Depends(get_proofreading_service),
+    user: str = Depends(get_current_user),
+    auth: Any = Depends(get_auth_service),
+) -> dict[str, Any]:
+    if svc is None:
+        raise HTTPException(status_code=503, detail="proofreading_unavailable")
+    return _languages_response(svc, _language_for(auth, user, svc))
+
+
+@router.put("/check/language")
+def set_language(
+    body: SetLanguageRequest,
+    svc: Any = Depends(get_proofreading_service),
+    user: str = Depends(get_current_user),
+    auth: Any = Depends(get_auth_service),
+) -> dict[str, Any]:
+    """Persist the writer's chosen proofreading language for their account."""
+    if svc is None:
+        raise HTTPException(status_code=503, detail="proofreading_unavailable")
+    if body.language not in _supported_codes(svc):
+        raise HTTPException(status_code=422, detail=f"unsupported language: {body.language}")
+    if auth is not None:
+        auth.set_proofreading_language(user, body.language)
+    return _languages_response(svc, body.language)
+
+
 @router.post("/check")
-def check(
+def check(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     body: CheckRequest,
     svc: Any = Depends(get_proofreading_service),
     glossary: Any = Depends(get_glossary_service),
     owner: str = Depends(get_owner),
     user: str = Depends(get_current_user),
+    auth: Any = Depends(get_auth_service),
 ) -> dict[str, Any]:
     if svc is None:
         raise HTTPException(status_code=503, detail="proofreading_unavailable")
@@ -86,10 +126,11 @@ def check(
             raise HTTPException(status_code=404, detail="document_not_found") from exc
     focus_start = body.focus.start if body.focus is not None else None
     focus_end = body.focus.end if body.focus is not None else None
+    language = body.language or _language_for(auth, user, svc)
     try:
         diagnostics = svc.check(
             body.text,
-            body.language,
+            language,
             focus_start=focus_start,
             focus_end=focus_end,
             accepted_words=accepted_words,
@@ -102,7 +143,6 @@ def check(
         raise HTTPException(status_code=503, detail=f"proofreading_unavailable: {exc}") from exc
     except ProofreadingError as exc:
         raise HTTPException(status_code=502, detail=f"proofreading_failed: {exc}") from exc
-    language = body.language or svc.default_language
     return CheckResponse(
         language=language,
         diagnostics=[
