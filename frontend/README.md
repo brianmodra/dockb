@@ -94,7 +94,7 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
 
 - `layout.ts` — window chrome, panel seams, mode, the menubar save button (shown
   while the buffer is dirty), menubar username button (user menu, raw-markdown gating), message sink, and the AI chat line: a textarea at the bottom of the
-  message panel (greyed "Prompt AI here" placeholder) that is a whole number of
+  message panel (greyed "Prompt AI here" placeholder, a sparkles icon in its top-right corner) that is a whole number of
   text lines high — about one third of the panel by default, auto-extended as
   the typed text needs more lines, and the whole panel (24px floor) when the
   panel is one line high. Above it the message log keeps an earlier-messages

@@ -141,8 +141,16 @@ describe("AppLayout", () => {
     document.body.append(layout.element);
     const chat = layout.element.querySelector<HTMLTextAreaElement>('[data-testid="chat-line"]')!;
     expect(chat).toBeInstanceOf(HTMLTextAreaElement);
-    expect(chat.parentElement?.dataset.testid).toBe("panel-message");
+    expect(chat.parentElement?.dataset.testid).toBe("chat-line-wrap");
     expect(chat.placeholder).toBe("Prompt AI here");
+  });
+
+  it("places a sparkles icon in the chat box's top-right corner", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const wrap = layout.element.querySelector<HTMLElement>('[data-testid="chat-line-wrap"]')!;
+    const sparkle = wrap.querySelector<HTMLElement>("svg.chat-sparkle");
+    expect(sparkle).not.toBeNull();
   });
 
   it("shows only the chat box when the message panel is one line high", () => {
@@ -273,7 +281,7 @@ describe("AppLayout", () => {
     expect(area.hidden).toBe(false);
     expect(area.querySelector('[data-testid="response-spinner"]')).not.toBeNull();
     const ids = Array.from(panel.children).map((n) => (n as HTMLElement).dataset.testid);
-    expect(ids).toEqual(["message-log", "panel-response", "chat-line"]);
+    expect(ids).toEqual(["message-log", "panel-response", "chat-line-wrap"]);
   });
 
   it("shows the parsed reply in the response area and brings the chat box back under it", () => {
@@ -294,6 +302,19 @@ describe("AppLayout", () => {
     )!;
     found.click();
     expect(highlight).toHaveBeenCalledWith({ chapter_id: "c1" });
+  });
+
+  it("shows a reply without moving focus to the response area", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.showResponse([
+      { text: "The chapter has 12 unsaved changes" },
+      { button: { label: "Save chapter", function: "save-chapter" } },
+    ]);
+    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    const button = area.querySelector<HTMLButtonElement>("button");
+    expect(button).not.toBeNull();
+    expect(document.activeElement).not.toBe(button);
   });
 
   it("drops the response area and restores the chat box when the prompt fails", () => {

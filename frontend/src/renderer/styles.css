@@ -18,6 +18,26 @@ body {
   margin: 0;
 }
 
+/* ---- scrollbars ---- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c7d3c0;
+  border-radius: 5px;
+}
+
+* {
+  scrollbar-color: #c7d3c0 transparent;
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -146,7 +166,7 @@ body {
   height: 24px;
   padding: 0 8px;
   border-bottom: 1px solid #ccc;
-  background: #f2f2f0;
+  background: #e0e7ff;
   user-select: none;
   font-size: 12px;
 }
@@ -224,6 +244,11 @@ body {
 
 .menu-label:hover {
   background: #e0e0dd;
+}
+
+[data-testid="menu-Settings"] {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .menu-dropdown {
@@ -653,6 +678,8 @@ body {
 .edit-panel .chapter-header {
   padding: 8px 12px 6px;
   color: #555;
+  font-family: var(--font-ui);
+  font-size: 12px;
   font-style: italic;
   cursor: default;
   user-select: none;
@@ -790,12 +817,14 @@ body {
   flex: 1 1 0;
   overflow-y: auto;
   min-height: 0;
+  background: #eff3f2;
 }
 
 .response-area {
   flex: none;
   overflow-y: auto;
   min-height: 0;
+  background: #eff3f2;
 }
 
 .response-line {
@@ -810,17 +839,33 @@ body {
   color: #8a8a86;
 }
 
-.chat-line {
+.chat-line-wrap {
+  position: relative;
   flex: none;
+}
+
+.chat-sparkle {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 12px;
+  height: 12px;
+  color: #ebc96d;
+  pointer-events: none;
+}
+
+.chat-line {
+  display: block;
+  width: 100%;
   resize: none;
   border: none;
   outline: none;
-  background: #f9f9f7;
+  background: #f6f0f0;
   border-radius: 3px;
   font-size: 12px;
   font-family: inherit;
   line-height: 18px;
-  padding: 2px 6px;
+  padding: 2px 22px 2px 6px;
   box-sizing: border-box;
 }
 
@@ -847,9 +892,12 @@ body {
   cursor: ns-resize;
 }
 
-.resize-handle:hover,
-.resize-handle.is-dragging {
+.resize-handle:hover {
   background: rgba(0, 0, 0, 0.12);
+}
+
+.resize-handle.is-dragging {
+  background: #a5b4fc;
 }
 
 .resize-grip {
@@ -858,7 +906,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  background: rgba(0, 0, 0, 0.18);
+  background: #3730a3;
   border-radius: 2px;
 }
 
@@ -882,7 +930,7 @@ body {
 
 .resize-bar {
   display: block;
-  background: #888;
+  background: #c7d3c0;
   border-radius: 1px;
 }
 

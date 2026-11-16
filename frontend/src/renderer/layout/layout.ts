@@ -2,6 +2,7 @@ import { ResizeHandle } from "./ResizeHandle";
 import { ResponseArea, type ResponseFunctions, type ResponseObject } from "./responseArea";
 import { buildMenubar, type Menubar, type Mode } from "./menubar";
 import { createSaveIcon } from "./saveIcon";
+import { createSparklesIcon } from "./sparklesIcon";
 
 export interface AppLayoutOptions {
   initialMode?: Mode;
@@ -59,6 +60,7 @@ export class AppLayout {
   private readonly messageLog: HTMLElement;
   private responseArea: ResponseArea;
   private readonly chatLine: HTMLTextAreaElement;
+  private readonly chatWrap: HTMLElement;
   private lastPromptLines = 1;
   private leftWidth = DEFAULT_LEFT_WIDTH;
   private rightWidth = DEFAULT_RIGHT_WIDTH;
@@ -117,6 +119,12 @@ export class AppLayout {
     });
     this.chatLine = chat;
 
+    const chatWrap = document.createElement("div");
+    chatWrap.className = "chat-line-wrap";
+    chatWrap.dataset.testid = "chat-line-wrap";
+    chatWrap.append(chat, createSparklesIcon());
+    this.chatWrap = chatWrap;
+
     const save = document.createElement("button");
     save.type = "button";
     save.dataset.testid = "save-button";
@@ -140,7 +148,7 @@ export class AppLayout {
     messageLog.className = "message-log";
     this.messageLog = messageLog;
     this.responseArea = new ResponseArea({ functions: options.responseFunctions });
-    this.messagePanel.append(this.messageLog, this.responseArea.element, this.chatLine);
+    this.messagePanel.append(this.messageLog, this.responseArea.element, this.chatWrap);
 
     this.messagePanel.style.height = `${this.messageHeight}px`;
     this.setChatHeight();
@@ -283,6 +291,7 @@ export class AppLayout {
    */
   beginResponse(): void {
     this.chatLine.hidden = true;
+    this.chatWrap.hidden = true;
     const needed =
       Math.max(1, this.lastPromptLines) * LOG_LINE_HEIGHT + SPINNER_HEIGHT + CHAT_VERTICAL_PADDING;
     if (needed > this.messageHeight) {
@@ -294,6 +303,7 @@ export class AppLayout {
 
   showResponse(objects: ResponseObject[]): void {
     this.chatLine.hidden = false;
+    this.chatWrap.hidden = false;
     this.responseArea.show(objects);
     this.sizeResponse(objects);
   }
@@ -306,6 +316,7 @@ export class AppLayout {
   showMenu(objects: ResponseObject[]): void {
     this.menuOpen = true;
     this.chatLine.hidden = false;
+    this.chatWrap.hidden = false;
     this.responseArea.showMenu(objects, () => this.closeMenu());
     this.sizeResponse(objects);
   }
@@ -322,6 +333,7 @@ export class AppLayout {
 
   cancelResponse(): void {
     this.chatLine.hidden = false;
+    this.chatWrap.hidden = false;
     this.responseArea.clear();
   }
 
