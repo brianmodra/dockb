@@ -5,13 +5,15 @@
 This module renders interactive prompts and answers inside the message panel's response strip. It
 serves four flows through the same strip and function registry: the model's structured reply to a
 chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
-sentences; the editor's own prompt when the writer right-clicks selected text, which offers
-buttons to change the touched paragraphs' layout and the selection's inline formatting; the
-corrections for a right-clicked proofreading squiggle, which offer its replacements and Add to
-dictionary; and the signed-in user's menu, opened from the menubar username, which offers Sign out
-and Settings. In every
-flow, outside or selected text never enters the DOM as markup, and each button passes plain-data
-arguments to a registered editor function. Any new right-click menu belongs here too, in the
+sentences; the editor's own prompt when the writer opens a menu over selected text (by right-click
+or Enter), which offers buttons to change the selection's inline formatting and, for a
+whole-paragraph selection, its quote layout; the corrections for a proofreading squiggle (opened by
+right-click or Enter), which offer its replacements and Add to dictionary; and the signed-in
+user's menu, opened from the menubar username, which offers Sign out and Settings. The selection,
+squiggle, and user menus are keyboard-navigable — focus moves to the first button, arrow keys move
+the highlight, Enter activates it, and Escape closes the menu and returns focus to the editor. In
+every flow, outside or selected text never enters the DOM as markup, and each button passes
+plain-data arguments to a registered editor function. Any new editor menu belongs here too, in the
 strip — never in a floating popover.
 
 When the server attaches its manuscript tools to a chat turn it constrains the model to the
@@ -67,6 +69,16 @@ and a refusal or malformed reply still falls back to plain text.
 the button's `args` value. The renderer supplies it; the args are data, so a reply can never run
 code. Names and their functions are specified with the functions themselves.
 
+## Menu keyboard navigation
+
+The selection, squiggle, and user menus share one keyboard model, implemented in
+`AppLayout.showMenu`/`closeMenu` and `ResponseArea.showMenu`. When a menu appears, focus moves to
+its first button — highlighted, not clicked, exactly as a mouse hover highlights it. The left and
+right arrow keys move the highlight between buttons, clamped at each end; Enter activates the
+highlighted button; and Escape, or activating any button, closes the menu and returns focus to the
+editor. An AI chat reply is *not* a menu: its buttons neither take focus nor react to the arrow
+keys, so the writer can keep typing in the chat box.
+
 ## `highlight` — the registry's first function
 
 `highlight` — its args are `{ "chapter_id": "...", "paragraph_id": "...",
@@ -85,47 +97,50 @@ raw-mode editor (the canonical file text, where sentences don't exist as
 selections) reports why it did nothing in the message log instead of silently
 staying put.
 
-## `quote` — selected-text quote actions in the strip
+## `quote` — whole-paragraph quote actions in the strip
 
-Right-clicking selected WYSIWYG text reuses the response strip to ask what to do with the
-selection (`unquoted`, `quoted as read`, or `quoted as written`, with a 40-character snippet) and
-shows the two buttons from `Remove quote`, `Quote read`, and `Quote written` that would change it.
-A second line reports the selection's current formatting, then the formatting buttons follow the
-quote buttons.
-Each button's args carry the target `layout` as `{ kind, variant }`, so a quoted paragraph is always
-`kind: "quoted"` with a `reading`/`writing` variant and an unquoted one is `{ kind: "normal",
-variant: "" }`. Because the button click happens later, `quote` identifies the paragraphs by their
-canonical ids (falling back to their document-order index when an unsaved paragraph has no id yet,
-so merely right-clicking never dirties the buffer) rather than by document positions that an
-intervening edit would shift. Choosing a button applies the layout in one transaction and clears
-the strip;
-changing the selection or loading another chapter while the quote prompt is open clears the strip
-as well, while an AI reply in the strip stays open across chapter loads and highlights.
+The selected-text menu adds **Quote para "reading"** and **Quote para "writing"** — filtered to the
+one that would actually change the paragraph — only when the selection covers a whole paragraph (or
+all but one character of it). Each button's args carry the target `layout` as `{ kind, variant }`,
+so a quoted paragraph is always `kind: "quoted"` with a `reading`/`writing` variant and the normal
+layout is `{ kind: "normal", variant: "" }`. Because the button click happens later, `quote`
+identifies the paragraphs by their canonical ids (falling back to their document-order index when
+an unsaved paragraph has no id yet, so merely opening the menu never dirties the buffer) rather
+than by document positions that an intervening edit would shift. Choosing a button applies the
+layout in one transaction and closes the menu; changing the selection or loading another chapter
+while a menu is open closes it as well, while an AI reply in the strip stays open across chapter
+loads and highlights.
 
 ## `format` — selected-text formatting in the strip
 
-The same selected-text prompt offers **Italic**, **Bold**, **Underline**, **Monospace**, and
-**Clear formatting**. Each button's args are `{ changes }`, a partial `FormatAttrs` object
-(`style`, `weight`, `family`, `size`). The editor merges those changes into the selection's
-existing format and applies one `format` mark in one transaction; clearing every attribute removes
-the mark. `applyFormat` re-checks every value before touching the buffer, because the args come
-from the response strip as plain data, and refuses sizes that are not a positive `em` value.
+Opening the menu over selected WYSIWYG text (right-click, or Enter with a selection) asks
+`What do you want to do with this text: "…"` with a 40-character snippet, then offers the formatting
+buttons — **Italic**, **Bold**, **Underline**, **Monospace**, **Normal font**, **Large**, **Small**,
+**Normal size**, and **Clear formatting** — and, when the selection is a whole paragraph, the two
+quote buttons (above). Each formatting button's args are `{ changes }`, a partial `FormatAttrs`
+object (`style`, `weight`, `family`, `size`). The editor merges those changes into the selection's
+existing format and applies one `format` mark in one transaction; **Normal font** clears the
+`style`/`weight`/`family` overrides (leaving the size), **Normal size** sets `size` to `1em`, and
+**Clear formatting** resets everything. `applyFormat` re-checks every value before touching the
+buffer, because the args come from the response strip as plain data, and refuses sizes that are not
+a positive `em` value.
 
 ## `proofreading-replace` / `proofreading-fix-pair` / `proofreading-add-word` — a squiggle's corrections in the strip
 
 Right-clicking a proofreading squiggle — a WYSIWYG severity squiggle or a raw lint marker — reuses
 the strip a third way: a first line names the word and its message, then at most five replacement
 buttons, a **Fix “ … ”** button when the diagnostic carries a quote pair, and **Add to dictionary**.
-`ProofreadingController` keeps the right-clicked diagnostic, so the buttons carry only the chosen
-replacement, the pair, or the word itself. Applying a replacement edits the buffer in one transaction
-and re-checks the paragraph; a pair fix rewrites the flagged quote and its partner to matching curly
-quotes in one transaction and re-checks; adding a word posts it to *this document's*
-glossary (`POST /api/documents/{id}/glossary`) and re-checks, and a glossary failure is reported to the
-message log while the strip stays open for another try. Changing the selection, loading another chapter,
-or submitting a new AI prompt clears the strip, exactly as with the quote prompt; Escape and outside
-clicks do not close it.
+Pressing Enter with the caret inside a squiggle opens the same menu (WYSIWYG only; the raw lint
+menu is right-click only). `ProofreadingController` keeps the open diagnostic, so the buttons carry
+only the chosen replacement, the pair, or the word itself. Applying a replacement edits the buffer
+in one transaction and re-checks the paragraph; a pair fix rewrites the flagged quote and its
+partner to matching curly quotes in one transaction and re-checks; adding a word posts it to *this
+document's* glossary (`POST /api/documents/{id}/glossary`) and re-checks, and a glossary failure is
+reported to the message log while the strip stays open for another try. Changing the selection,
+loading another chapter, submitting a new AI prompt, or pressing Escape closes the menu, the last
+returning focus to the editor.
 
-**Any right-click menu belongs in the response area.** The strip is the renderer's one surface
+**Any editor menu belongs in the response area.** The strip is the renderer's one surface
 for asking "what do you want to do with this?" — one styling, one teardown rule, one place the
 writer has already learned — so a new menu reuses it instead of spawning a floating popover with
 its own dismissal handling.
@@ -133,10 +148,10 @@ its own dismissal handling.
 ## `user-sign-out` / `user-settings` — the user's menu in the strip
 
 The signed-in username in the menubar is a button: clicking it shows **Sign out** and **Settings**
-in the strip (`AppLayout.showUserMenu`), with focus moved to the first button. **Sign out** runs the
-same unsaved-buffer-then-logout flow the old File → Sign out entry did; **Settings** opens the
-user-settings modal (the "Enable raw markdown mode" checkbox). Unlike the right-click menus, this
-one closes on Escape, and closing returns focus to the editor.
+in the strip (`AppLayout.showUserMenu`), as a keyboard-navigable menu like the others. **Sign out**
+runs the same unsaved-buffer-then-logout flow the old File → Sign out entry did; **Settings** opens
+the user-settings modal (the "Enable raw markdown mode" checkbox). Escape closes the menu and
+returns focus to the editor, exactly as with the other menus.
 
 ## Security
 
