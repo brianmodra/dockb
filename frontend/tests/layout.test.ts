@@ -308,7 +308,7 @@ describe("AppLayout", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     layout.showResponse([
-      { text: "The chapter has 12 unsaved changes" },
+      { text: "The chapter has 32 unsaved changes" },
       { button: { label: "Save chapter", function: "save-chapter" } },
     ]);
     const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;

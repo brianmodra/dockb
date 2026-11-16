@@ -847,10 +847,10 @@ describe("renderer shell", () => {
     document.querySelector<HTMLElement>("[data-testid='chapter-row']")!.click();
     await new Promise((r) => setTimeout(r, 0));
 
-    layout.showResponse(unsavedChangesObjects(12));
+    layout.showResponse(unsavedChangesObjects(32));
 
     const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
-    expect(area.textContent).toContain("The chapter has 12 unsaved changes");
+    expect(area.textContent).toContain("The chapter has 32 unsaved changes");
     const save = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
       (el) => el.textContent === "Save chapter",
     )!;

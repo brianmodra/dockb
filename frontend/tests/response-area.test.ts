@@ -329,8 +329,8 @@ function sampleDiagnostic(overrides: Partial<WysiwygDiagnostic> = {}): WysiwygDi
 
 describe("unsavedChangesObjects", () => {
   it("names the unsaved-change count and offers a Save chapter button", () => {
-    expect(unsavedChangesObjects(12)).toEqual([
-      { text: "The chapter has 12 unsaved changes" },
+    expect(unsavedChangesObjects(32)).toEqual([
+      { text: "The chapter has 32 unsaved changes" },
       { button: { label: "Save chapter", function: "save-chapter" } },
     ]);
   });

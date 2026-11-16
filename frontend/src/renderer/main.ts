@@ -29,7 +29,7 @@ import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
 import type { DocumentAttrs, NarrativePerspective } from "./api/types";
 
-const UNSAVED_CHANGES_THRESHOLD = 10;
+const UNSAVED_CHANGES_THRESHOLD = 30;
 
 export interface MountShellOptions {
   api?: ApiClient;
