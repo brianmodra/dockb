@@ -270,6 +270,15 @@ export class EditPanel {
     this.replaceDoc(text);
   }
 
+  /** Return keyboard focus to whichever view is showing. */
+  focus(): void {
+    if (this.mode === "raw") {
+      this.view.focus();
+    } else {
+      this.wysiwyg.focus();
+    }
+  }
+
   /**
     * Open a chapter, saving the open buffer first when it is dirty. Opening the
     * chapter already shown does nothing — no save, no re-read — so re-clicking

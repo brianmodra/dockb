@@ -2,6 +2,11 @@ import { ResizeHandle } from "./ResizeHandle";
 import { ResponseArea, type ResponseFunctions, type ResponseObject } from "./responseArea";
 import { buildMenubar, type Menubar, type Mode } from "./menubar";
 import { createSaveIcon } from "./saveIcon";
+import { createUserRoundIcon } from "./userIcon";
+
+/** Response-area function names the user menu's buttons dispatch. */
+export const USER_SIGN_OUT_FUNCTION = "user-sign-out";
+export const USER_SETTINGS_FUNCTION = "user-settings";
 
 export interface AppLayoutOptions {
   initialMode?: Mode;
@@ -9,14 +14,11 @@ export interface AppLayoutOptions {
   onSave?: () => void;
   onOpen?: () => void;
   onImport?: () => void;
-  onQuit?: () => void;
   onOpenDocumentSettings?: () => void;
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
   onDeleteDocument?: () => void;
-  onEditDocument?: () => void;
-  onEditChapter?: () => void;
-  onSignOut?: () => void;
+  onFocusEditor?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
   onPrompt?: (prompt: string) => void;
   responseFunctions?: ResponseFunctions;
@@ -43,8 +45,11 @@ export class AppLayout {
   private readonly leftPanel: HTMLElement;
   private editPanel!: HTMLElement;
   private readonly saveButton: HTMLButtonElement;
-  private readonly userLabel: HTMLElement;
+  private readonly userButton: HTMLButtonElement;
+  private readonly userName: HTMLSpanElement;
   private readonly menubar: Menubar;
+  private rawMarkdownEnabledFlag = false;
+  private userMenuOpen = false;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
   }
@@ -81,14 +86,10 @@ export class AppLayout {
       },
       onOpen: options.onOpen,
       onImport: options.onImport,
-      onQuit: options.onQuit,
       onOpenDocumentSettings: options.onOpenDocumentSettings,
       onOpenLanguageSettings: options.onOpenLanguageSettings,
       onOpenDictionary: options.onOpenDictionary,
       onDeleteDocument: options.onDeleteDocument,
-      onEditDocument: options.onEditDocument,
-      onEditChapter: options.onEditChapter,
-      onSignOut: options.onSignOut,
     });
     this.menubar = menubar;
 
@@ -133,12 +134,22 @@ export class AppLayout {
     menubar.right.prepend(save);
     this.saveButton = save;
 
-    const user = document.createElement("div");
+    const user = document.createElement("button");
+    user.type = "button";
     user.dataset.testid = "user-label";
     user.className = "user-label";
+    user.title = "Account";
+    user.setAttribute("aria-label", "Account");
     user.hidden = true;
+    user.addEventListener("click", () => {
+      this.showUserMenu();
+    });
+    const userName = document.createElement("span");
+    userName.className = "user-label-name";
+    user.append(createUserRoundIcon(), userName);
     menubar.right.append(user);
-    this.userLabel = user;
+    this.userButton = user;
+    this.userName = userName;
 
     const editPanel = this.panel("panel-edit");
     this.editPanel = editPanel;
@@ -202,9 +213,32 @@ export class AppLayout {
   }
 
   setMode(mode: Mode): void {
+    if (!this.rawMarkdownEnabledFlag && mode === "raw") {
+      mode = "wysiwyg";
+    }
+    if (mode === this.mode) {
+      return;
+    }
     this.mode = mode;
     this.applyMode();
     this.options.onMode?.(mode);
+  }
+
+  /** Whether the raw-markdown view is available this session (off until the user enables it). */
+  get rawMarkdownEnabled(): boolean {
+    return this.rawMarkdownEnabledFlag;
+  }
+
+  /**
+   * Turn raw-markdown mode on or off for the session. Turning it off drops the
+   * editor back to WYSIWYG (if it was raw) and disables the mode toggle.
+   */
+  setRawMarkdownEnabled(enabled: boolean): void {
+    this.rawMarkdownEnabledFlag = enabled;
+    this.menubar.setRawMarkdownEnabled(enabled);
+    if (!enabled && this.mode === "raw") {
+      this.setMode("wysiwyg");
+    }
   }
 
   restoreState(state: { panel_widths?: Record<string, number> | null; edit_mode?: string | null }): void {
@@ -239,8 +273,8 @@ export class AppLayout {
   }
 
   setUser(username: string): void {
-    this.userLabel.textContent = username;
-    this.userLabel.hidden = username === "";
+    this.userName.textContent = username;
+    this.userButton.hidden = username === "";
   }
 
   private panel(name: string): HTMLElement {
@@ -302,6 +336,38 @@ export class AppLayout {
     this.chatLine.hidden = false;
     this.responseArea.clear();
   }
+
+  /**
+   * The signed-in user's menu, shown in the response area: Sign out and
+   * Settings. Focus moves to the first action; Esc closes the menu and returns
+   * focus to the editor, matching the other response-area menus.
+   */
+  showUserMenu(): void {
+    this.userMenuOpen = true;
+    this.showResponse([
+      { button: { label: "Sign out", function: USER_SIGN_OUT_FUNCTION } },
+      { button: { label: "Settings", function: USER_SETTINGS_FUNCTION } },
+    ]);
+    window.addEventListener("keydown", this.onUserMenuKeydown);
+    this.responseArea.element.querySelector<HTMLButtonElement>("button")?.focus();
+  }
+
+  /** Close the user menu and hand focus back to the editor. */
+  closeUserMenu(): void {
+    if (!this.userMenuOpen) {
+      return;
+    }
+    this.userMenuOpen = false;
+    window.removeEventListener("keydown", this.onUserMenuKeydown);
+    this.cancelResponse();
+    this.options.onFocusEditor?.();
+  }
+
+  private readonly onUserMenuKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") {
+      this.closeUserMenu();
+    }
+  };
 
   private applyMessageHeight(height: number): void {
     this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, Math.round(height));

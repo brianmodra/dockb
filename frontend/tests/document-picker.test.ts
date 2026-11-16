@@ -2,7 +2,6 @@ import {
   openDocumentPicker,
   openDocumentPickerConfirm,
   openDeleteDocumentPicker,
-  openDocumentAttrsPicker,
   type DocumentPickerApi,
 } from "../src/renderer/layout/documentPicker";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -192,56 +191,6 @@ describe("openDeleteDocumentPicker", () => {
   });
 });
 
-describe("openDocumentAttrsPicker", () => {
-  it("keeps Edit disabled until a document is selected and resolves with its attrs", async () => {
-    const api = fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith"), doc("d2", "Sight")]) });
-    const promise = openDocumentAttrsPicker(api);
-    await flush();
-    const edit = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-edit']")!;
-    expect(edit.disabled).toBe(true);
-
-    const items = modal()!.querySelectorAll<HTMLElement>("[data-testid='document-picker-item']");
-    items[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(edit.disabled).toBe(false);
-
-    edit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(await promise).toEqual({ id: "d2", title: "Sight", author: "A", narrative_perspective: "" });
-    expect(modal()).toBeNull();
-  });
-
-  it("resolves null when the user cancels", async () => {
-    const api = fakeApi({ listDocuments: vi.fn(async () => [doc("d1", "Faith")]) });
-    const promise = openDocumentAttrsPicker(api);
-    await flush();
-    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
-    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(await promise).toBeNull();
-  });
-
-  it("reports a load failure into the message panel and resolves null", async () => {
-    const onMessage = vi.fn();
-    const api = fakeApi({
-      listDocuments: vi.fn(async () => {
-        throw new Error("backend down");
-      }),
-    });
-    const result = await openDocumentAttrsPicker(api, { onMessage });
-    expect(result).toBeNull();
-    expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("backend down"));
-    expect(modal()).toBeNull();
-  });
-
-  it("shows an empty state with Edit disabled and resolves null on cancel", async () => {
-    const promise = openDocumentAttrsPicker(fakeApi());
-    await flush();
-    expect(modal()!.querySelector("[data-testid='document-picker-empty']")).not.toBeNull();
-    const edit = modal()!.querySelector<HTMLButtonElement>("[data-testid='document-picker-edit']")!;
-    expect(edit.disabled).toBe(true);
-    const cancel = modal()!.querySelector<HTMLElement>("[data-testid='document-picker-cancel']")!;
-    cancel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(await promise).toBeNull();
-  });
-});
 describe("picker titles", () => {
   function title(): string | null {
     return document.querySelector("[data-testid='modal-title']")?.textContent ?? null;
@@ -267,14 +216,6 @@ describe("picker titles", () => {
     const pending = openDeleteDocumentPicker(fakeApi());
     await Promise.resolve();
     expect(title()).toBe("Delete document");
-    document.querySelector<HTMLButtonElement>("[data-testid='document-picker-cancel']")!.click();
-    await pending;
-  });
-
-  it("the attrs picker says Edit document", async () => {
-    const pending = openDocumentAttrsPicker(fakeApi());
-    await Promise.resolve();
-    expect(title()).toBe("Edit document");
     document.querySelector<HTMLButtonElement>("[data-testid='document-picker-cancel']")!.click();
     await pending;
   });

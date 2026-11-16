@@ -1,7 +1,7 @@
 import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
 import { checkSession, signOut } from "./api/session";
-import { AppLayout } from "./layout/layout";
+import { AppLayout, USER_SETTINGS_FUNCTION, USER_SIGN_OUT_FUNCTION } from "./layout/layout";
 import {
   PROOFREADING_ADD_WORD_FUNCTION,
   PROOFREADING_FIX_PAIR_FUNCTION,
@@ -13,8 +13,8 @@ import { EditPanel } from "./layout/editPanel";
 import { ProofreadingController } from "./layout/proofreading";
 import { LeftPanel } from "./layout/leftPanel";
 import { RightPanel, type ShelfChapter } from "./layout/rightPanel";
-import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker, openDocumentAttrsPicker } from "./layout/documentPicker";
-import { confirmModal, editDocumentModal, promptModal } from "./layout/modals";
+import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker } from "./layout/documentPicker";
+import { confirmModal, editDocumentModal, userSettingsModal } from "./layout/modals";
 import { LANGUAGES, openLanguageSettings } from "./layout/languageSettings";
 import { openDictionaryDialog } from "./layout/dictionaryDialog";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
@@ -22,7 +22,7 @@ import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
 import { runStartup } from "./state/startup";
 import { defaultProofreadingLanguage } from "./state/language";
-import { quitApp, confirmUnsaved } from "./state/quit";
+import { confirmUnsaved } from "./state/quit";
 import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
 import type { DocumentAttrs, NarrativePerspective } from "./api/types";
@@ -65,9 +65,8 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let openDocument: () => void = () => {};
   let runImport: () => void = () => {};
   let runDeleteDocument: () => void = () => {};
-  let runEditDocument: () => void = () => {};
   let runDocumentSettings: () => void = () => {};
-  let runEditChapter: () => void = () => {};
+  let runUserSettings: () => void = () => {};
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   let runQuote: (rawArgs: unknown) => void = () => {};
@@ -82,8 +81,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onOpen: () => openDocument(),
     onImport: () => runImport(),
     onDeleteDocument: () => runDeleteDocument(),
-    onEditDocument: () => runEditDocument(),
-    onEditChapter: () => runEditChapter(),
     onOpenDocumentSettings: () => runDocumentSettings(),
     onSave: () => {
       void editPanel?.save();
@@ -92,6 +89,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       editPanel?.setMode(mode);
       void stateController?.saveEditMode(mode);
     },
+    onFocusEditor: () => editPanel?.focus(),
     onOpenLanguageSettings: () => {
       void (async () => {
         let languages = LANGUAGES;
@@ -124,16 +122,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         onMessage: (text) => layout.pushMessage(text),
         onWordsChanged: () => {
           void proofreading?.checkNow();
-        },
-      });
-    },
-    onSignOut: () => signOut.request(),
-    onQuit: () => {
-      void quitApp({
-        isDirty: () => editPanel?.isDirty() ?? false,
-        save: () => editPanel?.save() ?? Promise.resolve(null),
-        onQuit: () => {
-          window.dockb?.quit();
         },
       });
     },
@@ -181,6 +169,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       },
       [PROOFREADING_FIX_PAIR_FUNCTION]: () => {
         proofreading?.applyActivePair();
+      },
+      [USER_SIGN_OUT_FUNCTION]: () => {
+        layout.closeUserMenu();
+        signOut.request();
+      },
+      [USER_SETTINGS_FUNCTION]: () => {
+        layout.closeUserMenu();
+        void runUserSettings();
       },
     },
   });
@@ -465,19 +461,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       }
     };
 
-    const editDocument = async (attrs: DocumentAttrs): Promise<void> => {
-      try {
-        const response = await options.api!.getNarrativePerspectives();
-        await editDocumentWith(attrs, response.perspectives);
-      } catch (error) {
-        reportError("Edit document", error, (text) => layout.pushMessage(text));
-      }
-    };
-
-    runEditDocument = () => {
-      void openDocumentAttrsPicker(options.api!).then((attrs) => {
-        if (attrs !== null) {
-          void editDocument(attrs);
+    runUserSettings = () => {
+      void userSettingsModal(layout.rawMarkdownEnabled).then((value) => {
+        if (value !== null) {
+          layout.setRawMarkdownEnabled(value);
         }
       });
     };
@@ -497,30 +484,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         },
         (error) => reportError("Edit document", error, (text) => layout.pushMessage(text)),
       );
-    };
-
-    runEditChapter = () => {
-      const chapter = panel.selectedChapter();
-      if (chapter === null) {
-        return;
-      }
-      void promptModal({
-        title: "Edit chapter",
-        label: "Title",
-        initial: chapter.title,
-        confirmLabel: "Save",
-      }).then((result) => {
-        if (result.value !== "confirm") {
-          return;
-        }
-        void options.api!.updateChapter(chapter.id, { title: result.input }).then(
-          () => {
-            layout.pushMessage(`Renamed chapter to "${result.input}".`);
-            void panel.reload();
-          },
-          (error) => reportError("Edit chapter", error, (text) => layout.pushMessage(text)),
-        );
-      });
     };
 
     void boot(options.api, { layout, panel, controller, editPanel, signOut, loadDocumentMentions });

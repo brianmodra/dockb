@@ -420,6 +420,8 @@ describe("renderer shell", () => {
     mountShell(document.body, { api: api as never, bridge: bridge as never });
     await new Promise((r) => setTimeout(r, 0));
 
+    await enableRawMarkdown();
+
     const chat = document.querySelector<HTMLTextAreaElement>("[data-testid='chat-line']")!;
     chat.value = "highlight one";
     chat.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -676,104 +678,6 @@ describe("renderer shell", () => {
     expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(1);
   });
 
-  it("File → Edit → Chapter saves the current chapter's title and reloads", async () => {
-    const updateChapter = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
-    const listChapters = vi
-      .fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }])
-      .mockResolvedValueOnce([{ id: "c1", title: "Opening 1", act: "", index: 0 }])
-      .mockResolvedValueOnce([{ id: "c1", title: "Second", act: "", index: 0 }]);
-    const { api, bridge } = localModeApi({
-      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
-      listChapters,
-      updateChapter,
-      getChapterDocument: vi.fn(async () => ({ content: "", summary: null })),
-    });
-    mountShell(document.body, { api: api as never, bridge: bridge as never });
-    await new Promise((r) => setTimeout(r, 0));
-
-    (document.querySelector<HTMLElement>("[data-testid='chapter-row']")!).click();
-    await new Promise((r) => setTimeout(r, 0));
-
-    (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
-    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!).click();
-    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit-chapter']")!).click();
-    await new Promise((r) => setTimeout(r, 0));
-
-    const input = document.querySelector<HTMLInputElement>("[data-testid='modal-input']")!;
-    expect(input.value).toBe("Opening 1");
-    input.value = "Second";
-    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
-    expect(buttons.map((b) => b.textContent?.trim())).toEqual(["Cancel", "Save"]);
-    (buttons[1] as HTMLElement).click();
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(updateChapter).toHaveBeenCalledWith("c1", { title: "Second" });
-    expect(document.querySelector("[data-testid='chapter-row']")?.textContent).toBe("Second");
-  });
-
-  it("File → Edit → Document edits title, author and perspective through the modal", async () => {
-    const updateDocument = vi.fn(async () => ({ status: { code: "ok", message: "ok" } }));
-    const getNarrativePerspectives = vi.fn(async () => ({
-      perspectives: [
-        { code: "first_person", label: "First Person" },
-        { code: "epistolary", label: "Epistolary" },
-      ],
-    }));
-    const { api, bridge } = localModeApi({
-      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
-      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
-      listDocuments: vi.fn(async () => [
-        {
-          attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "first_person" },
-          chapter_summaries: [],
-        },
-        {
-          attrs: { id: "d2", title: "Sight", author: "Brian", narrative_perspective: "epistolary" },
-          chapter_summaries: [],
-        },
-      ]),
-      getNarrativePerspectives,
-      updateDocument,
-    });
-    mountShell(document.body, { api: api as never, bridge: bridge as never });
-    await new Promise((r) => setTimeout(r, 0));
-
-    (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
-    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!).click();
-    (document.querySelector<HTMLElement>("[data-testid='menu-item-edit-document']")!).click();
-    await new Promise((r) => setTimeout(r, 0));
-
-    const items = document.querySelectorAll("[data-testid='document-picker-item']");
-    expect(items).toHaveLength(2);
-    (items[1] as HTMLElement).click();
-    const edit = document.querySelector<HTMLButtonElement>("[data-testid='document-picker-edit']")!;
-    expect(edit.disabled).toBe(false);
-    edit.click();
-    await new Promise((r) => setTimeout(r, 0));
-
-    const titleInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
-    const authorInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-author']")!;
-    const perspective = document.querySelector<HTMLSelectElement>(
-      "[data-testid='modal-select-narrative-perspective']",
-    )!;
-    expect(titleInput.value).toBe("Sight");
-    expect(authorInput.value).toBe("Brian");
-    expect(perspective.value).toBe("epistolary");
-    expect(getNarrativePerspectives).toHaveBeenCalledTimes(1);
-    titleInput.value = "Hope";
-    authorInput.value = "Anna";
-    perspective.value = "first_person";
-    const buttons = Array.from(document.querySelectorAll<HTMLElement>("[data-testid='modal-button']"));
-    (buttons[1] as HTMLElement).click();
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(updateDocument).toHaveBeenCalledWith("d2", {
-      title: "Hope",
-      author: "Anna",
-      narrative_perspective: "first_person",
-    });
-  });
-
   it("Settings → Document edits the open document through the same modal", async () => {
     const getDocument = vi.fn(async () => ({
       attrs: { id: "d1", title: "Faith", author: "Paul", narrative_perspective: "" },
@@ -912,9 +816,21 @@ function userLabel(): HTMLElement | null {
   return document.querySelector("[data-testid='user-label']");
 }
 
-function chooseFileItem(key: string): void {
-  (document.querySelector<HTMLElement>("[data-testid='menu-File']")!).click();
-  (document.querySelector<HTMLElement>(`[data-testid='menu-item-${key}']`)!).click();
+function chooseUserAction(label: string): void {
+  (document.querySelector<HTMLElement>("[data-testid='user-label']")!).click();
+  Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']"))
+    .find((el) => el.textContent === label)!
+    .click();
+}
+
+async function enableRawMarkdown(): Promise<void> {
+  chooseUserAction("Settings");
+  const checkbox = document.querySelector<HTMLInputElement>("[data-testid='raw-markdown-checkbox']")!;
+  checkbox.checked = true;
+  Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='modal-button']"))
+    .find((el) => el.textContent === "Done")!
+    .click();
+  await tick();
 }
 
 describe("sign out", () => {
@@ -932,7 +848,7 @@ describe("sign out", () => {
     const editor = document.querySelector<HTMLElement>("[data-testid='edit-wysiwyg']")!;
     expect(editor.textContent).toContain("Some text.");
 
-    chooseFileItem("sign-out");
+    chooseUserAction("Sign out");
     await tick();
 
     expect(api.logout).toHaveBeenCalledTimes(1);
@@ -952,7 +868,7 @@ describe("sign out", () => {
     mountShell(document.body, { api: api as never, bridge: bridge as never });
     await tick();
 
-    chooseFileItem("sign-out");
+    chooseUserAction("Sign out");
     await tick();
     expect(signInForm()).not.toBeNull();
 
@@ -980,7 +896,7 @@ describe("sign out", () => {
     mountShell(document.body, { api: api as never, bridge: bridge as never });
     await tick();
 
-    chooseFileItem("sign-out");
+    chooseUserAction("Sign out");
     await tick();
 
     expect(api.logout).toHaveBeenCalledTimes(1);
@@ -1003,7 +919,7 @@ describe("sign out", () => {
     await tick();
     expect(signInForm()).not.toBeNull();
 
-    chooseFileItem("sign-out");
+    chooseUserAction("Sign out");
     await tick();
 
     expect(logout).not.toHaveBeenCalled();

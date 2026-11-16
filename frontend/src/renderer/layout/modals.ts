@@ -134,6 +134,60 @@ export interface EditDocumentResult {
   narrative_perspective: string;
 }
 
+/**
+ * The user's settings modal: one checkbox, "Enable raw markdown mode", that
+ * starts at the current session value and answers the new value on Done.
+ */
+export function userSettingsModal(initial: boolean): Promise<boolean | null> {
+  return new Promise((resolve) => {
+    const overlay = makeOverlay();
+    const dialog = document.createElement("div");
+    dialog.className = "modal-dialog";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.dataset.testid = "raw-markdown-checkbox";
+    checkbox.checked = initial;
+
+    const fieldLabel = document.createElement("label");
+    fieldLabel.className = "modal-field-label";
+    fieldLabel.append(checkbox, document.createTextNode("Enable raw markdown mode"));
+
+    const body = document.createElement("div");
+    body.className = "modal-fields";
+    body.append(fieldLabel);
+
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "modal-button is-primary";
+    done.dataset.testid = "modal-button";
+    done.textContent = "Done";
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "modal-button";
+    cancel.dataset.testid = "modal-button";
+    cancel.textContent = "Cancel";
+
+    dialog.append(makeTitle("Settings"), makeBody(body));
+    const buttons = document.createElement("div");
+    buttons.className = "modal-buttons";
+    buttons.append(cancel, done);
+    dialog.append(buttons);
+
+    const close = (value: boolean | null): void => {
+      overlay.remove();
+      resolve(value);
+    };
+    cancel.addEventListener("click", () => close(null));
+    done.addEventListener("click", () => close(checkbox.checked));
+
+    overlay.append(dialog);
+    document.body.append(overlay);
+    queueMicrotask(() => checkbox.focus());
+  });
+}
+
 export interface EditDocumentOptions {
   title: string;
   author: string;

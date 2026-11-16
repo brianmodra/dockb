@@ -16,6 +16,7 @@ describe("AppLayout state restore", () => {
   it("restores panel widths and edit mode from saved state", () => {
     const layout = new AppLayout();
     document.body.append(layout.element);
+    layout.setRawMarkdownEnabled(true);
     layout.restoreState({ panel_widths: { left: 300, message: 48 }, edit_mode: "raw" });
 
     expect(layout.mode).toBe("raw");
@@ -25,9 +26,17 @@ describe("AppLayout state restore", () => {
     expect(layout.element.querySelector<HTMLElement>("[data-testid='panel-edit']")?.getAttribute("data-mode")).toBe("raw");
   });
 
+  it("keeps a saved raw mode out while raw markdown is disabled", () => {
+    const layout = new AppLayout();
+    document.body.append(layout.element);
+    layout.restoreState({ panel_widths: null, edit_mode: "raw" });
+    expect(layout.mode).toBe("wysiwyg");
+  });
+
   it("reports mode changes to the editor via onMode", () => {
     const onMode = vi.fn();
     const layout = new AppLayout({ onMode });
+    layout.setRawMarkdownEnabled(true);
     layout.setMode("wysiwyg");
     layout.setMode("raw");
     expect(onMode).toHaveBeenCalledWith("raw");
@@ -36,6 +45,7 @@ describe("AppLayout state restore", () => {
   it("updates the mode toggle icon when the saved mode is restored", () => {
     const layout = new AppLayout();
     document.body.append(layout.element);
+    layout.setRawMarkdownEnabled(true);
     layout.restoreState({ panel_widths: null, edit_mode: "raw" });
 
     const toggle = layout.element.querySelector<HTMLButtonElement>("[data-testid='mode-toggle']")!;

@@ -1,4 +1,4 @@
-import type { DocumentAttrs, DocumentWire } from "../api/types";
+import type { DocumentWire } from "../api/types";
 import { reportError } from "../log";
 import { openOverlay } from "./overlay";
 import { openSelectList } from "./selectList";
@@ -51,21 +51,6 @@ export function openDeleteDocumentPicker(
     .listDocuments()
     .then(
       (documents) => renderDeletePicker(documents),
-      (error) => {
-        reportError("List documents", error, options.onMessage);
-        return null;
-      },
-    );
-}
-
-export function openDocumentAttrsPicker(
-  api: DocumentPickerApi,
-  options: DocumentPickerOptions = {},
-): Promise<DocumentAttrs | null> {
-  return api
-    .listDocuments()
-    .then(
-      (documents) => renderEditPicker(documents),
       (error) => {
         reportError("List documents", error, options.onMessage);
         return null;
@@ -128,24 +113,6 @@ function renderDeletePicker(documents: DocumentWire[]): Promise<DeleteDocumentSe
     valueFor: (item) => {
       const entry = documents.find((doc) => doc.attrs.id === item.key);
       return { documentId: item.key, title: entry?.attrs.title ?? item.label };
-    },
-  });
-  return selected.result;
-}
-
-function renderEditPicker(documents: DocumentWire[]): Promise<DocumentAttrs | null> {
-  const selected = openSelectList({
-    title: "Edit document",
-    items: pickerItems(documents),
-    itemTestId: "document-picker-item",
-    cancelTestId: "document-picker-cancel",
-    confirmTestId: "document-picker-edit",
-    confirmLabel: "Edit",
-    emptyMessage: "No documents yet.",
-    emptyTestId: "document-picker-empty",
-    valueFor: (item) => {
-      const entry = documents.find((doc) => doc.attrs.id === item.key);
-      return entry?.attrs ?? { id: item.key, title: item.label, author: "", narrative_perspective: "" };
     },
   });
   return selected.result;

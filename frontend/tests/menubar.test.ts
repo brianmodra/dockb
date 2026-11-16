@@ -36,28 +36,30 @@ describe("menubar", () => {
     expect(right.querySelector('[data-testid="mode-toggle"]')).toBeNull();
   });
 
-  it("opens File with Open, Import, Delete, Edit, Sign out and Quit", () => {
+  it("opens File with Open, Import and Delete only", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
     const itemLabels = Array.from(dropdown(bar, "File").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(itemLabels).toEqual(["Open", "Import…", "Delete", "Edit", "Sign out", "Quit"]);
+    expect(itemLabels).toEqual(["Open", "Import…", "Delete"]);
   });
 
-  it("has no Save item in the File menu", () => {
+  it("has no Save, Edit, Sign out or Quit item in the File menu", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
-    expect(dropdown(bar, "File").querySelector('[data-testid="menu-item-save"]')).toBeNull();
+    for (const key of ["save", "edit", "sign-out", "quit"]) {
+      expect(dropdown(bar, "File").querySelector(`[data-testid="menu-item-${key}"]`)).toBeNull();
+    }
   });
 
-  it("safely handles File clicks (Open/Quit wire later)", () => {
+  it("safely handles File clicks (Open wires later)", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
-    for (const key of ["open", "quit"]) {
+    for (const key of ["open"]) {
       expect(() =>
         bar.element
           .querySelector(`[data-testid="menu-item-${key}"]`)
@@ -75,43 +77,13 @@ describe("menubar", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("reports File → Quit to onQuit", () => {
-    const onQuit = vi.fn();
-    const bar = buildMenubar({ onQuit });
-    document.body.append(bar.element);
-    openMenu(bar, "File");
-    bar.element.querySelector('[data-testid="menu-item-quit"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onQuit).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports File → Sign out to onSignOut", () => {
-    const onSignOut = vi.fn();
-    const bar = buildMenubar({ onSignOut });
-    document.body.append(bar.element);
-    openMenu(bar, "File");
-    bar.element
-      .querySelector('[data-testid="menu-item-sign-out"]')
-      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onSignOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores File → Sign out when no handler is given", () => {
-    const bar = buildMenubar({});
-    document.body.append(bar.element);
-    openMenu(bar, "File");
-    expect(() =>
-      bar.element
-        .querySelector('[data-testid="menu-item-sign-out"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
-    ).not.toThrow();
-  });
-
   it("shows the markdown icon and its tooltip in WYSIWYG mode, switching to raw on click", () => {
     const onMode = vi.fn();
-    const bar = buildMenubar({ onMode });
+    const bar = buildMenubar({ rawMarkdownEnabled: true, onMode });
     document.body.append(bar.element);
     const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
     expect(toggle.dataset.mode).toBe("wysiwyg");
+    expect(toggle.disabled).toBe(false);
     expect(toggle.querySelector("svg")).not.toBeNull();
     expect(toggle.title).toBe("Switch editor to raw markdown mode");
     expect(toggle.getAttribute("aria-label")).toBe("Switch editor to raw markdown mode");
@@ -121,10 +93,11 @@ describe("menubar", () => {
 
   it("shows the Aa icon and its tooltip in raw mode, switching back to WYSIWYG on click", () => {
     const onMode = vi.fn();
-    const bar = buildMenubar({ mode: "raw", onMode });
+    const bar = buildMenubar({ mode: "raw", rawMarkdownEnabled: true, onMode });
     document.body.append(bar.element);
     const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
     expect(toggle.dataset.mode).toBe("raw");
+    expect(toggle.disabled).toBe(false);
     expect(toggle.querySelector("svg")).not.toBeNull();
     expect(toggle.title).toBe("Switch editor to WYSIWYG");
     expect(toggle.getAttribute("aria-label")).toBe("Switch editor to WYSIWYG");
@@ -132,8 +105,35 @@ describe("menubar", () => {
     expect(onMode).toHaveBeenCalledWith("wysiwyg");
   });
 
-  it("updates the icon and tooltip when setMode is called", () => {
+  it("starts with the mode toggle disabled and pointed at user settings", () => {
+    const onMode = vi.fn();
+    const bar = buildMenubar({ onMode });
+    document.body.append(bar.element);
+    const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
+    expect(toggle.disabled).toBe(true);
+    expect(toggle.title).toBe("Change user settings to enable raw markdown mode.");
+    expect(toggle.getAttribute("aria-label")).toBe("Change user settings to enable raw markdown mode.");
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onMode).not.toHaveBeenCalled();
+  });
+
+  it("enables the toggle and restores its tooltip when raw markdown is allowed", () => {
     const bar = buildMenubar({});
+    document.body.append(bar.element);
+    const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
+    expect(toggle.disabled).toBe(true);
+
+    bar.setRawMarkdownEnabled(true);
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.title).toBe("Switch editor to raw markdown mode");
+
+    bar.setRawMarkdownEnabled(false);
+    expect(toggle.disabled).toBe(true);
+    expect(toggle.title).toBe("Change user settings to enable raw markdown mode.");
+  });
+
+  it("updates the icon and tooltip when setMode is called", () => {
+    const bar = buildMenubar({ rawMarkdownEnabled: true });
     document.body.append(bar.element);
     const toggle = bar.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
     expect(toggle.dataset.mode).toBe("wysiwyg");
@@ -243,7 +243,7 @@ describe("menubar", () => {
 });
 
 describe("menubar document actions", () => {
-  it("opens Delete and Edit submenus with their document items", () => {
+  it("opens the Delete submenu with its document item", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
@@ -255,13 +255,6 @@ describe("menubar document actions", () => {
     expect(
       Array.from(deleteSub.querySelectorAll(".menu-submenu-item")).map((n) => n.textContent),
     ).toEqual(["Document"]);
-
-    const editSub = bar.element.querySelector<HTMLElement>("[data-testid='menu-submenu-edit']")!;
-    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!.click();
-    expect(editSub.classList.contains("menu-submenu--open")).toBe(true);
-    expect(
-      Array.from(editSub.querySelectorAll(".menu-submenu-item")).map((n) => n.textContent),
-    ).toEqual(["Document", "Chapter"]);
   });
 
   it("reports File → Delete → Document to onDeleteDocument", () => {
@@ -274,24 +267,6 @@ describe("menubar document actions", () => {
       .querySelector<HTMLElement>("[data-testid='menu-item-delete-document']")!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onDeleteDocument).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports File → Edit → Document and File → Edit → Chapter", () => {
-    const onEditDocument = vi.fn();
-    const onEditChapter = vi.fn();
-    const bar = buildMenubar({ onEditDocument, onEditChapter });
-    document.body.append(bar.element);
-    openMenu(bar, "File");
-    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!.click();
-    bar.element
-      .querySelector<HTMLElement>("[data-testid='menu-item-edit-document']")!
-      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    bar.element.querySelector<HTMLElement>("[data-testid='menu-item-edit']")!.click();
-    bar.element
-      .querySelector<HTMLElement>("[data-testid='menu-item-edit-chapter']")!
-      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onEditDocument).toHaveBeenCalledTimes(1);
-    expect(onEditChapter).toHaveBeenCalledTimes(1);
   });
 });
 describe("File → Import", () => {

@@ -11,13 +11,14 @@ backend's default language and checks a paragraph at a time.
 
 The chapter list's right-click menu renames, moves, renumbers, and assigns a point-of-view
 character, keeping the shown chapter selected through those changes. Document title, author, and
-narrative perspective are edited in one modal from File → Edit → Document or Settings → Document.
-The right panel is a read-only reference shelf for writer-added chapters or characters mentioned
-under the cursor. The message panel's response strip answers AI chat prompts, quote actions, and
-proofreading corrections, including adding a word to the document's glossary. Raw and WYSIWYG
-edit the same canonical buffer, and the dirty check compares it against the last canonical text so
-switching chapters never saves an untouched file. Read this to run the app, find the file that owns
-each area, and see how the window, API client, and dialogs fit together; the visual design is in
+narrative perspective are edited in one modal from Settings → Document. The right panel is a
+read-only reference shelf for writer-added chapters or characters mentioned under the cursor. The
+message panel's response strip answers AI chat prompts, quote actions, proofreading corrections
+(including adding a word to the document's glossary), and the signed-in user's menu (Sign out and
+Settings, opened from the menubar username). Raw and WYSIWYG edit the same canonical buffer, and
+the dirty check compares it against the last canonical text so switching chapters never saves an
+untouched file. Read this to run the app, find the file that owns each area, and see how the
+window, API client, and dialogs fit together; the visual design is in
 `../README_markdown_editor_ui.md` and the wire contract in
 `../src/dockb/controllers/README_API.md`.
 
@@ -97,7 +98,7 @@ minimum (left panel 120px, message console 24px); the right panel starts at the
 same width as the chapter list (240px) and shrinks back to its 10px floor.
 
 - `layout.ts` — window chrome, panel seams, mode, the menubar save button (shown
-  while the buffer is dirty), menubar username label, message sink, and the AI chat line: a textarea at the bottom of the
+  while the buffer is dirty), menubar username button (user menu, raw-markdown gating), message sink, and the AI chat line: a textarea at the bottom of the
   message panel (greyed "Prompt AI here" placeholder) that is a whole number of
   text lines high — about one third of the panel by default, auto-extended as
   the typed text needs more lines, and the whole panel (24px floor) when the
@@ -175,15 +176,18 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
-- `menubar.ts` — File (Open, Import…, Delete ▸ Document, Edit ▸ Document/Chapter,
-  Sign out, Quit) and a mode toggle on the left; Settings (Document…, Language…, Dictionary…) is the cog in
-  the right-aligned group. The mode toggle sits right of File: in WYSIWYG mode it shows a
-  markdown icon (tooltip "Switch editor to raw markdown mode") and clicking it switches to raw;
-  in raw mode it shows an Aa icon (tooltip "Switch editor to WYSIWYG") and clicking it switches
-  back. `layout.ts` puts the save button before the cog and the username after
-  it; the save button appears only while the buffer is dirty, carries the tooltip
-  "Save the chapter", and calls `onSave`. Dropdowns and nested submenus dismiss on outside click or Esc. **Sign out** and **Quit** both route through `state/quit.ts`'s
-  `confirmUnsaved`, so they share one unsaved-buffer question rather than two.
+- `menubar.ts` — File (Open, Import…, Delete ▸ Document) and a mode toggle on the left; Settings
+  (Document…, Language…, Dictionary…) is the cog in the right-aligned group. The mode toggle sits
+  right of File: in WYSIWYG mode it shows a markdown icon (tooltip "Switch editor to raw markdown
+  mode") and clicking it switches to raw; in raw mode it shows an Aa icon (tooltip "Switch editor
+  to WYSIWYG") and clicking it switches back. The toggle is disabled — tooltip "Change user
+  settings to enable raw markdown mode." — until the user enables raw markdown in their settings
+  (see below). `layout.ts` puts the save button before the cog and the username after it: the
+  save button appears only while the buffer is dirty, carries the tooltip "Save the chapter", and
+  calls `onSave`; the username is a button (a `user-round` icon and the name) whose click shows
+  **Sign out** and **Settings** in the response area. Dropdowns and nested submenus dismiss on
+  outside click or Esc. **Sign out** routes through `state/quit.ts`'s `confirmUnsaved`, so it
+  shares one unsaved-buffer question.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber/POV.
   Manuscript chapters group under act headers; `Character` chapters sit in a
   Characters section after the acts. Move only offers drop slots inside the
@@ -217,11 +221,12 @@ DOM as HTML.
   closed with their `×`; the automatic character tabs follow the characters the
   paragraph under the cursor mentions, replaced as the cursor moves. See
   `src/renderer/layout/README_right_panel.md`.
-- `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm and
-  document-edit dialogs (the delete/edit-document flows live in `main.ts`). The
+- `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm, document-edit and
+  user-settings dialogs (the delete/document-edit flows live in `main.ts`). The
   document-edit modal carries title, author, and a narrative-perspective select built from
-  `getNarrativePerspectives()`; File → Edit → Document and Settings → Document share its
-  save path.
+  `getNarrativePerspectives()`; Settings → Document is its only entry point. The user-settings
+  modal (`userSettingsModal`) carries the "Enable raw markdown mode" checkbox, whose value is held
+  for the session and gates the mode toggle.
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
   scrollable proofreading-language list with Cancel/Apply; the list comes from
   `GET /api/check/languages`, with the built-in list as the offline fallback. The
@@ -239,7 +244,7 @@ DOM as HTML.
 All user-facing failures go to the terminal log (`log.ts` `reportError`) **and**
 the message panel (`onMessage`).
 
-### Startup, sign-out and quit
+### Startup and sign-out
 
 `mountShell` asks `GET /api/auth/config`, which always reports `login_required: true`,
 so the sign-in gate is always shown; the username comes from `/api/auth/me` and is
@@ -249,7 +254,8 @@ otherwise `signInGate.ts`'s username/password form, and then `changePasswordDial
 if `/api/auth/me` reports a password change is owed.
 
 `boot` runs that as a loop rather than once: each pass takes a session, starts the editor
-up on it, and waits for **File → Sign out** to end it. Two things break the loop instead — a gate
+up on it, and waits for **Sign out** (the user menu, opened from the menubar username) to end it.
+Two things break the loop instead — a gate
 the user cancels, and a logout the server refuses — and neither hands control back to a gate that
 the next request would walk straight back through. The entry itself does nothing until a session
 exists, so it cannot be asked to sign out of something the editor was never in. What sign-out
@@ -269,12 +275,11 @@ password field on failure so a wrong guess does not sit in the DOM; the username
 survives, because a mistyped password is no reason to retype the name. Then it runs
 `runStartup` (restore last document, or pick one); File → Open opens the same
 select-document picker (`documentPicker.ts`
-`openDocumentPickerConfirm`) and loads the chosen document. File → Delete and
-File → Edit manage whole documents (delete with confirm; title, author, and narrative
-perspective) and the selected chapter's title; Settings → Document edits the open document;
-Mode, panel widths, and last document persist via
-`GET/PUT /api/app/state`. File → Quit asks to save when dirty, then sends the
-`quit` IPC channel.
+`openDocumentPickerConfirm`) and loads the chosen document. File → Delete manages whole documents
+(delete with confirm); Settings → Document edits the open document's title, author, and narrative
+perspective; the chapter list's context menu renames the selected chapter. Mode, panel widths, and
+last document persist via `GET/PUT /api/app/state`. Raw markdown mode is off by default and is
+enabled for the session from the user settings, which also disables the mode toggle while off.
 
 ## Layout
 

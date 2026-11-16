@@ -4,17 +4,15 @@ export type Mode = "wysiwyg" | "raw";
 
 export interface MenubarOptions {
   mode?: Mode;
+  /** Whether the raw-markdown mode is available; off, the mode toggle is disabled. */
+  rawMarkdownEnabled?: boolean;
   onMode?: (mode: Mode) => void;
   onOpen?: () => void;
   onImport?: () => void;
-  onQuit?: () => void;
   onOpenDocumentSettings?: () => void;
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
   onDeleteDocument?: () => void;
-  onEditDocument?: () => void;
-  onEditChapter?: () => void;
-  onSignOut?: () => void;
 }
 
 interface MenuSpec {
@@ -37,16 +35,6 @@ const MENUS: MenuSpec[] = [
       { key: "open", label: "Open" },
       { key: "import", label: "Import…" },
       { key: "delete", label: "Delete", children: [{ key: "delete-document", label: "Document" }] },
-      {
-        key: "edit",
-        label: "Edit",
-        children: [
-          { key: "edit-document", label: "Document" },
-          { key: "edit-chapter", label: "Chapter" },
-        ],
-      },
-      { key: "sign-out", label: "Sign out" },
-      { key: "quit", label: "Quit" },
     ],
   },
   {
@@ -66,10 +54,13 @@ export interface Menubar {
   right: HTMLElement;
   /** Redraw the mode toggle for *mode* (icon and tooltip). */
   setMode: (mode: Mode) => void;
+  /** Enable or disable the mode toggle (and re-word its tooltip) for raw markdown. */
+  setRawMarkdownEnabled: (enabled: boolean) => void;
 }
 
 const WYSIWYG_TOOLTIP = "Switch editor to raw markdown mode";
 const RAW_TOOLTIP = "Switch editor to WYSIWYG";
+const RAW_MARKDOWN_DISABLED_TOOLTIP = "Change user settings to enable raw markdown mode.";
 
 export function buildMenubar(options: MenubarOptions): Menubar {
   const element = document.createElement("div");
@@ -80,7 +71,9 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   right.className = "menubar-right";
   right.dataset.testid = "menubar-right";
 
+  let rawMarkdownEnabled = options.rawMarkdownEnabled ?? false;
   const toggle = buildModeToggle(options.mode ?? "wysiwyg", options.onMode);
+  applyMode(toggle, options.mode ?? "wysiwyg", rawMarkdownEnabled);
 
   for (const menu of MENUS) {
     if (menu.key === "Settings") {
@@ -97,7 +90,11 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   return {
     element,
     right,
-    setMode: (mode) => applyMode(toggle, mode),
+    setMode: (mode) => applyMode(toggle, mode, rawMarkdownEnabled),
+    setRawMarkdownEnabled: (enabled) => {
+      rawMarkdownEnabled = enabled;
+      applyMode(toggle, toggle.dataset.mode as Mode, enabled);
+    },
   };
 }
 
@@ -106,19 +103,29 @@ function buildModeToggle(initial: Mode, onMode?: (mode: Mode) => void): HTMLButt
   button.type = "button";
   button.className = "mode-toggle";
   button.dataset.testid = "mode-toggle";
+  button.dataset.mode = initial;
   button.addEventListener("click", () => {
+    if (button.disabled) {
+      return;
+    }
     onMode?.(button.dataset.mode === "raw" ? "wysiwyg" : "raw");
   });
-  applyMode(button, initial);
   return button;
 }
 
-function applyMode(button: HTMLButtonElement, mode: Mode): void {
+function applyMode(button: HTMLButtonElement, mode: Mode, rawMarkdownEnabled: boolean): void {
   button.dataset.mode = mode;
   button.replaceChildren(mode === "wysiwyg" ? createMarkdownIcon() : createALargeSmallIcon());
-  const title = mode === "wysiwyg" ? WYSIWYG_TOOLTIP : RAW_TOOLTIP;
-  button.title = title;
-  button.setAttribute("aria-label", title);
+  if (rawMarkdownEnabled) {
+    button.disabled = false;
+    const title = mode === "wysiwyg" ? WYSIWYG_TOOLTIP : RAW_TOOLTIP;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+  } else {
+    button.disabled = true;
+    button.title = RAW_MARKDOWN_DISABLED_TOOLTIP;
+    button.setAttribute("aria-label", RAW_MARKDOWN_DISABLED_TOOLTIP);
+  }
 }
 
 function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
@@ -225,16 +232,8 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
     options.onOpen?.();
   } else if (menu.key === "File" && item.key === "import") {
     options.onImport?.();
-  } else if (menu.key === "File" && item.key === "quit") {
-    options.onQuit?.();
   } else if (menu.key === "File" && item.key === "delete-document") {
     options.onDeleteDocument?.();
-  } else if (menu.key === "File" && item.key === "edit-document") {
-    options.onEditDocument?.();
-  } else if (menu.key === "File" && item.key === "edit-chapter") {
-    options.onEditChapter?.();
-  } else if (menu.key === "File" && item.key === "sign-out") {
-    options.onSignOut?.();
   } else if (menu.key === "Settings" && item.key === "document") {
     options.onOpenDocumentSettings?.();
   } else if (menu.key === "Settings" && item.key === "language") {

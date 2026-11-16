@@ -903,6 +903,11 @@ export class WysiwygView {
     this.innerView?.setProps({ editable: () => enabled });
   }
 
+  /** Return keyboard focus to the editable, e.g. after a menu closes. */
+  focus(): void {
+    this.innerView?.focus();
+  }
+
   /**
    * The selected text and where it starts and ends: the paragraph ids and
    * indexes it touches, each endpoint's sentence and character offset, and the

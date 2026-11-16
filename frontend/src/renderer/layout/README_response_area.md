@@ -3,12 +3,13 @@
 ## Executive Summary
 
 This module renders interactive prompts and answers inside the message panel's response strip. It
-serves three flows through the same strip and function registry: the model's structured reply to a
+serves four flows through the same strip and function registry: the model's structured reply to a
 chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
 sentences; the editor's own prompt when the writer right-clicks selected text, which offers
-buttons to change the touched paragraphs' layout and the selection's inline formatting; and the
+buttons to change the touched paragraphs' layout and the selection's inline formatting; the
 corrections for a right-clicked proofreading squiggle, which offer its replacements and Add to
-dictionary. In every
+dictionary; and the signed-in user's menu, opened from the menubar username, which offers Sign out
+and Settings. In every
 flow, outside or selected text never enters the DOM as markup, and each button passes plain-data
 arguments to a registered editor function. Any new right-click menu belongs here too, in the
 strip — never in a floating popover.
@@ -128,6 +129,14 @@ clicks do not close it.
 for asking "what do you want to do with this?" — one styling, one teardown rule, one place the
 writer has already learned — so a new menu reuses it instead of spawning a floating popover with
 its own dismissal handling.
+
+## `user-sign-out` / `user-settings` — the user's menu in the strip
+
+The signed-in username in the menubar is a button: clicking it shows **Sign out** and **Settings**
+in the strip (`AppLayout.showUserMenu`), with focus moved to the first button. **Sign out** runs the
+same unsaved-buffer-then-logout flow the old File → Sign out entry did; **Settings** opens the
+user-settings modal (the "Enable raw markdown mode" checkbox). Unlike the right-click menus, this
+one closes on Escape, and closing returns focus to the editor.
 
 ## Security
 

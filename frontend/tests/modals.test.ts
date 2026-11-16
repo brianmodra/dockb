@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { confirmCheckboxModal, confirmModal, editDocumentModal, openModal, promptModal } from "../src/renderer/layout/modals";
+import { confirmCheckboxModal, confirmModal, editDocumentModal, openModal, promptModal, userSettingsModal } from "../src/renderer/layout/modals";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -171,6 +171,29 @@ describe("modals", () => {
 
   it("editDocumentModal resolves null on cancel", async () => {
     const promise = editDocumentModal({ title: "Faith", author: "Paul" });
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBeNull();
+  });
+
+  it("userSettingsModal starts with the session value and answers the new one on Done", async () => {
+    const promise = userSettingsModal(false);
+    const box = modal()!.querySelector<HTMLInputElement>("[data-testid='raw-markdown-checkbox']")!;
+    expect(box).not.toBeNull();
+    expect(box.checked).toBe(false);
+    expect(modal()!.textContent).toContain("Enable raw markdown mode");
+    box.checked = true;
+    const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
+    expect(Array.from(buttons).map((b) => b.textContent)).toEqual(["Cancel", "Done"]);
+    buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(await promise).toBe(true);
+    expect(modal()).toBeNull();
+  });
+
+  it("userSettingsModal returns null on cancel and starts checked when it was enabled", async () => {
+    const promise = userSettingsModal(true);
+    const box = modal()!.querySelector<HTMLInputElement>("[data-testid='raw-markdown-checkbox']")!;
+    expect(box.checked).toBe(true);
     const buttons = modal()!.querySelectorAll("[data-testid='modal-button']");
     buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(await promise).toBeNull();

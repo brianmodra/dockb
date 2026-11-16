@@ -7,15 +7,16 @@ dialogs, so someone new can see what the writer sees and why each click does wha
 covers proofreading in both the WYSIWYG and raw views: the backend checks the paragraph under the
 cursor, the writer picks a correction or adds a word to the document's glossary through the
 response strip, and nothing is written to the file until the writer saves. A document's title,
-author, and narrative perspective are edited in one modal, reachable from File → Edit → Document
-or from Settings → Document for the open document.
+author, and narrative perspective are edited in one modal, reachable from Settings → Document for
+the open document.
 
 The chapter list stays in step with the editor, keeping the shown chapter selected through list
-changes and reading nothing when it is re-clicked. The File menu saves unsaved work before signing
-out, and the identity line above the text shows a character's name parts or a chapter's title and
-point of view. The window only sends text to the server and gets text back; it never touches files.
-How files and the database work is in `README_markdown_redesign.md`, and login is in
-`README_auth.md`.
+changes and reading nothing when it is re-clicked. The signed-in username in the menubar is a
+button whose menu offers Sign out (which saves unsaved work first) and Settings (which turns the
+raw-markdown view on for the session). The identity line above the text shows a character's name
+parts or a chapter's title and point of view. The window only sends text to the server and gets
+text back; it never touches files. How files and the database work is in
+`README_markdown_redesign.md`, and login is in `README_auth.md`.
 
 ## 1. Context and constraints
 
@@ -95,20 +96,19 @@ message console at 24px minimum height), and the right panel starts at its 10px 
 ## 3. Menus (decided)
 
 - **File ▾** — **Open** (the select-document modal, §8), **Import…** (pick a document directory
-  and send it to `POST /api/import`), **Delete ▸ Document** (delete a whole document:
+  and send it to `POST /api/import`), and **Delete ▸ Document** (delete a whole document:
   pick it, confirm, then `DELETE /api/documents/{id}`; if it was the open document the
-  editor and chapter list clear), **Edit ▸ Document / Chapter** (edit a document's
-  title, author, and narrative perspective, or a chapter's title, saving through
-  `PUT /api/documents/{id}` / `PUT /api/chapters/{id}`), **Sign out** (offer to save an unsaved buffer, end the session
-  with `POST /api/auth/logout`, clear what the session owned, and show the gate again) and
-  **Quit**.
+  editor and chapter list clear). Sign out and the user's settings live in the username's own
+  menu (§3.1); there is no in-app quit button.
 - **Mode toggle** (an icon button just right of File) — switches the edit panel's view of the
   same document. In WYSIWYG mode it shows the markdown icon (an "M" over a down arrow,
   tooltip "Switch editor to raw markdown mode") and clicking it switches to Raw MD; in raw
   mode it shows an Aa icon (tooltip "Switch editor to WYSIWYG") and clicking it switches
-  back.
+  back. Raw markdown is off by default, so the toggle starts disabled with the tooltip "Change
+  user settings to enable raw markdown mode."; enabling raw markdown in the user's settings
+  re-enables it, and disabling it drops the editor back to WYSIWYG.
 - **Settings ⚙▾** — a cog glyph instead of the word "Settings". **Document…** edits the
-  currently open document through the same modal as File → Edit → Document; with no document
+  currently open document's title, author, and narrative perspective; with no document
   open it says to open one first. **Language…** opens
   a dialog listing the proofreading languages the backend checker supports (`GET
   /api/check/languages`; the dialog falls back to its built-in list if that request fails),
@@ -120,6 +120,16 @@ message console at 24px minimum height), and the right panel starts at its 10px 
 The menu bar is drawn in-window (HTML), not the native Electron menu, so its styling is ours and
 stays identical across platforms; the native menu is removed at startup
 (`Menu.setApplicationMenu(null)`), so the in-window bar is the only one.
+
+### 3.1 The username menu (decided)
+
+The signed-in username sits at the right edge of the menubar as a button — a `user-round` icon and
+the name. Clicking it shows **Sign out** and **Settings** in the response area and moves focus
+there; Escape closes the menu and returns focus to the editor, matching the other response-area
+menus. **Sign out** is the old File → Sign out: offer to save an unsaved buffer, end the session
+with `POST /api/auth/logout`, clear what the session owned, and show the gate again. **Settings**
+opens a modal with one checkbox, **"Enable raw markdown mode"**, off by default; once ticked it
+stays on for the session and turns the mode toggle on.
 
 ## 4. Left panel: document and chapter selector (decided)
 
@@ -258,10 +268,8 @@ response-area function that opens a chapter scrolled to a paragraph, is in
 - **Rename chapter** — name field + **Cancel / Rename**.
 - **Delete confirmation** — "Are you sure you want to delete <chapter>?" with **Cancel / Delete**,
   shown before any delete runs.
-- **Quit with changes** — when there are local (unsaved) changes: "Save chapter first?" with
-  **Cancel / Discard / Save and Quit**.
-- **Sign out with changes** — the same question, asked before the session ends rather than before
-  the window closes: "Save chapter first?" with **Cancel / Discard / Save**. **Cancel** keeps the
+- **Sign out with changes** — asked before the session ends: "Save chapter first?" with
+  **Cancel / Discard / Save**. **Cancel** keeps the
   session and closes the dialog, **Discard** ends the session without saving, **Save** saves first
   and then ends it. A save that fails leaves the dialog's outcome unspent: the session survives and
   the buffer stays dirty, so nothing typed is lost to a failed write.
@@ -275,20 +283,20 @@ response-area function that opens a chapter scrolled to a paragraph, is in
   Delete**; only that second **Delete** calls `DELETE /api/documents/{id}`. If the deleted
   document was the one open in the editor, the editor and the chapter list clear
   (`PUT /api/app/state` forgets it as the last document).
-- **Edit document** (File → Edit → Document) — the document list with **Cancel / Edit** (Edit
-  disabled until a row is chosen). **Edit** opens a modal pre-filled with the chosen document's
+- **Edit document** (Settings → Document) — a modal pre-filled with the open document's
   title, author, and narrative perspective; the perspective field is a select containing
-  **None** and the codes from `GET /api/documents/narrative-perspectives`. The edited values
+  **None** and the codes from `GET /api/documents/narrative-perspectives`. It reads only the
+  document attrs (`GET /api/documents/{id}/attrs`) so the dialog does not wait on the full
+  document. The edited values
   stay in the modal until **Save** (disabled while the title is blank). **Save** sends all three
   fields via `PUT /api/documents/{id}` — which renames the document's store directory when the
-  title changed — then reloads the chapter list; **Cancel** discards the edits. **Settings →
-  Document…** opens the same modal for the open document without the picker; it reads only the
-  document attrs (`GET /api/documents/{id}/attrs`) so the dialog does not wait on the full
-  document, and when none is open it asks the writer to open one first.
-- **Edit chapter** (File → Edit → Chapter) — a single title field pre-filled with the
-  selected chapter's title and **Cancel / Save**. **Save** updates the title via
-  `PUT /api/chapters/{id}` (renaming the chapter's store file) and reloads the chapter list;
-  no modal appears when no chapter is selected.
+  title changed — then reloads the chapter list; **Cancel** discards the edits, and when no
+  document is open it asks the writer to open one first.
+- **User settings** (username menu → Settings) — a modal with one checkbox, **"Enable raw markdown
+  mode"**, off by default. Ticking it and choosing **Done** turns the raw-markdown view on for the
+  session (and re-enables the mode toggle); unticking it drops the editor back to WYSIWYG and
+  disables the toggle. The choice lasts only for the session — every new session starts with it
+  off.
 - **Sign in** — always: `GET /api/auth/config` always reports `login_required: true`, so there
   is no mode in which the gate is skipped. The gate carries a **username / password form**, which
   posts to `POST /api/auth/login/password`. It is password-only: there are no provider buttons, so
@@ -301,7 +309,7 @@ response-area function that opens a chapter scrolled to a paragraph, is in
 
 ### Unsaved-change detection (decided)
 
-"Local changes" for the Quit modal compares the editor text against the last **canonical** text the
+"Local changes" for the sign-out prompt compares the editor text against the last **canonical** text the
 backend returned — not against what the user most recently typed — because the canonical round trip
 reformats. A save icon in the menubar makes the state visible: it appears exactly while the
 chapter has unsaved changes, carries the tooltip "Save the chapter", and saves the current chapter
@@ -315,12 +323,13 @@ reports `password_change_required`, and is shown in the menubar. Once signed in 
 from app state. If there is one, it loads the chapter list (panel widths and mode live in the
 same state). If there is none, it shows the **select a document** modal. The state is stored
 per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_state` table (see
-`README_auth.md`).
+`README_auth.md`). Raw markdown mode is **not** part of that state: it starts off every session,
+and is only turned on from the user's settings when the writer asks for it.
 
-Signing out returns here rather than closing anything: `File → Sign out` ends the session, clears
-the chapter list, the editor buffer, the save icon and the username in the menubar, and the next
-pass begins again at the sign-in gate above. Cancelling that gate stops the editor instead — with no
-session left, every request that pass would make is a guaranteed 401.
+Signing out returns here rather than closing anything: **Sign out** (in the username's menu) ends
+the session, clears the chapter list, the editor buffer, the save icon and the username in the
+menubar, and the next pass begins again at the sign-in gate above. Cancelling that gate stops the
+editor instead — with no session left, every request that pass would make is a guaranteed 401.
 
 ## 10. Resolved questions
 

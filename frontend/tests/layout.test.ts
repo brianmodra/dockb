@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AppLayout } from "../src/renderer/layout/layout";
+import { AppLayout, USER_SETTINGS_FUNCTION, USER_SIGN_OUT_FUNCTION } from "../src/renderer/layout/layout";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -121,6 +121,7 @@ describe("AppLayout", () => {
   it("reports mode through the mode toggle and updates the edit panel", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
+    layout.setRawMarkdownEnabled(true);
     layout.element.querySelector<HTMLElement>('[data-testid="mode-toggle"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const edit = layout.element.querySelector<HTMLElement>('[data-testid="panel-edit"]')!;
     expect(layout.mode).toBe("raw");
@@ -410,5 +411,75 @@ describe("AppLayout", () => {
     const label = layout.element.querySelector<HTMLElement>('[data-testid="user-label"]')!;
     expect(label.textContent).toBe("kate");
     expect(layout.element.querySelectorAll('[data-testid="user-label"]')).toHaveLength(1);
+  });
+
+  it("renders the signed-in username as a button with a user icon and the name", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    layout.setUser("brian");
+    const button = layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!;
+    expect(button).toBeInstanceOf(HTMLButtonElement);
+    expect(button.querySelector("svg.user-icon")).not.toBeNull();
+    expect(button.textContent).toBe("brian");
+    expect(button.hidden).toBe(false);
+  });
+
+  it("hides the user button while no one is signed in", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const button = layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!;
+    expect(button.hidden).toBe(true);
+  });
+
+  it("opens the user menu in the response area and focuses its first action", () => {
+    const layout = new AppLayout({
+      responseFunctions: { [USER_SIGN_OUT_FUNCTION]: () => {}, [USER_SETTINGS_FUNCTION]: () => {} },
+    });
+    document.body.append(layout.element);
+    layout.setUser("brian");
+    layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!.click();
+
+    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    expect(area.hidden).toBe(false);
+    const labels = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map((b) => b.textContent);
+    expect(labels).toEqual(["Sign out", "Settings"]);
+    expect(document.activeElement).toBe(area.querySelector<HTMLButtonElement>("button"));
+  });
+
+  it("closes the user menu and returns focus to the editor on Escape", () => {
+    const onFocusEditor = vi.fn();
+    const layout = new AppLayout({ onFocusEditor });
+    document.body.append(layout.element);
+    layout.setUser("brian");
+    layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!.click();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    expect(area.hidden).toBe(true);
+    expect(onFocusEditor).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the mode toggle by default and enables it when raw markdown is allowed", () => {
+    const layout = new AppLayout({});
+    document.body.append(layout.element);
+    const toggle = layout.element.querySelector<HTMLButtonElement>('[data-testid="mode-toggle"]')!;
+    expect(toggle.disabled).toBe(true);
+
+    layout.setRawMarkdownEnabled(true);
+    expect(toggle.disabled).toBe(false);
+  });
+
+  it("drops the editor back to WYSIWYG when raw markdown is turned off while raw", () => {
+    const onMode = vi.fn();
+    const layout = new AppLayout({ onMode });
+    document.body.append(layout.element);
+    layout.setRawMarkdownEnabled(true);
+    layout.setMode("raw");
+    expect(layout.mode).toBe("raw");
+
+    layout.setRawMarkdownEnabled(false);
+    expect(layout.mode).toBe("wysiwyg");
+    expect(onMode).toHaveBeenLastCalledWith("wysiwyg");
   });
 });

@@ -40,18 +40,3 @@ export async function confirmUnsaved(options: UnsavedChangesOptions): Promise<bo
   options.proceed();
   return true;
 }
-
-export interface QuitAppOptions {
-  isDirty: () => boolean;
-  save?: () => Promise<unknown>;
-  onQuit: () => void;
-}
-
-export async function quitApp(options: QuitAppOptions): Promise<boolean> {
-  return confirmUnsaved({
-    isDirty: options.isDirty,
-    save: options.save,
-    confirmLabel: "Save and Quit",
-    proceed: options.onQuit,
-  });
-}

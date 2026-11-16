@@ -167,8 +167,12 @@ body {
 }
 
 .save-button:hover,
-.mode-toggle:hover {
+.mode-toggle:hover:not(:disabled) {
   background: #e0e0dd;
+}
+
+.mode-toggle:disabled {
+  cursor: default;
 }
 
 /* `display: inline-flex` above would beat the user agent's `[hidden] { display:
@@ -177,10 +181,24 @@ body {
   display: none;
 }
 
-[data-testid="user-label"] {
+.user-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
   padding: 2px 8px;
   color: #555;
   font-size: 12px;
+  cursor: pointer;
+}
+
+.user-label:hover {
+  background: #e0e0dd;
+}
+
+.user-label .user-icon {
+  font-size: 14px;
 }
 
 .menubar-right .menu-dropdown {
