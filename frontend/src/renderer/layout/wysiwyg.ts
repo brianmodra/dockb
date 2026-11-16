@@ -589,6 +589,10 @@ function headingDecorations(md: ReturnType<typeof MarkdownIt>): Plugin<Decoratio
 export interface WysiwygViewOptions {
   onChange?: (content: string) => void;
   onSelectionChange?: () => void;
+  /** Enter with a selection: hand its context to the caller instead of splitting. */
+  onEnterSelection?: (context: SelectionContext) => void;
+  /** Enter with the caret in a diagnostic: hand it to the caller instead of splitting. */
+  onEnterDiagnostic?: (diagnostic: WysiwygDiagnostic) => void;
 }
 
 export interface SelectionPoint {
@@ -746,6 +750,23 @@ export class WysiwygView {
   private innerView: EditorView | null = null;
   private lastFrontMatter: string | null = null;
   private language: string;
+
+  private readonly enterCommand: Command = (state, dispatch, view) => {
+    if (!state.selection.empty) {
+      const context = this.selectionContext();
+      if (context !== null) {
+        this.options.onEnterSelection?.(context);
+        return true;
+      }
+    } else {
+      const diagnostic = this.diagnosticAtPos(state.selection.from);
+      if (diagnostic !== null) {
+        this.options.onEnterDiagnostic?.(diagnostic);
+        return true;
+      }
+    }
+    return splitBlock(state, dispatch, view);
+  };
 
   constructor(options: WysiwygViewOptions = {}) {
     this.options = options;
@@ -1061,7 +1082,7 @@ export class WysiwygView {
       const state = EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids, layouts),
-        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
+        plugins: [history(), keymap({ Enter: this.enterCommand, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), keymap(baseKeymap), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
       });
       this.innerView = new EditorView(this.element, {
         state,
@@ -1085,7 +1106,7 @@ export class WysiwygView {
       EditorState.create({
         schema,
         doc: bufferToDocWithIds(display, ids, layouts),
-        plugins: [history(), keymap(baseKeymap), keymap({ Enter: splitBlock, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
+        plugins: [history(), keymap({ Enter: this.enterCommand, "Shift-Enter": insertHardBreak, "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }), keymap(baseKeymap), headingDecorations(new MarkdownIt()), proofreadingPlugin()],
       }),
     );
   }

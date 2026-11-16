@@ -127,6 +127,12 @@ export class EditPanel {
         this.onSelectionChange?.();
         this.onEditActivity?.();
       },
+      onEnterSelection: (context) => {
+        this.onSelectionActions?.(context);
+      },
+      onEnterDiagnostic: (diagnostic) => {
+        this.onDiagnostic?.(diagnostic);
+      },
     });
     this.wysiwygHost.append(this.wysiwyg.element);
     this.wysiwygHost.addEventListener("contextmenu", (event) => this.openParagraphMenu(event));

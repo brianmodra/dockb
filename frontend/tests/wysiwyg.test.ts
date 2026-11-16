@@ -283,6 +283,56 @@ describe("WysiwygView", () => {
     expect(pm.querySelector("br")).not.toBeNull();
   });
 
+  it("opens the selection menu instead of splitting when Enter is pressed with a selection", () => {
+    const onEnterSelection = vi.fn();
+    const onEnterDiagnostic = vi.fn();
+    const view = new WysiwygView({ onEnterSelection, onEnterDiagnostic });
+    document.body.append(view.element);
+    view.setContent("one\ntwo");
+    const pm = view.element.querySelector(".ProseMirror") as HTMLElement;
+    pm.focus();
+    select(view, 1, 4);
+
+    pm.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+    expect(onEnterSelection).toHaveBeenCalledTimes(1);
+    expect(onEnterSelection.mock.calls[0][0]).toMatchObject({ text: "one" });
+    expect(onEnterDiagnostic).not.toHaveBeenCalled();
+    expect(view.content()).toBe("one\ntwo");
+  });
+
+  it("opens the diagnostic menu instead of splitting when Enter is pressed inside a squiggle", () => {
+    const onEnterSelection = vi.fn();
+    const onEnterDiagnostic = vi.fn();
+    const view = new WysiwygView({ onEnterSelection, onEnterDiagnostic });
+    document.body.append(view.element);
+    view.setContent("teh cat sat.");
+    const pm = view.element.querySelector(".ProseMirror") as HTMLElement;
+    pm.focus();
+    select(view, 1, 1);
+    const paragraph = view.currentProofreadingParagraph()!;
+    const [mapped] = view.setProofreadingDiagnostics(paragraph, [
+      {
+        rule_id: "R",
+        category: "TYPOS",
+        severity: "warning",
+        message: "m",
+        start: 0,
+        end: 3,
+        replacements: [],
+        in_focus: true,
+      },
+    ]);
+    expect(mapped).toMatchObject({ from: 1, to: 4 });
+
+    pm.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+    expect(onEnterDiagnostic).toHaveBeenCalledTimes(1);
+    expect(onEnterDiagnostic.mock.calls[0][0]).toMatchObject({ from: 1, to: 4 });
+    expect(onEnterSelection).not.toHaveBeenCalled();
+    expect(view.content()).toBe("teh cat sat.");
+  });
+
   it("defaults the editable language to en-US", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
