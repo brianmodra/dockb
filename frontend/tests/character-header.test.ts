@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { characterHeaderText, frontMatterFields, manuscriptHeaderText } from "../src/renderer/layout/characterHeader";
+import {
+  characterHeaderText,
+  frontMatterFields,
+  manuscriptHeaderParts,
+  manuscriptHeaderText,
+} from "../src/renderer/layout/characterHeader";
 
 const frontMatter = (fields: Record<string, string>): string =>
   "---\n" + Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join("\n") + "\n---\n\nBody.\n";
@@ -94,5 +99,20 @@ describe("manuscriptHeaderText", () => {
   it("names just the chapter when there is no POV", () => {
     const fields = frontMatterFields(frontMatter({ title: "Opening 1" }));
     expect(manuscriptHeaderText(fields)).toBe("Opening 1");
+  });
+});
+
+describe("manuscriptHeaderParts", () => {
+  it("splits the title from the point-of-view phrase", () => {
+    const fields = frontMatterFields(frontMatter({ title: "Opening 1", pov: "Karakas" }));
+    expect(manuscriptHeaderParts(fields)).toEqual({
+      title: "Opening 1",
+      pov: "from the point of view of Karakas",
+    });
+  });
+
+  it("has no point-of-view phrase when the chapter has no POV", () => {
+    const fields = frontMatterFields(frontMatter({ title: "Opening 1" }));
+    expect(manuscriptHeaderParts(fields)).toEqual({ title: "Opening 1", pov: null });
   });
 });

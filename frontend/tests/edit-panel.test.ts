@@ -79,6 +79,24 @@ describe("EditPanel", () => {
     );
   });
 
+  it("colours the manuscript title and its point of view separately", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\npov: Karakas\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    const header = panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!;
+    expect(header.querySelector<HTMLElement>(".chapter-header__title")!.textContent).toBe("Opening 1");
+    expect(header.querySelector<HTMLElement>(".chapter-header__pov")!.textContent).toBe(
+      "from the point of view of Karakas",
+    );
+  });
+
   it("scrolls the chapter header away with the text inside the edit scroll", async () => {
     const api = fakeApi({
       getChapterDocument: vi.fn(async () =>

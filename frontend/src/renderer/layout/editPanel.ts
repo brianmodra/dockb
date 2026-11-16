@@ -11,7 +11,11 @@ import {
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
-import { characterHeaderText, frontMatterFields, manuscriptHeaderText } from "./characterHeader";
+import {
+  characterHeaderText,
+  frontMatterFields,
+  manuscriptHeaderParts,
+} from "./characterHeader";
 import type { ProofreadingDiagnostic } from "../api/types";
 import {
   mapRawProofreadingDiagnostics,
@@ -563,12 +567,26 @@ export class EditPanel {
    */
   private updateHeader(): void {
     if (this.lastCanonicalText === null) {
-      this.header.textContent = "";
+      this.header.replaceChildren();
       return;
     }
     const fields = frontMatterFields(this.lastCanonicalText);
-    this.header.textContent =
-      fields.category === "Character" ? characterHeaderText(fields) : manuscriptHeaderText(fields);
+    if (fields.category === "Character") {
+      this.header.textContent = characterHeaderText(fields);
+      return;
+    }
+    const { title, pov } = manuscriptHeaderParts(fields);
+    const titleElement = document.createElement("span");
+    titleElement.className = "chapter-header__title";
+    titleElement.textContent = title;
+    if (pov === null) {
+      this.header.replaceChildren(titleElement);
+      return;
+    }
+    const povElement = document.createElement("span");
+    povElement.className = "chapter-header__pov";
+    povElement.textContent = pov;
+    this.header.replaceChildren(titleElement, document.createTextNode(", "), povElement);
   }
 
   /**

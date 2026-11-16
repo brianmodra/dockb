@@ -93,7 +93,19 @@ export function characterHeaderText(fields: ChapterFrontMatterFields): string {
   return line;
 }
 
+/** The manuscript header's title and, when set, its point-of-view phrase. */
+export function manuscriptHeaderParts(fields: ChapterFrontMatterFields): {
+  title: string;
+  pov: string | null;
+} {
+  return {
+    title: fields.title ?? "",
+    pov: fields.pov ? `from the point of view of ${fields.pov}` : null,
+  };
+}
+
 /** The manuscript chapter's one prose line: the title, and whose eyes it is seen through. */
 export function manuscriptHeaderText(fields: ChapterFrontMatterFields): string {
-  return fields.pov ? `${fields.title}, from the point of view of ${fields.pov}` : (fields.title ?? "");
+  const { title, pov } = manuscriptHeaderParts(fields);
+  return pov ? `${title}, ${pov}` : title;
 }

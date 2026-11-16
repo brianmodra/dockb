@@ -176,6 +176,11 @@ the selected Mode (WYSIWYG | Raw MD) and is where the interactive syntax checkin
 LanguageTool diagnostics, anchored to the sentence text as displayed, in both views, never part of
 a save.
 
+The panel is warm white (`#f8f6f0`) and its text is Courier Prime at 18px, falling back to the
+system monospace face when the web font is unavailable. The identity line above the text keeps
+the chapter's title in green and, for a manuscript chapter, the "from the point of view of …"
+phrase in pastel amber.
+
 Both views edit the **same canonical document**: the text is the model, and toggling Mode changes
 rendering, not the document behind the editor. The WYSIWYG is an editing surface, *not* a semantic
 editor — the user types and edits prose in it (editing is allowed in either view), but nothing in
