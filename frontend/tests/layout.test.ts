@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AppLayout, USER_SETTINGS_FUNCTION, USER_SIGN_OUT_FUNCTION } from "../src/renderer/layout/layout";
+import { AppLayout } from "../src/renderer/layout/layout";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -391,7 +391,7 @@ describe("AppLayout", () => {
     const [save, settings, username] = Array.from(right.children) as HTMLElement[];
     expect(save.dataset.testid).toBe("save-button");
     expect(settings.querySelector('[data-testid="menu-Settings"]')).not.toBeNull();
-    expect(username.dataset.testid).toBe("user-label");
+    expect(username.querySelector('[data-testid="user-label"]')).not.toBeNull();
   });
 
   it("renders the signed-in username in the menubar", () => {
@@ -424,40 +424,34 @@ describe("AppLayout", () => {
     expect(button.hidden).toBe(false);
   });
 
-  it("hides the user button while no one is signed in", () => {
+  it("hides the user menu while no one is signed in", () => {
     const layout = new AppLayout({});
     document.body.append(layout.element);
     const button = layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!;
-    expect(button.hidden).toBe(true);
+    expect(button.closest(".menu")?.hasAttribute("hidden")).toBe(true);
   });
 
-  it("opens the user menu in the response area and focuses its first action", () => {
-    const layout = new AppLayout({
-      responseFunctions: { [USER_SIGN_OUT_FUNCTION]: () => {}, [USER_SETTINGS_FUNCTION]: () => {} },
-    });
+  it("opens the user menu as a menubar dropdown, not in the response area", () => {
+    const layout = new AppLayout({});
     document.body.append(layout.element);
     layout.setUser("brian");
     layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!.click();
 
-    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
-    expect(area.hidden).toBe(false);
-    const labels = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map((b) => b.textContent);
+    const dropdown = layout.element.querySelector<HTMLElement>('[data-testid="menu-user-dropdown"]')!;
+    expect(dropdown.classList.contains("menu-dropdown--open")).toBe(true);
+    const labels = Array.from(dropdown.querySelectorAll(".menu-item")).map((n) => n.textContent);
     expect(labels).toEqual(["Sign out", "Settings"]);
-    expect(document.activeElement).toBe(area.querySelector<HTMLButtonElement>("button"));
+    expect(layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!.hidden).toBe(true);
   });
 
-  it("closes the user menu and returns focus to the editor on Escape", () => {
-    const onFocusEditor = vi.fn();
-    const layout = new AppLayout({ onFocusEditor });
+  it("reports the user menu's Sign out to onSignOut", () => {
+    const onSignOut = vi.fn();
+    const layout = new AppLayout({ onSignOut });
     document.body.append(layout.element);
-    layout.setUser("brian");
-    layout.element.querySelector<HTMLButtonElement>("[data-testid='user-label']")!.click();
-
-    const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
-    area.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-
-    expect(area.hidden).toBe(true);
-    expect(onFocusEditor).toHaveBeenCalledTimes(1);
+    layout.element
+      .querySelector('[data-testid="menu-item-sign-out"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
   it("disables the mode toggle by default and enables it when raw markdown is allowed", () => {

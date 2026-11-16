@@ -3,18 +3,18 @@
 ## Executive Summary
 
 This module renders interactive prompts and answers inside the message panel's response strip. It
-serves four flows through the same strip and function registry: the model's structured reply to a
+serves three flows through the same strip and function registry: the model's structured reply to a
 chat prompt, which pairs lines of text with buttons that open a named chapter and highlight its
 sentences; the editor's own prompt when the writer opens a menu over selected text (by right-click
 or Enter), which offers buttons to change the selection's inline formatting and, for a
-whole-paragraph selection, its quote layout; the corrections for a proofreading squiggle (opened by
-right-click or Enter), which offer its replacements and Add to dictionary; and the signed-in
-user's menu, opened from the menubar username, which offers Sign out and Settings. The selection,
-squiggle, and user menus are keyboard-navigable — focus moves to the first button, arrow keys move
-the highlight, Enter activates it, and Escape closes the menu and returns focus to the editor. In
-every flow, outside or selected text never enters the DOM as markup, and each button passes
-plain-data arguments to a registered editor function. Any new editor menu belongs here too, in the
-strip — never in a floating popover.
+whole-paragraph selection, its quote layout; and the corrections for a proofreading squiggle
+(opened by right-click or Enter), which offer its replacements and Add to dictionary. The selection
+and squiggle menus are keyboard-navigable — focus moves to the first button, arrow keys move the
+highlight, Enter activates it, and Escape closes the menu and returns focus to the editor. In every
+flow, outside or selected text never enters the DOM as markup, and each button passes plain-data
+arguments to a registered editor function. The signed-in user's menu (Sign out and Settings) is a
+menubar dropdown like File and Settings, not part of the strip. Any new editor menu belongs here
+too, in the strip — never in a floating popover.
 
 When the server attaches its manuscript tools to a chat turn it constrains the model to the
 response syntax, so a plain answer arrives as a single text line; without them, or on a refusal,
@@ -71,7 +71,7 @@ code. Names and their functions are specified with the functions themselves.
 
 ## Menu keyboard navigation
 
-The selection, squiggle, and user menus share one keyboard model, implemented in
+The selection and squiggle menus share one keyboard model, implemented in
 `AppLayout.showMenu`/`closeMenu` and `ResponseArea.showMenu`. When a menu appears, focus moves to
 its first button — highlighted, not clicked, exactly as a mouse hover highlights it. The left and
 right arrow keys move the highlight between buttons, clamped at each end; Enter activates the
@@ -144,14 +144,6 @@ returning focus to the editor.
 for asking "what do you want to do with this?" — one styling, one teardown rule, one place the
 writer has already learned — so a new menu reuses it instead of spawning a floating popover with
 its own dismissal handling.
-
-## `user-sign-out` / `user-settings` — the user's menu in the strip
-
-The signed-in username in the menubar is a button: clicking it shows **Sign out** and **Settings**
-in the strip (`AppLayout.showUserMenu`), as a keyboard-navigable menu like the others. **Sign out**
-runs the same unsaved-buffer-then-logout flow the old File → Sign out entry did; **Settings** opens
-the user-settings modal (the "Enable raw markdown mode" checkbox). Escape closes the menu and
-returns focus to the editor, exactly as with the other menus.
 
 ## Security
 

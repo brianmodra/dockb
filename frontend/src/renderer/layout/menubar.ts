@@ -1,4 +1,5 @@
 import { createALargeSmallIcon, createMarkdownIcon } from "./modeIcons";
+import { createUserRoundIcon } from "./userIcon";
 
 export type Mode = "wysiwyg" | "raw";
 
@@ -13,6 +14,8 @@ export interface MenubarOptions {
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
   onDeleteDocument?: () => void;
+  onSignOut?: () => void;
+  onUserSettings?: () => void;
 }
 
 interface MenuSpec {
@@ -46,16 +49,26 @@ const MENUS: MenuSpec[] = [
       { key: "dictionary", label: "Dictionary…" },
     ],
   },
+  {
+    key: "user",
+    label: "",
+    items: [
+      { key: "sign-out", label: "Sign out" },
+      { key: "user-settings", label: "Settings" },
+    ],
+  },
 ];
 
 export interface Menubar {
   element: HTMLElement;
-  /** The right-aligned group holding Settings, and the editor's status labels. */
+  /** The right-aligned group holding Settings, the user menu, and the editor's status labels. */
   right: HTMLElement;
   /** Redraw the mode toggle for *mode* (icon and tooltip). */
   setMode: (mode: Mode) => void;
   /** Enable or disable the mode toggle (and re-word its tooltip) for raw markdown. */
   setRawMarkdownEnabled: (enabled: boolean) => void;
+  /** Show the signed-in username (hiding the menu when empty). */
+  setUser: (username: string) => void;
 }
 
 const WYSIWYG_TOOLTIP = "Switch editor to raw markdown mode";
@@ -75,11 +88,19 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   const toggle = buildModeToggle(options.mode ?? "wysiwyg", options.onMode);
   applyMode(toggle, options.mode ?? "wysiwyg", rawMarkdownEnabled);
 
+  let userContainer: HTMLElement | null = null;
+  let userName: HTMLSpanElement | null = null;
+
   for (const menu of MENUS) {
     if (menu.key === "Settings") {
-      right.append(buildMenu(menu, options));
+      right.append(buildMenu(menu, options).container);
+    } else if (menu.key === "user") {
+      const built = buildMenu(menu, options);
+      right.append(built.container);
+      userContainer = built.container;
+      userName = built.name;
     } else {
-      element.append(buildMenu(menu, options));
+      element.append(buildMenu(menu, options).container);
       if (menu.key === "File") {
         element.append(toggle);
       }
@@ -94,6 +115,14 @@ export function buildMenubar(options: MenubarOptions): Menubar {
     setRawMarkdownEnabled: (enabled) => {
       rawMarkdownEnabled = enabled;
       applyMode(toggle, toggle.dataset.mode as Mode, enabled);
+    },
+    setUser: (username) => {
+      if (userName) {
+        userName.textContent = username;
+      }
+      if (userContainer) {
+        userContainer.hidden = username === "";
+      }
     },
   };
 }
@@ -128,15 +157,30 @@ function applyMode(button: HTMLButtonElement, mode: Mode, rawMarkdownEnabled: bo
   }
 }
 
-function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
+function buildMenu(
+  menu: MenuSpec,
+  options: MenubarOptions,
+): { container: HTMLElement; name: HTMLSpanElement | null } {
   const container = document.createElement("div");
   container.className = "menu";
 
   const label = document.createElement("button");
   label.type = "button";
-  label.className = "menu-label";
-  label.dataset.testid = `menu-${menu.key}`;
-  label.textContent = menu.label;
+  let name: HTMLSpanElement | null = null;
+  if (menu.key === "user") {
+    label.className = "user-label";
+    label.dataset.testid = "user-label";
+    label.title = "Account";
+    label.setAttribute("aria-label", "Account");
+    name = document.createElement("span");
+    name.className = "user-label-name";
+    label.append(createUserRoundIcon(), name);
+    container.hidden = true;
+  } else {
+    label.className = "menu-label";
+    label.dataset.testid = `menu-${menu.key}`;
+    label.textContent = menu.label;
+  }
 
   const dropdown = document.createElement("div");
   dropdown.className = "menu-dropdown";
@@ -224,7 +268,7 @@ function buildMenu(menu: MenuSpec, options: MenubarOptions): HTMLElement {
   }
 
   container.append(label, dropdown);
-  return container;
+  return { container, name };
 }
 
 function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOptions): void {
@@ -240,5 +284,9 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
     options.onOpenLanguageSettings?.();
   } else if (menu.key === "Settings" && item.key === "dictionary") {
     options.onOpenDictionary?.();
+  } else if (menu.key === "user" && item.key === "sign-out") {
+    options.onSignOut?.();
+  } else if (menu.key === "user" && item.key === "user-settings") {
+    options.onUserSettings?.();
   }
 }

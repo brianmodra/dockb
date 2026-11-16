@@ -242,6 +242,71 @@ describe("menubar", () => {
   });
 });
 
+describe("menubar user menu", () => {
+  function userLabel(bar: { element: HTMLElement }): HTMLElement {
+    return bar.element.querySelector<HTMLElement>('[data-testid="user-label"]')!;
+  }
+
+  function userDropdown(bar: { element: HTMLElement }): HTMLElement {
+    return bar.element.querySelector<HTMLElement>('[data-testid="menu-user-dropdown"]')!;
+  }
+
+  it("hides the user menu until a username is set", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    expect(userLabel(bar).closest(".menu")?.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("shows the username (with an icon) once setUser is called", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    bar.setUser("brian");
+    expect(userLabel(bar).textContent).toBe("brian");
+    expect(userLabel(bar).querySelector("svg.user-icon")).not.toBeNull();
+    expect(userLabel(bar).closest(".menu")?.hasAttribute("hidden")).toBe(false);
+  });
+
+  it("opens a dropdown with Sign out and Settings", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    bar.setUser("brian");
+    userLabel(bar).click();
+    expect(userDropdown(bar).classList.contains("menu-dropdown--open")).toBe(true);
+    const labels = Array.from(userDropdown(bar).querySelectorAll(".menu-item")).map(
+      (n) => n.textContent,
+    );
+    expect(labels).toEqual(["Sign out", "Settings"]);
+  });
+
+  it("reports Sign out to onSignOut", () => {
+    const onSignOut = vi.fn();
+    const bar = buildMenubar({ onSignOut });
+    document.body.append(bar.element);
+    bar.element
+      .querySelector('[data-testid="menu-item-sign-out"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports Settings to onUserSettings", () => {
+    const onUserSettings = vi.fn();
+    const bar = buildMenubar({ onUserSettings });
+    document.body.append(bar.element);
+    bar.element
+      .querySelector('[data-testid="menu-item-user-settings"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onUserSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("groups the user menu on the right with the Settings cog", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    const right = bar.element.querySelector<HTMLElement>(".menubar-right")!;
+    expect(right.querySelector('[data-testid="user-label"]')).not.toBeNull();
+    expect(right.querySelector('[data-testid="menu-Settings"]')).not.toBeNull();
+  });
+});
+
 describe("menubar document actions", () => {
   it("opens the Delete submenu with its document item", () => {
     const bar = buildMenubar({});

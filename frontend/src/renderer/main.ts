@@ -1,7 +1,7 @@
 import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
 import { checkSession, signOut } from "./api/session";
-import { AppLayout, USER_SETTINGS_FUNCTION, USER_SIGN_OUT_FUNCTION } from "./layout/layout";
+import { AppLayout } from "./layout/layout";
 import {
   PROOFREADING_ADD_WORD_FUNCTION,
   PROOFREADING_FIX_PAIR_FUNCTION,
@@ -81,6 +81,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onImport: () => runImport(),
     onDeleteDocument: () => runDeleteDocument(),
     onOpenDocumentSettings: () => runDocumentSettings(),
+    onSignOut: () => signOut.request(),
+    onUserSettings: () => {
+      void runUserSettings();
+    },
     onSave: () => {
       void editPanel?.save();
     },
@@ -165,14 +169,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       },
       [PROOFREADING_FIX_PAIR_FUNCTION]: () => {
         proofreading?.applyActivePair();
-      },
-      [USER_SIGN_OUT_FUNCTION]: () => {
-        layout.closeMenu();
-        signOut.request();
-      },
-      [USER_SETTINGS_FUNCTION]: () => {
-        layout.closeMenu();
-        void runUserSettings();
       },
     },
   });

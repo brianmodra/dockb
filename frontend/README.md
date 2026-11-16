@@ -13,9 +13,10 @@ The chapter list's right-click menu renames, moves, renumbers, and assigns a poi
 character, keeping the shown chapter selected through those changes. Document title, author, and
 narrative perspective are edited in one modal from Settings → Document. The right panel is a
 read-only reference shelf for writer-added chapters or characters mentioned under the cursor. The
-message panel's response strip answers AI chat prompts, quote actions, proofreading corrections
-(including adding a word to the document's glossary), and the signed-in user's menu (Sign out and
-Settings, opened from the menubar username). Raw and WYSIWYG edit the same canonical buffer, and
+message panel's response strip answers AI chat prompts, quote actions, and proofreading corrections
+(including adding a word to the document's glossary); the signed-in user's menu (Sign out and
+Settings) is a menubar dropdown opened from the username, like File and Settings. Raw and WYSIWYG
+edit the same canonical buffer, and
 the dirty check compares it against the last canonical text so switching chapters never saves an
 untouched file. Read this to run the app, find the file that owns each area, and see how the
 window, API client, and dialogs fit together; the visual design is in
@@ -185,8 +186,9 @@ DOM as HTML.
   settings to enable raw markdown mode." — until the user enables raw markdown in their settings
   (see below). `layout.ts` puts the save button before the cog and the username after it: the
   save button appears only while the buffer is dirty, carries the tooltip "Save the chapter", and
-  calls `onSave`; the username is a button (a `user-round` icon and the name) whose click shows
-  **Sign out** and **Settings** in the response area. Dropdowns and nested submenus dismiss on
+  calls `onSave`; the username is a menu label (a `user-round` icon and the name) whose click opens
+  a dropdown with **Sign out** and **Settings**, exactly like the File and Settings menus.
+  Dropdowns and nested submenus dismiss on
   outside click or Esc. **Sign out** routes through `state/quit.ts`'s `confirmUnsaved`, so it
   shares one unsaved-buffer question.
 - `leftPanel.ts` — chapter list, context menu, rename/delete/move/renumber/POV.

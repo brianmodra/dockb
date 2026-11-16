@@ -563,7 +563,7 @@ describe("renderer shell", () => {
     await new Promise((r) => setTimeout(r, 0));
     const label = document.querySelector<HTMLElement>("[data-testid='user-label']");
     expect(label).not.toBeNull();
-    expect(label?.hidden).toBe(true);
+    expect(label?.closest(".menu")?.hasAttribute("hidden")).toBe(true);
   });
 
   it("does not open the sign-in gate when login is not required", async () => {
@@ -816,9 +816,8 @@ function userLabel(): HTMLElement | null {
 
 function chooseUserAction(label: string): void {
   (document.querySelector<HTMLElement>("[data-testid='user-label']")!).click();
-  Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']"))
-    .find((el) => el.textContent === label)!
-    .click();
+  const item = label === "Sign out" ? "sign-out" : "user-settings";
+  document.querySelector<HTMLElement>(`[data-testid="menu-item-${item}"]`)!.click();
 }
 
 async function enableRawMarkdown(): Promise<void> {
@@ -852,7 +851,7 @@ describe("sign out", () => {
     expect(api.logout).toHaveBeenCalledTimes(1);
     expect(document.querySelectorAll("[data-testid='chapter-row']")).toHaveLength(0);
     expect(editor.textContent ?? "").not.toContain("Some text.");
-    expect(userLabel()?.hidden).toBe(true);
+    expect(userLabel()?.closest(".menu")?.hasAttribute("hidden")).toBe(true);
     expect(signInForm()).not.toBeNull();
     // Exactly one dialog, and it is the gate: a clean buffer must not be asked about.
     const titles = Array.from(

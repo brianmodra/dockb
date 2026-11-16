@@ -2,11 +2,6 @@ import { ResizeHandle } from "./ResizeHandle";
 import { ResponseArea, type ResponseFunctions, type ResponseObject } from "./responseArea";
 import { buildMenubar, type Menubar, type Mode } from "./menubar";
 import { createSaveIcon } from "./saveIcon";
-import { createUserRoundIcon } from "./userIcon";
-
-/** Response-area function names the user menu's buttons dispatch. */
-export const USER_SIGN_OUT_FUNCTION = "user-sign-out";
-export const USER_SETTINGS_FUNCTION = "user-settings";
 
 export interface AppLayoutOptions {
   initialMode?: Mode;
@@ -18,6 +13,8 @@ export interface AppLayoutOptions {
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
   onDeleteDocument?: () => void;
+  onSignOut?: () => void;
+  onUserSettings?: () => void;
   onFocusEditor?: () => void;
   onWidthsChange?: (widths: Record<string, number>) => void;
   onPrompt?: (prompt: string) => void;
@@ -45,8 +42,6 @@ export class AppLayout {
   private readonly leftPanel: HTMLElement;
   private editPanel!: HTMLElement;
   private readonly saveButton: HTMLButtonElement;
-  private readonly userButton: HTMLButtonElement;
-  private readonly userName: HTMLSpanElement;
   private readonly menubar: Menubar;
   private rawMarkdownEnabledFlag = false;
   private menuOpen = false;
@@ -90,6 +85,8 @@ export class AppLayout {
       onOpenLanguageSettings: options.onOpenLanguageSettings,
       onOpenDictionary: options.onOpenDictionary,
       onDeleteDocument: options.onDeleteDocument,
+      onSignOut: options.onSignOut,
+      onUserSettings: options.onUserSettings,
     });
     this.menubar = menubar;
 
@@ -133,23 +130,6 @@ export class AppLayout {
     });
     menubar.right.prepend(save);
     this.saveButton = save;
-
-    const user = document.createElement("button");
-    user.type = "button";
-    user.dataset.testid = "user-label";
-    user.className = "user-label";
-    user.title = "Account";
-    user.setAttribute("aria-label", "Account");
-    user.hidden = true;
-    user.addEventListener("click", () => {
-      this.showUserMenu();
-    });
-    const userName = document.createElement("span");
-    userName.className = "user-label-name";
-    user.append(createUserRoundIcon(), userName);
-    menubar.right.append(user);
-    this.userButton = user;
-    this.userName = userName;
 
     const editPanel = this.panel("panel-edit");
     this.editPanel = editPanel;
@@ -273,8 +253,7 @@ export class AppLayout {
   }
 
   setUser(username: string): void {
-    this.userName.textContent = username;
-    this.userButton.hidden = username === "";
+    this.menubar.setUser(username);
   }
 
   private panel(name: string): HTMLElement {
@@ -361,18 +340,6 @@ export class AppLayout {
       this.applyMessageHeight(Math.min(needed, cap));
     }
     this.updateResponseGeometry();
-  }
-
-  /**
-   * The signed-in user's menu, shown in the response area: Sign out and
-   * Settings. Focus moves to the first action; Esc closes the menu and returns
-   * focus to the editor, matching the other response-area menus.
-   */
-  showUserMenu(): void {
-    this.showMenu([
-      { button: { label: "Sign out", function: USER_SIGN_OUT_FUNCTION } },
-      { button: { label: "Settings", function: USER_SETTINGS_FUNCTION } },
-    ]);
   }
 
   private applyMessageHeight(height: number): void {
