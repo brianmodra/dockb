@@ -462,26 +462,26 @@ function formatOfNode(node: Node): FormatAttrs | null {
   };
 }
 
-function segmentsToMarkdown(segments: TextSegment[], escapeText = true): string {
+function segmentsToMarkdown(segments: TextSegment[], escapeText = true, emitFormatting = true): string {
   const parts: string[] = [];
   segments.forEach((segment) => {
     const text = escapeText ? escapeHtml(segment.text) : segment.text;
-    if (!segment.format || !hasFormat(segment.format)) {
-      parts.push(text);
-    } else {
+    if (emitFormatting && segment.format && hasFormat(segment.format)) {
       parts.push(`<span style="${escapeHtml(formatCss(segment.format))}">${text}</span>`);
+    } else {
+      parts.push(text);
     }
   });
   return parts.join("");
 }
 
-function serializeParagraph(paragraph: Node, escapeText = true): string {
+function serializeParagraph(paragraph: Node, escapeText = true, emitFormatting = true): string {
   const sentences: string[] = [];
   let pending: TextSegment[] = [];
   const flush = (suffix = ""): void => {
     const trimmed = trimSegmentsEnd(pending);
     if (suffix) appendSegment(trimmed, suffix, null);
-    sentences.push(segmentsToMarkdown(trimmed, escapeText));
+    sentences.push(segmentsToMarkdown(trimmed, escapeText, emitFormatting));
     pending = [];
   };
   paragraph.forEach((node) => {
@@ -505,7 +505,7 @@ export function docToString(doc: Node): string {
   doc.forEach((paragraph) => {
     const blanks = paragraph.attrs.blanksBefore ?? 0;
     const separator = !isFirst && paragraph.childCount > 0 ? (blanks > 0 ? blanks + 1 : 2) : blanks;
-    parts.push("\n".repeat(separator) + serializeParagraph(paragraph, false));
+    parts.push("\n".repeat(separator) + serializeParagraph(paragraph, false, false));
     isFirst = false;
   });
   return parts.join("");

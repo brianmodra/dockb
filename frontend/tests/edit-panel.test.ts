@@ -711,6 +711,26 @@ describe("EditPanel", () => {
     expect(api.saveChapterDocument).not.toHaveBeenCalled();
   });
 
+  it("stays clean after loading a chapter with inline formatting spans", async () => {
+    const canonicalFile = [
+      "---",
+      "id: c1",
+      "title: Fun & Games 21",
+      "pov: Karakas",
+      "---",
+      "",
+      '<span data-par-id="p-1">',
+      'The botanical gardens were below. <span style="font-style: italic">A stone away.</span>',
+      "</span>",
+    ].join("\n");
+    const api = fakeApi({ getChapterDocument: vi.fn(async () => doc(canonicalFile)) });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(panel.isDirty()).toBe(false);
+  });
+
   it("sends the canonical text with span ids to the backend when saving an unchanged canonical file", async () => {
     const canonicalFile = [
       "---",

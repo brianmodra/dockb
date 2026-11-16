@@ -818,6 +818,17 @@ describe("inline formatting", () => {
     expect(docToCanonical(bufferToDocWithIds(buffer, ["p1"]))).toBe(buffer);
   });
 
+  it("strips inline formatting spans from the plain body so a clean file stays clean", () => {
+    const buffer =
+      '<span data-par-id="p1">\nHello <span style="font-style: italic">wide </span>world.\n</span>';
+    const view = new WysiwygView();
+    document.body.append(view.element);
+    view.setContent(buffer);
+
+    expect(view.plainContent()).toBe("Hello wide world.");
+    expect(view.plainContent()).toBe(chapterBody(buffer));
+  });
+
   it("applies a formatting patch to the current selection", () => {
     const view = new WysiwygView();
     document.body.append(view.element);
