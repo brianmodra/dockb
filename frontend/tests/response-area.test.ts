@@ -100,6 +100,86 @@ describe("ResponseArea", () => {
   });
 });
 
+describe("ResponseArea menu mode", () => {
+  function menuArea(onDismiss: () => void = () => {}): ResponseArea {
+    const area = new ResponseArea({
+      functions: { format: vi.fn() },
+    });
+    document.body.append(area.element);
+    area.showMenu(
+      [
+        { button: { label: "Italic", function: "format", args: { changes: { style: "italic" } } } },
+        { button: { label: "Bold", function: "format", args: { changes: { weight: "bold" } } } },
+      ],
+      onDismiss,
+    );
+    return area;
+  }
+
+  function buttons(area: ResponseArea): HTMLButtonElement[] {
+    return Array.from(area.element.querySelectorAll<HTMLButtonElement>("button"));
+  }
+
+  it("focuses the first button when the menu appears", () => {
+    const area = menuArea();
+    expect(document.activeElement).toBe(buttons(area)[0]);
+  });
+
+  it("moves the highlight right and left with the arrow keys", () => {
+    const area = menuArea();
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(document.activeElement).toBe(buttons(area)[1]);
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    expect(document.activeElement).toBe(buttons(area)[0]);
+  });
+
+  it("clamps the highlight at both ends", () => {
+    const area = menuArea();
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    expect(document.activeElement).toBe(buttons(area)[0]);
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(document.activeElement).toBe(buttons(area)[1]);
+  });
+
+  it("activates the focused button on Enter and dismisses the menu", () => {
+    const format = vi.fn();
+    const onDismiss = vi.fn();
+    const area = new ResponseArea({ functions: { format } });
+    document.body.append(area.element);
+    area.showMenu(
+      [{ button: { label: "Italic", function: "format", args: { changes: { style: "italic" } } } }],
+      onDismiss,
+    );
+
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+    expect(format).toHaveBeenCalledWith({ changes: { style: "italic" } });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(area.element.hidden).toBe(true);
+  });
+
+  it("dismisses the menu on Escape and runs onDismiss", () => {
+    const onDismiss = vi.fn();
+    const area = menuArea(onDismiss);
+
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(area.element.hidden).toBe(true);
+  });
+
+  it("does not react to the arrow keys outside menu mode", () => {
+    const area = new ResponseArea({});
+    document.body.append(area.element);
+    area.show([{ button: { label: "Highlight", function: "highlight" } }]);
+
+    area.element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+    expect(document.activeElement).not.toBe(area.element.querySelector("button"));
+  });
+});
+
 describe("parseResponseReply", () => {
   it("lifts the response array out of the model's reply object", () => {
     const reply = JSON.stringify({

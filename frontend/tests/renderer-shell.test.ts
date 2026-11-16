@@ -514,8 +514,10 @@ describe("renderer shell", () => {
     expect(area.hidden).toBe(false);
     expect(area.textContent).toContain("What do you want to do with this text:");
 
-    // Changing the highlight in the editor closes the right-click quote prompt.
+    // Changing the highlight in the editor closes the right-click quote prompt:
+    // focus the editor again first, as a real click back into it would.
     const pm = document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] .ProseMirror")!;
+    pm.focus();
     const range = document.createRange();
     range.setStart(pm.querySelector("p")!.firstChild!, 0);
     range.setEnd(pm.querySelector("p")!.firstChild!, 4);

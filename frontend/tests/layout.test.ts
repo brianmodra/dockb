@@ -451,11 +451,11 @@ describe("AppLayout", () => {
     const layout = new AppLayout({ onFocusEditor });
     document.body.append(layout.element);
     layout.setUser("brian");
-    layout.element.querySelector<HTMLButtonElement>('[data-testid="user-label"]')!.click();
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    layout.element.querySelector<HTMLButtonElement>("[data-testid='user-label']")!.click();
 
     const area = layout.element.querySelector<HTMLElement>('[data-testid="panel-response"]')!;
+    area.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
     expect(area.hidden).toBe(true);
     expect(onFocusEditor).toHaveBeenCalledTimes(1);
   });

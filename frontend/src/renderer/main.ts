@@ -74,7 +74,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runReadonlyScroll: (rawArgs: unknown) => void = () => {};
   let loadDocumentMentions: (documentId: string) => void = () => {};
   let proofreading: ProofreadingController | null = null;
-  let editorPromptOpen = false;
   const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
@@ -132,12 +131,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       if (!options.api) {
         return;
       }
-      editorPromptOpen = false;
       layout.beginResponse();
       void options.api
         .sendPrompt(prompt, currentDocumentId())
         .then((response) => {
-          editorPromptOpen = false;
           const parsed = parseResponseReply(response.reply);
           if (parsed === null) {
             layout.cancelResponse();
@@ -147,7 +144,6 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           }
         })
         .catch((error) => {
-          editorPromptOpen = false;
           layout.cancelResponse();
           reportError("AI chat", error, (text) => layout.pushMessage(text));
         });
@@ -171,11 +167,11 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         proofreading?.applyActivePair();
       },
       [USER_SIGN_OUT_FUNCTION]: () => {
-        layout.closeUserMenu();
+        layout.closeMenu();
         signOut.request();
       },
       [USER_SETTINGS_FUNCTION]: () => {
-        layout.closeUserMenu();
+        layout.closeMenu();
         void runUserSettings();
       },
     },
@@ -192,14 +188,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     editPanel.onDirtyChange = (dirty) => layout.setDirty(dirty);
     editPanel.onWarning = (text) => void warningModal("POV warning", text);
     editPanel.onSelectionActions = (context) => {
-      editorPromptOpen = true;
-      layout.showResponse(selectionActionObjects(context));
+      layout.showMenu(selectionActionObjects(context));
     };
     editPanel.onSelectionChange = () => {
-      if (editorPromptOpen) {
-        editorPromptOpen = false;
-        layout.cancelResponse();
-      }
+      layout.closeMenu();
     };
     layout.editPanelEl().append(editPanel.element);
 
@@ -267,10 +259,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     editPanel.onSelectionChange = () => {
-      if (editorPromptOpen) {
-        editorPromptOpen = false;
-        layout.cancelResponse();
-      }
+      layout.closeMenu();
       refreshMentionTabs();
     };
 
@@ -293,12 +282,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         language: () => editPanel.getLanguage(),
         onMessage: (text) => layout.pushMessage(text),
         onShowActions: (objects) => {
-          editorPromptOpen = true;
-          layout.showResponse(objects);
+          layout.showMenu(objects);
         },
         onCloseActions: () => {
-          editorPromptOpen = false;
-          layout.cancelResponse();
+          layout.closeMenu();
         },
       });
       editPanel.onDiagnostic = (diagnostic) => proofreading?.showActions(diagnostic);
@@ -350,16 +337,12 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     runQuote = (rawArgs: unknown): void => {
-      editorPromptOpen = false;
-      layout.cancelResponse();
       if (!editPanel || !editPanel.applyQuote(rawArgs)) {
         layout.pushMessage("Quoting works in WYSIWYG chapters.");
       }
     };
 
     runFormat = (rawArgs: unknown): void => {
-      editorPromptOpen = false;
-      layout.cancelResponse();
       if (!editPanel || !editPanel.applyFormat(rawArgs)) {
         layout.pushMessage("Formatting works in WYSIWYG chapters.");
       }

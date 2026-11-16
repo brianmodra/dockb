@@ -185,6 +185,8 @@ export class ResponseArea {
   readonly element: HTMLElement;
 
   private readonly functions: ResponseFunctions;
+  private menuActive = false;
+  private onDismiss: (() => void) | null = null;
 
   constructor(options: ResponseAreaOptions = {}) {
     this.functions = options.functions ?? {};
@@ -192,13 +194,41 @@ export class ResponseArea {
     this.element.dataset.testid = "panel-response";
     this.element.className = "response-area";
     this.element.hidden = true;
+    this.element.addEventListener("keydown", (event) => this.onKeydown(event));
   }
 
   showSpinner(): void {
+    this.menuActive = false;
+    this.onDismiss = null;
     this.showSpinnerIn(this.element);
   }
 
   show(objects: ResponseObject[]): void {
+    this.menuActive = false;
+    this.onDismiss = null;
+    this.render(objects);
+  }
+
+  /**
+   * Show *objects* as a keyboard-navigable menu: the first button takes focus,
+   * arrow keys move the highlight between buttons, Enter activates the focused
+   * one, and Escape (or an activation) runs *onDismiss*.
+   */
+  showMenu(objects: ResponseObject[], onDismiss?: () => void): void {
+    this.render(objects);
+    this.menuActive = true;
+    this.onDismiss = onDismiss ?? null;
+    this.element.querySelector<HTMLButtonElement>("button")?.focus();
+  }
+
+  clear(): void {
+    this.menuActive = false;
+    this.onDismiss = null;
+    this.element.replaceChildren();
+    this.element.hidden = true;
+  }
+
+  private render(objects: ResponseObject[]): void {
     this.element.replaceChildren();
     for (const object of objects) {
       if (object.text !== undefined) {
@@ -214,11 +244,6 @@ export class ResponseArea {
     this.element.hidden = false;
   }
 
-  clear(): void {
-    this.element.replaceChildren();
-    this.element.hidden = true;
-  }
-
   private button(spec: ResponseButton): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
@@ -227,11 +252,66 @@ export class ResponseArea {
     const handler = this.functions[spec.function];
     if (handler) {
       button.setAttribute("data-testid", "response-button");
-      button.addEventListener("click", () => handler(spec.args));
+      button.addEventListener("click", () => {
+        const onDismiss = this.menuActive ? this.onDismiss : null;
+        if (this.menuActive) {
+          this.menuActive = false;
+          this.onDismiss = null;
+        }
+        handler(spec.args);
+        if (onDismiss) {
+          this.clear();
+          onDismiss();
+        }
+      });
     } else {
       button.disabled = true;
     }
     return button;
+  }
+
+  private onKeydown(event: KeyboardEvent): void {
+    if (!this.menuActive) {
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      this.moveFocus(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      this.moveFocus(1);
+    } else if (event.key === "Enter") {
+      const active = document.activeElement;
+      if (active instanceof HTMLButtonElement && this.element.contains(active)) {
+        event.preventDefault();
+        active.click();
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      this.dismiss();
+    }
+  }
+
+  private moveFocus(direction: 1 | -1): void {
+    const buttons = Array.from(this.element.querySelectorAll<HTMLButtonElement>("button"));
+    if (buttons.length === 0) {
+      return;
+    }
+    const current = document.activeElement;
+    const index = current instanceof HTMLButtonElement ? buttons.indexOf(current) : -1;
+    const next = index === -1 ? 0 : Math.max(0, Math.min(buttons.length - 1, index + direction));
+    buttons[next].focus();
+  }
+
+  private dismiss(): void {
+    if (!this.menuActive) {
+      return;
+    }
+    this.menuActive = false;
+    const onDismiss = this.onDismiss;
+    this.onDismiss = null;
+    this.clear();
+    onDismiss?.();
   }
 
   private showSpinnerIn(area: HTMLElement): void {

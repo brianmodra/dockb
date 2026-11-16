@@ -49,7 +49,7 @@ export class AppLayout {
   private readonly userName: HTMLSpanElement;
   private readonly menubar: Menubar;
   private rawMarkdownEnabledFlag = false;
-  private userMenuOpen = false;
+  private menuOpen = false;
   leftPanelEl(): HTMLElement {
     return this.leftPanel;
   }
@@ -316,6 +316,37 @@ export class AppLayout {
   showResponse(objects: ResponseObject[]): void {
     this.chatLine.hidden = false;
     this.responseArea.show(objects);
+    this.sizeResponse(objects);
+  }
+
+  /**
+   * Show *objects* as an editor menu: focus moves to its first button, arrow
+   * keys move the highlight, Enter activates the focused one, and Escape (or an
+   * activation) closes it and returns focus to the editor.
+   */
+  showMenu(objects: ResponseObject[]): void {
+    this.menuOpen = true;
+    this.chatLine.hidden = false;
+    this.responseArea.showMenu(objects, () => this.closeMenu());
+    this.sizeResponse(objects);
+  }
+
+  /** Close the open editor menu and hand focus back to the editor. */
+  closeMenu(): void {
+    if (!this.menuOpen) {
+      return;
+    }
+    this.menuOpen = false;
+    this.cancelResponse();
+    this.options.onFocusEditor?.();
+  }
+
+  cancelResponse(): void {
+    this.chatLine.hidden = false;
+    this.responseArea.clear();
+  }
+
+  private sizeResponse(objects: ResponseObject[]): void {
     // A panel too small for the whole reply grows to fit it — capped at half
     // the window, past which the strip scrolls instead of the panel running
     // away. Text lines wrap, so this is a floor estimate.
@@ -332,42 +363,17 @@ export class AppLayout {
     this.updateResponseGeometry();
   }
 
-  cancelResponse(): void {
-    this.chatLine.hidden = false;
-    this.responseArea.clear();
-  }
-
   /**
    * The signed-in user's menu, shown in the response area: Sign out and
    * Settings. Focus moves to the first action; Esc closes the menu and returns
    * focus to the editor, matching the other response-area menus.
    */
   showUserMenu(): void {
-    this.userMenuOpen = true;
-    this.showResponse([
+    this.showMenu([
       { button: { label: "Sign out", function: USER_SIGN_OUT_FUNCTION } },
       { button: { label: "Settings", function: USER_SETTINGS_FUNCTION } },
     ]);
-    window.addEventListener("keydown", this.onUserMenuKeydown);
-    this.responseArea.element.querySelector<HTMLButtonElement>("button")?.focus();
   }
-
-  /** Close the user menu and hand focus back to the editor. */
-  closeUserMenu(): void {
-    if (!this.userMenuOpen) {
-      return;
-    }
-    this.userMenuOpen = false;
-    window.removeEventListener("keydown", this.onUserMenuKeydown);
-    this.cancelResponse();
-    this.options.onFocusEditor?.();
-  }
-
-  private readonly onUserMenuKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") {
-      this.closeUserMenu();
-    }
-  };
 
   private applyMessageHeight(height: number): void {
     this.messageHeight = Math.max(MIN_MESSAGE_HEIGHT, Math.round(height));
