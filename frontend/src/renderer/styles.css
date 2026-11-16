@@ -192,7 +192,7 @@ body {
 
 .save-button:hover,
 .mode-toggle:hover:not(:disabled) {
-  background: #e0e0dd;
+  background: #fff9f0;
 }
 
 .mode-toggle:disabled {
@@ -212,13 +212,13 @@ body {
   border: none;
   background: none;
   padding: 2px 8px;
-  color: #555;
+  color: #3070b0;
   font-size: 12px;
   cursor: pointer;
 }
 
 .user-label:hover {
-  background: #e0e0dd;
+  background: #a0c0e0;
 }
 
 .user-label .user-icon {
@@ -243,7 +243,7 @@ body {
 }
 
 .menu-label:hover {
-  background: #e0e0dd;
+  background: #f0f9ff;
 }
 
 [data-testid="menu-Settings"] {
@@ -850,7 +850,7 @@ body {
   right: 6px;
   width: 12px;
   height: 12px;
-  color: #ebc96d;
+  color: #c09000;
   pointer-events: none;
 }
 
@@ -860,7 +860,7 @@ body {
   resize: none;
   border: none;
   outline: none;
-  background: #f6f0f0;
+  background: #d0e0dd;
   border-radius: 3px;
   font-size: 12px;
   font-family: inherit;
@@ -893,11 +893,11 @@ body {
 }
 
 .resize-handle:hover {
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 100, 0, 0.12);
 }
 
 .resize-handle.is-dragging {
-  background: #a5b4fc;
+  background: #a5d4bc;
 }
 
 .resize-grip {
@@ -906,7 +906,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  background: #3730a3;
+  background: #a0c9b9;
   border-radius: 2px;
 }
 

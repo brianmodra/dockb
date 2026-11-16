@@ -26,20 +26,20 @@ describe("theme colours", () => {
     expect(ruleBody('[data-testid="menubar"]')).toContain("#e0e7ff");
   });
 
-  it("highlights a dragged resize handle #a5b4fc", () => {
-    expect(ruleBody(".resize-handle.is-dragging")).toContain("#a5b4fc");
+  it("highlights a dragged resize handle #a5d4bc", () => {
+    expect(ruleBody(".resize-handle.is-dragging")).toContain("#a5d4bc");
   });
 
-  it("colours the resize grip #3730a3", () => {
-    expect(ruleBody(".resize-grip")).toContain("#3730a3");
+  it("colours the resize grip #a0c9b9", () => {
+    expect(ruleBody(".resize-grip")).toContain("#a0c9b9");
   });
 
   it("colours the resize grip bars #c7d3c0", () => {
     expect(ruleBody(".resize-bar")).toContain("#c7d3c0");
   });
 
-  it("colours the chat box background #f6f0f0", () => {
-    expect(ruleBody(".chat-line")).toContain("#f6f0f0");
+  it("colours the chat box background #d0e0dd", () => {
+    expect(ruleBody(".chat-line")).toContain("#d0e0dd");
   });
 
   it("colours the message log and response area #eff3f2", () => {
@@ -47,8 +47,8 @@ describe("theme colours", () => {
     expect(ruleBody(".response-area")).toContain("#eff3f2");
   });
 
-  it("colours the sparkles icon #ebc96d", () => {
-    expect(ruleBody(".chat-sparkle")).toContain("#ebc96d");
+  it("colours the sparkles icon #c09000", () => {
+    expect(ruleBody(".chat-sparkle")).toContain("#c09000");
   });
 
   it("styles the chapter header like the chapter list", () => {
