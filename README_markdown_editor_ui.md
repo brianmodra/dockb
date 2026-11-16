@@ -2,21 +2,20 @@
 
 ## Executive Summary
 
-This is the design of DockB's writing window. It explains the menus, chapter list, editor, and
-dialogs, so someone new can see what the writer sees and why each click does what it does. It
-covers proofreading in both the WYSIWYG and raw views: the backend checks the paragraph under the
-cursor, the writer picks a correction or adds a word to the document's glossary through the
-response strip, and nothing is written to the file until the writer saves. A document's title,
-author, and narrative perspective are edited in one modal, reachable from Settings → Document for
-the open document.
+This document describes the writing window a DockB user sees: the menubar, chapter list, editor,
+message panel, right-hand reference shelf, and the dialogs behind each command. It explains why
+each click behaves as it does — opening or re-clicking a chapter, renaming or moving one, toggling
+between WYSIWYG and raw markdown, and setting a point of view. It also covers proofreading in both
+views: the backend checks the paragraph under the cursor, and the writer accepts a correction or
+adds a word to the document's glossary from the response strip. The Settings → Language… choice
+sets and saves the proofreading language for that account, so the next session starts with it.
 
-The chapter list stays in step with the editor, keeping the shown chapter selected through list
-changes and reading nothing when it is re-clicked. The signed-in username in the menubar is a
-button whose menu offers Sign out (which saves unsaved work first) and Settings (which turns the
-raw-markdown view on for the session). The identity line above the text shows a character's name
-parts or a chapter's title and point of view. The window only sends text to the server and gets
-text back; it never touches files. How files and the database work is in
-`README_markdown_redesign.md`, and login is in `README_auth.md`.
+The window is a thin client: it sends text to the server and gets text back, never touching files.
+The chapter list keeps the open chapter selected through renames and moves, the identity line above
+the text shows a character's name parts or a chapter's title and point of view, and the message
+panel carries save results, errors, diagnostics, and AI chat. Read it to see what the writer sees;
+the file and database design is in `README_markdown_redesign.md`, and sign-in is in
+`README_auth.md`.
 
 ## 1. Context and constraints
 

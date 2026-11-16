@@ -2,26 +2,19 @@
 
 ## Executive Summary
 
-This is DockB's desktop editor: a window that talks only to the server to sign in, open a
-document, edit a chapter, import a whole document from a folder on disk, and proofread text. It
-never writes files itself — an import reads the directory the user picks and hands it to the
-server, which does the writing — and the backend even serves the interface, so the app and API
-share an origin and the signed-in session reaches every route. Proofreading starts from the
-language the writer chose last (falling back to the backend's default) and checks a paragraph at a
-time.
+This is the guide to DockB's desktop editor: how to run it, which module owns each area, and why
+the window is built the way it is. The editor is a thin client that talks only to the server to
+sign in, open a document, edit a chapter, import a folder from disk, and check spelling and
+grammar. It never writes files — an import hands the chosen directory to the server, which does
+the writing — and the backend serves the interface itself, so the editor and API share an origin
+and the session cookie reaches every route. The writer's chosen proofreading language is saved per
+account and restored on the next launch.
 
-The chapter list's right-click menu renames, moves, renumbers, and assigns a point-of-view
-character, keeping the shown chapter selected through those changes. Document title, author, and
-narrative perspective are edited in one modal from Settings → Document. The right panel is a
-read-only reference shelf for writer-added chapters or characters mentioned under the cursor. The
-message panel's response strip answers AI chat prompts, quote actions, and proofreading corrections
-(including adding a word to the document's glossary); the signed-in user's menu (Sign out and
-Settings) is a menubar dropdown opened from the username, like File and Settings. Raw and WYSIWYG
-edit the same canonical buffer, and
-the dirty check compares it against the last canonical text so switching chapters never saves an
-untouched file. Read this to run the app, find the file that owns each area, and see how the
-window, API client, and dialogs fit together; the visual design is in
-`../README_markdown_editor_ui.md` and the wire contract in
+This note also covers the parts a screenshot does not show: the chapter list's right-click
+actions, the document settings modal, the read-only reference shelf, the response strip for AI
+chat and proofreading fixes, the user menu and sign-out flow, and the shared canonical buffer
+behind the raw and WYSIWYG views. Commands and the per-directory file map are here too. The visual
+design is in `../README_markdown_editor_ui.md` and the wire contract in
 `../src/dockb/controllers/README_API.md`.
 
 ## API client and session

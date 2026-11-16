@@ -2,14 +2,9 @@
 
 ## Executive Summary
 
-This note is the contract between DockB's editor and the server: the requests the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, including document attributes such as title, author, and the stored narrative-perspective code, how every route is gated to the signed-in account, and the errors the editor handles.
+This note is the contract between DockB's editor and the server: every request the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, including document attributes such as title, author, and the stored narrative-perspective code, how every route is gated to the signed-in account, and the errors the editor handles.
 
-It covers the document, chapter, paragraph, and sentence lifecycles, the fixed narrative-perspective choices, reordering, point-of-view characters, history, asynchronous notifications, LanguageTool proofreading, the document glossary, AI chat, importing a document directory, and the editor shell. Read it before changing what the editor sends or what the API accepts.
-
-The proofreading routes are interactive: the editor sends the paragraph under the cursor and
-receives diagnostics with paragraph-relative offsets, along with the list of languages the checker
-supports, its resolved default language, and the document's stored glossary. Read it before adding
-a screen or a route.
+It covers the document, chapter, paragraph, and sentence lifecycles, the fixed narrative-perspective choices, reordering, point-of-view characters, history, asynchronous notifications, and the editor shell. It also covers the interactive routes: LanguageTool proofreading, which lists the supported languages and stores the writer's choice per account, the per-document glossary, AI chat, and importing a document directory. Read it before changing what the editor sends or what the API accepts.
 
 ## Core Principle
 

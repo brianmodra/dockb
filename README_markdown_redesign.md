@@ -2,20 +2,18 @@
 
 ## Executive Summary
 
-This note explains why DockB treats a markdown file as the real text of a chapter, and why the
-server — not the editor — owns those files and their history. It is the record of the decisions
-that shaped the product, including the ones that were rejected. Among them: markdown is canonical
-rather than a projection, save-and-rehydrate is synchronous rather than a background loop, act
-chapters are numbered by their file names while character chapters are not — and can be
-renumbered in reading order (from 1, or 0) once moves shuffle them — and each account's
-manuscript lives in its own directory and its own git repository, so no commit can ever span two
-writers. Interactive checking follows the same rule: LanguageTool prose diagnostics and remark
-structure checks are view-only, and a paragraph check never writes the file.
+This note records why DockB treats a markdown file as the real text of a chapter, and why the
+server — not the editor — owns those files and their history. It collects the decisions that
+shaped the product, including the ones that were rejected: markdown is canonical rather than a
+projection, save-and-rehydrate is synchronous rather than a background loop, act chapters are
+numbered by their file names and can be renumbered in reading order once moves shuffle them, and
+each account's manuscript lives in its own directory and git repository, so no commit can span two
+writers. Proofreading follows the same rule: one shared LanguageTool server, a language stored per
+account, and diagnostics that never enter the save path.
 
-Read it when you need the reason, not the current function names. The live behavior is in the code
-and the shorter notes next to it — `src/dockb/infrastructure/document_store/README.md` for the
-per-account layout, `src/dockb/repositories/README.md` for what ownership means to a query, and
-`src/dockb/cli/README.md` for the commands that hand a manuscript from one account to another.
+Read it when you need the reason rather than current function names. The live behavior is in the
+code and in the shorter notes beside it — the per-account document store, the repositories, and
+the command-line tools that hand a manuscript from one account to another.
 
 ## 1. The problem we were trying to solve
 

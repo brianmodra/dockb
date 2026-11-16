@@ -2,26 +2,21 @@
 
 ## Executive Summary
 
-This document explains how DockB users sign in and where their accounts live. Users have their
-own accounts, created by an admin CLI that issues a temporary password which the user must change
-on first sign-in; they can also authenticate with Google or GitHub. In both cases the backend
-(not the editor) mints its own session cookie, and stores accounts, tokens, and per-user app state
-in a small SQLite database. Provider tokens never reach the editor. **There is no local mode:**
-every request requires a sign-in, and no configuration makes a gated route serve a caller who has
-not signed in (see §6). Ending a session is equally simple: the change-password dialog's own
-**Sign out** button and the editor's **File → Sign out** both post `POST /api/auth/logout`, which
-drops the server-side session and deletes the cookie (§7–§8).
+This document explains how a person gets into DockB and where their account lives. Accounts are
+created by an administrator through a command-line tool that hands out a temporary password the
+user must replace; Google and GitHub sign-in are also supported. In every case the backend, not the
+editor, creates the session cookie, and it keeps accounts, encrypted provider tokens, and each
+user's editor state — including the proofreading language they last chose — in a small SQLite
+database. There is no local mode: every request needs a sign-in.
 
-Everything this document decides is now built: the password gate, the forced change-password dialog,
-the admin CLI, username normalization and soft delete, per-account manuscript ownership, and the two
-ways out of a session. §6 and §7 keep the *reasoning*, and the code re-states the mechanics — the
-schema and store accessors live in `src/dockb/infrastructure/accounts/README.md`, the session
-cookie in `src/dockb/infrastructure/session/README.md`, the routes and the gate in
-`src/dockb/controllers/README_API.md`, and the commands in `src/dockb/cli/README.md`. The two open
-questions this document once held were decided by that work and are recorded in §10: manuscripts are
-keyed by the account that owns them, each in its own directory and git repository, and a document
-whose account was deleted is recovered with `dockb users assign` rather than shown to an
-administrator.
+The document is both the reasoning and the record of what is built: the password gate, the forced
+password change, username handling and soft delete, per-account manuscript ownership, account
+blocking, and the two ways to sign out. The mechanics live in the code and in the neighbouring
+notes it points to — the schema and accessors in
+`src/dockb/infrastructure/accounts/README.md`, the session cookie in
+`src/dockb/infrastructure/session/README.md`, and the routes in
+`src/dockb/controllers/README_API.md`. It ends with the questions that were settled along the way,
+including how documents are recovered from a deleted account.
 
 ## 1. Context and constraints
 
