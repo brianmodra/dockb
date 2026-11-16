@@ -1,8 +1,9 @@
-"""Proofreading routes — POST /api/check.
+"""Proofreading routes — the language list and choice, and POST /api/check.
 
-One paragraph in, the diagnostics for it out. The route is interactive-only:
-nothing is written, and the engine never enters the save path. The signed-in
-account supplies the document's glossary and character names (see
+One paragraph in, the diagnostics for it out. Checking is interactive-only:
+nothing is written, and the engine never enters the save path. The only write
+here is ``PUT /api/check/language``, which stores the writer's preference. The
+signed-in account supplies the document's glossary and character names (see
 ``controllers/glossary.py``); the text itself is the request's.
 """
 

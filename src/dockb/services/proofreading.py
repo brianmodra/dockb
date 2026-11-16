@@ -206,7 +206,7 @@ class ProofreadingService:  # pylint: disable=too-few-public-methods
             return _make_language_tool(language, external)
         if self._server_root is None:
             tool = _make_language_tool(language, None)
-            self._server_root = _server_root(tool._url)
+            self._server_root = _server_root(tool._url)  # pylint: disable=protected-access
             return tool
         return _make_language_tool(language, self._server_root)
 

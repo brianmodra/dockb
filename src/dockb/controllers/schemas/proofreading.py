@@ -1,4 +1,4 @@
-"""POST /api/check schemas — one paragraph in, diagnostics out."""
+"""Proofreading wire schemas — check requests, diagnostics, and language choices."""
 
 from __future__ import annotations
 
