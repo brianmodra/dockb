@@ -164,6 +164,9 @@ stays on for the session and turns the mode toggle on.
 - The chapter shown in the edit panel stays selected in the list: a reload after **Rename**,
   **Move**, **Renumber**, or **POV** keeps the selected row, while loading another document — or
   deleting the chapter — leaves nothing selected.
+- A manuscript title that ends in its chapter number shows its POV character after the title in
+  parentheses, in amber; a title with words after the number shows no POV. The selected row draws
+  its title and number in green on a pastel-blue background.
 
 ## 5. Edit panel (decided)
 

@@ -84,6 +84,14 @@ export class ChapterList {
     row.dataset.chapterId = chapter.id;
     row.textContent = chapter.title;
 
+    const pov = chapter.pov?.trim();
+    if (pov && titleEndsWithChapterNumber(chapter.title)) {
+      const label = document.createElement("span");
+      label.className = "chapter-pov";
+      label.textContent = `(${pov})`;
+      row.append(document.createTextNode(" "), label);
+    }
+
     row.addEventListener("click", () => {
       this.select(chapter.id);
       this.onSelect?.(chapter.id);
@@ -102,6 +110,12 @@ export class ChapterList {
       row.classList.toggle("is-selected", row.getAttribute("data-chapter-id") === chapterId);
     }
   }
+}
+
+const CHAPTER_NUMBER_AT_END = /(?:^|\s)\d+[A-Za-z]?$/;
+
+function titleEndsWithChapterNumber(title: string): boolean {
+  return CHAPTER_NUMBER_AT_END.test(title.trimEnd());
 }
 
 function rowCategory(chapter: ChapterListRow): "Chapter" | "Character" {

@@ -195,6 +195,9 @@ DOM as HTML.
   the title's number is rewritten in place and the list reloads. A list reload
   (after a rename, move, renumber, or POV change) keeps the selected chapter
   selected; another document, or a deleted chapter, leaves nothing selected.
+  When a manuscript title ends in its chapter number, its POV character follows
+  the title in parentheses in amber; a title with words after the number shows
+  no POV. The selected row draws its title and number in green on pastel blue.
   Clicking a
   chapter selects it **and** loads its text into the editor (via `onEdit` →
   `editPanel.open` → the `.../document` GET); a dirty buffer is saved first, and

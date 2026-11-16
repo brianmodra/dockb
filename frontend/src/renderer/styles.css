@@ -356,6 +356,11 @@ body {
 
 .chapter-row.is-selected {
   background: #d6e4f0;
+  color: #2e7d32;
+}
+
+.chapter-pov {
+  color: #b8860b;
 }
 
 /* ---- context menu ---- */

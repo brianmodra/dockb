@@ -4,9 +4,18 @@ import type { ChapterListRow } from "../src/renderer/api/types";
 import { ChapterList, actHeaderLabel, groupByAct } from "../src/renderer/layout/chapterList";
 
 function chapters(
-  ...rows: Array<[id: string, title: string, act: string, category?: "Chapter" | "Character"]>
+  ...rows: Array<
+    [id: string, title: string, act: string, category?: "Chapter" | "Character", pov?: string | null]
+  >
 ): ChapterListRow[] {
-  return rows.map(([id, title, act, category], index) => ({ id, title, act, index, category }));
+  return rows.map(([id, title, act, category, pov], index) => ({
+    id,
+    title,
+    act,
+    index,
+    category,
+    pov,
+  }));
 }
 
 afterEach(() => {
@@ -64,6 +73,36 @@ describe("ChapterList", () => {
     expect(headers.map((h) => h.textContent)).toEqual(["I", "II"]);
     const rows = Array.from(list.element.querySelectorAll("[data-testid='chapter-row']"));
     expect(rows.map((r) => r.textContent)).toEqual(["A", "B", "C"]);
+  });
+
+  it("shows the POV in braces when the chapter number ends the title", () => {
+    const list = new ChapterList();
+    list.setChapters(chapters(["a", "Fun and games 27", "I", "Chapter", "Jael"]));
+    document.body.append(list.element);
+
+    const row = list.element.querySelector<HTMLElement>("[data-testid='chapter-row']")!;
+    expect(row.textContent).toBe("Fun and games 27 (Jael)");
+    expect(row.querySelector(".chapter-pov")?.textContent).toBe("(Jael)");
+  });
+
+  it("hides the POV when the chapter number is not last in the title", () => {
+    const list = new ChapterList();
+    list.setChapters(chapters(["a", "Fun and games 28 Karakas", "I", "Chapter", "Jael"]));
+    document.body.append(list.element);
+
+    const row = list.element.querySelector<HTMLElement>("[data-testid='chapter-row']")!;
+    expect(row.textContent).toBe("Fun and games 28 Karakas");
+    expect(row.querySelector(".chapter-pov")).toBeNull();
+  });
+
+  it("hides the POV when the chapter has none", () => {
+    const list = new ChapterList();
+    list.setChapters(chapters(["a", "Fun and games 27", "I", "Chapter", ""]));
+    document.body.append(list.element);
+
+    const row = list.element.querySelector<HTMLElement>("[data-testid='chapter-row']")!;
+    expect(row.textContent).toBe("Fun and games 27");
+    expect(row.querySelector(".chapter-pov")).toBeNull();
   });
 
   it("collapses an act run on header click", () => {
