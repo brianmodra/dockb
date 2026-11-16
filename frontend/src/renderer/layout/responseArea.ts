@@ -9,6 +9,7 @@ import {
 export const PROOFREADING_REPLACE_FUNCTION = "proofreading-replace";
 export const PROOFREADING_ADD_WORD_FUNCTION = "proofreading-add-word";
 export const PROOFREADING_FIX_PAIR_FUNCTION = "proofreading-fix-pair";
+export const SAVE_CHAPTER_FUNCTION = "save-chapter";
 
 export interface ResponseButton {
   label: string;
@@ -172,6 +173,18 @@ export function proofreadingActionObjects(diagnostic: WysiwygDiagnostic): Respon
         args: { word: diagnostic.word },
       },
     },
+  ];
+}
+
+/**
+ * The unsaved-changes notice: a line naming how many edits the open chapter has
+ * accumulated since it was last saved, followed by a button that saves it. The
+ * caller shows it in the response area without moving focus there.
+ */
+export function unsavedChangesObjects(count: number): ResponseObject[] {
+  return [
+    { text: `The chapter has ${count} unsaved changes` },
+    { button: { label: "Save chapter", function: SAVE_CHAPTER_FUNCTION } },
   ];
 }
 

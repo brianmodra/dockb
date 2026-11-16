@@ -42,6 +42,7 @@ export interface EditPanelOptions {
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onChangeCount?: (count: number) => void;
   onSelectionActions?: (context: SelectionContext) => void;
   onSelectionChange?: () => void;
   onDiagnostic?: (diagnostic: WysiwygDiagnostic) => void;
@@ -54,6 +55,7 @@ export class EditPanel {
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onChangeCount?: (count: number) => void;
   onSelectionActions?: (context: SelectionContext) => void;
   onSelectionChange?: () => void;
   onDiagnostic?: (diagnostic: WysiwygDiagnostic) => void;
@@ -70,12 +72,15 @@ export class EditPanel {
   private busy = false;
   private readonly header: HTMLElement;
   private rawProofreading = new Map<CodeMirrorDiagnostic, WysiwygDiagnostic>();
+  private changeCount = 0;
+  private replacing = false;
 
   constructor(options: EditPanelOptions) {
     this.api = options.api;
     this.onMessage = options.onMessage;
     this.onWarning = options.onWarning;
     this.onDirtyChange = options.onDirtyChange;
+    this.onChangeCount = options.onChangeCount;
     this.onSelectionActions = options.onSelectionActions;
     this.onSelectionChange = options.onSelectionChange;
     this.onDiagnostic = options.onDiagnostic;
@@ -114,6 +119,7 @@ export class EditPanel {
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             this.notifyDirty();
+            this.recordChange();
           }
           if (update.docChanged || update.selectionSet) {
             this.onEditActivity?.();
@@ -125,6 +131,7 @@ export class EditPanel {
     this.wysiwyg = new WysiwygView({
       onChange: () => {
         this.notifyDirty();
+        this.recordChange();
         this.onEditActivity?.();
       },
       onSelectionChange: () => {
@@ -325,6 +332,7 @@ export class EditPanel {
     this.lastCanonicalText = null;
     this.replaceDoc("");
     this.notifyDirty();
+    this.resetChangeCount(true);
     this.onSelectionChange?.();
   }
 
@@ -468,6 +476,26 @@ export class EditPanel {
     this.onDirtyChange?.(dirty);
   }
 
+  /** The number of edits the open chapter has accumulated since it was last saved. */
+  unsavedChangeCount(): number {
+    return this.changeCount;
+  }
+
+  private recordChange(): void {
+    if (this.replacing) {
+      return;
+    }
+    this.changeCount += 1;
+    this.onChangeCount?.(this.changeCount);
+  }
+
+  private resetChangeCount(notify: boolean): void {
+    this.changeCount = 0;
+    if (notify) {
+      this.onChangeCount?.(0);
+    }
+  }
+
   /**
    * The facets that decide whether the raw editor takes input.
    *
@@ -507,6 +535,7 @@ export class EditPanel {
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
       this.notifyDirty();
+      this.resetChangeCount(false);
       this.updateHeader();
       this.onSelectionChange?.();
       for (const warning of response.warnings ?? []) {
@@ -529,6 +558,7 @@ export class EditPanel {
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
       this.notifyDirty();
+      this.resetChangeCount(true);
       this.updateHeader();
       this.onMessage?.(saveMessage(response));
       for (const warning of response.warnings ?? []) {
@@ -545,9 +575,11 @@ export class EditPanel {
 
   private replaceDoc(text: string): void {
     this.wysiwyg.setContent(text);
+    this.replacing = true;
     this.view.dispatch({
       changes: { from: 0, to: this.view.state.doc.length, insert: text },
     });
+    this.replacing = false;
     this.clearRawProofreadingDiagnostics();
     this.onEditActivity?.();
   }

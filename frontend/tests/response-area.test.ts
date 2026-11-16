@@ -4,6 +4,7 @@ import {
   parseResponseReply,
   proofreadingActionObjects,
   selectionActionObjects,
+  unsavedChangesObjects,
 } from "../src/renderer/layout/responseArea";
 import type { SelectionContext, WysiwygDiagnostic } from "../src/renderer/layout/wysiwyg";
 
@@ -325,6 +326,15 @@ function sampleDiagnostic(overrides: Partial<WysiwygDiagnostic> = {}): WysiwygDi
     ...overrides,
   };
 }
+
+describe("unsavedChangesObjects", () => {
+  it("names the unsaved-change count and offers a Save chapter button", () => {
+    expect(unsavedChangesObjects(12)).toEqual([
+      { text: "The chapter has 12 unsaved changes" },
+      { button: { label: "Save chapter", function: "save-chapter" } },
+    ]);
+  });
+});
 
 describe("proofreadingActionObjects", () => {
   it("names the word and message, then the replacements and Add to dictionary", () => {

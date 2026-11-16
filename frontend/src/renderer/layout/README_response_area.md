@@ -32,7 +32,9 @@ Charging a reply (`AppLayout.showResponse`) sizes the strip to the response — 
 panel and the strip scrolls instead — and the chat box comes back beneath it, empty and focused
 for the next prompt. A failed prompt
 (`AppLayout.cancelResponse`) drops the strip and restores the chat box; the failure is reported
-into the message log as any other error.
+into the message log as any other error. The strip also carries the editor's own unsaved-changes
+notice — a line naming the open chapter's edit count and a **Save chapter** button — shown when
+the writer passes the threshold (see `save-chapter`, below); unlike a menu it never takes focus.
 
 ## Response syntax
 
@@ -68,6 +70,15 @@ and a refusal or malformed reply still falls back to plain text.
 `AppLayoutOptions.responseFunctions` maps the names a reply may name to functions that receive
 the button's `args` value. The renderer supplies it; the args are data, so a reply can never run
 code. Names and their functions are specified with the functions themselves.
+
+## `save-chapter` — the unsaved-changes notice
+
+While the open chapter has more than ten unsaved edits (`EditPanel` counts every user edit and
+resets the count on save, load, or clear), the editor shows a line — `The chapter has <n> unsaved
+changes` — followed by a **Save chapter** button, in the response area. The line is
+`unsavedChangesObjects(count)` in `responseArea.ts`, and the button names `save-chapter`, which
+runs `EditPanel.save()`. It is shown with `AppLayout.showResponse`, so it renders like a reply
+without moving focus; saving drops the count to zero, which clears the strip.
 
 ## Menu keyboard navigation
 

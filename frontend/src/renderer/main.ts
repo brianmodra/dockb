@@ -6,8 +6,10 @@ import {
   PROOFREADING_ADD_WORD_FUNCTION,
   PROOFREADING_FIX_PAIR_FUNCTION,
   PROOFREADING_REPLACE_FUNCTION,
+  SAVE_CHAPTER_FUNCTION,
   parseResponseReply,
   selectionActionObjects,
+  unsavedChangesObjects,
 } from "./layout/responseArea";
 import { EditPanel } from "./layout/editPanel";
 import { ProofreadingController } from "./layout/proofreading";
@@ -26,6 +28,8 @@ import { confirmUnsaved } from "./state/quit";
 import { warningModal } from "./layout/modals";
 import { reportError } from "./log";
 import type { DocumentAttrs, NarrativePerspective } from "./api/types";
+
+const UNSAVED_CHANGES_THRESHOLD = 10;
 
 export interface MountShellOptions {
   api?: ApiClient;
@@ -175,6 +179,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       [PROOFREADING_FIX_PAIR_FUNCTION]: () => {
         proofreading?.applyActivePair();
       },
+      [SAVE_CHAPTER_FUNCTION]: () => {
+        void editPanel?.save();
+      },
     },
   });
   root.append(layout.element);
@@ -187,6 +194,13 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     stateController = controller;
     editPanel.onMessage = (text) => layout.pushMessage(text);
     editPanel.onDirtyChange = (dirty) => layout.setDirty(dirty);
+    editPanel.onChangeCount = (count) => {
+      if (count > UNSAVED_CHANGES_THRESHOLD) {
+        layout.showResponse(unsavedChangesObjects(count));
+      } else if (count === 0) {
+        layout.cancelResponse();
+      }
+    };
     editPanel.onWarning = (text) => void warningModal("POV warning", text);
     editPanel.onSelectionActions = (context) => {
       layout.showMenu(selectionActionObjects(context));

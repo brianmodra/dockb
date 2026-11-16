@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountShell } from "../src/renderer/main";
 import { ApiError } from "../src/renderer/api/http";
+import { unsavedChangesObjects } from "../src/renderer/layout/responseArea";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -830,6 +831,34 @@ describe("renderer shell", () => {
     expect(document.querySelector<HTMLElement>("[data-testid='panel-message']")?.textContent).toContain(
       "Open a document first.",
     );
+  });
+
+  it("offers a Save chapter button that saves the open chapter", async () => {
+    const saveChapterDocument = vi.fn(async (_id: string, content: string) => ({ content, summary: null }));
+    const { api, bridge } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      getChapterDocument: vi.fn(async () => ({ content: "# Opening 1\n\nSome text.", summary: null })),
+      saveChapterDocument,
+    });
+    const layout = mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await new Promise((r) => setTimeout(r, 0));
+
+    document.querySelector<HTMLElement>("[data-testid='chapter-row']")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    layout.showResponse(unsavedChangesObjects(12));
+
+    const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
+    expect(area.textContent).toContain("The chapter has 12 unsaved changes");
+    const save = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
+      (el) => el.textContent === "Save chapter",
+    )!;
+    expect(save.disabled).toBe(false);
+    save.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(saveChapterDocument).toHaveBeenCalledWith("c1", expect.stringContaining("Some text."));
   });
 });
 

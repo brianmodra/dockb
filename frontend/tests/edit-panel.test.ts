@@ -24,6 +24,12 @@ function selectInPanel(panel: EditPanel, from: number, to: number): void {
   wysiwyg.view.dispatch(wysiwyg.view.state.tr.setSelection(TextSelection.create(doc, from, to)));
 }
 
+function typeInPanel(panel: EditPanel, text: string): void {
+  const wysiwyg = (panel as unknown as { wysiwyg: WysiwygView }).wysiwyg;
+  const view = wysiwyg.view;
+  view.dispatch(view.state.tr.insertText(text, view.state.doc.content.size));
+}
+
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -850,5 +856,41 @@ describe("EditPanel quote-pair fixes", () => {
 
     expect(panel.applyProofreadingPair(diagnostic)).toBe(false);
     expect(panel.content()).toContain('"');
+  });
+});
+
+describe("EditPanel unsaved change counting", () => {
+  it("counts user edits and resets to zero on save", async () => {
+    const onChangeCount = vi.fn();
+    const api = fakeApi();
+    const panel = new EditPanel({ api, onChangeCount });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(panel.unsavedChangeCount()).toBe(0);
+
+    typeInPanel(panel, "a");
+    typeInPanel(panel, "b");
+    typeInPanel(panel, "c");
+
+    expect(panel.unsavedChangeCount()).toBe(3);
+    expect(onChangeCount).toHaveBeenLastCalledWith(3);
+
+    await panel.save();
+
+    expect(panel.unsavedChangeCount()).toBe(0);
+    expect(onChangeCount).toHaveBeenLastCalledWith(0);
+  });
+
+  it("does not count programmatic replacements as edits", async () => {
+    const onChangeCount = vi.fn();
+    const panel = new EditPanel({ api: fakeApi(), onChangeCount });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    panel.setContent("programmatic");
+
+    expect(panel.unsavedChangeCount()).toBe(0);
+    expect(onChangeCount).not.toHaveBeenCalled();
   });
 });
