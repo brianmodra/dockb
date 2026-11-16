@@ -134,6 +134,7 @@ function sampleContext(overrides: Partial<SelectionContext> = {}): SelectionCont
     paragraphIds: ["p1"],
     paragraphIndexes: [0],
     layout: { kind: "normal", variant: "" },
+    wholeParagraph: false,
     start: { paragraphId: "p1", paragraphIndex: 0, sentenceIndex: 0, offset: 0 },
     end: { paragraphId: "p1", paragraphIndex: 0, sentenceIndex: 0, offset: 23 },
     ...overrides,
@@ -141,15 +142,51 @@ function sampleContext(overrides: Partial<SelectionContext> = {}): SelectionCont
 }
 
 describe("selectionActionObjects", () => {
-  it("offers Quote read and Quote written for unquoted text", () => {
+  it("asks what to do with the text and offers the formatting buttons for a partial selection", () => {
     const objects = selectionActionObjects(sampleContext());
 
     expect(objects[0]).toEqual({
-      text: 'What do you want to do with this unquoted text: "Rain fell on the plain."',
+      text: 'What do you want to do with this text: "Rain fell on the plain."',
     });
-    expect(objects[1]).toEqual({ text: "Formatting: unformatted" });
+    const format = objects.filter((item) => item.button?.function === "format");
+    expect(format.map((item) => item.button?.label)).toEqual([
+      "Italic",
+      "Bold",
+      "Underline",
+      "Monospace",
+      "Normal font",
+      "Large",
+      "Small",
+      "Normal size",
+      "Clear formatting",
+    ]);
+    expect(objects.filter((item) => item.button?.function === "quote")).toHaveLength(0);
+  });
+
+  it("passes each button's formatting patch as its args", () => {
+    const objects = selectionActionObjects(sampleContext());
+    const format = objects.filter((item) => item.button?.function === "format");
+    expect(format.map((item) => (item.button?.args as { changes: unknown }).changes)).toEqual([
+      { style: "italic" },
+      { weight: "bold" },
+      { style: "underline" },
+      { family: "monospace" },
+      { style: "", weight: "", family: "" },
+      { size: "1.5em" },
+      { size: "0.75em" },
+      { size: "1em" },
+      { style: "", weight: "", family: "", size: "1em" },
+    ]);
+  });
+
+  it("offers the quote-paragraph buttons when the whole paragraph is selected", () => {
+    const objects = selectionActionObjects(sampleContext({ wholeParagraph: true }));
+
     const quotes = objects.filter((item) => item.button?.function === "quote");
-    expect(quotes.map((item) => item.button?.label)).toEqual(["Quote read", "Quote written"]);
+    expect(quotes.map((item) => item.button?.label)).toEqual([
+      'Quote para "reading"',
+      'Quote para "writing"',
+    ]);
     expect(quotes[0].button?.args).toEqual({
       layout: { kind: "quoted", variant: "reading" },
       paragraph_ids: ["p1"],
@@ -158,61 +195,34 @@ describe("selectionActionObjects", () => {
       end: { paragraph_id: "p1", paragraph_index: 0, sentence_index: 0, offset: 23 },
       text: "Rain fell on the plain.",
     });
-    expect(objects.filter((item) => item.button?.function === "format").map((item) => item.button?.label)).toEqual([
-      "Italic",
-      "Bold",
-      "Underline",
-      "Monospace",
-      "Clear formatting",
-    ]);
   });
 
-  it("offers Remove quote and Quote written when the text is quoted as read", () => {
-    const objects = selectionActionObjects(sampleContext({ layout: { kind: "quoted", variant: "reading" } }));
-
-    expect(objects[0]).toEqual({
-      text: 'What do you want to do with this quoted as read text: "Rain fell on the plain."',
-    });
-    expect(objects.filter((item) => item.button?.function === "quote").map((item) => item.button?.label)).toEqual([
-      "Remove quote",
-      "Quote written",
-    ]);
+  it("offers only the quote that changes it when the whole paragraph is already quoted", () => {
+    const reading = selectionActionObjects(
+      sampleContext({ wholeParagraph: true, layout: { kind: "quoted", variant: "reading" } }),
+    );
     expect(
-      objects.filter((item) => item.button?.function === "quote").map((item) => (item.button?.args as { layout: unknown }).layout),
-    ).toEqual([
-      { kind: "normal", variant: "" },
-      { kind: "quoted", variant: "writing" },
-    ]);
-  });
+      reading.filter((item) => item.button?.function === "quote").map((item) => item.button?.label),
+    ).toEqual(['Quote para "writing"']);
 
-  it("offers Remove quote and Quote read when the text is quoted as written", () => {
-    const objects = selectionActionObjects(sampleContext({ layout: { kind: "quoted", variant: "writing" } }));
-
-    expect(objects[0]).toEqual({
-      text: 'What do you want to do with this quoted as written text: "Rain fell on the plain."',
-    });
-    expect(objects.filter((item) => item.button?.function === "quote").map((item) => item.button?.label)).toEqual([
-      "Remove quote",
-      "Quote read",
-    ]);
+    const writing = selectionActionObjects(
+      sampleContext({ wholeParagraph: true, layout: { kind: "quoted", variant: "writing" } }),
+    );
     expect(
-      objects.filter((item) => item.button?.function === "quote").map((item) => (item.button?.args as { layout: unknown }).layout),
-    ).toEqual([
-      { kind: "normal", variant: "" },
-      { kind: "quoted", variant: "reading" },
-    ]);
+      writing.filter((item) => item.button?.function === "quote").map((item) => item.button?.label),
+    ).toEqual(['Quote para "reading"']);
   });
 
   it("truncates the prompt snippet after 40 characters with an ellipsis while keeping full text in args", () => {
     const forty = "1234567890123456789012345678901234567890";
     expect(selectionActionObjects(sampleContext({ text: forty }))[0]).toEqual({
-      text: `What do you want to do with this unquoted text: "${forty}"`,
+      text: `What do you want to do with this text: "${forty}"`,
     });
 
     const longer = `${forty} extra words after the limit`;
-    const objects = selectionActionObjects(sampleContext({ text: longer }));
+    const objects = selectionActionObjects(sampleContext({ text: longer, wholeParagraph: true }));
     expect(objects[0]).toEqual({
-      text: `What do you want to do with this unquoted text: "${forty}…"`,
+      text: `What do you want to do with this text: "${forty}…"`,
     });
     const quote = objects.find((item) => item.button?.function === "quote");
     expect((quote!.button?.args as { text: string }).text).toBe(longer);

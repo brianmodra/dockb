@@ -293,7 +293,7 @@ describe("renderer shell", () => {
     ).toContain("Rain fell on the plain.");
   });
 
-  it("shows quote buttons in the response area on right-clicking selected text, applies the choice, and clears the strip", async () => {
+  it("shows the formatting menu with quote-paragraph buttons on right-clicking a whole selected paragraph, applies a quote, and clears the strip", async () => {
     const getChapterDocument = vi.fn(async () => ({
       content: '<span data-par-id="p1">\nRain fell on the plain.\nKarakas closed the door.\n</span>',
       summary: null,
@@ -307,9 +307,9 @@ describe("renderer shell", () => {
               response: [
                 {
                   button: {
-                    label: "Highlight sentence",
+                    label: "Highlight paragraph",
                     function: "highlight",
-                    args: { chapter_id: "c1", paragraph_id: "p1", sentence_indices: [1] },
+                    args: { chapter_id: "c1", paragraph_id: "p1" },
                   },
                 },
               ],
@@ -327,7 +327,7 @@ describe("renderer shell", () => {
 
     const highlightButton = Array.from(
       document.querySelectorAll<HTMLButtonElement>("[data-testid='response-button']"),
-    ).find((el) => el.textContent === "Highlight sentence")!;
+    ).find((el) => el.textContent === "Highlight paragraph")!;
     highlightButton.click();
     await new Promise((r) => setTimeout(r, 0));
 
@@ -337,23 +337,27 @@ describe("renderer shell", () => {
     const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
     expect(area.hidden).toBe(false);
     expect(area.textContent).toContain(
-      'What do you want to do with this unquoted text: "Karakas closed the door."',
+      'What do you want to do with this text: "Rain fell on the plain. Karakas closed t…"',
     );
     const buttons = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map(
       (el) => el.textContent,
     );
     expect(buttons).toEqual([
-      "Quote read",
-      "Quote written",
       "Italic",
       "Bold",
       "Underline",
       "Monospace",
+      "Normal font",
+      "Large",
+      "Small",
+      "Normal size",
       "Clear formatting",
+      'Quote para "reading"',
+      'Quote para "writing"',
     ]);
 
     const quoteRead = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
-      (el) => el.textContent === "Quote read",
+      (el) => el.textContent === 'Quote para "reading"',
     )!;
     quoteRead.click();
 
@@ -368,29 +372,21 @@ describe("renderer shell", () => {
       .querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!
       .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     expect(area.hidden).toBe(false);
-    expect(area.textContent).toContain(
-      'What do you want to do with this quoted as read text: "Karakas closed the door."',
-    );
     const nextButtons = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).map(
       (el) => el.textContent,
     );
     expect(nextButtons).toEqual([
-      "Remove quote",
-      "Quote written",
       "Italic",
       "Bold",
       "Underline",
       "Monospace",
+      "Normal font",
+      "Large",
+      "Small",
+      "Normal size",
       "Clear formatting",
+      'Quote para "writing"',
     ]);
-
-    const removeQuote = Array.from(area.querySelectorAll<HTMLButtonElement>("button")).find(
-      (el) => el.textContent === "Remove quote",
-    )!;
-    removeQuote.click();
-
-    expect(document.querySelector("[data-testid='wysiwyg-view'] p.quoted")).toBeNull();
-    expect(area.hidden).toBe(true);
   });
 
   it("reports in the message log when a quote button cannot apply in raw mode", async () => {
@@ -439,7 +435,7 @@ describe("renderer shell", () => {
 
     const area = document.querySelector<HTMLElement>("[data-testid='panel-response']")!;
     Array.from(area.querySelectorAll<HTMLButtonElement>("button"))
-      .find((el) => el.textContent === "Quote read")!
+      .find((el) => el.textContent === 'Quote para "reading"')!
       .click();
 
     expect(area.hidden).toBe(true);
@@ -516,7 +512,7 @@ describe("renderer shell", () => {
     const paragraph = () => document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] p")!;
     paragraph().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     expect(area.hidden).toBe(false);
-    expect(area.textContent).toContain("What do you want to do with this unquoted text:");
+    expect(area.textContent).toContain("What do you want to do with this text:");
 
     // Changing the highlight in the editor closes the right-click quote prompt.
     const pm = document.querySelector<HTMLElement>("[data-testid='wysiwyg-view'] .ProseMirror")!;

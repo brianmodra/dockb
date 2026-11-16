@@ -659,6 +659,8 @@ export interface SelectionContext {
   paragraphIndexes: number[];
   layout: ParagraphLayout;
   format: FormatAttrs;
+  /** Whether the selection covers a whole paragraph (or all but one character of it). */
+  wholeParagraph: boolean;
   start: SelectionPoint;
   end: SelectionPoint;
 }
@@ -940,6 +942,9 @@ export class WysiwygView {
       paragraphIds: touched.map((span) => span.node.attrs.id ?? null),
       paragraphIndexes: touched.map((span) => span.index),
       layout: layouts.every((layout) => layoutKey(layout) === first) ? layouts[0] : NORMAL_LAYOUT,
+      wholeParagraph:
+        touched.length === 1 &&
+        from - touched[0].contentStart + (touched[0].contentEnd - to) <= 1,
       start: this.selectionPoint(startSpan, from),
       end: this.selectionPoint(endSpan, to),
     };

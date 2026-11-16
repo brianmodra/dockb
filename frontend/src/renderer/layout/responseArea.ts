@@ -1,7 +1,5 @@
 import { createSpinner } from "./spinner";
 import {
-  NORMAL_LAYOUT,
-  UNSET_FORMAT,
   type FormatPatch,
   type ParagraphLayout,
   type SelectionContext,
@@ -72,10 +70,9 @@ export function parseResponseReply(reply: string): ResponseObject[] | null {
 
 const SELECTION_SNIPPET_LIMIT = 40;
 
-const LAYOUT_CHOICES: ReadonlyArray<{ layout: ParagraphLayout; label: string }> = [
-  { layout: NORMAL_LAYOUT, label: "Remove quote" },
-  { layout: { kind: "quoted", variant: "reading" }, label: "Quote read" },
-  { layout: { kind: "quoted", variant: "writing" }, label: "Quote written" },
+const QUOTE_CHOICES: ReadonlyArray<{ layout: ParagraphLayout; label: string }> = [
+  { layout: { kind: "quoted", variant: "reading" }, label: 'Quote para "reading"' },
+  { layout: { kind: "quoted", variant: "writing" }, label: 'Quote para "writing"' },
 ];
 
 const FORMAT_CHOICES: ReadonlyArray<{ patch: FormatPatch; label: string }> = [
@@ -83,17 +80,12 @@ const FORMAT_CHOICES: ReadonlyArray<{ patch: FormatPatch; label: string }> = [
   { patch: { weight: "bold" }, label: "Bold" },
   { patch: { style: "underline" }, label: "Underline" },
   { patch: { family: "monospace" }, label: "Monospace" },
-  { patch: { style: "", weight: "", family: "", size: "" }, label: "Clear formatting" },
+  { patch: { style: "", weight: "", family: "" }, label: "Normal font" },
+  { patch: { size: "1.5em" }, label: "Large" },
+  { patch: { size: "0.75em" }, label: "Small" },
+  { patch: { size: "1em" }, label: "Normal size" },
+  { patch: { style: "", weight: "", family: "", size: "1em" }, label: "Clear formatting" },
 ];
-
-const FORMAT_KEYS: ReadonlyArray<keyof FormatPatch> = ["style", "weight", "family", "size"];
-
-function layoutStateLabel(layout: ParagraphLayout): string {
-  if (layout.kind === "quoted") {
-    return layout.variant === "reading" ? "quoted as read" : "quoted as written";
-  }
-  return "unquoted";
-}
 
 function sameLayout(left: ParagraphLayout, right: ParagraphLayout): boolean {
   return left.kind === right.kind && left.variant === right.variant;
@@ -101,8 +93,9 @@ function sameLayout(left: ParagraphLayout, right: ParagraphLayout): boolean {
 
 /**
  * Build the response-area objects for a right-clicked text selection: a line
- * naming its current quote state and a 40-character snippet of the text,
- * followed by the two quote actions that would change it.
+ * naming a 40-character snippet of the text, the inline-formatting buttons, and
+ * — when the selection is a whole paragraph — the two quote actions that would
+ * change its layout.
  */
 export function selectionActionObjects(context: SelectionContext): ResponseObject[] {
   const collapsed = context.text.replace(/\s+/g, " ");
@@ -110,7 +103,6 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
     collapsed.length > SELECTION_SNIPPET_LIMIT
       ? `${collapsed.slice(0, SELECTION_SNIPPET_LIMIT)}…`
       : collapsed;
-  const state = layoutStateLabel(context.layout);
   const start = {
     paragraph_id: context.start.paragraphId,
     paragraph_index: context.start.paragraphIndex,
@@ -123,22 +115,6 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
     sentence_index: context.end.sentenceIndex,
     offset: context.end.offset,
   };
-  const buttons: ResponseObject[] = LAYOUT_CHOICES.filter(
-    (choice) => !sameLayout(choice.layout, context.layout),
-  ).map((choice) => ({
-    button: {
-      label: choice.label,
-      function: "quote",
-      args: {
-        layout: choice.layout,
-        paragraph_ids: context.paragraphIds,
-        paragraph_indexes: context.paragraphIndexes,
-        start,
-        end,
-        text: context.text,
-      },
-    },
-  }));
   const formatButtons: ResponseObject[] = FORMAT_CHOICES.map((choice) => ({
     button: {
       label: choice.label,
@@ -146,14 +122,26 @@ export function selectionActionObjects(context: SelectionContext): ResponseObjec
       args: { changes: choice.patch },
     },
   }));
-  const format = context.format ?? UNSET_FORMAT;
-  const formatting = FORMAT_KEYS.map((key) => format[key]).filter(Boolean);
-  const formatState = formatting.length > 0 ? formatting.join(", ") : "unformatted";
+  const quoteButtons: ResponseObject[] = context.wholeParagraph
+    ? QUOTE_CHOICES.filter((choice) => !sameLayout(choice.layout, context.layout)).map((choice) => ({
+        button: {
+          label: choice.label,
+          function: "quote",
+          args: {
+            layout: choice.layout,
+            paragraph_ids: context.paragraphIds,
+            paragraph_indexes: context.paragraphIndexes,
+            start,
+            end,
+            text: context.text,
+          },
+        },
+      }))
+    : [];
   return [
-    { text: `What do you want to do with this ${state} text: "${snippet}"` },
-    { text: `Formatting: ${formatState}` },
-    ...buttons,
+    { text: `What do you want to do with this text: "${snippet}"` },
     ...formatButtons,
+    ...quoteButtons,
   ];
 }
 
