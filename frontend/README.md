@@ -7,7 +7,8 @@ document, edit a chapter, import a whole document from a folder on disk, and pro
 never writes files itself — an import reads the directory the user picks and hands it to the
 server, which does the writing — and the backend even serves the interface, so the app and API
 share an origin and the signed-in session reaches every route. Proofreading starts from the
-backend's default language and checks a paragraph at a time.
+language the writer chose last (falling back to the backend's default) and checks a paragraph at a
+time.
 
 The chapter list's right-click menu renames, moves, renumbers, and assigns a point-of-view
 character, keeping the shown chapter selected through those changes. Document title, author, and
@@ -153,9 +154,10 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
   `bufferToDoc`/`docToString` round-trip the buffer byte-for-byte until an
   edit. Native browser spellchecking is off; the editable carries a `lang`
   attribute (default `en-US`) for accessibility. On startup the editor asks
-  `GET /api/check/languages` for the backend's `default` and checks against it,
-  and the Settings → Language… dialog switches the language the backend
-  proofreader checks against (the endpoint and diagnostics are described in
+  `GET /api/check/languages` for the writer's saved language (or the backend's
+  `default`) and checks against it, and the Settings → Language… dialog switches
+  the language the backend proofreader checks against and saves the choice per
+  account (the endpoint and diagnostics are described in
   `../README_markdown_editor_ui.md` §5 and `../src/dockb/controllers/README_API.md`).
 - `proofreading.ts` — `ProofreadingController` debounces backend checks of the
   cursor's paragraph (~500 ms), aborts the previous request, and drops replies
@@ -233,9 +235,10 @@ DOM as HTML.
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
   scrollable proofreading-language list with Cancel/Apply; the list comes from
   `GET /api/check/languages`, with the built-in list as the offline fallback. The
-  chosen code is applied via `EditPanel.setLanguage` and passed to backend checks.
-  The browser's native spellchecker is disabled in both the Electron session and
-  the editables.
+  chosen code is applied via `EditPanel.setLanguage`, passed to backend checks,
+  and saved with `PUT /api/check/language` so it survives a restart; a failed
+  save leaves the editor on the chosen language for the session. The browser's
+  native spellchecker is disabled in both the Electron session and the editables.
 - `spinner.ts` — `createSpinner()` builds the animated Lucide `loader-circle` icon
   (`spinning-loader` class) for any busy state; the response area's wait line uses it.
   Response buttons use the shared `.btn` classes from `styles.css`.

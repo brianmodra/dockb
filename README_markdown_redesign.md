@@ -444,8 +444,10 @@ and the WYSIWYG view alike. The editor flags; it derives and rewrites nothing.
 
 Prose validation is an interactive feature over one paragraph at a time, computed by the backend:
 
-- The engine is LanguageTool, for spelling, grammar and style. The server manages the engine
-  (an optional `DOCKB_LANGUAGETOOL_URL` points it at an existing LanguageTool server instead).
+- The engine is LanguageTool, for spelling, grammar and style. One server is shared across the
+  languages the writer switches between; `DOCKB_LANGUAGETOOL_URL` points every language at an
+  existing server instead. The writer's chosen language is stored per account, with
+  `DOCKB_PROOFREADING_LANGUAGE` as the fallback.
 - The editor sends the paragraph text, the focused sentence's offsets, the language and the
   document through an authenticated, stateless `POST /api/check`; the answer is every diagnostic
   for that paragraph, with paragraph-relative offsets. The client drops a reply whose paragraph

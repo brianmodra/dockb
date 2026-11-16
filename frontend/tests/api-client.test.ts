@@ -679,6 +679,19 @@ describe("ApiClient proofreading", () => {
     expect(call.init.method).toBeUndefined();
   });
 
+  it("stores the chosen proofreading language", async () => {
+    const response = { languages: [{ code: "fr", label: "Français" }], default: "fr" };
+    mockFetch(200, response);
+
+    const result = await new ApiClient().setProofreadingLanguage("fr");
+
+    expect(result).toEqual(response);
+    const call = fetchCalls()[0];
+    expect(call.url).toBe("/api/check/language");
+    expect(call.init.method).toBe("PUT");
+    expect(call.init.body).toBe(JSON.stringify({ language: "fr" }));
+  });
+
   it("gets a document's glossary", async () => {
     mockFetch(200, { words: ["Karakas"] });
     const result = await new ApiClient().getGlossary("d-1");

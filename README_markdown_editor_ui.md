@@ -113,7 +113,8 @@ message console at 24px minimum height), and the right panel starts at its 10px 
   a dialog listing the proofreading languages the backend checker supports (`GET
   /api/check/languages`; the dialog falls back to its built-in list if that request fails),
   scrollable, current one marked, Cancel/Apply; choosing one sets the language used for backend
-  spelling and grammar checks and the WYSIWYG editable's `lang` attribute. **Dictionary…** opens
+  spelling and grammar checks and the WYSIWYG editable's `lang` attribute, and saves it per account
+  with `PUT /api/check/language` so the next startup restores it. **Dictionary…** opens
   the document's glossary. The browser's own spellchecker is turned off, so the `lang` attribute
   no longer selects a native dictionary.
 
@@ -185,8 +186,8 @@ holding the canonical text as a paragraph-per-line document, with markdown-it he
 fed to node decorations — so Mode toggling never serializes text back out and the round trip is
 byte-stable by construction. Spelling and grammar are checked by the backend (LanguageTool over
 `POST /api/check`), not by the browser: native spellchecking is disabled, and the WYSIWYG
-editable's `lang` attribute (default `en-US`) is the checker language plus accessibility
-metadata, rewritten by the Settings → Language… dialog (§3). Span-aware highlighting of the
+editable's `lang` attribute (the writer's saved language, else `en-US`) is the checker language plus
+accessibility metadata, rewritten by the Settings → Language… dialog (§3). Span-aware highlighting of the
 inline HTML (`data-par-id`,
 `data-triple`, `data-spo`) and remark-lint diagnostics in the edit panel are still planned
 (`README_markdown_redesign.md` §7). This supersedes the earlier open option "markdown-it + HTML,

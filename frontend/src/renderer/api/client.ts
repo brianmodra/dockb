@@ -155,6 +155,14 @@ export class ApiClient {
     return request<ProofreadingLanguagesResponse>(this.url("/check/languages"));
   }
 
+  /** Store the signed-in writer's chosen proofreading language. */
+  async setProofreadingLanguage(language: string): Promise<ProofreadingLanguagesResponse> {
+    return request<ProofreadingLanguagesResponse>(this.url("/check/language"), {
+      method: "PUT",
+      body: JSON.stringify({ language }),
+    });
+  }
+
   /** Return this document's stored accepted words. */
   async getGlossary(documentId: string): Promise<GlossaryResponse> {
     return request<GlossaryResponse>(this.url(`/documents/${encodeURIComponent(documentId)}/glossary`));

@@ -113,6 +113,73 @@ describe("renderer shell", () => {
     expect(items).toContain("English (US)");
   });
 
+  it("saves the chosen language and applies it to the editor", async () => {
+    const saved: string[] = [];
+    const getProofreadingLanguages = vi.fn(async () => ({
+      languages: [
+        { code: "en-US", label: "English (US)" },
+        { code: "fr", label: "Français" },
+      ],
+      default: "en-US",
+    }));
+    const setProofreadingLanguage = vi.fn(async (language: string) => {
+      saved.push(language);
+      return { languages: [], default: language };
+    });
+    const { api, bridge } = localModeApi({ getProofreadingLanguages, setProofreadingLanguage });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    openLanguageDialog();
+    await tick();
+    document
+      .querySelector<HTMLElement>('[data-testid="language-settings-item"][data-lang="fr"]')!
+      .click();
+    document.querySelector<HTMLButtonElement>('[data-testid="language-settings-apply"]')!.click();
+    await tick();
+
+    expect(saved).toEqual(["fr"]);
+
+    openLanguageDialog();
+    await tick();
+    const current = document.querySelector<HTMLElement>(
+      '[data-testid="language-settings-item"][aria-current="true"]',
+    );
+    expect(current?.dataset.lang).toBe("fr");
+  });
+
+  it("keeps the chosen language when saving it fails", async () => {
+    const getProofreadingLanguages = vi.fn(async () => ({
+      languages: [
+        { code: "en-US", label: "English (US)" },
+        { code: "fr", label: "Français" },
+      ],
+      default: "en-US",
+    }));
+    const setProofreadingLanguage = vi.fn(async () => {
+      throw new ApiError(503, "proofreading_unavailable");
+    });
+    const { api, bridge } = localModeApi({ getProofreadingLanguages, setProofreadingLanguage });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    openLanguageDialog();
+    await tick();
+    document
+      .querySelector<HTMLElement>('[data-testid="language-settings-item"][data-lang="fr"]')!
+      .click();
+    document.querySelector<HTMLButtonElement>('[data-testid="language-settings-apply"]')!.click();
+    await tick();
+
+    expect(setProofreadingLanguage).toHaveBeenCalledWith("fr");
+    openLanguageDialog();
+    await tick();
+    const current = document.querySelector<HTMLElement>(
+      '[data-testid="language-settings-item"][aria-current="true"]',
+    );
+    expect(current?.dataset.lang).toBe("fr");
+  });
+
   it("sends the chat prompt through the client, logs the prompt into the panel, and shows the reply", async () => {
     const sendPrompt = vi.fn(async () => ({ reply: "an answer" }));
     const { api, bridge } = localModeApi({ sendPrompt });
@@ -804,6 +871,13 @@ function signedInApi(overrides: Record<string, unknown> = {}): ReturnType<typeof
 
 function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
+}
+
+function openLanguageDialog(): void {
+  document.querySelector<HTMLElement>('[data-testid="menu-Settings"]')?.click();
+  document
+    .querySelector('[data-testid="menu-item-language"]')
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
 function signInForm(): HTMLElement | null {

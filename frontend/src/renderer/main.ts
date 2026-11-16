@@ -112,6 +112,11 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         });
         if (lang !== null) {
           editPanel?.setLanguage(lang);
+          if (options.api) {
+            void options.api
+              .setProofreadingLanguage(lang)
+              .catch((error) => reportError("Language", error, (text) => layout.pushMessage(text)));
+          }
         }
       })();
     },
