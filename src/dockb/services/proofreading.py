@@ -109,12 +109,11 @@ class ProofreadingService:  # pylint: disable=too-few-public-methods
     _tools: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
     _cache: Any = field(default=None, init=False, repr=False)
     _lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _server_root: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.default_language not in {code for code, _label in SUPPORTED_LANGUAGES}:
             self.default_language = DEFAULT_LANGUAGE
-        if self.tool_factory is None:
-            self.tool_factory = _default_tool_factory
         self._cache = TTLCache(maxsize=256, ttl=300)
 
     def supported_languages(self) -> list[tuple[str, str]]:
@@ -172,6 +171,7 @@ class ProofreadingService:  # pylint: disable=too-few-public-methods
         with self._lock:
             tools = list(self._tools.values())
             self._tools.clear()
+            self._server_root = None
         for tool in tools:
             try:
                 tool.close()
@@ -191,21 +191,46 @@ class ProofreadingService:  # pylint: disable=too-few-public-methods
             if tool is not None:
                 return tool
             try:
-                tool = self.tool_factory(language)  # type: ignore[misc]
+                tool = self._build_tool(language)
             except Exception as exc:  # pylint: disable=broad-except
                 raise ProofreadingUnavailableError(str(exc)) from exc
             self._tools[language] = tool
             return tool
 
+    def _build_tool(self, language: str) -> Any:
+        """Return the engine for *language*, starting the shared server if needed."""
+        if self.tool_factory is not None:
+            return self.tool_factory(language)
+        external = os.environ.get("DOCKB_LANGUAGETOOL_URL", "").strip()
+        if external:
+            return _make_language_tool(language, external)
+        if self._server_root is None:
+            tool = _make_language_tool(language, None)
+            self._server_root = _server_root(tool._url)
+            return tool
+        return _make_language_tool(language, self._server_root)
 
-def _default_tool_factory(language: str) -> Any:
+
+def _server_root(url: str) -> str:
+    """The server URL a remote client should be pointed at.
+
+    ``language_tool_python`` appends ``v2/`` to whatever ``remote_server`` it is
+    given, so the primary client's own ``_url`` — which already ends in ``v2/`` —
+    must have that suffix removed or the remote clients would double it.
+    """
+    root = url.rstrip("/")
+    if root.endswith("/v2"):
+        root = root[: -len("/v2")]
+    return f"{root}/"
+
+
+def _make_language_tool(language: str, remote_server: str | None) -> Any:
     try:
         import language_tool_python  # pylint: disable=import-outside-toplevel
     except ImportError as exc:
         raise ProofreadingUnavailableError("language_tool_python is not installed") from exc
-    url = os.environ.get("DOCKB_LANGUAGETOOL_URL", "").strip()
-    if url:
-        return language_tool_python.LanguageTool(language, remote_server=url)
+    if remote_server:
+        return language_tool_python.LanguageTool(language, remote_server=remote_server)
     return language_tool_python.LanguageTool(language)
 
 

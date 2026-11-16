@@ -4,7 +4,7 @@
 
 This note explains how DockB edits a document after the text is already saved: session queues, re-tokenization, sentence splits, and deletion. It also covers the chapter-file front matter that the graph mirrors by hand — who a character is, whose point of view a chapter is written from — and the whole-document chapter operations that live beside them: renumbering a document's chapters in their current reading order (from 1, or 0) after moves have shuffled the title numbers, which is planned in full before anything is written and lands as one graph query plus one git commit. Renames (document and chapter) and chapter renumbering move both git and the graph, which cannot share a transaction, so each is journaled first and replayed idempotently on the next boot, and every structural edit of a document holds a per-document lock so it never interleaves with a save. It is for someone changing those editing services, not the files on disk.
 
-Interactive proofreading also lives here: `ProofreadingService` checks one paragraph with LanguageTool, starting from the resolved `DOCKB_PROOFREADING_LANGUAGE`, and `GlossaryService` keeps each document's accepted words, merging them with its character names at check time. Every service method names the account it acts for as a required keyword argument, and no service may default it: an account is something the caller states, so a service cannot be handed a document id and quietly guess whose work it is. Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
+Interactive proofreading also lives here: `ProofreadingService` checks one paragraph with LanguageTool, starting from the writer's stored language (falling back to `DOCKB_PROOFREADING_LANGUAGE`), and `GlossaryService` keeps each document's accepted words, merging them with its character names at check time. Every service method names the account it acts for as a required keyword argument, and no service may default it: an account is something the caller states, so a service cannot be handed a document id and quietly guess whose work it is. Chapter-level paths keep their document loads light (title and chapter ids), so opening a chapter never pulls the whole book. Publishing a finished manuscript is not built yet; when it is, a character chapter stays out of it.
 
 ### Publishing
 
@@ -95,10 +95,11 @@ route is `POST /api/chapters/renumber` with the document id, answering the
 ### Proofreading
 
 `ProofreadingService` (`services/proofreading.py`) answers `POST /api/check` for one paragraph
-with LanguageTool spelling, grammar and style diagnostics. The engine starts lazily per language
-on the first check and is stopped on `unwire`; it is reached only here, so the manuscript text
-never leaves the process unless an operator points `DOCKB_LANGUAGETOOL_URL` at an external
-server. Checks are cached briefly, serialized on one lock because the LanguageTool client is not
+with LanguageTool spelling, grammar and style diagnostics. One LanguageTool server starts lazily on
+the first check and is stopped on `unwire`; each language gets a thin client pointed at that same
+server, so switching languages reuses one engine instead of downloading another. The server is
+reached only here, so the manuscript text never leaves the process unless an operator points
+`DOCKB_LANGUAGETOOL_URL` at an external server, which every language then uses. Checks are cached briefly, serialized on one lock because the LanguageTool client is not
 thread-safe, and never write the graph, the file, or a snapshot. Diagnostics carry
 paragraph-relative offsets, the rule, category, severity, message and replacements; the route
 maps an empty or oversized paragraph and an unsupported language to `422`, a disabled or

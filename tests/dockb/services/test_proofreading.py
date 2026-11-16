@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from dockb.services import proofreading as proofreading_module
 from dockb.services.proofreading import (
     DEFAULT_LANGUAGE,
     MAX_TEXT_CHARS,
@@ -18,6 +19,7 @@ from dockb.services.proofreading import (
     TextTooLongError,
     UnsupportedLanguageError,
     _find_quote_pair,
+    _server_root,
 )
 
 
@@ -243,6 +245,81 @@ class TestCheck:
         codes = [code for code, _label in service.supported_languages()]
 
         assert DEFAULT_LANGUAGE in codes
+
+
+class _RecordingFactory:  # pylint: disable=too-few-public-methods
+    """Mimics the real tool factory while recording what it was asked to start."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+        self.tools: list[_RecordingTool] = []
+
+    def __call__(self, language: str, remote_server: str | None) -> _RecordingTool:
+        self.calls.append((language, remote_server))
+        url = "http://127.0.0.1:8081/v2/" if remote_server is None else f"{remote_server}v2/"
+        tool = _RecordingTool(url)
+        self.tools.append(tool)
+        return tool
+
+
+class _RecordingTool:  # pylint: disable=too-few-public-methods
+    def __init__(self, url: str) -> None:
+        self._url = url
+        self.closed = False
+
+    def check(self, _text: str) -> list[_Match]:
+        return []
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class TestSharedServer:
+    def test_server_root_strips_the_v2_path(self) -> None:
+        assert _server_root("http://127.0.0.1:8081/v2/") == "http://127.0.0.1:8081/"
+        assert _server_root("http://example.test/lt/v2/") == "http://example.test/lt/"
+
+    def test_the_first_language_starts_the_server_and_the_rest_reuse_it(self, monkeypatch) -> None:
+        factory = _RecordingFactory()
+        monkeypatch.setattr(proofreading_module, "_make_language_tool", factory)
+        monkeypatch.delenv("DOCKB_LANGUAGETOOL_URL", raising=False)
+        service = ProofreadingService()
+
+        service.check("hello", "en-US")
+        service.check("bonjour", "fr")
+        service.check("hola", "es")
+
+        assert factory.calls == [
+            ("en-US", None),
+            ("fr", "http://127.0.0.1:8081/"),
+            ("es", "http://127.0.0.1:8081/"),
+        ]
+
+    def test_an_operator_supplied_server_is_used_for_every_language(self, monkeypatch) -> None:
+        factory = _RecordingFactory()
+        monkeypatch.setattr(proofreading_module, "_make_language_tool", factory)
+        monkeypatch.setenv("DOCKB_LANGUAGETOOL_URL", "http://lt.example.test:8010")
+        service = ProofreadingService()
+
+        service.check("hello", "en-US")
+        service.check("bonjour", "fr")
+
+        assert factory.calls == [
+            ("en-US", "http://lt.example.test:8010"),
+            ("fr", "http://lt.example.test:8010"),
+        ]
+
+    def test_close_stops_the_shared_server_and_every_client(self, monkeypatch) -> None:
+        factory = _RecordingFactory()
+        monkeypatch.setattr(proofreading_module, "_make_language_tool", factory)
+        monkeypatch.delenv("DOCKB_LANGUAGETOOL_URL", raising=False)
+        service = ProofreadingService()
+        service.check("hello", "en-US")
+        service.check("bonjour", "fr")
+
+        service.close()
+
+        assert [tool.closed for tool in factory.tools] == [True, True]
 
 
 class TestQuotePair:
