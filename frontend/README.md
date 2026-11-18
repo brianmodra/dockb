@@ -173,7 +173,7 @@ same width as the chapter list (240px) and shrinks back to its 10px floor.
 
 Panels are built with `createElement`/`textContent` — no user data enters the
 DOM as HTML.
-- `menubar.ts` — File (Open, Import…, Delete ▸ Document) and a mode toggle on the left; Settings
+- `menubar.ts` — File (Open, Import…, Info, Delete ▸ Document) and a mode toggle on the left; Settings
   (Document…, Language…, Dictionary…) is the cog in the right-aligned group. The mode toggle sits
   right of File: in WYSIWYG mode it shows a markdown icon (tooltip "Switch editor to raw markdown
   mode") and clicking it switches to raw; in raw mode it shows an Aa icon (tooltip "Switch editor
@@ -204,8 +204,12 @@ DOM as HTML.
   a failed save keeps the editor on the open chapter rather than losing the
      text. Re-clicking the chapter already shown saves and reads nothing. Above the text (in the same scroll) sits the chapter's identity line
   (`characterHeader.ts`, read-only): a character's name parts as one prose
-  line, or the title in green and its point of view in pastel amber; hidden in
-  raw mode, where the front matter is visible as text. The panel is warm white
+  line, or the title in green and its point of view in pastel amber, with the
+  chapter's word count ("This chapter contains n words.", counted in the front
+  end) pushed to the right in black; hidden in
+  raw mode, where the front matter is visible as text. **File ▸ Info** opens a
+  modal showing the whole document's word count, read from
+  `GET /api/documents/{id}/info`. The panel is warm white
   (`#f8f6f0`) and its text is Courier Prime at 18px, loaded in `index.html`. When a POV is set on the open chapter the
   shell refreshes the buffer's pov line in place, so the next save carries it.
   **POV** (manuscript chapters only) opens a name modal: Enter applies a

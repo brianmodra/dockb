@@ -60,6 +60,16 @@ class DocumentSummary(BaseModel):
     narrative_perspective: str = ""
 
 
+class DocumentInfo(BaseModel):
+    """GET /api/documents/{id}/info response — statistics about a document.
+
+    Begins with the word count; further statistics are added here as they are
+    needed.
+    """
+
+    word_count: int
+
+
 class NarrativePerspective(BaseModel):
     """One selectable narrative perspective: a stable code and its label."""
 

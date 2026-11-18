@@ -88,6 +88,11 @@ class MockDocumentService:
     def open(self, document_id: str, owner: str = "") -> Document | None:
         return self._docs.get(document_id)
 
+    def get_info(self, document_id: str, owner: str = "") -> dict[str, int] | None:
+        if document_id not in self._docs:
+            return None
+        return {"word_count": 12}
+
     def create(
         self,
         document_id: str,
@@ -409,6 +414,16 @@ class TestDocumentRoutes:  # pylint: disable=too-many-public-methods
 
     def test_get_document_attrs_not_found(self) -> None:
         resp = self.client.get("/api/documents/nonexistent/attrs")
+        assert resp.status_code == 404
+
+    def test_get_document_info(self) -> None:
+        self.svc.create("d1", "Faith", "Paul")
+        resp = self.client.get("/api/documents/d1/info")
+        assert resp.status_code == 200
+        assert resp.json() == {"word_count": 12}
+
+    def test_get_document_info_not_found(self) -> None:
+        resp = self.client.get("/api/documents/nonexistent/info")
         assert resp.status_code == 404
 
     def test_create_document_passes_the_narrative_perspective(self) -> None:

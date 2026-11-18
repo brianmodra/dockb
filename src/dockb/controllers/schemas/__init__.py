@@ -12,6 +12,7 @@ from dockb.controllers.schemas.common import ErrorResponse, MutationResponse, St
 from dockb.controllers.schemas.documents import (
     CreateDocumentRequest,
     DocumentAttrs,
+    DocumentInfo,
     DocumentResponse,
     DocumentSummary,
     NarrativePerspective,
@@ -66,6 +67,7 @@ __all__ = [
     "DocumentAttrs",
     "DocumentResponse",
     "DocumentSummary",
+    "DocumentInfo",
     "NarrativePerspective",
     "NarrativePerspectivesResponse",
     "CreateDocumentRequest",

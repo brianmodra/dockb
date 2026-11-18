@@ -77,6 +77,7 @@ class StubDocumentRepo(StubRepo):
     def __init__(self) -> None:
         super().__init__()
         self.forbid_full_load = False
+        self._word_counts: dict[tuple[str, str], int] = {}
 
     def _owned(self, model_id: str, owner: str) -> Document | None:
         model = self._store.get(model_id)
@@ -127,6 +128,11 @@ class StubDocumentRepo(StubRepo):
         if not isinstance(model, Document):
             return None
         return {"id": model.id, "title": model.title, "owner": model.owner or None}
+
+    def count_words(self, model_id: str, owner: str) -> int | None:
+        if self._owned(model_id, owner) is None:
+            return None
+        return self._word_counts.get((model_id, owner), 0)
 
 
 class StubOwnedRepo(StubRepo):
@@ -391,6 +397,15 @@ class TestDocumentService:  # pylint: disable=too-many-public-methods
 
     def test_get_attrs_returns_none_when_missing(self) -> None:
         assert self.svc.get_attrs("nonexistent", owner=self._OWNER) is None
+
+    def test_get_info_returns_the_word_count(self) -> None:
+        doc = Document(owner=self._OWNER, id="d1", title="T", author="A", state=DataState.SYNC)
+        self.repo._store["d1"] = doc
+        self.repo._word_counts[("d1", self._OWNER)] = 17
+        assert self.svc.get_info("d1", owner=self._OWNER) == {"word_count": 17}
+
+    def test_get_info_returns_none_when_missing(self) -> None:
+        assert self.svc.get_info("nonexistent", owner=self._OWNER) is None
 
     def test_create_registers_new_document(self) -> None:
         doc = self.svc.create("d1", title="Faith", author="Paul", owner=self._OWNER)

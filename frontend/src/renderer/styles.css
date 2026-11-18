@@ -683,6 +683,8 @@ body {
   font-style: italic;
   cursor: default;
   user-select: none;
+  display: flex;
+  align-items: baseline;
 }
 
 .chapter-header__title {
@@ -691,6 +693,14 @@ body {
 
 .chapter-header__pov {
   color: var(--color-chapter-pov);
+}
+
+.chapter-header__word-count {
+  margin-left: auto;
+  padding-left: 16px;
+  color: #000;
+  font-style: normal;
+  white-space: nowrap;
 }
 
 .edit-scroll {

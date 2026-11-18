@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from dockb.controllers.schemas.documents import (
     CreateDocumentRequest,
     DocumentAttrs,
+    DocumentInfo,
     DocumentResponse,
     DocumentSummary,
     NarrativePerspective,
@@ -57,6 +58,17 @@ def test_update_document_request():
     req = UpdateDocumentRequest(attrs=DocumentAttrs(title="Love", author="John"))
     assert req.attrs.id is None
     assert req.attrs.title == "Love"
+
+
+def test_document_info_carries_the_word_count():
+    info = DocumentInfo(word_count=42)
+    assert info.word_count == 42
+    assert info.model_dump() == {"word_count": 42}
+
+
+def test_document_info_requires_the_word_count():
+    with pytest.raises(ValidationError):
+        DocumentInfo()
 
 
 def test_update_document_request_with_id():

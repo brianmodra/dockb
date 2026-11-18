@@ -100,6 +100,16 @@ MATCH (d:Document {id: $document_id})
 RETURN d.id AS id, d.title AS title, d.owner AS owner
 """
 
+_COUNT_WORDS_CYPHER = """
+MATCH (d:Document {id: $document_id, owner: $owner})
+OPTIONAL MATCH (d)<-[:PART_OF]-(:Chapter)
+      <-[:PART_OF]-(:Paragraph)
+      <-[:PART_OF]-(:Sentence)
+      <-[:PART_OF]-(t:Token)
+WHERE t.type = 'word'
+RETURN count(t) AS word_count
+"""
+
 # A document is unowned by the *absence* of the property. `neo4j/repair_empty_document_owners.cypher`
 # exists to normalize the empty-string spelling of the same fact, and the second clause
 # here matches it too: a document written by an older build with a default owner of ""
@@ -213,6 +223,20 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
         if not records:
             return False
         return int(records[0].get("assigned") or 0) > 0
+
+    def count_words(self, document_id: str, owner: str) -> int | None:
+        """Return the number of word tokens in *owner*'s document, or None when it is absent.
+
+        Counts ``Token`` nodes whose ``type`` is ``'word'`` without hydrating the
+        hierarchy: the Cypher match only walks the ``PART_OF`` edges and aggregates
+        the matching tokens, so chapters, paragraphs, and sentences are never
+        materialised. Returns None when *owner* owns no document with *id* — the same
+        answer as an id that does not exist.
+        """
+        records = list(self._session.run(_COUNT_WORDS_CYPHER, {"document_id": document_id, "owner": owner}))
+        if not records:
+            return None
+        return int(records[0].get("word_count") or 0)
 
     def load_attrs(self, id: str, owner: str) -> dict[str, str] | None:  # pylint: disable=redefined-builtin
         """Return a Document's ``{id, title, author, narrative_perspective}`` — nothing else.

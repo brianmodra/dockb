@@ -508,6 +508,46 @@ class TestLoadDocumentAttrs:
 
 
 # ---------------------------------------------------------------------------
+# count_words
+# ---------------------------------------------------------------------------
+
+
+class TestCountWords:
+    """Behaviour of DocumentRepository.count_words() — a word-token aggregate."""
+
+    def test_returns_the_word_count(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"word_count": 42}]
+        assert document_repo.count_words("d-1", "acct-1") == 42
+
+    def test_reads_a_missing_count_as_zero(self, document_repo, neo4j_session):
+        """A document with chapters but no word tokens answers 0, not None."""
+        neo4j_session.run.return_value = [{"word_count": 0}]
+        assert document_repo.count_words("d-1", "acct-1") == 0
+
+    def test_returns_none_when_the_document_is_absent(self, document_repo, neo4j_session):
+        """The MATCH on the document yields no rows, so an unowned id reads absent."""
+        neo4j_session.run.return_value = []
+        assert document_repo.count_words("ghost", "acct-1") is None
+
+    def test_runs_the_word_count_cypher(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [{"word_count": 1}]
+        document_repo.count_words("d-1", "acct-1")
+        cypher, _params = extract_call(neo4j_session)
+        assert "MATCH (d:Document {id: $document_id, owner: $owner})" in cypher
+        assert "OPTIONAL MATCH" in cypher
+        assert "PART_OF" in cypher
+        assert "t.type = 'word'" in cypher
+        assert "count(t) AS word_count" in cypher
+
+    def test_scopes_the_count_to_the_owner(self, document_repo, neo4j_session):
+        """The owner has to be part of the document MATCH itself."""
+        neo4j_session.run.return_value = [{"word_count": 0}]
+        document_repo.count_words("d-1", "acct-1")
+        _cypher, params = extract_call(neo4j_session)
+        assert params == {"document_id": "d-1", "owner": "acct-1"}
+
+
+# ---------------------------------------------------------------------------
 # load_shell
 # ---------------------------------------------------------------------------
 

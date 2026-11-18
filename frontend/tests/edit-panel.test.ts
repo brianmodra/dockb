@@ -81,7 +81,7 @@ describe("EditPanel", () => {
     await panel.load("c1");
 
     expect(panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!.textContent).toBe(
-      "Opening 1, from the point of view of Karakas",
+      "Opening 1, from the point of view of KarakasThis chapter contains 1 words.",
     );
   });
 
@@ -101,6 +101,59 @@ describe("EditPanel", () => {
     expect(header.querySelector<HTMLElement>(".chapter-header__pov")!.textContent).toBe(
       "from the point of view of Karakas",
     );
+  });
+
+  it("shows the chapter's word count in black text at the right of the header", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\npov: Karakas\n---\n\n<span data-par-id="p1">\nOne two three.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    const wordCount = panel.element.querySelector<HTMLElement>(".chapter-header__word-count")!;
+    expect(wordCount).not.toBeNull();
+    expect(wordCount.textContent).toBe("This chapter contains 3 words.");
+  });
+
+  it("updates the word count as the chapter is edited", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\nid: c1\ntitle: Opening 1\npov: Karakas\n---\n\n<span data-par-id="p1">\nOne.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+    await panel.load("c1");
+
+    expect(panel.element.querySelector<HTMLElement>(".chapter-header__word-count")!.textContent).toBe(
+      "This chapter contains 1 words.",
+    );
+
+    typeInPanel(panel, " two three");
+
+    expect(panel.element.querySelector<HTMLElement>(".chapter-header__word-count")!.textContent).toBe(
+      "This chapter contains 3 words.",
+    );
+  });
+
+  it("shows no word count on a character chapter header", async () => {
+    const api = fakeApi({
+      getChapterDocument: vi.fn(async () =>
+        doc('---\ntitle: Karakas\ncategory: Character\nfirst_name: Kiral\n---\n\n<span data-par-id="p1">\nBody.\n</span>'),
+      ),
+    });
+    const panel = new EditPanel({ api });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    const header = panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!;
+    expect(header.textContent).toBe("Kiral");
+    expect(header.querySelector(".chapter-header__word-count")).toBeNull();
   });
 
   it("scrolls the chapter header away with the text inside the edit scroll", async () => {
@@ -149,7 +202,7 @@ describe("EditPanel", () => {
     panel.refreshPovLine("Karakas");
 
     expect(panel.element.querySelector<HTMLElement>("[data-testid='chapter-header']")!.textContent).toBe(
-      "Opening 1, from the point of view of Karakas",
+      "Opening 1, from the point of view of KarakasThis chapter contains 1 words.",
     );
     expect(panel.lastCanonical()).toContain("pov: Karakas");
     expect(panel.isDirty()).toBe(false);

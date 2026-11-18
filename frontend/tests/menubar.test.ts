@@ -36,14 +36,14 @@ describe("menubar", () => {
     expect(right.querySelector('[data-testid="mode-toggle"]')).toBeNull();
   });
 
-  it("opens File with Open, Import and Delete only", () => {
+  it("opens File with Open, Import, Info and Delete", () => {
     const bar = buildMenubar({});
     document.body.append(bar.element);
     openMenu(bar, "File");
     const itemLabels = Array.from(dropdown(bar, "File").querySelectorAll(".menu-item")).map(
       (n) => n.textContent,
     );
-    expect(itemLabels).toEqual(["Open", "Import…", "Delete"]);
+    expect(itemLabels).toEqual(["Open", "Import…", "Info", "Delete"]);
   });
 
   it("has no Save, Edit, Sign out or Quit item in the File menu", () => {
@@ -373,6 +373,32 @@ describe("File → Import", () => {
     expect(() =>
       bar.element
         .querySelector('[data-testid="menu-item-import"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    ).not.toThrow();
+  });
+});
+
+describe("File → Info", () => {
+  it("offers Info in the File menu", () => {
+    const bar = buildMenubar({});
+    const item = bar.element.querySelector('[data-testid="menu-item-info"]');
+    expect(item?.textContent).toBe("Info");
+  });
+
+  it("reports File → Info to onInfo", () => {
+    const onInfo = vi.fn();
+    const bar = buildMenubar({ onInfo });
+    bar.element
+      .querySelector('[data-testid="menu-item-info"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op when no handler was given", () => {
+    const bar = buildMenubar({});
+    expect(() =>
+      bar.element
+        .querySelector('[data-testid="menu-item-info"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     ).not.toThrow();
   });

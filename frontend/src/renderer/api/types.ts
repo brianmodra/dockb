@@ -55,6 +55,11 @@ export interface DocumentWire {
   chapter_summaries: ChapterSummary[];
 }
 
+/** GET /api/documents/{id}/info response — statistics about a document. */
+export interface DocumentInfoResponse {
+  word_count: number;
+}
+
 export interface ChapterAttrs {
   id: string | null;
   title: string;

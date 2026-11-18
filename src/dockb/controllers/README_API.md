@@ -266,6 +266,7 @@ A non-error response will have code `"ok"` and message `"success"` and a 2xx HTT
 | `GET` | `/api/documents/narrative-perspectives` | List the fixed narrative-perspective choices (See **Narrative Perspectives**) |
 | `GET` | `/api/documents/{id}` | Returns the document attrs and chapter summaries (plain JSON — see **Wire Format**) |
 | `GET` | `/api/documents/{id}/attrs` | Returns just the document attrs — no chapter summaries and no hierarchy/file-tree load (see **GET Document Attrs**) |
+| `GET` | `/api/documents/{id}/info` | Return statistics about the document, currently its word count (see **GET Document Info**) |
 | `PUT` | `/api/documents/{id}` | Replace the document attributes (title, author, narrative perspective — see **PUT Document Data**). Chapters and their content are not affected |
 | `DELETE` | `/api/documents/{id}` | Delete doc + all children |
 | `GET` | `/api/documents/{id}/mentions` | Return the paragraph → mentioned-character-chapter map from the cached MENTIONS verdicts |
@@ -291,6 +292,22 @@ account owns no document with `{id}`, exactly as the full read does.
   "narrative_perspective": "first_person"
 }
 ```
+
+#### GET Document Info
+
+`GET /api/documents/{id}/info` returns statistics about the document. It begins with
+the word count and will grow more statistics as they are needed:
+
+``` json
+{
+  "word_count": 4213
+}
+```
+
+The word count is a straight graph aggregate — a count of the document's `Token` nodes
+whose `type` is `word` — so no chapters, paragraphs or sentences are hydrated and no
+file tree is touched. It answers `404` when the caller's account owns no document with
+`{id}`, exactly as the full read does.
 
 #### POST Document Data
 

@@ -76,6 +76,9 @@ class StubDocumentService(_Recording):
     def get_attrs(self, document_id: str, owner: str = "") -> dict[str, str] | None:
         self._record("get_attrs", owner=owner, document_id=document_id)
 
+    def get_info(self, document_id: str, owner: str = "") -> dict[str, int] | None:
+        self._record("get_info", owner=owner, document_id=document_id)
+
     def update(
         self,
         document_id: str,
@@ -252,6 +255,7 @@ ROUTES = [
     Route("POST", "/api/documents", json=_DOCUMENT, expect=200),
     Route("GET", "/api/documents/d1"),
     Route("GET", "/api/documents/d1/attrs"),
+    Route("GET", "/api/documents/d1/info"),
     Route("PUT", "/api/documents/d1", json=_DOCUMENT),
     Route("DELETE", "/api/documents/d1"),
     Route("GET", "/api/chapters", params={"document": "d1"}, expect=200, expect_json=[]),

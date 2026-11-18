@@ -10,6 +10,7 @@ export interface AppLayoutOptions {
   onSave?: () => void;
   onOpen?: () => void;
   onImport?: () => void;
+  onInfo?: () => void;
   onOpenDocumentSettings?: () => void;
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
@@ -83,6 +84,7 @@ export class AppLayout {
       },
       onOpen: options.onOpen,
       onImport: options.onImport,
+      onInfo: options.onInfo,
       onOpenDocumentSettings: options.onOpenDocumentSettings,
       onOpenLanguageSettings: options.onOpenLanguageSettings,
       onOpenDictionary: options.onOpenDictionary,

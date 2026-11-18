@@ -143,6 +143,18 @@ class DocumentService:
         """
         return self._document_repo.load_attrs(document_id, owner)
 
+    def get_info(self, document_id: str, *, owner: str) -> dict[str, int] | None:
+        """Return statistics about a document, or None when *owner* does not own it.
+
+        Currently reports only the word count, read straight from the graph with a
+        count of word tokens — no chapter hydration and no file-tree writes. More
+        statistics join the dict as they are needed.
+        """
+        word_count = self._document_repo.count_words(document_id, owner)
+        if word_count is None:
+            return None
+        return {"word_count": word_count}
+
     def open(self, document_id: str, *, owner: str) -> Document | None:
         """Load a document, materializing its owned file tree when absent.
 

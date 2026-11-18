@@ -10,6 +10,7 @@ import type {
   ChatResponse,
   DocumentAttrs,
   DocumentContentResponse,
+  DocumentInfoResponse,
   DocumentMentionsResponse,
   DocumentWire,
   GlossaryResponse,
@@ -108,6 +109,11 @@ export class ApiClient {
   /** Return just a document's attrs (no chapter summaries / hierarchy load). */
   async getDocumentAttrs(documentId: string): Promise<DocumentAttrs> {
     return request<DocumentAttrs>(this.url(`/documents/${encodeURIComponent(documentId)}/attrs`));
+  }
+
+  /** Return statistics about a document (currently its word count). */
+  async getDocumentInfo(documentId: string): Promise<DocumentInfoResponse> {
+    return request<DocumentInfoResponse>(this.url(`/documents/${encodeURIComponent(documentId)}/info`));
   }
 
   async createDocument(data: CreateDocumentData): Promise<MutationResponse> {

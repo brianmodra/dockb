@@ -16,7 +16,7 @@ import { ProofreadingController } from "./layout/proofreading";
 import { LeftPanel } from "./layout/leftPanel";
 import { RightPanel, type ShelfChapter } from "./layout/rightPanel";
 import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker } from "./layout/documentPicker";
-import { confirmModal, editDocumentModal, userSettingsModal } from "./layout/modals";
+import { confirmModal, editDocumentModal, openModal, userSettingsModal } from "./layout/modals";
 import { LANGUAGES, openLanguageSettings } from "./layout/languageSettings";
 import { openDictionaryDialog } from "./layout/dictionaryDialog";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
@@ -70,6 +70,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runImport: () => void = () => {};
   let runDeleteDocument: () => void = () => {};
   let runDocumentSettings: () => void = () => {};
+  let runDocumentInfo: () => void = () => {};
   let runUserSettings: () => void = () => {};
   let currentDocumentId: () => string | null = () => null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
@@ -85,6 +86,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     onImport: () => runImport(),
     onDeleteDocument: () => runDeleteDocument(),
     onOpenDocumentSettings: () => runDocumentSettings(),
+    onInfo: () => runDocumentInfo(),
     onSignOut: () => signOut.request(),
     onUserSettings: () => {
       void runUserSettings();
@@ -481,6 +483,24 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           void editDocumentWith(attrs, response.perspectives);
         },
         (error) => reportError("Edit document", error, (text) => layout.pushMessage(text)),
+      );
+    };
+
+    runDocumentInfo = () => {
+      const documentId = panel.currentDocumentId();
+      if (documentId === null) {
+        layout.pushMessage("Open a document first.");
+        return;
+      }
+      void options.api!.getDocumentInfo(documentId).then(
+        (info) => {
+          void openModal({
+            title: "Document info",
+            body: `Word count: ${info.word_count}`,
+            buttons: [{ label: "Close", value: "close" }],
+          });
+        },
+        (error) => reportError("Document info", error, (text) => layout.pushMessage(text)),
       );
     };
 

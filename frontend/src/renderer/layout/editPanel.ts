@@ -71,6 +71,7 @@ export class EditPanel {
   private readonly readOnlyCompartment = new Compartment();
   private busy = false;
   private readonly header: HTMLElement;
+  private wordCountElement: HTMLElement | null = null;
   private rawProofreading = new Map<CodeMirrorDiagnostic, WysiwygDiagnostic>();
   private changeCount = 0;
   private replacing = false;
@@ -120,6 +121,7 @@ export class EditPanel {
           if (update.docChanged) {
             this.notifyDirty();
             this.recordChange();
+            this.refreshWordCount();
           }
           if (update.docChanged || update.selectionSet) {
             this.onEditActivity?.();
@@ -133,6 +135,7 @@ export class EditPanel {
         this.notifyDirty();
         this.recordChange();
         this.onEditActivity?.();
+        this.refreshWordCount();
       },
       onSelectionChange: () => {
         this.onSelectionChange?.();
@@ -598,6 +601,7 @@ export class EditPanel {
    * the manuscript chapter's title and its point of view.
    */
   private updateHeader(): void {
+    this.wordCountElement = null;
     if (this.lastCanonicalText === null) {
       this.header.replaceChildren();
       return;
@@ -611,14 +615,37 @@ export class EditPanel {
     const titleElement = document.createElement("span");
     titleElement.className = "chapter-header__title";
     titleElement.textContent = title;
+    const wordCountElement = document.createElement("span");
+    wordCountElement.className = "chapter-header__word-count";
+    wordCountElement.textContent = wordCountMessage(this.currentWordCount());
+    this.wordCountElement = wordCountElement;
     if (pov === null) {
-      this.header.replaceChildren(titleElement);
+      this.header.replaceChildren(titleElement, wordCountElement);
       return;
     }
     const povElement = document.createElement("span");
     povElement.className = "chapter-header__pov";
     povElement.textContent = pov;
-    this.header.replaceChildren(titleElement, document.createTextNode(", "), povElement);
+    const identity = document.createElement("span");
+    identity.className = "chapter-header__identity";
+    identity.append(titleElement, document.createTextNode(", "), povElement);
+    this.header.replaceChildren(identity, wordCountElement);
+  }
+
+  /** The number of words in the open chapter's body, counted in the front end. */
+  private currentWordCount(): number {
+    const text =
+      this.mode === "raw"
+        ? chapterBody(this.view.state.doc.toString())
+        : this.wysiwyg.plainContent();
+    return countWords(text);
+  }
+
+  /** Update just the word-count label as the body changes, without rebuilding the header. */
+  private refreshWordCount(): void {
+    if (this.wordCountElement !== null) {
+      this.wordCountElement.textContent = wordCountMessage(this.currentWordCount());
+    }
   }
 
   /**
@@ -668,6 +695,15 @@ function lintSeverity(severity: string): "error" | "warning" | "info" | "hint" {
     return "hint";
   }
   return "warning";
+}
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+}
+
+function wordCountMessage(count: number): string {
+  return `This chapter contains ${count} words.`;
 }
 
 function saveMessage(response: DocumentContentResponse): string {

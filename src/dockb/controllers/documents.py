@@ -13,6 +13,7 @@ from dockb.controllers.notifications import get_session_context, mutation_respon
 from dockb.controllers.schemas.documents import (
     CreateDocumentRequest,
     DocumentAttrs,
+    DocumentInfo,
     NarrativePerspective,
     NarrativePerspectivesResponse,
     UpdateDocumentRequest,
@@ -112,6 +113,18 @@ def get_document_attrs(
     if attrs is None:
         raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}")
     return attrs
+
+
+@router.get("/{document_id}/info", response_model=DocumentInfo)
+def get_document_info(
+    document_id: str,
+    svc: Any = Depends(get_doc_service),
+    owner: str = Depends(get_owner),
+) -> DocumentInfo:
+    info = svc.get_info(document_id, owner=owner)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"document_not_found: {document_id}")
+    return DocumentInfo(**info)
 
 
 @router.put("/{document_id}")
