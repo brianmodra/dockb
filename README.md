@@ -13,14 +13,15 @@ against the characters' own name parts. This file is the front door: the
 install command, how to run the dev servers, how to import an existing set of
 markdown files, and pointers to the per-layer documentation.
 
-The desktop editor (`frontend/`) is a thin API client that never writes files or git: writers edit
-canonical markdown in WYSIWYG or raw view, and an import only reads the directory a writer picks and
-hands it to the server. Every manuscript belongs to an account, which decides which documents the
-writer can see, which directory the markdown lives in, and which git history it has — so a session
-reads and writes only its own account's work, and a manuscript whose account was deleted is handed
-to another with `dockb users assign` rather than lost. The backend is observable as well as
-structured: every HTTP request logs its total time and a per-stage breakdown, so a slow save or open
-shows exactly where the time went.
+The browser editor is a thin API client, while the desktop editor also keeps a local markdown file
+cache chosen in **Settings → File Cache**; the backend remains the writer of record and the cache is
+never git history. Writers edit canonical markdown in WYSIWYG or raw view, and an import only reads
+the directory a writer picks and hands it to the server. Every manuscript belongs to an account,
+which decides which documents the writer can see, which directory the markdown lives in, and which
+git history it has — so a session reads and writes only its own account's work, and a manuscript
+whose account was deleted is handed to another with `dockb users assign` rather than lost. The
+backend is observable as well as structured: every HTTP request logs its total time and a per-stage
+breakdown, so a slow save or open shows exactly where the time went.
 
 ## Summary
 
@@ -42,6 +43,23 @@ Inside a span the sentence-delimiting newlines are read as a single space, so th
 a paragraph flow and wrap together. A line ending in a backslash is an escape: the backslash is
 hidden and the newline stays a line break. The double-newline paragraph delimiter renders as a
 single line gap between paragraphs.
+
+### Desktop file cache and offline mode
+
+In Electron, **Settings → File Cache** chooses a directory for a local mirror of the current
+manuscripts. The layout mirrors the backend store — `<document title>/<Act X | Act None |
+Characters>/<chapter title>.md` — and the chosen directory is kept in renderer localStorage; no new
+environment variable is needed. Loading a chapter refreshes its cached copy, edits autosave to the
+cache after five seconds, and the save icon keeps its existing meaning: it shows changes still owed
+to the backend. If the cached copy differs from the backend, the editor asks whether to save the
+cached text first or overwrite it. The cache follows structural changes too: chapter renames,
+renumbers, moves (including act changes) and deletes move or remove files, and document renames and
+deletes move or remove the directory.
+
+A failed backend request in the desktop editor offers **Go offline?**. Offline, chapter loads and
+saves use only the cache, and backend-changing actions are disabled; going back online flushes
+pending cache writes and uploads every backend-dirty chapter of the open document before the editor
+returns online. The browser build has no cache UI, no offline toggle, and no filesystem IPC.
 
 ### Back End
 

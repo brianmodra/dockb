@@ -3,18 +3,19 @@
 ## Executive Summary
 
 This is the guide to DockB's desktop editor: how to run it, which module owns each area, and why
-the window is built the way it is. The editor is a thin client that talks only to the server to
-sign in, open a document, edit a chapter, import a folder from disk, and check spelling and
-grammar. It never writes files — an import hands the chosen directory to the server, which does
-the writing — and the backend serves the interface itself, so the editor and API share an origin
-and the session cookie reaches every route. The writer's chosen proofreading language is saved per
-account and restored on the next launch.
+the window is built the way it is. The browser build is a thin client that talks only to the server
+to sign in, open a document, edit a chapter, import a folder, and check spelling and grammar. The
+Electron build adds a local markdown file cache and offline mode; the backend still owns the
+manuscript, the git history, and the import write. The backend serves the interface itself, so the
+editor and API share an origin and the session cookie reaches every route. The writer's chosen
+proofreading language is saved per account and restored on the next launch.
 
-This note also covers the parts a screenshot does not show: the chapter list's right-click
-actions, the document settings modal, the read-only reference shelf, the response strip for AI
-chat and proofreading fixes, the user menu and sign-out flow, and the shared canonical buffer
-behind the raw and WYSIWYG views. Commands and the per-directory file map are here too. The visual
-design is in `../README_markdown_editor_ui.md` and the wire contract in
+This note also covers the parts a screenshot does not show: the chapter list's right-click actions,
+the document settings modal, the read-only reference shelf, the response strip for AI chat and
+proofreading fixes, the user menu and sign-out flow, the shared canonical buffer behind the raw and
+WYSIWYG views, the file-cache directory and conflict dialogs, and the connectivity toggle. Commands
+and the per-directory file map are here too. The visual design is in
+`../README_markdown_editor_ui.md` and the wire contract in
 `../src/dockb/controllers/README_API.md`.
 
 ## API client and session
@@ -43,7 +44,11 @@ registers `quit` to `app.quit()`. The preload exposes them as
 `window.dockb.openExternal` and `window.dockb.quit`. Login stays server-side
 (`README_auth.md` §6): the backend sets the HttpOnly session cookie.
 
-The preload also exposes `window.dockb.getPathForFile`, `webUtils.getPathForFile`
+The preload exposes the cache bridge (`chooseCacheDirectory`, `setCacheRoot`, `cacheRead`,
+`cacheWrite`, `cacheDelete`, `cacheRename`, `cacheMoveDirectory`, `cacheList`). Every call is
+sender-checked and confined beneath the chosen root, with real-path checks that reject symlink
+escapes; the browser build has none of these methods. The preload also exposes
+`window.dockb.getPathForFile`, `webUtils.getPathForFile`
 by way of it, which is how the renderer learns the absolute path of a file the
 user chose in a native dialog. Electron 32 removed `File.path`, so this is the
 supported way to get one. It is the renderer's only route to a filesystem path, it
@@ -70,6 +75,30 @@ steps. Three things worth knowing that the code cannot say for itself:
 `layout/overlay.ts` owns the modal shape every dialog shares and
 `layout/selectList.ts` the choose-then-confirm list the pickers use. A new dialog
 should build on `openOverlay` rather than assembling its own.
+
+### File cache
+
+Electron's **Settings → File Cache** modal explains that the cache is a local copy, not the record:
+
+> The 'file cache' is the directory where documents will be stored on your PC. This is a cache, not the actual storage.
+>
+> The documents are stored in a database and with versioning, on the remote server.
+
+Its one button, **Choose the file cache directory**, opens the native directory picker. The same
+modal opens on startup when no directory is set, with no Cancel; from the cog it may be cancelled.
+The chosen path is saved under `dockb.fileCacheDirectory` in localStorage and pushed to the main
+process as the confined cache root. Cached files mirror the store as
+`<document title>/<Act X | Act None | Characters>/<chapter title>.md`, with illegal filename
+characters deterministically replaced; `""` act means `Act None`, a bare `"II"` becomes `Act II`,
+and a `Character` chapter sits in `Characters/`.
+
+`state/fileCache.ts` owns the bridge and the two dirty levels. Loading a chapter rewrites its cache
+file; editing schedules a 5-second debounced cache write that never clears the backend-dirty state
+shown by the save icon. If the cached copy differs from the server, the editor asks: "The cached
+copy of this chapter differs from the server. Save the cached text to the backend first, or replace
+it with the server version?" **Save to backend** PUTs the cached text before rewriting the cache
+from the response; **Overwrite cache** drops the cache edits. Structural changes are mirrored after
+the backend accepts them, and no cache work happens in browser mode.
 
 ### Offline mode
 
@@ -270,8 +299,8 @@ DOM as HTML.
 - `spinner.ts` — `createSpinner()` builds the animated Lucide `loader-circle` icon
   (`spinning-loader` class) for any busy state; the response area's wait line uses it.
   Response buttons use the shared `.btn` classes from `styles.css`.
-- `state/` — app-state persistence, start-up restore, and the one unsaved-buffer prompt shared by
-  quit and sign-out.
+- `state/` — app-state persistence, start-up restore, the file cache, connectivity, and the one
+  unsaved-buffer prompt shared by quit and sign-out.
 
 ### Error reporting
 

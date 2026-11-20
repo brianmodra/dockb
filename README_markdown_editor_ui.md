@@ -5,22 +5,25 @@
 This document describes the writing window a DockB user sees: the menubar, chapter list, editor,
 message panel, right-hand reference shelf, and the dialogs behind each command. It explains why
 each click behaves as it does — opening or re-clicking a chapter, renaming or moving one, toggling
-between WYSIWYG and raw markdown, and setting a point of view. It also covers proofreading in both
-views: the backend checks the paragraph under the cursor, and the writer accepts a correction or
-adds a word to the document's glossary from the response strip. The Settings → Language… choice
-sets and saves the proofreading language for that account, so the next session starts with it.
+between WYSIWYG and raw markdown, setting a point of view, choosing a local file-cache directory,
+and switching between online and offline work. It also covers proofreading in both views: the
+backend checks the paragraph under the cursor, and the writer accepts a correction or adds a word
+to the document's glossary from the response strip. The Settings → Language… choice sets and saves
+the proofreading language for that account, so the next session starts with it.
 
-The window is a thin client: it sends text to the server and gets text back, never touching files.
-The chapter list keeps the open chapter selected through renames and moves, the identity line above
-the text shows a character's name parts or a chapter's title and point of view, and the message
-panel carries save results, errors, diagnostics, and AI chat. Read it to see what the writer sees;
-the file and database design is in `README_markdown_redesign.md`, and sign-in is in
-`README_auth.md`.
+The browser window is a thin client; the Electron window also keeps a confined local markdown cache
+so a writer can keep editing when the backend is unreachable. The backend remains the writer of
+record, and the save icon still means "unsaved on the backend". The chapter list keeps the open
+chapter selected through renames and moves, the identity line above the text shows a character's
+name parts or a chapter's title and point of view, and the message panel carries save results,
+errors, diagnostics, and AI chat. Read it to see what the writer sees; the file and database design
+is in `README_markdown_redesign.md`, and sign-in is in `README_auth.md`.
 
 ## 1. Context and constraints
 
-- **Thin client.** The editor talks only to the API. It never writes files or git; the backend is
-  the only writer of record (`README_markdown_redesign.md` §3).
+- **Thin client plus local cache.** The editor talks to the API; the backend is the writer of record
+  and the only writer of git (`README_markdown_redesign.md` §3). Electron may also keep a confined
+  local markdown cache chosen by the writer; the browser build does not.
 - **Platform.** Electron + TypeScript on PC (Linux/macOS/Windows) — the decided front-end platform
   (`README_markdown_redesign.md` §8). Mobile is out of scope; a future Flutter client would drive
   the same backend.
@@ -37,8 +40,9 @@ the file and database design is in `README_markdown_redesign.md`, and sign-in is
   - perspective choices → `GET /api/documents/narrative-perspectives`
   - delete document → `DELETE /api/documents/{id}`
   The document-level renames and deletes additionally move or remove the document's
-  owned store files (title-keyed directory and chapter markdown files) — backend-only
-  work, invisible to the thin client (`README_markdown_redesign.md`, store README).
+  owned store files (title-keyed directory and chapter markdown files). The Electron cache mirrors
+  those changes after the backend accepts them; the browser client has no cache to mirror
+  (`README_markdown_redesign.md`, store README).
 - **Editing state.** WYSIWYG and Raw MD are two views of the same canonical document; toggling Mode
   changes rendering, not the model behind the editor.
 
@@ -66,8 +70,9 @@ the file and database design is in `README_markdown_redesign.md`, and sign-in is
 Regions:
 
 1. **Top menu bar** (in-window, full width): File and a mode toggle on the left; on the
-   right, a save icon (shown only while the chapter has unsaved changes), the
-   Settings cog, and the signed-in username at the right edge.
+   right, a save icon (shown only while the chapter has unsaved changes), the Settings cog (which
+   holds **File Cache**), a blue globe/red unplug connectivity button in Electron immediately left
+   of the username, and the signed-in username at the right edge.
 2. **Left panel**: document and chapter selector, resizable.
 3. **Edit panel**: the bulk of the window; WYSIWYG or Raw MD source of the current chapter.
 4. **Message panel**: one line by default, growable upward into a scrollback console.
@@ -315,6 +320,18 @@ response-area function that opens a chapter scrolled to a paragraph, is in
   password** screen instead, and the manuscript routes answer 403
   `password_change_required` until they do (`README_auth.md` §7).
 
+- **File cache** (Settings → File Cache, Electron only) — explains that the cache is not the record:
+  "The 'file cache' is the directory where documents will be stored on your PC. This is a cache, not
+  the actual storage." and "The documents are stored in a database and with versioning, on the
+  remote server." Its one button is **Choose the file cache directory**; on startup with no
+  directory it has no Cancel, while the cog version may be cancelled.
+- **Cache conflict** — shown when a backend load finds a different cached copy: "The cached copy of
+  this chapter differs from the server. Save the cached text to the backend first, or replace it
+  with the server version?" with **Overwrite cache / Save to backend**.
+- **Go offline / Go back online** — a Yes/Cancel confirmation before either switch. Going offline
+  saves pending cache writes and downloads this document; going back online saves pending writes
+  and uploads this document. A failed backend fetch in Electron offers the same offline question.
+
 ### Unsaved-change detection (decided)
 
 "Local changes" for the sign-out prompt compares the editor text against the last **canonical** text the
@@ -329,7 +346,8 @@ On launch the editor asks `GET /api/auth/config`, which always reports `login_re
 so the **Sign in** gate is always shown; the username comes from `GET /api/auth/me`, which also
 reports `password_change_required`, and is shown in the menubar. Once signed in it restores the **last document**
 from app state. If there is one, it loads the chapter list (panel widths and mode live in the
-same state). If there is none, it shows the **select a document** modal. The state is stored
+same state). If there is none, it shows the **select a document** modal. In Electron, when no file
+cache directory has been chosen, the **File cache** modal appears first. The state is stored
 per-user on the backend: `GET/PUT /api/app/state` backed by the SQLite `app_state` table (see
 `README_auth.md`). Raw markdown mode is **not** part of that state: it starts off every session,
 and is only turned on from the user's settings when the writer asks for it.
@@ -339,7 +357,28 @@ the session, clears the chapter list, the editor buffer, the save icon and the u
 menubar, and the next pass begins again at the sign-in gate above. Cancelling that gate stops the
 editor instead — with no session left, every request that pass would make is a guaranteed 401.
 
-## 10. Resolved questions
+## 10. File cache and offline mode (decided)
+
+Electron's file cache mirrors the backend's markdown layout under a writer-chosen directory:
+`<document title>/<Act X | Act None | Characters>/<chapter title>.md`. Titles are sanitized into
+single path segments, a blank act is `Act None`, and character chapters live in `Characters/`. The
+directory is remembered in renderer localStorage and the main-process IPC confines every operation
+beneath it, rejecting escaping paths and symlinks.
+
+Opening a chapter refreshes its cache file; edits autosave to the cache after five seconds without
+clearing the backend-dirty save icon. A chapter with cache edits that differ from the server triggers
+the conflict modal above. After a backend structural change, chapter rename, renumber, move and
+delete move or remove the cached file (including between act directories), and document rename or
+delete moves or removes the cached directory.
+
+A blue globe marks online and a red unplug marks offline. Offline, loads and saves use the cache
+only, chapter saves stay dirty, chapter-structure actions and all other backend writes are disabled,
+and a missing cached chapter reports "Chapter is not available offline." Returning online flushes
+pending cache writes, uploads every backend-dirty chapter of the current document, reloads the
+active chapter, and only then flips the icon back online; a failed upload keeps the editor offline.
+The browser build has no file-cache or offline UI.
+
+## 11. Resolved questions
 
 The open questions in earlier revisions have been settled:
 
