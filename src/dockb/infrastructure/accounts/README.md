@@ -9,6 +9,12 @@ the document graph, so they live in a relational store rather than in Neo4j. The
 keyed by username and document id, so one writer's accepted words cannot leak into another
 writer's manuscript.
 
+It also covers password-reset tokens, 2FA challenges, hashed email codes, and encrypted TOTP secrets.
+Reset links and login challenges are stored only as hashes; TOTP secrets use a Fernet key derived
+from the secret with a separate domain label. Clearing 2FA removes every pending recovery/challenge
+row and stamps `credentials_changed_at`, so an admin disable or password reset cannot leave a live
+session or a reusable challenge behind.
+
 It covers the schema and its migrations, the store's accessors, token encryption, and the account
 lifecycle operations the command-line tools and server share. For why the store is SQLite, why
 accounts are never merged by email, and how the no-local-mode and soft-delete decisions bear on
@@ -20,7 +26,9 @@ it, see `README_auth.md` at the repository root.
 infrastructure/accounts/
 ├── README.md               # This file
 ├── __init__.py
-└── store.py                # AccountStore, TokenEncryptor, and the schema
+├── common.py               # usernames, timestamps, errors, TokenEncryptor
+├── store.py                # AccountStore and the schema
+└── two_factor.py           # recovery tokens, challenges, email OTP, TOTP secret accessors
 ```
 
 ## The store
@@ -44,7 +52,7 @@ same way before constructing one.
 
 ## Schema
 
-Four tables, declared in `_SCHEMA` and created on every connection, then brought up to
+Seven tables, declared in `_SCHEMA` and created on every connection, then brought up to
 `_SCHEMA_VERSION` by the migrations below.
 
 ### `users`
@@ -62,6 +70,8 @@ Four tables, declared in `_SCHEMA` and created on every connection, then brought
 | `last_login_at` | TEXT | Stamped by `record_login`. |
 | `credentials_changed_at` | TEXT | Stamped by every credential or lifecycle change. |
 | `deleted_at` | TEXT | Set by a soft delete. |
+| `two_factor_method` | TEXT | `totp` or `email` when 2FA is enrolled. |
+| `totp_secret` | BLOB | Encrypted TOTP secret; `NULL` for email 2FA or no 2FA. |
 | `created_at` | TEXT | `CURRENT_TIMESTAMP` default. |
 
 Identity is the `username`, not the `id`: sessions, cookies, and app state all carry it.
@@ -128,6 +138,10 @@ Version 4 added `app_state.proofreading_language`, the language the writer last 
 editor's settings. The migration checks `PRAGMA table_info` before the `ALTER`, because `_SCHEMA`
 runs first and already creates the column when the whole `app_state` table was missing.
 
+Version 5 added the 2FA columns to `users` and the `password_reset_tokens`, `login_challenges`
+and `email_otps` tables. It follows the same `PRAGMA table_info` check as version 4 so a fresh
+database does not try to add columns that `_SCHEMA` already declared.
+
 ### `app_state`
 
 | Column | Type | Notes |
@@ -158,6 +172,44 @@ document's rows and inserts the replacement set in one transaction. The service 
 and case-insensitive duplicates before calling the store. Deleting an account cascades its
 glossary rows away with its `users` row.
 
+### `password_reset_tokens`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `token_hash` | TEXT | Primary key; SHA-256 hex of the URL token, never the token itself. |
+| `username` | TEXT | FK to `users.username`, `ON DELETE CASCADE`. |
+| `expires_at` | TEXT | Fixed-width UTC expiry, 24 hours after issue. |
+| `created_at` | TEXT | Issue time. |
+
+A new reset token replaces any earlier one for the same user. `consume_password_reset` deletes
+the row whether it succeeds or not, so a link works at most once.
+
+### `login_challenges`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `token_hash` | TEXT | Primary key; SHA-256 hex of the challenge token. |
+| `username` | TEXT | FK to `users.username`, `ON DELETE CASCADE`. |
+| `method` | TEXT | `totp` or `email`. |
+| `expires_at` | TEXT | Fixed-width UTC expiry. |
+| `created_at` | TEXT | Issue time. |
+
+A password sign-in that needs a second factor issues one of these instead of a session. A new
+challenge replaces any earlier one for the user, and consuming a token deletes it.
+
+### `email_otps`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `username` | TEXT | Primary key and FK to `users.username`, `ON DELETE CASCADE`. |
+| `code_hash` | TEXT | SHA-256 hex of the six-digit code. |
+| `expires_at` | TEXT | Fixed-width UTC expiry, five minutes after issue. |
+| `attempts` | INTEGER | Wrong-code count, reset when a new code is issued. |
+| `created_at` | TEXT | Issue time. |
+
+`verify_email_otp` compares hashes in constant time, deletes a correct or expired code, and
+deletes the row after five wrong attempts.
+
 ## Account lifecycle
 
 The password-login work adds the store's half of a lifecycle that `README_auth.md` §7
@@ -173,6 +225,13 @@ specifies; the other half — hashing, verification, sessions — is in `AuthSer
   `UnknownUserError` when no row matched, so a mistyped username in the CLI is reported
   rather than silently doing nothing.
 - `list_users()` — every account without hashes or ids.
+- `set_two_factor` / `get_two_factor_state` — write and read the single enrolled method,
+  encrypting or decrypting a TOTP secret around the database row.
+- `issue_password_reset` / `consume_password_reset` — hashed, single-use reset tokens.
+- `issue_login_challenge` / `consume_login_challenge` — hashed, single-use 2FA challenges.
+- `issue_email_otp` / `verify_email_otp` — hashed email codes with an attempt limit.
+- `clear_two_factor` — removes 2FA and every pending recovery/challenge row and stamps
+  `credentials_changed_at`.
 
 `unblock_user` deliberately does not stamp `credentials_changed_at`: blocking already
 evicted the account's sessions, so there is nothing left to invalidate.
@@ -190,6 +249,10 @@ plaintext, and this store is a credential store and is treated as one.
 
 `get_provider_account` decrypts on the way out, so a plaintext token is only ever in
 memory at the point of use.
+
+The TOTP secret uses a second `TokenEncryptor` built from `dockb-two-factor-totp:<secret>`, so
+the same underlying `DOCKB_SECRET_KEY` yields a different Fernet key and an OAuth token row
+cannot be decrypted as a TOTP secret or the reverse.
 
 ## Moving off SQLite
 

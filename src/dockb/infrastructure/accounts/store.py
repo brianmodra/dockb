@@ -13,111 +13,52 @@ See ``README_auth.md``.
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import logging
 import sqlite3
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from cryptography.fernet import Fernet, InvalidToken
+from .common import (
+    AccountError,
+    EmailTakenError,
+    TokenEncryptor,
+    UnknownUserError,
+    UsernameTakenError,
+    normalize_username,
+)
+from .common import (
+    constraint_error as _constraint_error,
+)
+from .common import (
+    now_iso as _now,
+)
+from .common import (
+    reject_unknown_user as _reject_unknown_user,
+)
+from .two_factor import (
+    TWO_FACTOR_KEY_CONTEXT,
+    TWO_FACTOR_SCHEMA_SQL,
+    TwoFactorStoreMixin,
+    add_two_factor,
+)
+
+__all__ = [
+    "AccountError",
+    "AccountStore",
+    "EmailTakenError",
+    "TokenEncryptor",
+    "UnknownUserError",
+    "UsernameTakenError",
+]
 
 _DB_FILENAME = "dockb_app.db"
 
 logger = logging.getLogger(__name__)
 
 
-class AccountError(Exception):
-    """Base class for account-store failures the caller is expected to handle."""
-
-
-class UnknownUserError(AccountError):
-    """No account exists for the given username."""
-
-
-class UsernameTakenError(AccountError):
-    """The username is already in use by another account."""
-
-
-class EmailTakenError(AccountError):
-    """The email address is already in use by another account."""
-
-
-def normalize_username(username: str) -> str:
-    """Return *username* in the one form the store keys and compares it by.
-
-    Stored lowercased with surrounding whitespace stripped, because identity is the
-    username (``README_auth.md`` §3) and SQLite compares TEXT case-sensitively, so
-    ``Brian`` and ``brian`` would otherwise be two accounts. Normalizing here rather
-    than at the call sites means no accessor can bypass it.
-    """
-    return username.strip().lower()
-
-
-def _now() -> str:
-    """Return an ISO-8601 UTC timestamp of fixed width, in UTC.
-
-    Sub-second because ``credentials_changed_at`` is compared against a session's
-    creation time to invalidate sessions the CLI cannot reach, and ``CURRENT_TIMESTAMP``
-    resolves only to the second — a session created in the same second as a password
-    reset would compare equal and survive it.
-
-    ``timespec`` is explicit because ``isoformat()`` drops the microseconds when they
-    happen to be zero, which yields two different widths for the same field. The
-    comparison is a plain string comparison, so the widths have to match: they sort in
-    the right order today only by accident, because '+' sorts before '.'.
-    """
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
-
-
-def _constraint_error(exc: sqlite3.IntegrityError) -> AccountError:
-    """Translate a UNIQUE violation into the account error naming the column.
-
-    The CLI reports which of the two collided, so that a user can be told their address
-    is spoken for without inspecting a SQLite message.
-    """
-    message = str(exc)
-    if "users.username" in message:
-        return UsernameTakenError("that username is already in use")
-    if "users.email" in message:
-        return EmailTakenError("that email address is already in use")
-    return AccountError(message)
-
-
-class TokenEncryptor:
-    """Encrypts and decrypts refresh tokens at rest with a Fernet key."""
-
-    def __init__(self, secret: str) -> None:
-        digest = hashlib.sha256(secret.encode("utf-8")).digest()
-        key = base64.urlsafe_b64encode(digest)
-        self._fernet = Fernet(key)
-
-    def encrypt(self, token: str) -> bytes:
-        """Encrypt a plaintext token."""
-        return self._fernet.encrypt(token.encode("utf-8"))
-
-    def decrypt(self, ciphertext: bytes) -> str:
-        """Decrypt a token ciphertext, raising InvalidToken on failure."""
-        return self._fernet.decrypt(ciphertext).decode("utf-8")
-
-    def try_decrypt(self, ciphertext: bytes) -> str | None:
-        """Return the decrypted token, or None if the key does not match."""
-        try:
-            return self.decrypt(ciphertext)
-        except InvalidToken:
-            return None
-
-
-def _reject_unknown_user(rowcount: int, username: str) -> None:
-    """Report a mistyped username in the CLI rather than silently doing nothing."""
-    if rowcount == 0:
-        raise UnknownUserError(f"unknown user '{username}'")
-
-
-class AccountStore:  # pylint: disable=too-many-public-methods
+class AccountStore(TwoFactorStoreMixin):  # pylint: disable=too-many-public-methods
     """SQLite store for users, oauth accounts, and per-user app state.
 
     Identities are usernames. ``users`` keeps an internal numeric-style UUID
@@ -128,6 +69,7 @@ class AccountStore:  # pylint: disable=too-many-public-methods
     def __init__(self, base_dir: Path, secret: str) -> None:
         self._db_path = Path(base_dir) / _DB_FILENAME
         self._encryptor = TokenEncryptor(secret)
+        self._totp_encryptor = TokenEncryptor(f"{TWO_FACTOR_KEY_CONTEXT}:{secret}")
 
     # ------------------------------------------------------------------ wiring
 
@@ -675,7 +617,7 @@ class AccountStore:  # pylint: disable=too-many-public-methods
             connection.close()
 
 
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 # Created by name rather than as an inline UNIQUE on the column, so a fresh database and
 # a migrated one hold it under the same name. SQLite cannot add a constraint with ALTER
@@ -790,9 +732,10 @@ _MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     (2, _add_password_credentials),
     (3, _add_document_glossary),
     (4, _add_proofreading_language),
+    (5, add_two_factor),
 )
 
-_SCHEMA = """
+_BASE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id                      TEXT PRIMARY KEY,
     username                TEXT NOT NULL UNIQUE,
@@ -805,6 +748,8 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at           TEXT,
     credentials_changed_at  TEXT,
     deleted_at              TEXT,
+    two_factor_method       TEXT CHECK (two_factor_method IN ('totp', 'email')),
+    totp_secret             BLOB,
     created_at              TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -836,3 +781,5 @@ CREATE TABLE IF NOT EXISTS document_glossary (
     FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
 );
 """
+
+_SCHEMA = _BASE_SCHEMA + TWO_FACTOR_SCHEMA_SQL
