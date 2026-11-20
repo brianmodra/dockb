@@ -37,7 +37,7 @@ Second sentence.
 
 A `Character` chapter's front matter also carries who the character is —
 `first_name`, `surname`, `middle_names` (a list), `nicknames` (a list), `age`
-(an integer), and `location` — hand-maintained, and mirrored onto the graph
+(an integer), `location`, and `gender` (`male` or `female`) — hand-maintained, and mirrored onto the graph
 node. A manuscript chapter may carry `pov: <character title>`, naming the
 character chapter whose point of view it is written from; the graph stores that
 POV as the character chapter's **id** and the file keeps the **title**.

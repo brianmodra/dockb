@@ -1,13 +1,14 @@
 """Repository for persisting Sentence models to Neo4j."""
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from dockb.infrastructure.neo4j.base import BaseRepository
 from dockb.infrastructure.neo4j.serialized_session import SessionLike
 from dockb.models.base import DataState
 from dockb.models.formatting import Family, Style, Weight
-from dockb.models.sentence import Sentence
+from dockb.models.sentence import Sentence, flatten_dialogue_spans, sentence_from_record
 from dockb.models.token import POS, Token, Type
 from dockb.repositories.ownership import owned_node_exists
 
@@ -56,12 +57,19 @@ MERGE (tok)-[r:PART_OF]->(s)
 SET r.index = t.index
 """
 
+_INVALIDATE_DIALOGUE_CYPHER = """
+WITH s
+OPTIONAL MATCH (s)-[spoken:SPOKEN_BY]->(:Chapter)
+SET spoken.stale = true
+SET s.dialogue_checked_at = null
+"""
+
 _CHANGED_CYPHER = _NEW_CYPHER + """
 WITH s, COLLECT(t.id) AS keep_ids
 OPTIONAL MATCH (s)<-[r:PART_OF]-(orphan:Token)
 WHERE NOT orphan.id IN keep_ids
 DETACH DELETE orphan
-"""
+""" + _INVALIDATE_DIALOGUE_CYPHER
 
 _DELETE_CYPHER = """
 MATCH (s:Sentence {id: $sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: $owner})
@@ -117,7 +125,7 @@ WITH s, COLLECT(t.id) AS keep_ids
 OPTIONAL MATCH (s)<-[r:PART_OF]-(orphan:Token)
 WHERE NOT orphan.id IN keep_ids
 DETACH DELETE orphan
-"""
+""" + _INVALIDATE_DIALOGUE_CYPHER
 
 _DELETE_ROWS_CYPHER = """
 UNWIND $rows AS row
@@ -141,6 +149,11 @@ MATCH (s:Sentence {id: $sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Cha
 OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   s.id AS sentence_id,
+  s.is_dialogue AS sentence_is_dialogue,
+  s.dialogue_start_token AS sentence_dialogue_start_token,
+  s.dialogue_end_token AS sentence_dialogue_end_token,
+  s.dialogue_checked_at AS sentence_dialogue_checked_at,
+  s.dialogue_spans AS sentence_dialogue_spans,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
   t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
@@ -150,6 +163,36 @@ RETURN
   t.style AS token_style, t.weight AS token_weight,
   t.family AS token_family, t.size AS token_size
 ORDER BY token_index
+"""
+
+_STAMP_DIALOGUE_CYPHER = """
+UNWIND $rows AS row
+MATCH (s:Sentence {id: row.sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: row.owner})
+SET s.is_dialogue = row.is_dialogue,
+    s.dialogue_start_token = row.start_token,
+    s.dialogue_end_token = row.end_token,
+    s.dialogue_checked_at = row.checked_at,
+    s.dialogue_spans = row.spans
+WITH s, row
+UNWIND row.tokens AS token
+MATCH (t:Token {id: token.id})-[rt:PART_OF]->(s)
+SET t.text = token.text, t.trailing_ws = token.trailing_ws
+"""
+
+_STAMP_SPOKEN_BY_CYPHER = """
+UNWIND $rows AS row
+MATCH (s:Sentence {id: row.sentence_id})-[:PART_OF]->(:Paragraph)-[:PART_OF]->(:Chapter)-[:PART_OF]->(:Document {owner: row.owner})
+OPTIONAL MATCH (s)-[old:SPOKEN_BY]->(:Chapter)
+SET old.stale = true
+WITH s, row
+MERGE (c:Chapter {id: row.character_id})
+ON CREATE SET c.category = 'Character', c.title = 'unresolved'
+WITH s, c, row
+MERGE (s)-[spoken:SPOKEN_BY]->(c)
+SET spoken.method = row.method,
+    spoken.confidence = row.confidence,
+    spoken.stale = row.stale,
+    spoken.reference = row.reference
 """
 
 
@@ -248,7 +291,7 @@ class SentenceRepository(BaseRepository[Sentence]):
         if first.get("sentence_id") is None:
             return None
 
-        sentence = Sentence(id=first["sentence_id"], state=DataState.SYNC)
+        sentence = sentence_from_record(first)
 
         for rec in records:
             t_id = rec.get("token_id")
@@ -276,3 +319,25 @@ class SentenceRepository(BaseRepository[Sentence]):
 
         logger.debug("Loaded Sentence: %d tokens", len(sentence.tokens))
         return sentence
+
+    def stamp_dialogue(
+        self,
+        stamps: Sequence[dict[str, Any]],
+        *,
+        owner: str,
+        session: SessionLike | None = None,
+    ) -> None:
+        """Stamp dialogue verdicts, token ranges, and quote fixes onto sentences."""
+        rows = [{**stamp, "owner": owner, "spans": flatten_dialogue_spans(stamp.get("spans", []))} for stamp in stamps]
+        self._run_batched(_STAMP_DIALOGUE_CYPHER, rows, session=session)
+
+    def stamp_spoken_by(
+        self,
+        rows: Sequence[dict[str, Any]],
+        *,
+        owner: str,
+        session: SessionLike | None = None,
+    ) -> None:
+        """Write SPOKEN_BY edges for dialogue sentences."""
+        owned_rows = [{**row, "owner": owner} for row in rows]
+        self._run_batched(_STAMP_SPOKEN_BY_CYPHER, owned_rows, session=session)

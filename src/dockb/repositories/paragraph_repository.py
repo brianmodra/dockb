@@ -8,7 +8,7 @@ from dockb.infrastructure.neo4j.serialized_session import SessionLike
 from dockb.models.base import DataState
 from dockb.models.formatting import Family, Style, Weight
 from dockb.models.paragraph import Paragraph
-from dockb.models.sentence import Sentence
+from dockb.models.sentence import Sentence, sentence_from_record
 from dockb.models.token import POS, Token, Type
 from dockb.repositories.ownership import owned_node_exists
 
@@ -91,6 +91,11 @@ RETURN
   p.id AS paragraph_id,
   p.layout_kind AS paragraph_layout_kind, p.layout_variant AS paragraph_layout_variant,
   s.id AS sentence_id, rs.index AS sentence_index,
+  s.is_dialogue AS sentence_is_dialogue,
+  s.dialogue_start_token AS sentence_dialogue_start_token,
+  s.dialogue_end_token AS sentence_dialogue_end_token,
+  s.dialogue_checked_at AS sentence_dialogue_checked_at,
+  s.dialogue_spans AS sentence_dialogue_spans,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
   t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
@@ -194,7 +199,7 @@ class ParagraphRepository(BaseRepository[Paragraph]):
             s_id = rec.get("sentence_id")
             if s_id is not None and s_id not in seen_sentences:
                 seen_sentences.add(s_id)
-                current_sentence = Sentence(id=s_id, state=DataState.SYNC)
+                current_sentence = sentence_from_record(rec)
                 paragraph.sentences.append(current_sentence)
 
             t_id = rec.get("token_id")

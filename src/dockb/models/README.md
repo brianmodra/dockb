@@ -4,7 +4,7 @@
 
 This note is the map of DockB's text model. A document holds chapters, a chapter holds paragraphs, a paragraph holds sentences, and a sentence holds tokens. Read it to see how a manuscript is split into pieces the rest of the system can store and edit.
 
-A token is a word, punctuation, or whitespace carrying its own inline formatting. A paragraph also carries a structured layout (normal or quoted, reading or writing) and temporary formatting runs that are folded onto tokens when the text is tokenized. The classes themselves live in this directory; this file only names the hierarchy.
+A token is a word, punctuation, or whitespace carrying its own inline formatting. A paragraph also carries a structured layout (normal or quoted, reading or writing) and temporary formatting runs that are folded onto tokens when the text is tokenized. A sentence records which of its token ranges are dialogue, when that judgement was made, and all such ranges; normalized quote marks are written to tokens in the graph only, never to canonical markdown. The classes themselves live in this directory; this file only names the hierarchy.
 
 The system of models is a hierarchy of classes as follows:
 
@@ -25,6 +25,13 @@ Sentence has a list of Token objects.
 
 `format_runs` is transient: it carries formatting for a sentence that has not
 yet been tokenized, then is cleared once the runs are applied.
+
+A sentence also carries `is_dialogue`, `dialogue_checked_at`, and the token
+ranges of its dialogue: `dialogue_start_token`/`dialogue_end_token` mark the
+first range, and `dialogue_spans` holds every inclusive range. The graph stores
+the spans as a flat list of integers. Quote marks are paired across a chapter's
+paragraphs and normalized to `“`/`”` on the Token nodes; canonical markdown is
+never rewritten.
 # Token
 A token is either a word or punctuation,
 or white space, and white space can be any

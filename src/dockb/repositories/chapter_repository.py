@@ -8,7 +8,7 @@ from dockb.models.base import DataState
 from dockb.models.chapter import Chapter
 from dockb.models.formatting import Family, Style, Weight
 from dockb.models.paragraph import Paragraph
-from dockb.models.sentence import Sentence
+from dockb.models.sentence import Sentence, sentence_from_record
 from dockb.models.token import POS, Token, Type
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 SET c.first_name = $first_name, c.surname = $surname, c.middle_names = $middle_names,
-    c.nicknames = $nicknames, c.age = $age, c.location = $location, c.pov = $pov
+    c.nicknames = $nicknames, c.age = $age, c.location = $location, c.gender = $gender, c.pov = $pov
 MERGE (c)-[rc:PART_OF]->(d)
 SET rc.index = $index
 WITH d, c
@@ -46,7 +46,7 @@ MATCH (d:Document {{id: $document_id, owner: $owner}})
 MERGE (c:Chapter {{id: $chapter_id}})
 SET c.title = $title, c.act = $act, c.category = $category, c.title_key = toLower($title), c.document_id = $document_id
 SET c.first_name = $first_name, c.surname = $surname, c.middle_names = $middle_names,
-    c.nicknames = $nicknames, c.age = $age, c.location = $location, c.pov = $pov
+    c.nicknames = $nicknames, c.age = $age, c.location = $location, c.gender = $gender, c.pov = $pov
 MERGE (c)-[:PART_OF]->(d)
 {_PARAGRAPH_UNWIND_CYPHER}
 WITH c, COLLECT(p.id) AS keep_ids
@@ -143,7 +143,8 @@ MATCH (c:Chapter {category: 'Character'})-[r:PART_OF]->(d:Document {id: $documen
 RETURN c.id AS id, c.title AS title,
        c.first_name AS first_name, c.surname AS surname,
        coalesce(c.middle_names, []) AS middle_names,
-       coalesce(c.nicknames, []) AS nicknames
+       coalesce(c.nicknames, []) AS nicknames,
+       c.gender AS gender
 ORDER BY r.index
 """
 
@@ -183,10 +184,16 @@ OPTIONAL MATCH (t:Token)-[rt:PART_OF]->(s)
 RETURN
   c.id AS chapter_id, c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
   c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
-  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location, c.pov AS chapter_pov,
+  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location,
+  c.gender AS chapter_gender, c.pov AS chapter_pov,
   p.id AS paragraph_id, rp.index AS paragraph_index,
   p.layout_kind AS paragraph_layout_kind, p.layout_variant AS paragraph_layout_variant,
   s.id AS sentence_id, rs.index AS sentence_index,
+  s.is_dialogue AS sentence_is_dialogue,
+  s.dialogue_start_token AS sentence_dialogue_start_token,
+  s.dialogue_end_token AS sentence_dialogue_end_token,
+  s.dialogue_checked_at AS sentence_dialogue_checked_at,
+  s.dialogue_spans AS sentence_dialogue_spans,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
   t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
@@ -238,6 +245,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             "nicknames": list(model.nicknames),
             "age": model.age,
             "location": model.location,
+            "gender": model.gender,
             "pov": model.pov,
             "paragraphs": [{"id": p.id, "index": i} for i, p in enumerate(model.paragraphs)],
         }
@@ -337,6 +345,7 @@ class ChapterRepository(BaseRepository[Chapter]):
                     surname=str(record.get("surname") or ""),
                     middle_names=list(record.get("middle_names") or []),
                     nicknames=list(record.get("nicknames") or []),
+                    gender=record.get("gender"),
                     state=DataState.SYNC,
                 )
             )
@@ -462,6 +471,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             nicknames=list(first.get("chapter_nicknames") or []),
             age=first.get("chapter_age"),
             location=first.get("chapter_location") or "",
+            gender=first.get("chapter_gender"),
             pov=first.get("chapter_pov") or "",
             state=DataState.SYNC,
         )
@@ -486,7 +496,7 @@ class ChapterRepository(BaseRepository[Chapter]):
             s_id = rec.get("sentence_id")
             if s_id is not None and s_id not in seen_sentences:
                 seen_sentences.add(s_id)
-                current_sentence = Sentence(id=s_id, state=DataState.SYNC)
+                current_sentence = sentence_from_record(rec)
                 if current_paragraph is not None:
                     current_paragraph.sentences.append(current_sentence)
 

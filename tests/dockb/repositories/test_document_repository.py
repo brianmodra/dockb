@@ -329,6 +329,7 @@ class TestDocumentOwnership:
                 "chapter_nicknames": ["Adams"],
                 "chapter_age": 34,
                 "chapter_location": "York",
+                "chapter_gender": "male",
                 "chapter_pov": "k-other",
                 "paragraph_id": None,
                 "paragraph_index": None,
@@ -361,7 +362,38 @@ class TestDocumentOwnership:
         assert chapter.nicknames == ["Adams"]
         assert chapter.age == 34
         assert chapter.location == "York"
+        assert chapter.gender == "male"
         assert chapter.pov == "k-other"
+
+    def test_load_carries_sentence_dialogue_attrs(self, document_repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "document_id": "d-1",
+                "document_title": "Faith",
+                "document_author": "Paul",
+                "chapter_id": "ch-1",
+                "chapter_index": 0,
+                "paragraph_id": "p-1",
+                "paragraph_index": 0,
+                "sentence_id": "s-1",
+                "sentence_index": 0,
+                "sentence_is_dialogue": True,
+                "sentence_dialogue_start_token": 1,
+                "sentence_dialogue_end_token": 3,
+                "sentence_dialogue_checked_at": "2026-01-02T03:04:05+00:00",
+                "sentence_dialogue_spans": [1, 3],
+            }
+        ]
+
+        doc = document_repo.load("d-1", "acct-1")
+
+        assert doc is not None
+        sentence = doc.chapters[0].paragraphs[0].sentences[0]
+        assert sentence.is_dialogue is True
+        assert sentence.dialogue_start_token == 1
+        assert sentence.dialogue_end_token == 3
+        assert sentence.dialogue_checked_at == "2026-01-02T03:04:05+00:00"
+        assert sentence.dialogue_spans == [(1, 3)]
 
     def test_load_carries_the_narrative_perspective(self, document_repo, neo4j_session):
         neo4j_session.run.return_value = [

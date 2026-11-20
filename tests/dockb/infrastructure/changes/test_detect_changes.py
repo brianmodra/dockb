@@ -75,7 +75,7 @@ def test_character_front_matter_parses_onto_the_diff():
     front = (
         "---\ntitle: Karakas\ncategory: Character\n"
         "first_name: Kiral\nsurname: Karakas\nmiddle_names: [Edgar, John]\n"
-        "nicknames: [Adams, Jer, Jer-bear]\nage: 34\nlocation: York\n---\n\n"
+        "nicknames: [Adams, Jer, Jer-bear]\nage: 34\nlocation: York\ngender: male\n---\n\n"
     )
     body = _span("par-1", "Name: Kiral Karakas.")
 
@@ -87,6 +87,17 @@ def test_character_front_matter_parses_onto_the_diff():
     assert diff.nicknames == ["Adams", "Jer", "Jer-bear"]
     assert diff.age == 34
     assert diff.location == "York"
+    assert diff.gender == "male"
+
+
+def test_gender_front_matter_accepts_female_and_rejects_other_values():
+    front = "---\ntitle: Karakas\ncategory: Character\ngender: female\n---\n\n"
+    diff = detect_changes(front + _span("par-1", "Body."), _no_get, lambda *_: Chapter(id="c-1"))
+    assert diff.gender == "female"
+
+    invalid = "---\ntitle: Karakas\ncategory: Character\ngender: other\n---\n\n"
+    with pytest.raises(ValueError, match="gender"):
+        detect_changes(invalid + _span("par-1", "Body."), _no_get, lambda *_: Chapter(id="c-1"))
 
 
 def test_pov_front_matter_parses_onto_the_diff():
@@ -113,6 +124,7 @@ def test_absent_character_front_matter_leaves_defaults():
     assert not diff.nicknames
     assert diff.age is None
     assert diff.location == ""
+    assert diff.gender is None
 
 
 def test_layout_change_with_identical_text_marks_changed():

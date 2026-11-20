@@ -231,6 +231,7 @@ def wire(  # pylint: disable=too-many-locals
     # writes never contend with the live request path on the shared session above.
     mentions_session = SerializedSession(_stack.enter_context(session_factory.session()))
     mentions_chapter_repo = ChapterRepository(mentions_session)
+    mentions_sentence_repo = SentenceRepository(mentions_session)
 
     uow_factory = UnitOfWorkFactory(
         repos=repos,
@@ -250,6 +251,7 @@ def wire(  # pylint: disable=too-many-locals
         nlp=nlp,
         mentions_repo=MentionsRepository(mentions_session),
         mentions_chapter_repo=mentions_chapter_repo,
+        mentions_sentence_repo=mentions_sentence_repo,
         document_locks=document_locks,
     )
     doc_svc = DocumentService(

@@ -6,10 +6,10 @@ import html
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, get_args
 
 from dockb.infrastructure.markdown import front_matter, layout, spans
-from dockb.models.chapter import Chapter
+from dockb.models.chapter import Chapter, Gender
 from dockb.models.formatting import FormatRun, LayoutKind, LayoutVariant
 from dockb.models.paragraph import Paragraph
 
@@ -63,6 +63,7 @@ class ChapterDiff:  # pylint: disable=too-many-instance-attributes
     nicknames: list[str] = field(default_factory=list)
     age: int | None = None
     location: str = ""
+    gender: Gender | None = None
     # The front matter's `pov` — a character chapter's title. None when the key
     # is absent (which a later save reads as "no POV"); "" when present but empty.
     pov: str | None = None
@@ -338,6 +339,13 @@ def _character_props(attrs: dict[str, Any]) -> dict[str, Any]:
         pov_field = "" if front_pov is None else str(front_pov)
     else:
         pov_field = None
+    front_gender = attrs.get("gender")
+    if front_gender in (None, ""):
+        gender = None
+    elif front_gender not in get_args(Gender):
+        raise ValueError(f"gender must be one of {', '.join(get_args(Gender))}")
+    else:
+        gender = front_gender
     return {
         "first_name": str(attrs.get("first_name") or ""),
         "surname": str(attrs.get("surname") or ""),
@@ -345,5 +353,6 @@ def _character_props(attrs: dict[str, Any]) -> dict[str, Any]:
         "nicknames": [str(name) for name in (attrs.get("nicknames") or [])],
         "age": int(attrs["age"]) if attrs.get("age") is not None else None,
         "location": str(attrs.get("location") or ""),
+        "gender": gender,
         "pov": pov_field,
     }

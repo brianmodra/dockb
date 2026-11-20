@@ -7,7 +7,7 @@ import spacy
 
 from dockb.models.base import DataState
 from dockb.models.formatting import FormatRun, Style
-from dockb.models.sentence import Sentence
+from dockb.models.sentence import Sentence, flatten_dialogue_spans, parse_dialogue_spans
 from dockb.models.token import POS, Token, Type
 from dockb.models.utils.dockb_collection import InsertionMode
 from dockb.services.semantics.doc_cache import DocCache
@@ -245,3 +245,26 @@ def test_format_runs_are_transient_and_not_dumped():
 
 def test_format_runs_default_to_empty():
     assert not Sentence().format_runs
+
+
+def test_dialogue_fields_have_safe_defaults():
+    sentence = Sentence()
+    assert not sentence.is_dialogue
+    assert sentence.dialogue_start_token == -1
+    assert sentence.dialogue_end_token == -1
+    assert sentence.dialogue_checked_at == ""
+    assert sentence.dialogue_spans == []
+
+
+def test_flatten_dialogue_spans():
+    assert flatten_dialogue_spans([(1, 4), (7, 9)]) == [1, 4, 7, 9]
+    assert flatten_dialogue_spans([]) == []
+
+
+def test_parse_dialogue_spans():
+    assert parse_dialogue_spans([1, 4, 7, 9]) == [(1, 4), (7, 9)]
+    assert parse_dialogue_spans([]) == []
+
+
+def test_parse_dialogue_spans_ignores_incomplete_tail():
+    assert parse_dialogue_spans([1, 4, 7]) == [(1, 4)]

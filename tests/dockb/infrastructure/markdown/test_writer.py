@@ -70,6 +70,7 @@ class TestSerializeBody:
         chapter.nicknames = ["Adams", "Jer"]
         chapter.age = 34
         chapter.location = "York"
+        chapter.gender = "male"
 
         rendered = writer.render_chapter_markdown(chapter, nlp)
 
@@ -79,6 +80,7 @@ class TestSerializeBody:
         assert "nicknames:" in rendered and "Adams" in rendered
         assert "age: 34" in rendered
         assert "location: York" in rendered
+        assert "gender: male" in rendered
 
     def test_manuscript_chapters_write_no_character_front_matter(self, nlp):
         chapter = _chapter(_make_paragraph("Body.", p_id="p1"))
@@ -87,6 +89,7 @@ class TestSerializeBody:
 
         assert "first_name" not in rendered
         assert "nicknames" not in rendered
+        assert "gender" not in rendered
 
     def test_spans_carry_paragraph_ids_and_no_sentence_id(self, nlp):
         chapter = _chapter(_make_paragraph("Alpha.", "Beta.", p_id="para-7"), _make_paragraph("Gamma.", p_id="para-8"))

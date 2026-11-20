@@ -1,6 +1,7 @@
 """Tests for Chapter model."""
 
 import pytest
+from pydantic import ValidationError
 
 from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
@@ -21,6 +22,14 @@ def test_act_defaults_to_empty():
 
 def test_act_can_be_set():
     assert Chapter(act="Act I").act == "Act I"
+
+
+def test_gender_defaults_to_none_and_accepts_only_male_or_female():
+    assert Chapter().gender is None
+    assert Chapter(gender="male").gender == "male"
+    assert Chapter(gender="female").gender == "female"
+    with pytest.raises(ValidationError, match="gender"):
+        Chapter(gender="other")
 
 
 def test_get_text_aggregates_children_when_not_dirty():

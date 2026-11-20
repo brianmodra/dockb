@@ -2,13 +2,41 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from typing import Any
+
 from pydantic import Field, PrivateAttr
 
 from dockb.models.formatting import FormatRun
 from dockb.models.token import Token
 from dockb.models.utils.dockb_collection import DockbCollection, DockbModelBase, InsertionMode
 
-from .base import DockbModel
+from .base import DataState, DockbModel
+
+
+def sentence_from_record(record: Mapping[str, Any]) -> Sentence:
+    """Build a Sentence from a graph record carrying dialogue properties."""
+    start = record.get("sentence_dialogue_start_token")
+    end = record.get("sentence_dialogue_end_token")
+    return Sentence(
+        id=record["sentence_id"],
+        state=DataState.SYNC,
+        is_dialogue=bool(record.get("sentence_is_dialogue", False)),
+        dialogue_start_token=-1 if start is None else start,
+        dialogue_end_token=-1 if end is None else end,
+        dialogue_checked_at=record.get("sentence_dialogue_checked_at") or "",
+        dialogue_spans=parse_dialogue_spans(record.get("sentence_dialogue_spans") or []),
+    )
+
+
+def flatten_dialogue_spans(spans: Sequence[tuple[int, int]]) -> list[int]:
+    """Flatten inclusive token ranges into the Neo4j property list."""
+    return [value for start, end in spans for value in (start, end)]
+
+
+def parse_dialogue_spans(values: Sequence[int]) -> list[tuple[int, int]]:
+    """Parse a Neo4j property list back into inclusive token ranges."""
+    return [(values[index], values[index + 1]) for index in range(0, len(values) - 1, 2)]
 
 
 class Sentence(DockbModel):
@@ -19,6 +47,11 @@ class Sentence(DockbModel):
     """
 
     tokens: DockbCollection[Token] = Field(default_factory=DockbCollection)
+    is_dialogue: bool = False
+    dialogue_start_token: int = -1
+    dialogue_end_token: int = -1
+    dialogue_checked_at: str = ""
+    dialogue_spans: list[tuple[int, int]] = Field(default_factory=list)
     _format_runs: list[FormatRun] = PrivateAttr(default_factory=list)
 
     @property

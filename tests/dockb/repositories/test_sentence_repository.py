@@ -356,6 +356,39 @@ class TestLoadSentence:
         assert s.tokens[0].family is Family.MONOSPACE
         assert s.tokens[0].size == "2em"
 
+    def test_loads_dialogue_attrs(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [
+            {
+                "sentence_id": "s-1",
+                "sentence_is_dialogue": True,
+                "sentence_dialogue_start_token": 2,
+                "sentence_dialogue_end_token": 6,
+                "sentence_dialogue_checked_at": "2026-01-02T03:04:05+00:00",
+                "sentence_dialogue_spans": [2, 6, 9, 12],
+            }
+        ]
+
+        s = repo.load("s-1", _OWNER)
+
+        assert s is not None
+        assert s.is_dialogue is True
+        assert s.dialogue_start_token == 2
+        assert s.dialogue_end_token == 6
+        assert s.dialogue_checked_at == "2026-01-02T03:04:05+00:00"
+        assert s.dialogue_spans == [(2, 6), (9, 12)]
+
+    def test_load_defaults_missing_dialogue_attrs(self, repo, neo4j_session):
+        neo4j_session.run.return_value = [{"sentence_id": "s-1"}]
+
+        s = repo.load("s-1", _OWNER)
+
+        assert s is not None
+        assert not s.is_dialogue
+        assert s.dialogue_start_token == -1
+        assert s.dialogue_end_token == -1
+        assert s.dialogue_checked_at == ""
+        assert s.dialogue_spans == []
+
     def test_sets_state_to_sync(self, repo, neo4j_session):
         neo4j_session.run.return_value = [{"sentence_id": "s-1"}]
         s = repo.load("s-1", _OWNER)
@@ -419,6 +452,16 @@ class TestOwnershipScoping:
         )
         assert params["owner"] == _OWNER
 
+    def test_changed_sentence_invalidates_dialogue_state(self, repo, neo4j_session, sentence):
+        sentence.state = DataState.CHANGED
+        sentence.tokens.append(make_token("Hello"))
+
+        repo.save(sentence, paragraph_id="p1", owner=_OWNER)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "spoken.stale = true" in cypher
+        assert "s.dialogue_checked_at = null" in cypher
+
     def test_load_joins_to_the_owning_document(self, repo, neo4j_session):
         neo4j_session.run.return_value = []
 
@@ -462,3 +505,95 @@ class TestOwnsParagraph:
         neo4j_session.run.return_value = [{"owned": 0}]
 
         assert repo.owns_paragraph("p-1", _OWNER) is False
+
+
+class TestStampDialogue:
+    """Behaviour of SentenceRepository.stamp_dialogue()."""
+
+    def test_writes_sentence_attrs_and_token_fixes(self, repo, neo4j_session):
+        stamps = [
+            {
+                "sentence_id": "s-1",
+                "is_dialogue": True,
+                "start_token": 2,
+                "end_token": 6,
+                "checked_at": "2026-01-02T03:04:05+00:00",
+                "spans": [(2, 6), (9, 12)],
+                "tokens": [{"id": "t-1", "text": "“", "trailing_ws": " "}],
+            }
+        ]
+
+        repo.stamp_dialogue(stamps, owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "UNWIND $rows AS row" in cypher
+        assert "s.is_dialogue = row.is_dialogue" in cypher
+        assert "s.dialogue_spans = row.spans" in cypher
+        assert "t.text = token.text" in cypher
+        assert "t.trailing_ws = token.trailing_ws" in cypher
+        assert params["rows"][0]["owner"] == _OWNER
+        assert params["rows"][0]["sentence_id"] == "s-1"
+        assert params["rows"][0]["spans"] == [2, 6, 9, 12]
+
+    def test_scopes_writes_to_the_owning_document(self, repo, neo4j_session):
+        repo.stamp_dialogue([{"sentence_id": "s-1", "tokens": []}], owner=_OWNER)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "(:Document {owner: row.owner})" in cypher
+
+
+class TestStampSpokenBy:
+    """Behaviour of SentenceRepository.stamp_spoken_by()."""
+
+    def test_replaces_edges_with_the_verdict_properties(self, repo, neo4j_session):
+        rows = [
+            {
+                "sentence_id": "s-1",
+                "character_id": "c-1",
+                "method": "name",
+                "confidence": 1.0,
+                "reference": "Mary",
+                "stale": False,
+            }
+        ]
+
+        repo.stamp_spoken_by(rows, owner=_OWNER)
+
+        cypher, params = extract_call(neo4j_session)
+        assert "UNWIND $rows AS row" in cypher
+        assert "MATCH (s:Sentence {id: row.sentence_id})" in cypher
+        assert "OPTIONAL MATCH (s)-[old:SPOKEN_BY]->(:Chapter)" in cypher
+        assert "SET old.stale = true" in cypher
+        assert "DELETE old" not in cypher
+        assert "MERGE (c:Chapter {id: row.character_id})" in cypher
+        assert "MERGE (s)-[spoken:SPOKEN_BY]->(c)" in cypher
+        assert "spoken.method = row.method" in cypher
+        assert "spoken.confidence = row.confidence" in cypher
+        assert "spoken.stale = row.stale" in cypher
+        assert "spoken.reference = row.reference" in cypher
+        assert "(:Document {owner: row.owner})" in cypher
+        assert params["rows"][0] == {**rows[0], "owner": _OWNER}
+
+    def test_creates_the_unresolved_sentinel_when_needed(self, repo, neo4j_session):
+        rows = [
+            {
+                "sentence_id": "s-1",
+                "character_id": "unresolved",
+                "method": "unresolved",
+                "confidence": 0.0,
+                "reference": "he",
+                "stale": False,
+            }
+        ]
+
+        repo.stamp_spoken_by(rows, owner=_OWNER)
+
+        cypher, _ = extract_call(neo4j_session)
+        assert "MERGE (c:Chapter {id: row.character_id})" in cypher
+        assert "ON CREATE SET c.category = 'Character'" in cypher
+        assert "c.title = 'unresolved'" in cypher
+
+    def test_skips_when_no_rows(self, repo, neo4j_session):
+        repo.stamp_spoken_by([], owner=_OWNER)
+
+        neo4j_session.run.assert_not_called()

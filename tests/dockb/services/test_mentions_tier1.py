@@ -184,6 +184,66 @@ def test_a_job_evaluates_its_scoped_chapter() -> None:
     assert mentions_repo.paragraph_states.call_count >= 1
 
 
+def test_a_job_runs_the_dialogue_pass_with_the_sentence_repository(monkeypatch) -> None:
+    from dockb.services import mentions as mentions_module
+
+    seen: dict[str, object] = {}
+
+    def record(chapter_id, **kwargs):
+        seen["chapter_id"] = chapter_id
+        seen.update(kwargs)
+
+    monkeypatch.setattr(mentions_module, "evaluate_chapter_dialogue", record)
+    mentions_repo = MagicMock()
+    mentions_repo.paragraph_states.return_value = []
+    chapter_repo = MagicMock()
+    chapter_repo.find_document_id.return_value = None
+    sentence_repo = object()
+
+    job = mentions_module.MentionsJob(
+        chapter_id="c1",
+        mentions_repo=mentions_repo,
+        chapter_repo=chapter_repo,
+        sentence_repo=sentence_repo,
+        owner="acct-1",
+    )
+    job.run()
+
+    assert seen["chapter_id"] == "c1"
+    assert seen["sentence_repo"] is sentence_repo
+    assert seen["owner"] == "acct-1"
+
+
+def test_a_document_job_passes_the_sentence_repository_to_each_chapter(monkeypatch) -> None:
+    from dockb.services import mentions as mentions_module
+
+    seen: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        mentions_module,
+        "_evaluate_chapter",
+        lambda chapter_id, **kwargs: seen.append((chapter_id, kwargs)),
+    )
+    chapter_repo = MagicMock()
+    chapter_repo.list_by_document.return_value = [
+        {"id": "c1", "category": "Chapter"},
+        {"id": "c2", "category": "Chapter"},
+        {"id": "k1", "category": "Character"},
+    ]
+    sentence_repo = object()
+
+    job = mentions_module.DocumentMentionsJob(
+        document_id="d1",
+        mentions_repo=MagicMock(),
+        chapter_repo=chapter_repo,
+        sentence_repo=sentence_repo,
+        owner="acct-1",
+    )
+    job.run()
+
+    assert [chapter_id for chapter_id, _ in seen] == ["c1", "c2"]
+    assert all(kwargs["sentence_repo"] is sentence_repo for _, kwargs in seen)
+
+
 def test_the_job_logs_the_mentions_found_for_the_finished_chapter(caplog) -> None:
     from dockb.services import mentions as mentions_module
 

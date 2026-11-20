@@ -143,7 +143,7 @@ class TestNewChapter:
         file.write_text(
             "---\ntitle: Karakas\ncategory: Character\n"
             "first_name: Kiral\nsurname: Karakas\nmiddle_names: [Edgar]\n"
-            "nicknames: [Adams, Jer]\nage: 34\nlocation: York\n---\n\n"
+            "nicknames: [Adams, Jer]\nage: 34\nlocation: York\ngender: female\n---\n\n"
             '<span data-par-id="par-1">\nName: Kiral Karakas.\n</span>'
         )
         document = _make_document("d1")
@@ -160,6 +160,7 @@ class TestNewChapter:
         assert chapter.nicknames == ["Adams", "Jer"]
         assert chapter.age == 34
         assert chapter.location == "York"
+        assert chapter.gender == "female"
 
     def test_act_override_sets_act_on_created_chapter(self, nlp, tmp_path):
         file = tmp_path / "Chapter 1.md"
@@ -522,7 +523,7 @@ class TestExistingChapter:
         file = tmp_path / "Karakas.md"
         file.write_text(
             "---\nid: c1\ntitle: Karakas\ncategory: Character\n"
-            "first_name: Kiral\nsurname: Karakas\nnicknames: [Adams]\n---\n\n"
+            "first_name: Kiral\nsurname: Karakas\nnicknames: [Adams]\ngender: male\n---\n\n"
             '<span data-par-id="par-1">\nFirst sentence.\n</span>'
         )
         document = _make_document("d1", chapter)
@@ -532,6 +533,7 @@ class TestExistingChapter:
         saved, _ = _saved_chapter(uow)
         assert saved.surname == "Karakas"
         assert saved.nicknames == ["Adams"]
+        assert saved.gender == "male"
         assert saved.state is DataState.CHANGED
         assert summary.changed == 0
 

@@ -81,6 +81,8 @@ def character_front_matter(chapter: Chapter) -> dict[str, object]:
         props["age"] = chapter.age
     if chapter.location:
         props["location"] = chapter.location
+    if chapter.gender:
+        props["gender"] = chapter.gender
     return props
 
 

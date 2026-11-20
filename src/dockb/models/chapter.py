@@ -11,6 +11,8 @@ from dockb.models.utils.dockb_collection import DockbCollection, DockbModelBase,
 
 from .base import DockbModel
 
+Gender = Literal["male", "female"]
+
 
 class Chapter(DockbModel):
     """A chapter containing a list of paragraphs.
@@ -31,6 +33,7 @@ class Chapter(DockbModel):
     nicknames: list[str] = Field(default_factory=list)
     age: int | None = None
     location: str = ""
+    gender: Gender | None = None
     # The id of the Character chapter this chapter is written from ("" = no POV).
     pov: str = ""
     paragraphs: DockbCollection[Paragraph] = Field(default_factory=DockbCollection)

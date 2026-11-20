@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so the question is quick next time. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit. Search answers character questions straight from the cached verdicts — the search itself never judges anything — and returns the matching paragraphs in reading order, each carrying its chapter's position and its own position within that chapter.
+This note describes how DockB works out which paragraphs of a book mention which characters, and how it remembers the answers so the question is quick next time. The remembered verdicts live as MENTIONS relationships in the graph, in four states that say whether a paragraph was judged, judged to mention nobody, or invalidated by an edit. The same evaluation also decides who speaks each stretch of dialogue: it writes normalized quote marks and token ranges to sentences and tokens in the graph only, and a SPOKEN_BY relationship names the speaker. Search answers character questions straight from the cached verdicts — the search itself never judges anything — and returns the matching paragraphs in reading order, each carrying its chapter's position and its own position within that chapter.
 
 The reason it exists: an MCP tool (or any future reader) wants to ask "which paragraphs involve Karakas?" and the honest answer needs to know that "Adams" is sometimes Jael Adams and sometimes Jeremiah's nickname, and that a shared surname could be either of two characters. Deterministic name matching (with NER where a whole name span settles it) answers what it can, and the model judges the ambiguous remainder — asynchronously, only after a save or an operator sweep says it is time, on one worker thread with at most one evaluation per chapter, so an editing burst never piles up model calls.
 
@@ -17,6 +17,17 @@ A mention is stored as a relationship from the paragraph to the character chapte
 - **A relationship**, because a paragraph can mention several characters and because the search then is a one-hop query.
 - **Paragraph granularity**, the unit the tools return, even when a judgement was made from a sentence's context.
 - `method` says how the verdict was reached: a deterministic name match, or the model's judgement.
+
+Sentences carry the speaker result beside the paragraph verdicts:
+
+```
+(:Sentence)-[:SPOKEN_BY {method, confidence, stale, reference}]->(:Chapter)
+```
+
+- `method` is `name`, `gender`, or `unresolved`; `confidence` is 1.0, 0.8, or 0.0 respectively.
+- `reference` keeps the raw name or pronoun that was found, even when no character resolved.
+- `stale` follows the same keep-old-verdict convention as MENTIONS: a text change marks the old edge stale, and the next evaluation refreshes it.
+- Unresolved speakers point at a sentinel Chapter with `id: 'unresolved'`, so no sentence is left without an edge.
 
 Each paragraph is in exactly one of four states, and every part of the pipeline asks for paragraphs by state:
 
@@ -75,6 +86,7 @@ simply stays un-evaluated and is retried by the next trigger.
 | Event | Effect |
 |---|---|
 | A save changes a paragraph's text | The save's diff already names the changed paragraphs; their verdicts become state 4 and are recomputed. Deleted paragraphs' MENTIONS die with the node. |
+| A save changes a sentence's text | Its SPOKEN_BY edges become stale and `dialogue_checked_at` is cleared; the next evaluation re-finds the dialogue, fixes quote marks on the graph tokens, and writes fresh speaker verdicts. Canonical markdown is untouched. |
 | A character's identity changes (name parts, nicknames) | The document's mentions become state 4 — ambiguity is document-wide: Jeremiah losing the nickname "Adams" changes whether "Adams" is ambiguous for Jael. |
 | A character chapter is deleted | Its node dies; MENTIONS pointing at it die with it. Nothing dangles. |
 | A save that changed nothing relevant, or a restart | Nothing: the verdict is in the database and survives. |
@@ -83,7 +95,9 @@ simply stays un-evaluated and is retried by the next trigger.
 
 The only triggers are chapter saves and the sweep CLI — a search never evaluates. The auto triggers go through **`mentions_scheduler.py`**, which runs evaluations on a single worker thread in FIFO order and, per triggering chapter, keeps at most one running evaluation and one pending — freshest — factory: a save that lands while that chapter's evaluation is running cancels it (cooperatively) and queues the latest state next, and a burst of saves queues the fresh state once, not once per save (its module docstring carries the coalescing and cancellation semantics; an already-sent model batch may finish, but its verdicts are discarded).
 
-- **A manuscript chapter save** schedules one **MentionsJob** for that chapter: it evaluates the chapter's state 1 and state 4 paragraphs.
+Every scheduled evaluation first runs one **dialogue pass** for the chapter: it pairs double quotes across paragraphs, writes the normalized marks and dialogue spans to the graph, resolves the speaker of each span, and writes the SPOKEN_BY verdicts. Paragraph mentions are then evaluated against the same chapter, so both kinds of cached verdict come from one background job and one cancel signal.
+
+- **A manuscript chapter save** schedules one **MentionsJob** for that chapter: it runs the dialogue pass, then evaluates the chapter's state 1 and state 4 paragraphs.
 - **A character chapter save that changed the identity properties** schedules one **document-wide MentionsJob** — it evaluates every manuscript chapter of the document (the ambiguity set is document-wide, so the scope is too). It is coalesced by the *character* chapter, so saving that same character again while its document-wide evaluation is still running cancels the superseded run and queues the fresh state.
 - **The sweep CLI** — `dockb mentions sweep <document-title-or-id>` — is the operator's manual, once-per-book backfill (and the retry after an outage).
   Default: the document's state 1 and 4 paragraphs, resumable by construction (each paragraph is stamped as it is judged, so an interrupted sweep just continues). `--full`: re-evaluate every paragraph, ignoring existing MENTIONS. It prints per-chapter state counts before, and anything left **pending** after — pending meaning still state 1 or 4, i.e. no verdict was reached. A complete sweep leaves nothing pending except when the model could not answer (`OPENAI_API_KEY` missing, a network failure, or `--no-ai`), which those paragraphs are retried by the next sweep; it does not run at startup and is never automatic.
@@ -113,7 +127,13 @@ carries both, plus `mentions` — the titles of the characters whose valid,
 stale-free MENTIONS verdicts name the paragraph, so the caller can treat the
 people as if they were written into the text.
 
-## 6. Phase 2 work for later
+## 6. Dialogue and speaker resolution
+
+A dialogue pass reads each paragraph as its sentences' reconstructed text. Any of the supported double-quote characters may open or close a span; position, not glyph, decides which. A leading quote in the following paragraph continues the same logical dialogue as another span of that group, while an unclosed quote without such a leader produces no span and leaves its mark alone. Opening marks become `“` and closing marks `”`; the rewritten text is stored on Token nodes only, never in the canonical markdown.
+
+Each sentence records `is_dialogue`, `dialogue_checked_at`, the first span's `dialogue_start_token`/`dialogue_end_token`, and every inclusive token range in `dialogue_spans` (stored flat on the graph node). Speaker detection looks for a speech verb near the span and takes the nearest proper name or pronoun beside it: names are resolved through `ChapterRepository.find_character_by_name`, pronouns through the single character of the matching gender in `ChapterRepository.list_characters`. Zero, several, or no candidates resolve to the `unresolved` sentinel while keeping the raw `reference` on the edge.
+
+## 7. Phase 2 work for later
 
 - **Precision on homographs**: a character nicknamed "Rose" matches the flower. Tier 3 weeds out the obvious ones; a real person-resolution (spaCy NER or the model with the whole document's cast in context) is a later refinement and only touches the pipeline's judgement step.
 - **Sentence-level MENTIONS** if a caller ever needs to know *which sentence* of a paragraph carries the mention; the pipeline judges sentences already.

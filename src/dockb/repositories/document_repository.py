@@ -9,7 +9,7 @@ from dockb.models.chapter import Chapter
 from dockb.models.document import Document
 from dockb.models.formatting import Family, Style, Weight
 from dockb.models.paragraph import Paragraph
-from dockb.models.sentence import Sentence
+from dockb.models.sentence import Sentence, sentence_from_record
 from dockb.models.token import POS, Token, Type
 
 logger = logging.getLogger(__name__)
@@ -57,10 +57,16 @@ RETURN
   c.id AS chapter_id, rc.index AS chapter_index,
   c.title AS chapter_title, c.act AS chapter_act, c.category AS chapter_category,
   c.first_name AS chapter_first_name, c.surname AS chapter_surname, c.middle_names AS chapter_middle_names,
-  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location, c.pov AS chapter_pov,
+  c.nicknames AS chapter_nicknames, c.age AS chapter_age, c.location AS chapter_location,
+  c.gender AS chapter_gender, c.pov AS chapter_pov,
   p.id AS paragraph_id, rp.index AS paragraph_index,
   p.layout_kind AS paragraph_layout_kind, p.layout_variant AS paragraph_layout_variant,
   s.id AS sentence_id, rs.index AS sentence_index,
+  s.is_dialogue AS sentence_is_dialogue,
+  s.dialogue_start_token AS sentence_dialogue_start_token,
+  s.dialogue_end_token AS sentence_dialogue_end_token,
+  s.dialogue_checked_at AS sentence_dialogue_checked_at,
+  s.dialogue_spans AS sentence_dialogue_spans,
   t.id AS token_id, rt.index AS token_index,
   t.text AS token_text, t.type AS token_type,
   t.trailing_ws AS token_trailing_ws, t.pos AS token_pos,
@@ -350,6 +356,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
                     nicknames=list(rec.get("chapter_nicknames") or []),
                     age=rec.get("chapter_age"),
                     location=rec.get("chapter_location") or "",
+                    gender=rec.get("chapter_gender"),
                     pov=rec.get("chapter_pov") or "",
                     state=DataState.SYNC,
                 )
@@ -370,7 +377,7 @@ class DocumentRepository(BaseRepository[Document]):  # pylint: disable=too-few-p
             s_id = rec.get("sentence_id")
             if s_id is not None and s_id not in seen_sentences:
                 seen_sentences.add(s_id)
-                current_sentence = Sentence(id=s_id, state=DataState.SYNC)
+                current_sentence = sentence_from_record(rec)
                 if current_paragraph is not None:
                     current_paragraph.sentences.append(current_sentence)
 

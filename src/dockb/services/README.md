@@ -74,7 +74,7 @@ writer preference means a pending rename is never starved by a stream of saves.
 `services/chapter_front_matter.py` owns the sync between a chapter file's YAML
 front matter and the graph for the hand-maintained side: a `Character`
 chapter's identity properties (first name, surname, middle names, nicknames,
-age, location) and a manuscript chapter's `pov` — the character chapter whose
+age, location, gender) and a manuscript chapter's `pov` — the character chapter whose
 point of view it is written from. The file carries the character's **title**;
 the graph stores the character chapter's **id**, so renaming a character does
 not break a POV, and a deleted one warns on read and clears on the next save.

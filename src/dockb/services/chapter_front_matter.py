@@ -55,6 +55,7 @@ def apply_character_props(chapter: Chapter, diff: ChapterDiff) -> None:
             diff.nicknames,
             diff.age is not None,
             diff.location,
+            diff.gender,
         )
     )
     if not carried and chapter.category != "Character":
@@ -65,6 +66,7 @@ def apply_character_props(chapter: Chapter, diff: ChapterDiff) -> None:
     chapter.nicknames = list(diff.nicknames)
     chapter.age = diff.age
     chapter.location = diff.location
+    chapter.gender = diff.gender
 
 
 def character_props_changed(diff: ChapterDiff, chapter: Chapter) -> bool:
@@ -76,6 +78,7 @@ def character_props_changed(diff: ChapterDiff, chapter: Chapter) -> bool:
         or list(diff.nicknames) != list(chapter.nicknames)
         or diff.age != chapter.age
         or diff.location != chapter.location
+        or diff.gender != chapter.gender
     )
 
 

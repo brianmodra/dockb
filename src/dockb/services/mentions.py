@@ -31,6 +31,7 @@ import httpx2
 from dockb.models.chapter import Chapter
 from dockb.models.paragraph import Paragraph
 from dockb.models.token import POS
+from dockb.services.dialogue_pipeline import evaluate_chapter_dialogue
 
 logger = logging.getLogger(__name__)
 
@@ -478,10 +479,12 @@ class MentionsJob:  # pylint: disable=too-few-public-methods
         chapter_repo: Any,
         owner: str,
         chapter_id: str,
+        sentence_repo: Any | None = None,
         cancel: threading.Event | None = None,
     ) -> None:
         self.chapter_id = chapter_id
         self._repos = (mentions_repo, chapter_repo)
+        self._sentence_repo = sentence_repo
         self._owner = owner
         self.cancel = cancel
 
@@ -493,6 +496,7 @@ class MentionsJob:  # pylint: disable=too-few-public-methods
             owner=self._owner,
             mentions_repo=mentions_repo,
             chapter_repo=chapter_repo,
+            sentence_repo=self._sentence_repo,
             cancel=self.cancel,
         )
 
@@ -513,10 +517,12 @@ class DocumentMentionsJob:  # pylint: disable=too-few-public-methods
         chapter_repo: Any,
         owner: str,
         document_id: str,
+        sentence_repo: Any | None = None,
         cancel: threading.Event | None = None,
     ) -> None:
         self.document_id = document_id
         self._repos = (mentions_repo, chapter_repo)
+        self._sentence_repo = sentence_repo
         self._owner = owner
         self.cancel = cancel
 
@@ -528,6 +534,7 @@ class DocumentMentionsJob:  # pylint: disable=too-few-public-methods
             owner=self._owner,
             mentions_repo=mentions_repo,
             chapter_repo=chapter_repo,
+            sentence_repo=self._sentence_repo,
             cancel=self.cancel,
         )
 
@@ -538,6 +545,7 @@ def _evaluate_document(  # pylint: disable=too-many-arguments,too-many-positiona
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
+    sentence_repo: Any | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
     """Both tiers for every manuscript chapter of *document_id*, in order.
@@ -550,7 +558,14 @@ def _evaluate_document(  # pylint: disable=too-many-arguments,too-many-positiona
             return
         if row.get("category") != "Chapter":
             continue
-        _evaluate_chapter(row["id"], owner=owner, mentions_repo=mentions_repo, chapter_repo=chapter_repo, cancel=cancel)
+        _evaluate_chapter(
+            row["id"],
+            owner=owner,
+            mentions_repo=mentions_repo,
+            chapter_repo=chapter_repo,
+            sentence_repo=sentence_repo,
+            cancel=cancel,
+        )
 
 
 def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -559,6 +574,7 @@ def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional
     owner: str,
     mentions_repo: Any,
     chapter_repo: Any,
+    sentence_repo: Any | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
     """Both tiers for one chapter's pending paragraphs, then the chapter rollup.
@@ -566,6 +582,16 @@ def _evaluate_chapter(  # pylint: disable=too-many-arguments,too-many-positional
     *cancel* is checked at the pipeline's own checkpoints — a superseded
     evaluation stops stamping and leaves the rest to its successor run.
     """
+    if _stop_requested(cancel):
+        return
+    if sentence_repo is not None:
+        evaluate_chapter_dialogue(
+            chapter_id,
+            owner=owner,
+            chapter_repo=chapter_repo,
+            sentence_repo=sentence_repo,
+            cancel=cancel,
+        )
     if _stop_requested(cancel):
         return
     evaluate_chapter_tier1(
