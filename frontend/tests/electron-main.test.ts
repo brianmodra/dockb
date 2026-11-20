@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { BrowserWindow, app, ipcMain, Menu, session } = vi.hoisted(() => {
+const { BrowserWindow, app, ipcMain, Menu, session, dialog, shell } = vi.hoisted(() => {
   const instances: Array<Record<string, unknown>> = [];
   const BrowserWindow = vi.fn(() => {
     const win: Record<string, unknown> = {
@@ -21,11 +21,13 @@ const { BrowserWindow, app, ipcMain, Menu, session } = vi.hoisted(() => {
     Menu: { setApplicationMenu: vi.fn() },
     ipcMain: { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn() },
     session: { defaultSession: { setSpellCheckerEnabled: vi.fn() } },
+    dialog: { showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })) },
+    shell: { openExternal: vi.fn(async () => undefined) },
     instances,
   };
 });
 
-vi.mock("electron", () => ({ app, BrowserWindow, ipcMain, Menu, session }));
+vi.mock("electron", () => ({ app, BrowserWindow, ipcMain, Menu, session, dialog, shell }));
 
 import { createWindow, editorUrl, onAppReady } from "../src/main/main";
 import type { BrowserWindow as BrowserWindowType } from "electron";
@@ -101,6 +103,22 @@ describe("electron main", () => {
   it("removes the default application menu so the in-window menubar stands alone", () => {
     onAppReady();
     expect(Menu.setApplicationMenu).toHaveBeenCalledWith(null);
+  });
+
+  it("registers the file cache handlers before creating the window", () => {
+    onAppReady();
+    for (const channel of [
+      "cache-choose-directory",
+      "cache-set-root",
+      "cache-read",
+      "cache-write",
+      "cache-delete",
+      "cache-rename",
+      "cache-move-directory",
+      "cache-list",
+    ]) {
+      expect(ipcMain.handle).toHaveBeenCalledWith(channel, expect.any(Function));
+    }
   });
 });
 

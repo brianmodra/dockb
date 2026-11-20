@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, session } from "electron";
 import * as path from "path";
-import { registerOpenExternal, registerQuit } from "./ipc";
+import { registerFileCache, registerOpenExternal, registerQuit } from "./ipc";
 
 /** Where the backend serves the built editor, relative to its origin. */
 const EDITOR_PATH = "/editor/";
@@ -48,6 +48,7 @@ export function onAppReady(): void {
   Menu.setApplicationMenu(null);
   registerOpenExternal();
   registerQuit();
+  registerFileCache();
   createWindow();
 }
 
