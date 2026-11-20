@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { request } from "../src/renderer/api/http";
+import { request, setNetworkFailureHandler } from "../src/renderer/api/http";
 
 type FetchInit = { headers?: Record<string, string> };
 
@@ -19,6 +19,7 @@ function mockOk(): void {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setNetworkFailureHandler(null);
 });
 
 describe("request headers", () => {
@@ -79,5 +80,35 @@ describe("request headers", () => {
     mockOk();
     await request("/api/thing", { method: "POST", body: new URLSearchParams({ a: "1" }) });
     expect(sentHeaders()["Content-Type"]).toBe("application/json");
+  });
+});
+
+describe("network failures", () => {
+  it("reports a failed fetch to the network failure handler before rethrowing", async () => {
+    const failure = new TypeError("Failed to fetch");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw failure;
+      }),
+    );
+    const onFailure = vi.fn();
+    setNetworkFailureHandler(onFailure);
+
+    await expect(request("/api/thing")).rejects.toBe(failure);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(onFailure).toHaveBeenCalledWith(failure);
+  });
+
+  it("does not report an HTTP error as a network failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: "nope" }), { status: 400 })),
+    );
+    const onFailure = vi.fn();
+    setNetworkFailureHandler(onFailure);
+
+    await expect(request("/api/thing")).rejects.toMatchObject({ status: 400 });
+    expect(onFailure).not.toHaveBeenCalled();
   });
 });

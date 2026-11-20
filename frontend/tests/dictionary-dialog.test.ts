@@ -13,10 +13,29 @@ function make() {
   };
   const onMessage = vi.fn();
   const onWordsChanged = vi.fn();
-  const open = (documentId: string | null = "d-1"): void => {
-    openDictionaryDialog({ api, documentId, onMessage, onWordsChanged });
+  const state = { offline: false };
+  const listeners = new Set<(online: boolean) => void>();
+  const notify = (online: boolean): void => {
+    state.offline = !online;
+    for (const listener of [...listeners]) {
+      listener(online);
+    }
   };
-  return { api, onMessage, onWordsChanged, open };
+  const open = (documentId: string | null = "d-1"): void => {
+    openDictionaryDialog({
+      api,
+      documentId,
+      onMessage,
+      onWordsChanged,
+      offline: () => state.offline,
+      onOfflineChange: (listener) => {
+        listeners.add(listener);
+        listener(!state.offline);
+        return () => listeners.delete(listener);
+      },
+    });
+  };
+  return { api, onMessage, onWordsChanged, open, notify };
 }
 
 function renderedWords(): string[] {
@@ -120,5 +139,42 @@ describe("dictionary dialog", () => {
     });
     expect(document.querySelector('[data-testid="modal"]')).not.toBeNull();
     expect(onWordsChanged).not.toHaveBeenCalled();
+  });
+
+  it("disables dictionary writes while offline", async () => {
+    const { api, open, notify } = make();
+    api.getGlossary.mockResolvedValue({ words: ["Karakas"] });
+    notify(false);
+    open();
+    await vi.waitFor(() => expect(renderedWords()).toEqual(["Karakas"]));
+
+    addWord("teh");
+    document.querySelector<HTMLButtonElement>('[data-testid="dictionary-remove"]')!.click();
+
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-add"]')!.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-remove"]')!.disabled).toBe(true);
+    expect(api.postGlossary).not.toHaveBeenCalled();
+    expect(api.deleteGlossary).not.toHaveBeenCalled();
+  });
+
+  it("updates an open dictionary dialog when connectivity changes", async () => {
+    const { api, open, notify } = make();
+    api.getGlossary.mockResolvedValue({ words: ["Karakas"] });
+    open();
+    await vi.waitFor(() => expect(renderedWords()).toEqual(["Karakas"]));
+    const input = document.querySelector<HTMLInputElement>('[data-testid="dictionary-word-input"]')!;
+    input.value = "teh";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-add"]')!.disabled).toBe(false);
+
+    notify(false);
+
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-add"]')!.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-remove"]')!.disabled).toBe(true);
+
+    notify(true);
+
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-add"]')!.disabled).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="dictionary-remove"]')!.disabled).toBe(false);
   });
 });

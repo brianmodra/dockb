@@ -6,6 +6,8 @@ export interface DictionaryDialogOptions {
   documentId: string | null;
   onMessage: (text: string) => void;
   onWordsChanged?: () => void;
+  offline?: () => boolean;
+  onOfflineChange?: (listener: (online: boolean) => void) => () => void;
 }
 
 /**
@@ -28,6 +30,8 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
   });
   overlay.buttons["dictionary-close"].addEventListener("click", () => overlay.close());
 
+  const isOffline = (): boolean => options.offline?.() === true;
+
   const input = document.createElement("input");
   input.className = "modal-input";
   input.dataset.testid = "dictionary-word-input";
@@ -40,9 +44,10 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
   add.dataset.testid = "dictionary-add";
   add.textContent = "Add";
   add.disabled = true;
-  input.addEventListener("input", () => {
-    add.disabled = input.value.trim() === "";
-  });
+  const refreshAdd = (offline = isOffline()): void => {
+    add.disabled = offline || input.value.trim() === "";
+  };
+  input.addEventListener("input", () => refreshAdd());
 
   const field = document.createElement("div");
   field.className = "dictionary-field";
@@ -54,7 +59,9 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
 
   overlay.body.append(field, list);
 
+  let currentWords: string[] = [];
   const render = (words: string[]): void => {
+    currentWords = words;
     list.replaceChildren();
     for (const word of words) {
       const row = document.createElement("div");
@@ -66,6 +73,7 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
       remove.className = "dictionary-remove";
       remove.dataset.testid = "dictionary-remove";
       remove.textContent = "×";
+      remove.disabled = isOffline();
       remove.addEventListener("click", () => {
         void removeWord(word);
       });
@@ -77,6 +85,10 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
   const addWord = async (): Promise<void> => {
     const word = input.value.trim();
     if (word === "") {
+      return;
+    }
+    if (isOffline()) {
+      options.onMessage("Unavailable offline.");
       return;
     }
     try {
@@ -91,6 +103,10 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
   };
 
   const removeWord = async (word: string): Promise<void> => {
+    if (isOffline()) {
+      options.onMessage("Unavailable offline.");
+      return;
+    }
     try {
       const result = await options.api.deleteGlossary(documentId, word);
       render(result.words);
@@ -103,6 +119,16 @@ export function openDictionaryDialog(options: DictionaryDialogOptions): void {
   add.addEventListener("click", () => {
     void addWord();
   });
+
+  const unsubscribe = options.onOfflineChange?.((online) => {
+    refreshAdd(!online);
+    render(currentWords);
+  });
+  const close = overlay.close;
+  overlay.close = () => {
+    unsubscribe?.();
+    close();
+  };
 
   void options.api
     .getGlossary(documentId)

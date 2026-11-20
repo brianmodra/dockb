@@ -71,6 +71,28 @@ steps. Three things worth knowing that the code cannot say for itself:
 `layout/selectList.ts` the choose-then-confirm list the pickers use. A new dialog
 should build on `openOverlay` rather than assembling its own.
 
+### Offline mode
+
+The desktop editor can work without the backend once a file cache directory has been chosen in
+Settings → File Cache. Browser mode has neither a file cache nor an offline toggle: it keeps
+making backend requests, and failed requests there are reported normally.
+
+`layout/menubar.ts` puts a connectivity button immediately left of the username: a blue globe
+when online and a red unplug when offline. Clicking it opens a **Go offline?** or **Go back
+online?** confirmation with Yes/Cancel. A failed backend request in the desktop app offers the
+same switch; while offline, further failures are reported but do not re-prompt. Going offline
+first flushes pending file-cache writes and downloads every chapter of the open document that is
+not already cached.
+
+While offline, chapter loads read cached canonical markdown, and chapter saves write only to the
+cache and leave the chapter dirty so it is uploaded on reconnection. A chapter with no cached
+copy reports "Chapter is not available offline." All backend writes are disabled offline:
+chapter structure actions, document settings, dictionary adds/removes (including in a dialog
+already open), import/open/delete, AI prompts, app-state persistence, proofreading checks and
+scheduling, language changes, and glossary adds. Going back online flushes pending cache writes,
+uploads every backend-dirty cached chapter of the current document, reloads the active chapter,
+and only then switches the icon back to online; a failed upload leaves the editor offline.
+
 ## Commands
 
 Run these from `frontend/`:

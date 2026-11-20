@@ -16,6 +16,9 @@ export interface AppLayoutOptions {
   onOpenDictionary?: () => void;
   showFileCache?: boolean;
   onFileCache?: () => void;
+  showConnectivity?: boolean;
+  online?: boolean;
+  onConnectivityClick?: () => void;
   onDeleteDocument?: () => void;
   onSignOut?: () => void;
   onUserSettings?: () => void;
@@ -92,6 +95,9 @@ export class AppLayout {
       onOpenDictionary: options.onOpenDictionary,
       showFileCache: options.showFileCache,
       onFileCache: options.onFileCache,
+      showConnectivity: options.showConnectivity,
+      online: options.online,
+      onConnectivityClick: options.onConnectivityClick,
       onDeleteDocument: options.onDeleteDocument,
       onSignOut: options.onSignOut,
       onUserSettings: options.onUserSettings,
@@ -268,6 +274,10 @@ export class AppLayout {
 
   setUser(username: string): void {
     this.menubar.setUser(username);
+  }
+
+  setOnline(online: boolean): void {
+    this.menubar.setOnline(online);
   }
 
   private panel(name: string): HTMLElement {

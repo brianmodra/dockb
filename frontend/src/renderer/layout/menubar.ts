@@ -1,4 +1,5 @@
 import { createALargeSmallIcon, createMarkdownIcon } from "./modeIcons";
+import { createConnectivityIcon } from "./connectivityIcon";
 import { createUserRoundIcon } from "./userIcon";
 
 export type Mode = "wysiwyg" | "raw";
@@ -16,6 +17,9 @@ export interface MenubarOptions {
   onOpenDictionary?: () => void;
   showFileCache?: boolean;
   onFileCache?: () => void;
+  showConnectivity?: boolean;
+  online?: boolean;
+  onConnectivityClick?: () => void;
   onDeleteDocument?: () => void;
   onSignOut?: () => void;
   onUserSettings?: () => void;
@@ -31,6 +35,7 @@ interface MenuItemSpec {
   key: string;
   label: string;
   children?: MenuItemSpec[];
+  disabledWhenOffline?: boolean;
 }
 
 const MENUS: MenuSpec[] = [
@@ -39,16 +44,20 @@ const MENUS: MenuSpec[] = [
     label: "File",
     items: [
       { key: "open", label: "Open" },
-      { key: "import", label: "Import…" },
+      { key: "import", label: "Import…", disabledWhenOffline: true },
       { key: "info", label: "Info" },
-      { key: "delete", label: "Delete", children: [{ key: "delete-document", label: "Document" }] },
+      {
+        key: "delete",
+        label: "Delete",
+        children: [{ key: "delete-document", label: "Document", disabledWhenOffline: true }],
+      },
     ],
   },
   {
     key: "Settings",
     label: "⚙",
     items: [
-      { key: "document", label: "Document…" },
+      { key: "document", label: "Document…", disabledWhenOffline: true },
       { key: "language", label: "Language…" },
       { key: "dictionary", label: "Dictionary…" },
     ],
@@ -73,6 +82,8 @@ export interface Menubar {
   setRawMarkdownEnabled: (enabled: boolean) => void;
   /** Show the signed-in username (hiding the menu when empty). */
   setUser: (username: string) => void;
+  /** Redraw the connectivity icon and offline-disabled menu items. */
+  setOnline: (online: boolean) => void;
 }
 
 const WYSIWYG_TOOLTIP = "Switch editor to raw markdown mode";
@@ -89,11 +100,14 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   right.dataset.testid = "menubar-right";
 
   let rawMarkdownEnabled = options.rawMarkdownEnabled ?? false;
+  let online = options.online ?? true;
   const toggle = buildModeToggle(options.mode ?? "wysiwyg", options.onMode);
   applyMode(toggle, options.mode ?? "wysiwyg", rawMarkdownEnabled);
 
   let userContainer: HTMLElement | null = null;
   let userName: HTMLSpanElement | null = null;
+  let connectivityButton: HTMLButtonElement | null = null;
+  const offlineButtons: Array<{ button: HTMLButtonElement; disabledWhenOffline: boolean }> = [];
 
   const menus = options.showFileCache === true
     ? MENUS.map((menu) =>
@@ -105,14 +119,18 @@ export function buildMenubar(options: MenubarOptions): Menubar {
 
   for (const menu of menus) {
     if (menu.key === "Settings") {
-      right.append(buildMenu(menu, options).container);
+      right.append(buildMenu(menu, options, offlineButtons).container);
     } else if (menu.key === "user") {
-      const built = buildMenu(menu, options);
+      if (options.showConnectivity === true) {
+        connectivityButton = buildConnectivityButton(online, options.onConnectivityClick);
+        right.append(connectivityButton);
+      }
+      const built = buildMenu(menu, options, offlineButtons);
       right.append(built.container);
       userContainer = built.container;
       userName = built.name;
     } else {
-      element.append(buildMenu(menu, options).container);
+      element.append(buildMenu(menu, options, offlineButtons).container);
       if (menu.key === "File") {
         element.append(toggle);
       }
@@ -120,10 +138,22 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   }
   element.append(right);
 
+  const setOnline = (next: boolean): void => {
+    online = next;
+    if (connectivityButton !== null) {
+      applyConnectivity(connectivityButton, online, options.onConnectivityClick);
+    }
+    for (const entry of offlineButtons) {
+      entry.button.disabled = !online && entry.disabledWhenOffline;
+    }
+  };
+  setOnline(online);
+
   return {
     element,
     right,
     setMode: (mode) => applyMode(toggle, mode, rawMarkdownEnabled),
+    setOnline,
     setRawMarkdownEnabled: (enabled) => {
       rawMarkdownEnabled = enabled;
       applyMode(toggle, toggle.dataset.mode as Mode, enabled);
@@ -169,9 +199,32 @@ function applyMode(button: HTMLButtonElement, mode: Mode, rawMarkdownEnabled: bo
   }
 }
 
+function buildConnectivityButton(online: boolean, onClick?: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "connectivity-toggle";
+  button.dataset.testid = "connectivity-toggle";
+  applyConnectivity(button, online, onClick);
+  return button;
+}
+
+function applyConnectivity(
+  button: HTMLButtonElement,
+  online: boolean,
+  onClick?: () => void,
+): void {
+  button.replaceChildren(createConnectivityIcon(online));
+  button.dataset.online = String(online);
+  const title = online ? "Go offline?" : "Go back online?";
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.onclick = onClick ?? null;
+}
+
 function buildMenu(
   menu: MenuSpec,
   options: MenubarOptions,
+  offlineButtons: Array<{ button: HTMLButtonElement; disabledWhenOffline: boolean }>,
 ): { container: HTMLElement; name: HTMLSpanElement | null } {
   const container = document.createElement("div");
   container.className = "menu";
@@ -255,6 +308,10 @@ function buildMenu(
         button.className = "menu-submenu-item";
         button.dataset.testid = `menu-item-${child.key}`;
         button.textContent = child.label;
+        if (child.disabledWhenOffline === true) {
+          offlineButtons.push({ button, disabledWhenOffline: true });
+          button.disabled = (options.online ?? true) === false;
+        }
         button.addEventListener("click", () => {
           close();
           dispatchItem(menu, child, options);
@@ -272,6 +329,10 @@ function buildMenu(
     button.className = "menu-item";
     button.dataset.testid = `menu-item-${item.key}`;
     button.textContent = item.label;
+    if (item.disabledWhenOffline === true) {
+      offlineButtons.push({ button, disabledWhenOffline: true });
+      button.disabled = (options.online ?? true) === false;
+    }
     button.addEventListener("click", () => {
       close();
       dispatchItem(menu, item, options);

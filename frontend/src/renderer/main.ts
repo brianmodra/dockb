@@ -1,5 +1,6 @@
 import type { ApiClient } from "./api/client";
 import type { DockbBridge } from "./api/bridge";
+import { setNetworkFailureHandler } from "./api/http";
 import { checkSession, signOut } from "./api/session";
 import { AppLayout } from "./layout/layout";
 import {
@@ -23,6 +24,7 @@ import { openFileCacheModal } from "./layout/fileCacheModal";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
 import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
+import { Connectivity } from "./state/connectivity";
 import { FileCache } from "./state/fileCache";
 import { runStartup } from "./state/startup";
 import { defaultProofreadingLanguage } from "./state/language";
@@ -67,7 +69,11 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   root.replaceChildren();
 
   const fileCache = new FileCache({ bridge: options.bridge });
-  const editPanel = options.api ? new EditPanel({ api: options.api, fileCache }) : null;
+  const connectivity = new Connectivity({ enabled: fileCache.enabled });
+  let onConnectivityToggle: () => void = () => {};
+  const editPanel = options.api
+    ? new EditPanel({ api: options.api, fileCache, offline: () => !connectivity.isOnline() })
+    : null;
   let stateController: AppStateController | null = null;
   let openDocument: () => void = () => {};
   let runImport: () => void = () => {};
@@ -83,11 +89,24 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runReadonlyScroll: (rawArgs: unknown) => void = () => {};
   let loadDocumentMentions: (documentId: string) => void = () => {};
   let proofreading: ProofreadingController | null = null;
+  let offerOffline: () => void = () => {};
   const signOut: SignOutFlow = { request: () => {} };
 
   const layout = new AppLayout({
-    onOpen: () => openDocument(),
-    onImport: () => runImport(),
+    onOpen: () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
+      openDocument();
+    },
+    onImport: () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
+      runImport();
+    },
     onDeleteDocument: () => runDeleteDocument(),
     onOpenDocumentSettings: () => runDocumentSettings(),
     onInfo: () => runDocumentInfo(),
@@ -100,9 +119,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     },
     onMode: (mode) => {
       editPanel?.setMode(mode);
-      void stateController?.saveEditMode(mode);
+      if (connectivity.isOnline()) {
+        void stateController?.saveEditMode(mode);
+      }
     },
-    onFocusEditor: () => editPanel?.focus(),
+      onFocusEditor: () => editPanel?.focus(),
+      showConnectivity: fileCache.enabled,
+      online: connectivity.isOnline(),
+      onConnectivityClick: () => onConnectivityToggle(),
       showFileCache: fileCache.enabled,
       onFileCache: () => {
         void openFileCacheModal(fileCache, {
@@ -111,6 +135,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         });
       },
       onOpenLanguageSettings: () => {
+        if (!connectivity.isOnline()) {
+          layout.pushMessage("Unavailable offline.");
+          return;
+        }
         void (async () => {
         let languages = LANGUAGES;
         if (options.api && typeof options.api.getProofreadingLanguages === "function") {
@@ -138,6 +166,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       })();
     },
     onOpenDictionary: () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
       if (!options.api) {
         return;
       }
@@ -148,13 +180,21 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         onWordsChanged: () => {
           void proofreading?.checkNow();
         },
+        offline: () => !connectivity.isOnline(),
+        onOfflineChange: (listener) => connectivity.subscribe(listener),
       });
     },
     onWidthsChange: (widths) => {
-      void stateController?.savePanelWidths(widths);
+      if (connectivity.isOnline()) {
+        void stateController?.savePanelWidths(widths);
+      }
     },
     onPrompt: (prompt) => {
       if (!options.api) {
+        return;
+      }
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
         return;
       }
       layout.beginResponse();
@@ -187,7 +227,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         }
       },
       [PROOFREADING_ADD_WORD_FUNCTION]: () => {
-        void proofreading?.addActiveWord();
+        if (connectivity.isOnline()) {
+          void proofreading?.addActiveWord();
+        }
       },
       [PROOFREADING_FIX_PAIR_FUNCTION]: () => {
         proofreading?.applyActivePair();
@@ -199,6 +241,13 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   });
   root.append(layout.element);
 
+  connectivity.setOnChange((online) => layout.setOnline(online));
+  setNetworkFailureHandler(() => {
+    if (connectivity.enabled && connectivity.isOnline()) {
+      offerOffline();
+    }
+  });
+
   if (options.api && editPanel) {
     const api = options.api;
     const loadDocumentTitle = async (documentId: string): Promise<void> => {
@@ -209,6 +258,128 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         reportError("Document title", error, (text) => layout.pushMessage(text));
       }
     };
+    const onMessage = (text: string): void => layout.pushMessage(text);
+    let offlinePromptOpen = false;
+
+    const downloadMissingCachedChapters = async (): Promise<void> => {
+      const documentId = currentDocumentId();
+      if (documentId === null || currentDocumentTitle === null || !fileCache.isConfigured()) {
+        return;
+      }
+      let rows;
+      try {
+        rows = await api.listChapters(documentId);
+      } catch (error) {
+        reportError("Cache document", error, onMessage);
+        return;
+      }
+      for (const row of rows) {
+        const path = fileCache.chapterPath(currentDocumentTitle, row);
+        try {
+          if ((await fileCache.readChapter(path)) !== null) {
+            continue;
+          }
+          const response = await api.getChapterDocument(row.id);
+          await fileCache.writeChapter(path, response.content);
+        } catch (error) {
+          reportError("Cache chapter", error, onMessage);
+        }
+      }
+    };
+
+    const uploadBackendDirtyChapters = async (): Promise<void> => {
+      const documentId = currentDocumentId();
+      if (documentId === null || currentDocumentTitle === null || !fileCache.isConfigured()) {
+        return;
+      }
+      const rows = await api.listChapters(documentId);
+      const activeChapter = editPanel.currentChapter();
+      let syncedActiveChapter = false;
+      for (const row of rows) {
+        const path = fileCache.chapterPath(currentDocumentTitle, row);
+        const cached = await fileCache.readChapter(path);
+        if (cached === null) {
+          continue;
+        }
+        const backend = await api.getChapterDocument(row.id);
+        if (backend.content === cached) {
+          continue;
+        }
+        const response = await api.saveChapterDocument(row.id, cached);
+        await fileCache.writeChapter(path, response.content);
+        if (row.id === activeChapter) {
+          syncedActiveChapter = true;
+        }
+      }
+      if (syncedActiveChapter && activeChapter !== null) {
+        await editPanel.load(activeChapter);
+      }
+    };
+
+    const requestOffline = async (): Promise<void> => {
+      if (!connectivity.enabled || offlinePromptOpen || !connectivity.isOnline()) {
+        return;
+      }
+      offlinePromptOpen = true;
+      try {
+        const confirmed = await confirmModal({
+          title: "Go offline?",
+          message: "Save pending file-cache changes and download this document before going offline?",
+          confirmLabel: "Yes",
+        });
+        if (!confirmed) {
+          return;
+        }
+        await editPanel.flushCache();
+        await downloadMissingCachedChapters();
+        await connectivity.setOnline(false);
+        layout.pushMessage("Offline mode.");
+      } catch (error) {
+        reportError("Go offline", error, onMessage);
+      } finally {
+        offlinePromptOpen = false;
+      }
+    };
+
+    const requestOnline = async (): Promise<void> => {
+      if (!connectivity.enabled || offlinePromptOpen || connectivity.isOnline()) {
+        return;
+      }
+      offlinePromptOpen = true;
+      try {
+        const confirmed = await confirmModal({
+          title: "Go back online?",
+          message: "Save pending file-cache changes and upload this document before going back online?",
+          confirmLabel: "Yes",
+        });
+        if (!confirmed) {
+          return;
+        }
+        await editPanel.flushCache();
+        try {
+          await uploadBackendDirtyChapters();
+        } catch (error) {
+          reportError("Sync offline changes", error, onMessage);
+          return;
+        }
+        await connectivity.setOnline(true);
+        layout.pushMessage("Back online.");
+      } finally {
+        offlinePromptOpen = false;
+      }
+    };
+
+    offerOffline = () => {
+      void requestOffline();
+    };
+    onConnectivityToggle = () => {
+      if (connectivity.isOnline()) {
+        void requestOffline();
+      } else {
+        void requestOnline();
+      }
+    };
+
     const controller = new AppStateController(api, {
       onMessage: (text) => layout.pushMessage(text),
     });
@@ -239,6 +410,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
 
     const panel = new LeftPanel({
       api: options.api,
+      offline: () => !connectivity.isOnline(),
       onEdit: (chapterId) => {
         void editPanel.open(chapterId);
       },
@@ -295,6 +467,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     loadDocumentMentions = (documentId: string): void => {
+      if (!connectivity.isOnline()) {
+        return;
+      }
       mentionMap = {};
       lastMentionParagraphId = null;
       rightPanel.setCharacterChapters([]);
@@ -338,7 +513,11 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         },
       });
       editPanel.onDiagnostic = (diagnostic) => proofreading?.showActions(diagnostic);
-      editPanel.onEditActivity = () => proofreading?.schedule();
+      editPanel.onEditActivity = () => {
+        if (connectivity.isOnline()) {
+          proofreading?.schedule();
+        }
+      };
     }
 
     /**
@@ -417,6 +596,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     runDeleteDocument = () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
       void openDeleteDocumentPicker(options.api!).then((selection) => {
         if (selection === null) {
           return;
@@ -435,7 +618,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
               if (panel.currentDocumentId() === selection.documentId) {
                 panel.clear();
                 editPanel.clear();
-                void stateController?.saveLastDocument(null);
+                if (connectivity.isOnline()) {
+                  void stateController?.saveLastDocument(null);
+                }
               }
             },
             (error) => reportError("Delete document", error, (text) => layout.pushMessage(text)),
@@ -445,6 +630,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     openDocument = () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
       void openDocumentPickerConfirm(options.api!).then((documentId) => {
         if (documentId === null) {
           return;
@@ -453,7 +642,9 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           await loadDocumentTitle(documentId);
           await panel.load(documentId);
           loadDocumentMentions(documentId);
-          await controller.saveLastDocument(documentId);
+          if (connectivity.isOnline()) {
+            await controller.saveLastDocument(documentId);
+          }
         })();
       });
     };
@@ -505,6 +696,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     runDocumentSettings = () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
       const documentId = panel.currentDocumentId();
       if (documentId === null) {
         layout.pushMessage("Open a document first.");
@@ -522,6 +717,10 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     };
 
     runDocumentInfo = () => {
+      if (!connectivity.isOnline()) {
+        layout.pushMessage("Unavailable offline.");
+        return;
+      }
       const documentId = panel.currentDocumentId();
       if (documentId === null) {
         layout.pushMessage("Open a document first.");
@@ -545,6 +744,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       controller,
       editPanel,
       fileCache,
+      connectivity,
       loadDocumentTitle,
       signOut,
       loadDocumentMentions,
@@ -560,6 +760,7 @@ interface BootContext {
   controller: AppStateController;
   editPanel: EditPanel;
   fileCache: FileCache;
+  connectivity: Connectivity;
   loadDocumentTitle: (documentId: string) => Promise<void>;
   signOut: SignOutFlow;
   loadDocumentMentions: (documentId: string) => void;
@@ -572,6 +773,7 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
     controller,
     editPanel,
     fileCache,
+    connectivity,
     loadDocumentTitle,
     signOut: signOutFlow,
     loadDocumentMentions,
@@ -687,7 +889,9 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
         await loadDocumentTitle(documentId);
         await panel.load(documentId);
         loadDocumentMentions(documentId);
-        await controller.saveLastDocument(documentId);
+        if (connectivity.isOnline()) {
+          await controller.saveLastDocument(documentId);
+        }
       },
     });
   }

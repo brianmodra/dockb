@@ -307,6 +307,49 @@ describe("menubar user menu", () => {
   });
 });
 
+describe("menubar connectivity", () => {
+  it("hides the connectivity icon in the browser", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    expect(bar.element.querySelector('[data-testid="connectivity-toggle"]')).toBeNull();
+  });
+
+  it("places a blue globe immediately left of the user menu while online", () => {
+    const bar = buildMenubar({ showConnectivity: true, online: true });
+    document.body.append(bar.element);
+    const right = bar.element.querySelector<HTMLElement>(".menubar-right")!;
+    const children = Array.from(right.children) as HTMLElement[];
+    const iconIndex = children.findIndex((child) => child.dataset.testid === "connectivity-toggle");
+    expect(iconIndex).toBeGreaterThanOrEqual(0);
+    expect(children[iconIndex + 1].querySelector('[data-testid="user-label"]')).not.toBeNull();
+    expect(children[iconIndex].querySelector('[data-testid="connectivity-online-icon"]')).not.toBeNull();
+    expect(children[iconIndex].title).toBe("Go offline?");
+  });
+
+  it("reports a click on the connectivity icon", () => {
+    const onConnectivityClick = vi.fn();
+    const bar = buildMenubar({ showConnectivity: true, onConnectivityClick });
+    document.body.append(bar.element);
+    bar.element.querySelector<HTMLElement>('[data-testid="connectivity-toggle"]')!.click();
+    expect(onConnectivityClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches to a red unplug and disables backend-changing menus when set offline", () => {
+    const bar = buildMenubar({ showConnectivity: true, online: true });
+    document.body.append(bar.element);
+    bar.setOnline(false);
+
+    const toggle = bar.element.querySelector<HTMLElement>('[data-testid="connectivity-toggle"]')!;
+    expect(toggle.querySelector('[data-testid="connectivity-offline-icon"]')).not.toBeNull();
+    expect(toggle.title).toBe("Go back online?");
+    expect(toggle.dataset.online).toBe("false");
+    expect(bar.element.querySelector<HTMLButtonElement>('[data-testid="menu-item-import"]')!.disabled).toBe(true);
+    expect(bar.element.querySelector<HTMLButtonElement>('[data-testid="menu-item-document"]')!.disabled).toBe(true);
+    expect(bar.element.querySelector<HTMLButtonElement>('[data-testid="menu-item-delete-document"]')!.disabled).toBe(true);
+    expect(bar.element.querySelector<HTMLButtonElement>('[data-testid="menu-item-open"]')!.disabled).toBe(false);
+  });
+});
+
 describe("menubar file cache", () => {
   it("hides File Cache in the browser", () => {
     const bar = buildMenubar({});

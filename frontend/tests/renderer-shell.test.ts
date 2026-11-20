@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountShell } from "../src/renderer/main";
+import { ApiClient } from "../src/renderer/api/client";
 import { ApiError } from "../src/renderer/api/http";
 import { unsavedChangesObjects } from "../src/renderer/layout/responseArea";
 
 afterEach(() => {
   document.body.replaceChildren();
+  window.localStorage.clear();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -902,6 +905,39 @@ function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
 }
 
+function electronBridge(entries: Map<string, string> = new Map()): Record<string, unknown> & {
+  cache: Map<string, string>;
+} {
+  return {
+    cache: entries,
+    isElectron: true,
+    openExternal: vi.fn(async () => undefined),
+    chooseCacheDirectory: vi.fn(async () => "/cache"),
+    setCacheRoot: vi.fn(async () => undefined),
+    cacheRead: vi.fn(async (path: string) => entries.get(path) ?? null),
+    cacheWrite: vi.fn(async (path: string, content: string) => {
+      entries.set(path, content);
+    }),
+    cacheDelete: vi.fn(async (path: string) => {
+      entries.delete(path);
+    }),
+    cacheRename: vi.fn(async () => undefined),
+    cacheMoveDirectory: vi.fn(async () => undefined),
+    cacheList: vi.fn(async () => Array.from(entries.keys())),
+  };
+}
+
+function clickModalButton(label: string): void {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-testid='modal-button']")).find(
+    (candidate) => candidate.textContent === label,
+  )!;
+  button.click();
+}
+
+function connectivityToggle(): HTMLElement {
+  return document.querySelector<HTMLElement>("[data-testid='connectivity-toggle']")!;
+}
+
 function openLanguageDialog(): void {
   document.querySelector<HTMLElement>('[data-testid="menu-Settings"]')?.click();
   document
@@ -932,6 +968,171 @@ async function enableRawMarkdown(): Promise<void> {
     .click();
   await tick();
 }
+
+describe("offline mode", () => {
+  it("hides the connectivity icon in the browser and shows it in Electron", async () => {
+    mountShell(document.body, { bridge: {} as never });
+    expect(document.querySelector('[data-testid="connectivity-toggle"]')).toBeNull();
+
+    document.body.replaceChildren();
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const { api } = localModeApi();
+    mountShell(document.body, { api: api as never, bridge: electronBridge() as never });
+    await tick();
+
+    expect(connectivityToggle()).not.toBeNull();
+    expect(connectivityToggle().dataset.online).toBe("true");
+  });
+
+  it("stays online when the offline prompt is cancelled", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const { api } = localModeApi();
+    const bridge = electronBridge();
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    connectivityToggle().click();
+    await tick();
+    clickModalButton("Cancel");
+
+    expect(connectivityToggle().dataset.online).toBe("true");
+    expect(bridge.cacheWrite).not.toHaveBeenCalled();
+  });
+
+  it("asks before going offline, caches missing chapters and disables backend-changing menus", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const serverText = "# Opening 1\n\nServer body.";
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      getDocumentAttrs: vi.fn(async () => ({ id: "d1", title: "Novel", author: "", narrative_perspective: "" })),
+      getChapterDocument: vi.fn(async () => ({ content: serverText, summary: null })),
+    });
+    const bridge = electronBridge();
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    connectivityToggle().click();
+    await tick();
+
+    expect(document.querySelector('[data-testid="modal-title"]')?.textContent).toBe("Go offline?");
+    clickModalButton("Yes");
+    await tick();
+    await tick();
+
+    expect(bridge.cacheWrite).toHaveBeenCalledWith("Novel/Act None/Opening 1.md", serverText);
+    expect(connectivityToggle().dataset.online).toBe("false");
+    expect(connectivityToggle().querySelector('[data-testid="connectivity-offline-icon"]')).not.toBeNull();
+    expect(
+      document.querySelector<HTMLButtonElement>('[data-testid="menu-item-import"]')!.disabled,
+    ).toBe(true);
+  });
+
+  it("asks before going back online and uploads backend-dirty cached chapters", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const serverText = "# Opening 1\n\nServer body.";
+    const dirtyText = "# Opening 1\n\nEdited while offline.";
+    const saveChapterDocument = vi.fn(async (_id: string, content: string) => ({
+      content,
+      summary: null,
+    }));
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      getDocumentAttrs: vi.fn(async () => ({ id: "d1", title: "Novel", author: "", narrative_perspective: "" })),
+      getChapterDocument: vi.fn(async () => ({ content: serverText, summary: null })),
+      saveChapterDocument,
+    });
+    const bridge = electronBridge(new Map([["Novel/Act None/Opening 1.md", dirtyText]]));
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    connectivityToggle().click();
+    await tick();
+    clickModalButton("Yes");
+    await tick();
+    await tick();
+
+    connectivityToggle().click();
+    await tick();
+
+    expect(document.querySelector('[data-testid="modal-title"]')?.textContent).toBe(
+      "Go back online?",
+    );
+    clickModalButton("Yes");
+    await tick();
+    await tick();
+
+    expect(saveChapterDocument).toHaveBeenCalledWith("c1", dirtyText);
+    expect(connectivityToggle().dataset.online).toBe("true");
+    expect(
+      document.querySelector<HTMLButtonElement>('[data-testid="menu-item-import"]')!.disabled,
+    ).toBe(false);
+  });
+
+  it("stays offline when the back-online prompt is cancelled", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const saveChapterDocument = vi.fn(async (_id: string, content: string) => ({
+      content,
+      summary: null,
+    }));
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      getChapterDocument: vi.fn(async () => ({
+        content: "# Opening 1\n\nServer body.",
+        summary: null,
+      })),
+      saveChapterDocument,
+    });
+    mountShell(document.body, { api: api as never, bridge: electronBridge() as never });
+    await tick();
+
+    connectivityToggle().click();
+    await tick();
+    clickModalButton("Yes");
+    await tick();
+    await tick();
+
+    connectivityToggle().click();
+    await tick();
+    expect(document.querySelector('[data-testid="modal-title"]')?.textContent).toBe(
+      "Go back online?",
+    );
+    clickModalButton("Cancel");
+
+    expect(connectivityToggle().dataset.online).toBe("false");
+    expect(saveChapterDocument).not.toHaveBeenCalled();
+  });
+
+  it("offers offline mode when any backend fetch fails in Electron", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/auth/config")) {
+          return new Response(JSON.stringify({ login_required: false, providers: [] }), { status: 200 });
+        }
+        if (url.endsWith("/auth/me")) {
+          return new Response(
+            JSON.stringify({
+              user: { id: "u-1", username: "brian", email: "a@b.c", display_name: "Brian", avatar_url: "" },
+              password_change_required: false,
+            }),
+            { status: 200 },
+          );
+        }
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    mountShell(document.body, { api: new ApiClient("/api") as never, bridge: electronBridge() as never });
+    await tick();
+
+    expect(document.querySelector('[data-testid="modal-title"]')?.textContent).toBe("Go offline?");
+    clickModalButton("Cancel");
+    expect(connectivityToggle().dataset.online).toBe("true");
+  });
+});
 
 describe("sign out", () => {
   it("ends the session, clears the workspace and shows the gate again", async () => {

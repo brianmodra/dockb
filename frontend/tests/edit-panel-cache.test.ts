@@ -194,4 +194,61 @@ describe("EditPanel file cache", () => {
     expect(panel.isDirty()).toBe(false);
     expect(panel.isCacheDirty()).toBe(false);
   });
+
+  it("loads from the cache instead of the backend while offline", async () => {
+    const cached = "---\ntitle: Opening\nact: I\n---\n\nOffline body.";
+    const api = fakeApi();
+    const panel = new EditPanel({
+      api,
+      fileCache: new FileCache({ bridge: cacheBridge(cached), storage: memoryStorage() }),
+      cacheContext: context(),
+      offline: () => true,
+    });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    expect(api.getChapterDocument).not.toHaveBeenCalled();
+    expect(panel.content()).toBe(cached);
+  });
+
+  it("reports an uncached chapter while offline without calling the backend", async () => {
+    const messages: string[] = [];
+    const api = fakeApi();
+    const panel = new EditPanel({
+      api,
+      fileCache: new FileCache({ bridge: cacheBridge(), storage: memoryStorage() }),
+      cacheContext: context(),
+      offline: () => true,
+      onMessage: (text) => messages.push(text),
+    });
+    document.body.append(panel.element);
+
+    await panel.load("c1");
+
+    expect(api.getChapterDocument).not.toHaveBeenCalled();
+    expect(messages.join(" ")).toContain("not available offline");
+  });
+
+  it("saves edits to the cache without calling the backend while offline", async () => {
+    const cached = "---\ntitle: Opening\nact: I\n---\n\nOffline body.";
+    const bridge = cacheBridge(cached);
+    const saveChapterDocument = vi.fn(async (_id: string, content: string) => doc(content));
+    const api = fakeApi({ saveChapterDocument });
+    const panel = new EditPanel({
+      api,
+      fileCache: new FileCache({ bridge, storage: memoryStorage() }),
+      cacheContext: context(),
+      offline: () => true,
+    });
+    document.body.append(panel.element);
+    await panel.load("c1");
+    typeInPanel(panel, " edit");
+
+    await panel.save();
+
+    expect(saveChapterDocument).not.toHaveBeenCalled();
+    expect(bridge.cacheWrite).toHaveBeenCalledWith(PATH, panel.content());
+    expect(panel.isDirty()).toBe(true);
+  });
 });

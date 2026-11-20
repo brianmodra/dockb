@@ -95,6 +95,35 @@ describe("LeftPanel", () => {
     expect(onEdit).not.toHaveBeenCalled();
   });
 
+  it("disables backend-changing chapter actions while offline", async () => {
+    const api = fakeApi({
+      listChapters: vi.fn(
+        async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"]),
+      ),
+    });
+    const panel = new LeftPanel({ api, offline: () => true });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    const items = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("[data-testid='context-menu'] .context-item"),
+    );
+    const byLabel = new Map(items.map((item) => [item.textContent ?? "", item]));
+
+    expect(byLabel.get("Edit")?.disabled).toBe(false);
+    expect(byLabel.get("Read-only view")?.disabled).toBe(false);
+    for (const label of ["Rename", "Move", "Renumber", "POV", "Delete"]) {
+      expect(byLabel.get(label)?.disabled).toBe(true);
+      byLabel.get(label)!.click();
+    }
+    expect(api.updateChapter).not.toHaveBeenCalled();
+    expect(api.deleteChapter).not.toHaveBeenCalled();
+    expect(api.reorderChapter).not.toHaveBeenCalled();
+    expect(api.renumberChapters).not.toHaveBeenCalled();
+    expect(api.setPov).not.toHaveBeenCalled();
+  });
+
   it("opens the document editor on Edit", async () => {
     const onEdit = vi.fn();
     const panel = new LeftPanel({

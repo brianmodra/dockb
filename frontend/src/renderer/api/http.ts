@@ -27,14 +27,28 @@ function defaultHeaders(init: RequestInit): HeadersInit {
   return { "Content-Type": "application/json", ...(init.headers ?? {}) };
 }
 
+export type NetworkFailureHandler = (error: unknown) => void;
+
+let networkFailureHandler: NetworkFailureHandler | null = null;
+
+export function setNetworkFailureHandler(handler: NetworkFailureHandler | null): void {
+  networkFailureHandler = handler;
+}
+
 export async function request<T>(
   url: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: defaultHeaders(init),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: defaultHeaders(init),
+    });
+  } catch (error) {
+    networkFailureHandler?.(error);
+    throw error;
+  }
   if (!response.ok) {
     throw new ApiError(response.status, await parseError(response));
   }

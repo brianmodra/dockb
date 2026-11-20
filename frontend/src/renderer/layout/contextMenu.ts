@@ -4,6 +4,7 @@ export interface ContextMenuItem {
   onSelect?: () => void;
   /** The currently-chosen entry of a pulldown, drawn with a tick. */
   checked?: boolean;
+  disabled?: boolean;
   children?: ContextMenuItem[];
 }
 
@@ -109,6 +110,7 @@ function appendItems(container: HTMLElement, items: ContextMenuItem[], close: ()
     const button = document.createElement("button");
     button.type = "button";
     button.className = "context-item";
+    button.disabled = item.disabled === true;
     if (item.checked) {
       button.classList.add("is-checked");
     }

@@ -1,6 +1,6 @@
 import type { ChapterListRow } from "../api/types";
 import { ChapterList, orderedForDisplay } from "./chapterList";
-import { openContextMenu } from "./contextMenu";
+import { openContextMenu, type ContextMenuItem } from "./contextMenu";
 import { confirmCheckboxModal, confirmModal, povModal, promptModal } from "./modals";
 import { MoveMode } from "./moveMode";
 import { reportError } from "../log";
@@ -13,6 +13,7 @@ export type LeftPanelApi = Pick<
 
 export interface LeftPanelOptions {
   api: LeftPanelApi;
+  offline?: () => boolean;
   onEdit?: (chapterId: string) => void;
   onMessage?: (text: string) => void;
   onPovChanged?: (chapterId: string, povTitle: string | null) => void;
@@ -23,6 +24,7 @@ export class LeftPanel {
   readonly element: HTMLElement;
 
   private api: LeftPanelApi;
+  private offline?: () => boolean;
   private onEdit?: (chapterId: string) => void;
   private onMessage?: (text: string) => void;
   private onPovChanged?: (chapterId: string, povTitle: string | null) => void;
@@ -34,6 +36,7 @@ export class LeftPanel {
 
   constructor(options: LeftPanelOptions) {
     this.api = options.api;
+    this.offline = options.offline;
     this.onEdit = options.onEdit;
     this.onMessage = options.onMessage;
     this.onPovChanged = options.onPovChanged;
@@ -100,25 +103,38 @@ export class LeftPanel {
     this.chapterList.select(null);
   }
 
+  private isOffline(): boolean {
+    return this.offline?.() === true;
+  }
+
   private handleContext(chapterId: string, event: MouseEvent): void {
     const chapter = this.chapterList.chapter(chapterId);
     if (!chapter) {
       return;
     }
-    const items = [
+    const offline = this.isOffline();
+    const items: ContextMenuItem[] = [
       { label: "Edit", onSelect: () => this.onEdit?.(chapterId) },
       { label: "Read-only view", onSelect: () => this.onReadonly?.(chapterId, chapter.title) },
-      { label: "Rename", onSelect: () => void this.rename(chapterId, chapter.title) },
+      { label: "Rename", disabled: offline, onSelect: () => void this.rename(chapterId, chapter.title) },
     ];
     if (chapter.category === "Character") {
       // A character is neither moved within the manuscript nor numbered.
-      items.push({ label: "Delete", onSelect: () => void this.delete(chapterId, chapter.title) });
+      items.push({
+        label: "Delete",
+        disabled: offline,
+        onSelect: () => void this.delete(chapterId, chapter.title),
+      });
     } else {
       items.push(
-        { label: "Move", onSelect: () => this.startMove(chapterId) },
-        { label: "Renumber", onSelect: () => void this.renumberAll() },
-        { label: "POV", onSelect: () => void this.pov(chapterId) },
-        { label: "Delete", onSelect: () => void this.delete(chapterId, chapter.title) },
+        { label: "Move", disabled: offline, onSelect: () => this.startMove(chapterId) },
+        { label: "Renumber", disabled: offline, onSelect: () => void this.renumberAll() },
+        { label: "POV", disabled: offline, onSelect: () => void this.pov(chapterId) },
+        {
+          label: "Delete",
+          disabled: offline,
+          onSelect: () => void this.delete(chapterId, chapter.title),
+        },
       );
     }
     openContextMenu(event.clientX, event.clientY, items);
@@ -126,6 +142,10 @@ export class LeftPanel {
 
   /** Ask for a POV character by name until one applies, is cleared, or is cancelled. */
   private async pov(chapterId: string): Promise<void> {
+    if (this.isOffline()) {
+      this.onMessage?.("Unavailable offline.");
+      return;
+    }
     if (!this.documentId) {
       return;
     }
@@ -155,6 +175,10 @@ export class LeftPanel {
   }
 
   private async rename(chapterId: string, currentTitle: string): Promise<void> {
+    if (this.isOffline()) {
+      this.onMessage?.("Unavailable offline.");
+      return;
+    }
     const { value, input } = await promptModal({
       title: "Rename chapter",
       label: "New name",
@@ -173,6 +197,10 @@ export class LeftPanel {
   }
 
   private async delete(chapterId: string, title: string): Promise<void> {
+    if (this.isOffline()) {
+      this.onMessage?.("Unavailable offline.");
+      return;
+    }
     const confirmed = await confirmModal({
       title: "Delete chapter",
       message: `Are you sure you want to delete "${title}"?`,
@@ -190,6 +218,10 @@ export class LeftPanel {
   }
 
   private async renumberAll(): Promise<void> {
+    if (this.isOffline()) {
+      this.onMessage?.("Unavailable offline.");
+      return;
+    }
     if (!this.documentId) {
       return;
     }
@@ -216,6 +248,10 @@ export class LeftPanel {
   }
 
   private startMove(chapterId: string): void {
+    if (this.isOffline()) {
+      this.onMessage?.("Unavailable offline.");
+      return;
+    }
     this.moveMode?.cancel();
     this.moveMode = new MoveMode({
       chapterId,

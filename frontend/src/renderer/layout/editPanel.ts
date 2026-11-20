@@ -48,6 +48,7 @@ export interface EditPanelOptions {
   api: EditPanelApi;
   fileCache?: FileCache;
   cacheContext?: (chapterId: string) => CacheContext | null;
+  offline?: () => boolean;
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -63,6 +64,7 @@ export class EditPanel {
   api: EditPanelApi;
   fileCache?: FileCache;
   cacheContext?: (chapterId: string) => CacheContext | null;
+  offline?: () => boolean;
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -92,6 +94,7 @@ export class EditPanel {
     this.api = options.api;
     this.fileCache = options.fileCache;
     this.cacheContext = options.cacheContext;
+    this.offline = options.offline;
     this.onMessage = options.onMessage;
     this.onWarning = options.onWarning;
     this.onDirtyChange = options.onDirtyChange;
@@ -377,6 +380,28 @@ export class EditPanel {
     return this.fileCache.isCacheDirty(this.cachePath, this.content());
   }
 
+  private isOffline(): boolean {
+    return this.offline?.() === true;
+  }
+
+  private async cachedChapter(chapterId: string): Promise<string | null> {
+    if (this.fileCache === undefined) {
+      return null;
+    }
+    const context = this.cacheContext?.(chapterId) ?? null;
+    if (context === null) {
+      this.cachePath = null;
+      return null;
+    }
+    const path = this.fileCache.chapterPath(context.documentTitle, context.chapter);
+    const cached = await this.fileCache.readChapter(path);
+    if (cached !== null) {
+      this.cachePath = path;
+      this.fileCache.recordCacheText(path, cached);
+    }
+    return cached;
+  }
+
   async flushCache(): Promise<void> {
     await this.fileCache?.flush();
   }
@@ -609,8 +634,20 @@ export class EditPanel {
   async load(chapterId: string): Promise<void> {
     this.setBusy(true);
     try {
-      const response = await this.api.getChapterDocument(chapterId);
-      const content = await this.syncCacheOnLoad(chapterId, response.content);
+      let content: string;
+      const warnings: string[] = [];
+      if (this.isOffline()) {
+        const cached = await this.cachedChapter(chapterId);
+        if (cached === null) {
+          this.onMessage?.("Chapter is not available offline.");
+          return;
+        }
+        content = cached;
+      } else {
+        const response = await this.api.getChapterDocument(chapterId);
+        content = await this.syncCacheOnLoad(chapterId, response.content);
+        warnings.push(...(response.warnings ?? []));
+      }
       this.chapterId = chapterId;
       this.lastCanonicalText = content;
       this.replaceDoc(content);
@@ -618,7 +655,7 @@ export class EditPanel {
       this.resetChangeCount(false);
       this.updateHeader();
       this.onSelectionChange?.();
-      for (const warning of response.warnings ?? []) {
+      for (const warning of warnings) {
         this.onWarning?.(warning);
       }
     } catch (error) {
@@ -634,6 +671,12 @@ export class EditPanel {
     }
     this.setBusy(true);
     try {
+      if (this.isOffline()) {
+        const text = this.content();
+        await this.writeCache(text);
+        this.onMessage?.("Saved to the file cache.");
+        return { content: text, summary: null, warnings: [] };
+      }
       const response = await this.api.saveChapterDocument(this.chapterId, this.content());
       await this.writeCache(response.content);
       this.lastCanonicalText = response.content;

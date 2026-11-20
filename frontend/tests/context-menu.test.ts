@@ -28,6 +28,20 @@ describe("context menu", () => {
     expect(onEdit).toHaveBeenCalled();
   });
 
+  it("disables an item without running it when clicked", () => {
+    const onSelect = vi.fn();
+    const handle = openContextMenu(0, 0, [
+      { label: "Rename", onSelect, disabled: true },
+      { label: "Edit", onSelect: vi.fn() },
+    ]);
+    document.body.append(handle.element);
+
+    const rename = handle.element.querySelector<HTMLButtonElement>(".context-item")!;
+    expect(rename.disabled).toBe(true);
+    rename.click();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("closes when a background click happens", () => {
     const handle = openContextMenu(0, 0, [{ label: "Edit", onSelect: vi.fn() }]);
     document.body.append(handle.element);
