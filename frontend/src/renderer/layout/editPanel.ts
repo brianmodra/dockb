@@ -11,6 +11,7 @@ import {
 import type { ApiClient } from "../api/client";
 import type { DocumentContentResponse } from "../api/types";
 import { reportError } from "../log";
+import type { CacheChapter, FileCache } from "../state/fileCache";
 import {
   characterHeaderText,
   frontMatterFields,
@@ -34,11 +35,19 @@ import {
   type WysiwygDiagnostic,
 } from "./wysiwyg";
 import type { Mode } from "./menubar";
+import { openModal } from "./modals";
 
 export type EditPanelApi = Pick<ApiClient, "getChapterDocument" | "saveChapterDocument">;
 
+export interface CacheContext {
+  documentTitle: string;
+  chapter: CacheChapter;
+}
+
 export interface EditPanelOptions {
   api: EditPanelApi;
+  fileCache?: FileCache;
+  cacheContext?: (chapterId: string) => CacheContext | null;
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -52,6 +61,8 @@ export class EditPanel {
   readonly element: HTMLElement;
 
   api: EditPanelApi;
+  fileCache?: FileCache;
+  cacheContext?: (chapterId: string) => CacheContext | null;
   onMessage?: (text: string) => void;
   onWarning?: (text: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -66,6 +77,7 @@ export class EditPanel {
   private readonly wysiwygHost: HTMLElement;
   private mode: Mode = "wysiwyg";
   private chapterId: string | null = null;
+  private cachePath: string | null = null;
   private lastCanonicalText: string | null = null;
   private lastDirty: boolean | null = null;
   private readonly readOnlyCompartment = new Compartment();
@@ -78,6 +90,8 @@ export class EditPanel {
 
   constructor(options: EditPanelOptions) {
     this.api = options.api;
+    this.fileCache = options.fileCache;
+    this.cacheContext = options.cacheContext;
     this.onMessage = options.onMessage;
     this.onWarning = options.onWarning;
     this.onDirtyChange = options.onDirtyChange;
@@ -122,6 +136,7 @@ export class EditPanel {
             this.notifyDirty();
             this.recordChange();
             this.refreshWordCount();
+            this.scheduleCacheWrite();
           }
           if (update.docChanged || update.selectionSet) {
             this.onEditActivity?.();
@@ -136,6 +151,7 @@ export class EditPanel {
         this.recordChange();
         this.onEditActivity?.();
         this.refreshWordCount();
+        this.scheduleCacheWrite();
       },
       onSelectionChange: () => {
         this.onSelectionChange?.();
@@ -332,6 +348,7 @@ export class EditPanel {
 
   clear(): void {
     this.chapterId = null;
+    this.cachePath = null;
     this.lastCanonicalText = null;
     this.replaceDoc("");
     this.notifyDirty();
@@ -351,6 +368,65 @@ export class EditPanel {
 
   lastCanonical(): string | null {
     return this.lastCanonicalText;
+  }
+
+  isCacheDirty(): boolean {
+    if (this.fileCache === undefined || this.cachePath === null) {
+      return false;
+    }
+    return this.fileCache.isCacheDirty(this.cachePath, this.content());
+  }
+
+  async flushCache(): Promise<void> {
+    await this.fileCache?.flush();
+  }
+
+  private scheduleCacheWrite(): void {
+    if (this.fileCache !== undefined && this.cachePath !== null) {
+      this.fileCache.scheduleWrite(this.cachePath, this.content());
+    }
+  }
+
+  private async writeCache(text: string): Promise<void> {
+    if (this.fileCache === undefined || this.cachePath === null) {
+      return;
+    }
+    await this.fileCache.writeChapter(this.cachePath, text);
+  }
+
+  private async syncCacheOnLoad(chapterId: string, backendText: string): Promise<string> {
+    if (this.fileCache === undefined) {
+      return backendText;
+    }
+    const context = this.cacheContext?.(chapterId) ?? null;
+    if (context === null) {
+      this.cachePath = null;
+      return backendText;
+    }
+    const path = this.fileCache.chapterPath(context.documentTitle, context.chapter);
+    this.cachePath = path;
+    const cached = await this.fileCache.readChapter(path);
+    if (cached === null || cached === backendText) {
+      await this.fileCache.writeChapter(path, backendText);
+      return backendText;
+    }
+
+    this.fileCache.recordCacheText(path, cached);
+    const choice = await openModal({
+      title: "File cache has changes",
+      body: "The cached copy of this chapter differs from the server. Save the cached text to the backend first, or replace it with the server version?",
+      buttons: [
+        { label: "Overwrite cache", value: "overwrite" },
+        { label: "Save to backend", value: "save", primary: true },
+      ],
+    });
+    if (choice === "save") {
+      const response = await this.api.saveChapterDocument(chapterId, cached);
+      await this.fileCache.writeChapter(path, response.content);
+      return response.content;
+    }
+    await this.fileCache.writeChapter(path, backendText);
+    return backendText;
   }
 
   /** The chapter whose document the panel is showing, if any. */
@@ -534,9 +610,10 @@ export class EditPanel {
     this.setBusy(true);
     try {
       const response = await this.api.getChapterDocument(chapterId);
+      const content = await this.syncCacheOnLoad(chapterId, response.content);
       this.chapterId = chapterId;
-      this.lastCanonicalText = response.content;
-      this.replaceDoc(response.content);
+      this.lastCanonicalText = content;
+      this.replaceDoc(content);
       this.notifyDirty();
       this.resetChangeCount(false);
       this.updateHeader();
@@ -558,6 +635,7 @@ export class EditPanel {
     this.setBusy(true);
     try {
       const response = await this.api.saveChapterDocument(this.chapterId, this.content());
+      await this.writeCache(response.content);
       this.lastCanonicalText = response.content;
       this.replaceDoc(response.content);
       this.notifyDirty();

@@ -2,6 +2,7 @@
 
 export interface ChapterFrontMatterFields {
   title?: string;
+  act?: string;
   category?: string;
   pov?: string;
   firstName?: string;
@@ -37,7 +38,7 @@ export function frontMatterFields(buffer: string): ChapterFrontMatterFields {
     }
     const key = line.slice(0, separator).trim();
     const value = line.slice(separator + 1).trim();
-    if (key === "title" || key === "category" || key === "pov") {
+    if (key === "title" || key === "act" || key === "category" || key === "pov") {
       fields[key] = value || undefined;
     } else if (key === "first_name") {
       fields.firstName = value || undefined;

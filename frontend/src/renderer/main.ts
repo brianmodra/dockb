@@ -66,8 +66,8 @@ async function sendImport(
 export function mountShell(root: HTMLElement, options: MountShellOptions = {}): AppLayout {
   root.replaceChildren();
 
-  const editPanel = options.api ? new EditPanel({ api: options.api }) : null;
   const fileCache = new FileCache({ bridge: options.bridge });
+  const editPanel = options.api ? new EditPanel({ api: options.api, fileCache }) : null;
   let stateController: AppStateController | null = null;
   let openDocument: () => void = () => {};
   let runImport: () => void = () => {};
@@ -76,6 +76,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   let runDocumentInfo: () => void = () => {};
   let runUserSettings: () => void = () => {};
   let currentDocumentId: () => string | null = () => null;
+  let currentDocumentTitle: string | null = null;
   let runHighlight: (rawArgs: unknown) => Promise<void> = async () => {};
   let runQuote: (rawArgs: unknown) => void = () => {};
   let runFormat: (rawArgs: unknown) => void = () => {};
@@ -200,6 +201,14 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
 
   if (options.api && editPanel) {
     const api = options.api;
+    const loadDocumentTitle = async (documentId: string): Promise<void> => {
+      currentDocumentTitle = null;
+      try {
+        currentDocumentTitle = (await api.getDocumentAttrs(documentId)).title;
+      } catch (error) {
+        reportError("Document title", error, (text) => layout.pushMessage(text));
+      }
+    };
     const controller = new AppStateController(api, {
       onMessage: (text) => layout.pushMessage(text),
     });
@@ -252,6 +261,19 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     });
     layout.leftPanelEl().append(panel.element);
     currentDocumentId = () => panel.currentDocumentId();
+    editPanel.cacheContext = (chapterId) => {
+      if (currentDocumentTitle === null) {
+        return null;
+      }
+      const row = panel.selectedChapter();
+      if (row === null || row.id !== chapterId) {
+        return null;
+      }
+      return {
+        documentTitle: currentDocumentTitle,
+        chapter: { title: row.title, act: row.act, category: row.category },
+      };
+    };
 
     let mentionMap: Record<string, string[]> = {};
     let lastMentionParagraphId: string | null = null;
@@ -427,9 +449,12 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         if (documentId === null) {
           return;
         }
-        void panel.load(documentId);
-        loadDocumentMentions(documentId);
-        void controller.saveLastDocument(documentId);
+        void (async () => {
+          await loadDocumentTitle(documentId);
+          await panel.load(documentId);
+          loadDocumentMentions(documentId);
+          await controller.saveLastDocument(documentId);
+        })();
       });
     };
 
@@ -514,7 +539,16 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       );
     };
 
-    void boot(options.api, { layout, panel, controller, editPanel, fileCache, signOut, loadDocumentMentions });
+    void boot(options.api, {
+      layout,
+      panel,
+      controller,
+      editPanel,
+      fileCache,
+      loadDocumentTitle,
+      signOut,
+      loadDocumentMentions,
+    });
   }
 
   return layout;
@@ -526,12 +560,22 @@ interface BootContext {
   controller: AppStateController;
   editPanel: EditPanel;
   fileCache: FileCache;
+  loadDocumentTitle: (documentId: string) => Promise<void>;
   signOut: SignOutFlow;
   loadDocumentMentions: (documentId: string) => void;
 }
 
 async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
-  const { layout, panel, controller, editPanel, fileCache, signOut: signOutFlow, loadDocumentMentions } = ctx;
+  const {
+    layout,
+    panel,
+    controller,
+    editPanel,
+    fileCache,
+    loadDocumentTitle,
+    signOut: signOutFlow,
+    loadDocumentMentions,
+  } = ctx;
   const onMessage = (text: string): void => layout.pushMessage(text);
 
   let config: import("./api/types").AuthConfig;
@@ -640,6 +684,7 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
         layout.restoreState({ panel_widths: panelWidths, edit_mode: editMode }),
       pickDocument: () => openDocumentPicker(api),
       loadDocument: async (documentId) => {
+        await loadDocumentTitle(documentId);
         await panel.load(documentId);
         loadDocumentMentions(documentId);
         await controller.saveLastDocument(documentId);

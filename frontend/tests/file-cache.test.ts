@@ -107,6 +107,27 @@ describe("FileCache", () => {
     expect(bridge.setCacheRoot).toHaveBeenCalledTimes(1);
   });
 
+  it("tracks the last cache text for dirty checks", () => {
+    const cache = new FileCache({ bridge: electronBridge() });
+    expect(cache.isCacheDirty("Doc/One.md", "anything")).toBe(false);
+    cache.recordCacheText("Doc/One.md", "cached");
+    expect(cache.cacheText("Doc/One.md")).toBe("cached");
+    expect(cache.isCacheDirty("Doc/One.md", "cached")).toBe(false);
+    expect(cache.isCacheDirty("Doc/One.md", "edited")).toBe(true);
+  });
+
+  it("updates the baseline after a direct or debounced write", async () => {
+    vi.useFakeTimers();
+    const bridge = electronBridge();
+    const cache = new FileCache({ bridge, debounceMs: 5000 });
+    await cache.writeChapter("Doc/One.md", "direct");
+    expect(cache.isCacheDirty("Doc/One.md", "direct")).toBe(false);
+    cache.scheduleWrite("Doc/One.md", "scheduled");
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(cache.isCacheDirty("Doc/One.md", "scheduled")).toBe(false);
+    expect(cache.isCacheDirty("Doc/One.md", "direct")).toBe(true);
+  });
+
   it("delegates cache file operations to the bridge", async () => {
     const bridge = electronBridge();
     const cache = new FileCache({ bridge });

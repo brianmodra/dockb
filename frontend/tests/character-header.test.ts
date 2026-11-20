@@ -22,6 +22,11 @@ describe("frontMatterFields", () => {
     expect(fields.pov).toBe("Karakas");
   });
 
+  it("reads the act off manuscript front matter", () => {
+    const fields = frontMatterFields(frontMatter({ title: "Opening 1", act: "II", category: "Chapter" }));
+    expect(fields.act).toBe("II");
+  });
+
   it("reads bracketed lists", () => {
     const fields = frontMatterFields(
       frontMatter({ middle_names: "[Edgar, John]", nicknames: "[Adams, Jer]" }),

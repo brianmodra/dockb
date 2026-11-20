@@ -59,6 +59,7 @@ export class FileCache {
   private readonly storage: Pick<Storage, "getItem" | "setItem">;
   private readonly debounceMs: number;
   private readonly pendingWrites = new Map<string, string>();
+  private readonly cacheTexts = new Map<string, string>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private directoryValue: string | null = null;
 
@@ -87,6 +88,7 @@ export class FileCache {
       return;
     }
     await this.bridge.setCacheRoot(this.directoryValue);
+    this.cacheTexts.clear();
   }
 
   async chooseDirectory(): Promise<string | null> {
@@ -98,6 +100,7 @@ export class FileCache {
       return null;
     }
     await this.bridge.setCacheRoot(chosen);
+    this.cacheTexts.clear();
     this.directoryValue = chosen;
     this.storage.setItem(DIRECTORY_KEY, chosen);
     return chosen;
@@ -111,6 +114,19 @@ export class FileCache {
     return `${this.documentDirectory(documentTitle)}/${sanitizeSegment(actDirectory(chapter))}/${sanitizeSegment(chapter.title)}.md`;
   }
 
+  cacheText(path: string): string | null {
+    return this.cacheTexts.get(path) ?? null;
+  }
+
+  recordCacheText(path: string, text: string): void {
+    this.cacheTexts.set(path, text);
+  }
+
+  isCacheDirty(path: string, current: string): boolean {
+    const baseline = this.cacheTexts.get(path);
+    return baseline !== undefined && baseline !== current;
+  }
+
   async readChapter(path: string): Promise<string | null> {
     if (this.bridge === undefined) {
       return null;
@@ -121,24 +137,39 @@ export class FileCache {
   async writeChapter(path: string, content: string): Promise<void> {
     if (this.bridge !== undefined) {
       await this.bridge.cacheWrite(path, content);
+      this.recordCacheText(path, content);
     }
   }
 
   async deleteChapter(path: string): Promise<void> {
     if (this.bridge !== undefined) {
       await this.bridge.cacheDelete(path);
+      this.cacheTexts.delete(path);
     }
   }
 
   async renameChapter(from: string, to: string): Promise<void> {
     if (this.bridge !== undefined) {
       await this.bridge.cacheRename(from, to);
+      const text = this.cacheTexts.get(from);
+      if (text !== undefined) {
+        this.cacheTexts.delete(from);
+        this.cacheTexts.set(to, text);
+      }
     }
   }
 
   async renameDocument(from: string, to: string): Promise<void> {
     if (this.bridge !== undefined) {
-      await this.bridge.cacheMoveDirectory(this.documentDirectory(from), this.documentDirectory(to));
+      const fromDirectory = this.documentDirectory(from);
+      const toDirectory = this.documentDirectory(to);
+      await this.bridge.cacheMoveDirectory(fromDirectory, toDirectory);
+      for (const [path, text] of [...this.cacheTexts.entries()]) {
+        if (path === fromDirectory || path.startsWith(`${fromDirectory}/`)) {
+          this.cacheTexts.delete(path);
+          this.cacheTexts.set(`${toDirectory}${path.slice(fromDirectory.length)}`, text);
+        }
+      }
     }
   }
 
@@ -171,6 +202,7 @@ export class FileCache {
     for (const [path, content] of [...this.pendingWrites.entries()]) {
       await this.bridge.cacheWrite(path, content);
       this.pendingWrites.delete(path);
+      this.recordCacheText(path, content);
     }
   }
 }
