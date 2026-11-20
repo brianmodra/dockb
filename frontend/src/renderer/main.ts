@@ -19,9 +19,11 @@ import { openDocumentPicker, openDocumentPickerConfirm, openDeleteDocumentPicker
 import { confirmModal, editDocumentModal, openModal, userSettingsModal } from "./layout/modals";
 import { LANGUAGES, openLanguageSettings } from "./layout/languageSettings";
 import { openDictionaryDialog } from "./layout/dictionaryDialog";
+import { openFileCacheModal } from "./layout/fileCacheModal";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
 import { ensureSignedIn } from "./layout/signInFlow";
 import { AppStateController } from "./state/appState";
+import { FileCache } from "./state/fileCache";
 import { runStartup } from "./state/startup";
 import { defaultProofreadingLanguage } from "./state/language";
 import { confirmUnsaved } from "./state/quit";
@@ -65,6 +67,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
   root.replaceChildren();
 
   const editPanel = options.api ? new EditPanel({ api: options.api }) : null;
+  const fileCache = new FileCache({ bridge: options.bridge });
   let stateController: AppStateController | null = null;
   let openDocument: () => void = () => {};
   let runImport: () => void = () => {};
@@ -99,8 +102,15 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       void stateController?.saveEditMode(mode);
     },
     onFocusEditor: () => editPanel?.focus(),
-    onOpenLanguageSettings: () => {
-      void (async () => {
+      showFileCache: fileCache.enabled,
+      onFileCache: () => {
+        void openFileCacheModal(fileCache, {
+          allowCancel: true,
+          onMessage: (text) => layout.pushMessage(text),
+        });
+      },
+      onOpenLanguageSettings: () => {
+        void (async () => {
         let languages = LANGUAGES;
         if (options.api && typeof options.api.getProofreadingLanguages === "function") {
           try {
@@ -504,7 +514,7 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
       );
     };
 
-    void boot(options.api, { layout, panel, controller, editPanel, signOut, loadDocumentMentions });
+    void boot(options.api, { layout, panel, controller, editPanel, fileCache, signOut, loadDocumentMentions });
   }
 
   return layout;
@@ -515,12 +525,13 @@ interface BootContext {
   panel: LeftPanel;
   controller: AppStateController;
   editPanel: EditPanel;
+  fileCache: FileCache;
   signOut: SignOutFlow;
   loadDocumentMentions: (documentId: string) => void;
 }
 
 async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
-  const { layout, panel, controller, editPanel, signOut: signOutFlow, loadDocumentMentions } = ctx;
+  const { layout, panel, controller, editPanel, fileCache, signOut: signOutFlow, loadDocumentMentions } = ctx;
   const onMessage = (text: string): void => layout.pushMessage(text);
 
   let config: import("./api/types").AuthConfig;
@@ -614,6 +625,10 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
   }
 
   async function startUp(): Promise<void> {
+    await fileCache.restore();
+    if (fileCache.enabled && !fileCache.isConfigured()) {
+      await openFileCacheModal(fileCache, { onMessage });
+    }
     const savedState = await controller.load();
     const language = await defaultProofreadingLanguage(api);
     if (language !== null) {

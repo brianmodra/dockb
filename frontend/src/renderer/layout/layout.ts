@@ -14,6 +14,8 @@ export interface AppLayoutOptions {
   onOpenDocumentSettings?: () => void;
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
+  showFileCache?: boolean;
+  onFileCache?: () => void;
   onDeleteDocument?: () => void;
   onSignOut?: () => void;
   onUserSettings?: () => void;
@@ -88,6 +90,8 @@ export class AppLayout {
       onOpenDocumentSettings: options.onOpenDocumentSettings,
       onOpenLanguageSettings: options.onOpenLanguageSettings,
       onOpenDictionary: options.onOpenDictionary,
+      showFileCache: options.showFileCache,
+      onFileCache: options.onFileCache,
       onDeleteDocument: options.onDeleteDocument,
       onSignOut: options.onSignOut,
       onUserSettings: options.onUserSettings,

@@ -307,6 +307,36 @@ describe("menubar user menu", () => {
   });
 });
 
+describe("menubar file cache", () => {
+  it("hides File Cache in the browser", () => {
+    const bar = buildMenubar({});
+    document.body.append(bar.element);
+    openMenu(bar, "Settings");
+    expect(dropdown(bar, "Settings").querySelector('[data-testid="menu-item-file-cache"]')).toBeNull();
+  });
+
+  it("shows File Cache last in the cog menu when enabled", () => {
+    const bar = buildMenubar({ showFileCache: true });
+    document.body.append(bar.element);
+    openMenu(bar, "Settings");
+    const labels = Array.from(dropdown(bar, "Settings").querySelectorAll(".menu-item")).map(
+      (n) => n.textContent,
+    );
+    expect(labels).toEqual(["Document…", "Language…", "Dictionary…", "File Cache"]);
+  });
+
+  it("reports Settings → File Cache to onFileCache", () => {
+    const onFileCache = vi.fn();
+    const bar = buildMenubar({ showFileCache: true, onFileCache });
+    document.body.append(bar.element);
+    openMenu(bar, "Settings");
+    dropdown(bar, "Settings")
+      .querySelector<HTMLElement>('[data-testid="menu-item-file-cache"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onFileCache).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("menubar document actions", () => {
   it("opens the Delete submenu with its document item", () => {
     const bar = buildMenubar({});

@@ -129,4 +129,60 @@ describe("mountShell startup integration", () => {
     expect(api.listDocuments).not.toHaveBeenCalled();
     expect(api.listChapters).not.toHaveBeenCalled();
   });
+
+  it("prompts for the cache directory on startup in Electron when none is saved", async () => {
+    window.localStorage.clear();
+    const api = {
+      getAuthConfig: vi.fn(async () => ({ login_required: false, providers: [] })),
+      getMe: vi.fn(async () => user()),
+      getAppState: vi.fn(async () => state()),
+      listDocuments: vi.fn(async () => []),
+      listChapters: vi.fn(async () => []),
+    } as never;
+    const bridge = {
+      isElectron: true,
+      openExternal: vi.fn(async () => undefined),
+      chooseCacheDirectory: vi.fn(async () => "/cache"),
+      setCacheRoot: vi.fn(async () => undefined),
+      cacheRead: vi.fn(async () => null),
+      cacheWrite: vi.fn(async () => undefined),
+      cacheDelete: vi.fn(async () => undefined),
+      cacheRename: vi.fn(async () => undefined),
+      cacheMoveDirectory: vi.fn(async () => undefined),
+      cacheList: vi.fn(async () => []),
+    } as never;
+    mountShell(document.body, { api, bridge });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector('[data-testid="file-cache-choose-button"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="menu-item-file-cache"]')).not.toBeNull();
+    window.localStorage.clear();
+  });
+
+  it("does not prompt on startup when a cache directory is already saved", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/saved/cache");
+    const api = {
+      getAuthConfig: vi.fn(async () => ({ login_required: false, providers: [] })),
+      getMe: vi.fn(async () => user()),
+      getAppState: vi.fn(async () => state()),
+      listDocuments: vi.fn(async () => []),
+      listChapters: vi.fn(async () => []),
+    } as never;
+    const bridge = {
+      isElectron: true,
+      openExternal: vi.fn(async () => undefined),
+      chooseCacheDirectory: vi.fn(async () => "/cache"),
+      setCacheRoot: vi.fn(async () => undefined),
+      cacheRead: vi.fn(async () => null),
+      cacheWrite: vi.fn(async () => undefined),
+      cacheDelete: vi.fn(async () => undefined),
+      cacheRename: vi.fn(async () => undefined),
+      cacheMoveDirectory: vi.fn(async () => undefined),
+      cacheList: vi.fn(async () => []),
+    } as never;
+    mountShell(document.body, { api, bridge });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector('[data-testid="file-cache-choose-button"]')).toBeNull();
+    expect(bridge.setCacheRoot).toHaveBeenCalledWith("/saved/cache");
+    window.localStorage.clear();
+  });
 });

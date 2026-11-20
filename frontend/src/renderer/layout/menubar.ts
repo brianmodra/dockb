@@ -14,6 +14,8 @@ export interface MenubarOptions {
   onOpenDocumentSettings?: () => void;
   onOpenLanguageSettings?: () => void;
   onOpenDictionary?: () => void;
+  showFileCache?: boolean;
+  onFileCache?: () => void;
   onDeleteDocument?: () => void;
   onSignOut?: () => void;
   onUserSettings?: () => void;
@@ -93,7 +95,15 @@ export function buildMenubar(options: MenubarOptions): Menubar {
   let userContainer: HTMLElement | null = null;
   let userName: HTMLSpanElement | null = null;
 
-  for (const menu of MENUS) {
+  const menus = options.showFileCache === true
+    ? MENUS.map((menu) =>
+        menu.key === "Settings"
+          ? { ...menu, items: [...menu.items, { key: "file-cache", label: "File Cache" }] }
+          : menu,
+      )
+    : MENUS;
+
+  for (const menu of menus) {
     if (menu.key === "Settings") {
       right.append(buildMenu(menu, options).container);
     } else if (menu.key === "user") {
@@ -288,6 +298,8 @@ function dispatchItem(menu: MenuSpec, item: MenuItemSpec, options: MenubarOption
     options.onOpenLanguageSettings?.();
   } else if (menu.key === "Settings" && item.key === "dictionary") {
     options.onOpenDictionary?.();
+  } else if (menu.key === "Settings" && item.key === "file-cache") {
+    options.onFileCache?.();
   } else if (menu.key === "user" && item.key === "sign-out") {
     options.onSignOut?.();
   } else if (menu.key === "user" && item.key === "user-settings") {
