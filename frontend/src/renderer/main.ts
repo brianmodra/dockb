@@ -411,6 +411,8 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
     const panel = new LeftPanel({
       api: options.api,
       offline: () => !connectivity.isOnline(),
+      fileCache,
+      documentTitle: () => currentDocumentTitle,
       onEdit: (chapterId) => {
         void editPanel.open(chapterId);
       },
@@ -612,18 +614,20 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
           if (!confirmed) {
             return;
           }
-          void options.api!.deleteDocument(selection.documentId).then(
-            () => {
-              layout.pushMessage(`Deleted "${selection.title}".`);
-              if (panel.currentDocumentId() === selection.documentId) {
-                panel.clear();
-                editPanel.clear();
-                if (connectivity.isOnline()) {
-                  void stateController?.saveLastDocument(null);
-                }
+          void (async () => {
+            await fileCache.flush();
+            await options.api!.deleteDocument(selection.documentId);
+            await fileCache.deleteDocument(selection.title);
+            layout.pushMessage(`Deleted "${selection.title}".`);
+            if (panel.currentDocumentId() === selection.documentId) {
+              panel.clear();
+              editPanel.clear();
+              if (connectivity.isOnline()) {
+                void stateController?.saveLastDocument(null);
               }
-            },
-            (error) => reportError("Delete document", error, (text) => layout.pushMessage(text)),
+            }
+          })().catch((error) =>
+            reportError("Delete document", error, (text) => layout.pushMessage(text)),
           );
         });
       });
@@ -675,11 +679,17 @@ export function mountShell(root: HTMLElement, options: MountShellOptions = {}): 
         if (values === null) {
           return;
         }
+        const oldTitle = currentDocumentTitle ?? attrs.title;
+        await fileCache.flush();
         await options.api!.updateDocument(attrs.id, {
           title: values.title,
           author: values.author,
           narrative_perspective: values.narrative_perspective,
         });
+        if (oldTitle !== values.title) {
+          await fileCache.renameDocument(oldTitle, values.title);
+        }
+        currentDocumentTitle = values.title;
         layout.pushMessage(`Updated "${values.title}".`);
         void panel.reload();
       } catch (error) {

@@ -23,6 +23,12 @@ export interface CacheChapter {
   category?: "Chapter" | "Character";
 }
 
+export interface ChapterCacheMove {
+  id: string;
+  from: CacheChapter;
+  to: CacheChapter;
+}
+
 export interface FileCacheOptions {
   bridge?: FileCacheBridge;
   storage?: Pick<Storage, "getItem" | "setItem">;
@@ -163,12 +169,56 @@ export class FileCache {
     if (this.bridge !== undefined) {
       const fromDirectory = this.documentDirectory(from);
       const toDirectory = this.documentDirectory(to);
+      const paths = await this.list();
+      if (!paths.some((path) => path.startsWith(`${fromDirectory}/`))) {
+        return;
+      }
       await this.bridge.cacheMoveDirectory(fromDirectory, toDirectory);
       for (const [path, text] of [...this.cacheTexts.entries()]) {
         if (path === fromDirectory || path.startsWith(`${fromDirectory}/`)) {
           this.cacheTexts.delete(path);
           this.cacheTexts.set(`${toDirectory}${path.slice(fromDirectory.length)}`, text);
         }
+      }
+    }
+  }
+
+  async moveChapters(documentTitle: string, moves: ChapterCacheMove[]): Promise<void> {
+    if (this.bridge === undefined) {
+      return;
+    }
+    const documentDirectory = this.documentDirectory(documentTitle);
+    const staged: Array<{ temporary: string; to: string }> = [];
+    for (const move of moves) {
+      const from = this.chapterPath(documentTitle, move.from);
+      const to = this.chapterPath(documentTitle, move.to);
+      if (from === to) {
+        continue;
+      }
+      if ((await this.readChapter(from)) === null) {
+        this.cacheTexts.delete(from);
+        continue;
+      }
+      const temporary = `${documentDirectory}/.cache-move-${sanitizeSegment(move.id)}.md`;
+      await this.renameChapter(from, temporary);
+      staged.push({ temporary, to });
+    }
+    for (const move of staged) {
+      await this.renameChapter(move.temporary, move.to);
+    }
+  }
+
+  async deleteChapters(documentTitle: string, chapters: CacheChapter[]): Promise<void> {
+    for (const chapter of chapters) {
+      await this.deleteChapter(this.chapterPath(documentTitle, chapter));
+    }
+  }
+
+  async deleteDocument(documentTitle: string): Promise<void> {
+    const documentDirectory = this.documentDirectory(documentTitle);
+    for (const path of await this.list()) {
+      if (path.startsWith(`${documentDirectory}/`)) {
+        await this.deleteChapter(path);
       }
     }
   }

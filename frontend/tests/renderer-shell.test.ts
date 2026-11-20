@@ -1227,3 +1227,125 @@ describe("sign out", () => {
     expect(signInForm()).not.toBeNull();
   });
 });
+
+describe("structural cache mirroring", () => {
+  it("renames the cached document directory and uses the new title for later reads", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const bridge = electronBridge(new Map([["Faith/Act None/Opening 1.md", "# Opening 1"]]));
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      getDocumentAttrs: vi.fn(async () => ({
+        id: "d1",
+        title: "Faith",
+        author: "Paul",
+        narrative_perspective: "",
+      })),
+      getNarrativePerspectives: vi.fn(async () => ({ perspectives: [] })),
+      getChapterDocument: vi.fn(async () => ({ content: "# Opening 1\n\nText.", summary: null })),
+      updateDocument: vi.fn(async () => ({ status: { code: "ok", message: "ok" } })),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    document.querySelector<HTMLElement>("[data-testid='menu-Settings']")!.click();
+    document.querySelector<HTMLElement>("[data-testid='menu-item-document']")!.click();
+    await tick();
+    const titleInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
+    titleInput.value = "Hope";
+    clickModalButton("Save");
+    await tick();
+
+    expect(bridge.cacheMoveDirectory).toHaveBeenCalledWith("Faith", "Hope");
+    (document.querySelector<HTMLElement>("[data-testid='chapter-row']")!).click();
+    await tick();
+    expect(bridge.cacheRead).toHaveBeenCalledWith("Hope/Act None/Opening 1.md");
+  });
+
+  it("deletes the cached document's files when the document is deleted", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const bridge = electronBridge(new Map([["Faith/Act None/Opening 1.md", "# Opening 1"]]));
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      listDocuments: vi.fn(async () => [
+        { attrs: { id: "d1", title: "Faith", author: "Paul" }, chapter_summaries: [] },
+      ]),
+      deleteDocument: vi.fn(async () => ({ status: { code: "ok", message: "ok" } })),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    document.querySelector<HTMLElement>("[data-testid='menu-File']")!.click();
+    document.querySelector<HTMLElement>("[data-testid='menu-item-delete']")!.click();
+    document.querySelector<HTMLElement>("[data-testid='menu-item-delete-document']")!.click();
+    await tick();
+    (document.querySelector<HTMLElement>("[data-testid='document-picker-item']")!).click();
+    document.querySelector<HTMLElement>("[data-testid='document-picker-delete']")!.click();
+    await tick();
+    clickModalButton("Delete");
+    await tick();
+
+    expect(bridge.cacheDelete).toHaveBeenCalledWith("Faith/Act None/Opening 1.md");
+  });
+
+  it("leaves the cached directory alone when renaming the document fails", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const bridge = electronBridge();
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => []),
+      getDocumentAttrs: vi.fn(async () => ({
+        id: "d1",
+        title: "Faith",
+        author: "Paul",
+        narrative_perspective: "",
+      })),
+      getNarrativePerspectives: vi.fn(async () => ({ perspectives: [] })),
+      updateDocument: vi.fn(async () => {
+        throw new Error("conflict");
+      }),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    document.querySelector<HTMLElement>("[data-testid='menu-Settings']")!.click();
+    document.querySelector<HTMLElement>("[data-testid='menu-item-document']")!.click();
+    await tick();
+    const titleInput = document.querySelector<HTMLInputElement>("[data-testid='modal-input-title']")!;
+    titleInput.value = "Hope";
+    clickModalButton("Save");
+    await tick();
+
+    expect(bridge.cacheMoveDirectory).not.toHaveBeenCalled();
+  });
+
+  it("leaves cached files alone when deleting the document fails", async () => {
+    window.localStorage.setItem("dockb.fileCacheDirectory", "/cache");
+    const bridge = electronBridge(new Map([["Faith/Act None/Opening 1.md", "# Opening 1"]]));
+    const { api } = localModeApi({
+      getAppState: vi.fn(async () => ({ last_document_id: "d1", panel_widths: null, edit_mode: null })),
+      listChapters: vi.fn(async () => [{ id: "c1", title: "Opening 1", act: "", index: 0 }]),
+      listDocuments: vi.fn(async () => [
+        { attrs: { id: "d1", title: "Faith", author: "Paul" }, chapter_summaries: [] },
+      ]),
+      deleteDocument: vi.fn(async () => {
+        throw new Error("conflict");
+      }),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    document.querySelector<HTMLElement>("[data-testid='menu-File']")!.click();
+    document.querySelector<HTMLElement>("[data-testid='menu-item-delete']")!.click();
+    document.querySelector<HTMLElement>("[data-testid='menu-item-delete-document']")!.click();
+    await tick();
+    (document.querySelector<HTMLElement>("[data-testid='document-picker-item']")!).click();
+    document.querySelector<HTMLElement>("[data-testid='document-picker-delete']")!.click();
+    await tick();
+    clickModalButton("Delete");
+    await tick();
+
+    expect(bridge.cacheDelete).not.toHaveBeenCalled();
+  });
+});

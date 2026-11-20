@@ -5,6 +5,7 @@ import { confirmCheckboxModal, confirmModal, povModal, promptModal } from "./mod
 import { MoveMode } from "./moveMode";
 import { reportError } from "../log";
 import type { ApiClient } from "../api/client";
+import type { CacheChapter, ChapterCacheMove, FileCache } from "../state/fileCache";
 
 export type LeftPanelApi = Pick<
   ApiClient,
@@ -14,6 +15,8 @@ export type LeftPanelApi = Pick<
 export interface LeftPanelOptions {
   api: LeftPanelApi;
   offline?: () => boolean;
+  fileCache?: FileCache;
+  documentTitle?: () => string | null;
   onEdit?: (chapterId: string) => void;
   onMessage?: (text: string) => void;
   onPovChanged?: (chapterId: string, povTitle: string | null) => void;
@@ -25,6 +28,8 @@ export class LeftPanel {
 
   private api: LeftPanelApi;
   private offline?: () => boolean;
+  private fileCache?: FileCache;
+  private documentTitle?: () => string | null;
   private onEdit?: (chapterId: string) => void;
   private onMessage?: (text: string) => void;
   private onPovChanged?: (chapterId: string, povTitle: string | null) => void;
@@ -37,6 +42,8 @@ export class LeftPanel {
   constructor(options: LeftPanelOptions) {
     this.api = options.api;
     this.offline = options.offline;
+    this.fileCache = options.fileCache;
+    this.documentTitle = options.documentTitle;
     this.onEdit = options.onEdit;
     this.onMessage = options.onMessage;
     this.onPovChanged = options.onPovChanged;
@@ -105,6 +112,34 @@ export class LeftPanel {
 
   private isOffline(): boolean {
     return this.offline?.() === true;
+  }
+
+  private cacheChapter(chapter: ChapterListRow): CacheChapter {
+    return { title: chapter.title, act: chapter.act, category: chapter.category };
+  }
+
+  private cacheDocumentTitle(): string | null {
+    if (this.fileCache?.isConfigured() !== true) {
+      return null;
+    }
+    return this.documentTitle?.() ?? null;
+  }
+
+  private async mirrorMoves(moves: ChapterCacheMove[]): Promise<void> {
+    const documentTitle = this.cacheDocumentTitle();
+    if (documentTitle !== null && moves.length > 0) {
+      await this.fileCache!.moveChapters(documentTitle, moves);
+    }
+  }
+
+  private async mirrorDeletes(chapters: ChapterListRow[]): Promise<void> {
+    const documentTitle = this.cacheDocumentTitle();
+    if (documentTitle !== null && chapters.length > 0) {
+      await this.fileCache!.deleteChapters(
+        documentTitle,
+        chapters.map((chapter) => this.cacheChapter(chapter)),
+      );
+    }
   }
 
   private handleContext(chapterId: string, event: MouseEvent): void {
@@ -188,9 +223,17 @@ export class LeftPanel {
     if (value !== "confirm" || !this.documentId) {
       return;
     }
+    const before = this.chapters.find((chapter) => chapter.id === chapterId) ?? null;
     try {
+      await this.fileCache?.flush();
       await this.api.updateChapter(chapterId, { title: input });
       await this.load(this.documentId);
+      const after = this.chapters.find((chapter) => chapter.id === chapterId) ?? null;
+      if (before !== null && after !== null && before !== after) {
+        await this.mirrorMoves([
+          { id: chapterId, from: this.cacheChapter(before), to: this.cacheChapter(after) },
+        ]);
+      }
     } catch (error) {
       reportError("Rename chapter", error, this.onMessage);
     }
@@ -209,9 +252,14 @@ export class LeftPanel {
     if (!confirmed || !this.documentId) {
       return;
     }
+    const before = this.chapters.find((chapter) => chapter.id === chapterId) ?? null;
     try {
+      await this.fileCache?.flush();
       await this.api.deleteChapter(chapterId);
       await this.load(this.documentId);
+      if (before !== null) {
+        await this.mirrorDeletes([before]);
+      }
     } catch (error) {
       reportError("Delete chapter", error, this.onMessage);
     }
@@ -235,13 +283,30 @@ export class LeftPanel {
     if (!confirmed) {
       return;
     }
+    const beforeById = new Map(this.chapters.map((chapter) => [chapter.id, chapter]));
     try {
+      await this.fileCache?.flush();
       const response = await this.api.renumberChapters(this.documentId, { start: checked ? 0 : 1 });
       const count = response.renames.length;
       this.onMessage?.(
         count === 0 ? "No chapters needed renumbering." : `Renumbered ${count} chapter${count === 1 ? "" : "s"}.`,
       );
       await this.load(this.documentId);
+      const moves = response.renames.flatMap((rename) => {
+        const before = beforeById.get(rename.id);
+        const after = this.chapters.find((chapter) => chapter.id === rename.id);
+        if (before === undefined || after === undefined || before === after) {
+          return [];
+        }
+        return [
+          {
+            id: rename.id,
+            from: { ...this.cacheChapter(before), title: rename.old_title },
+            to: this.cacheChapter(after),
+          },
+        ];
+      });
+      await this.mirrorMoves(moves);
     } catch (error) {
       reportError("Renumber", error, this.onMessage);
     }
@@ -271,10 +336,18 @@ export class LeftPanel {
     if (!this.documentId) {
       return;
     }
+    const before = this.chapters.find((chapter) => chapter.id === chapterId) ?? null;
     try {
+      await this.fileCache?.flush();
       const response = await this.api.reorderChapter(chapterId, afterChapterId);
       this.onMessage?.(response.status.message);
       await this.load(this.documentId);
+      const after = this.chapters.find((chapter) => chapter.id === chapterId) ?? null;
+      if (before !== null && after !== null && before !== after) {
+        await this.mirrorMoves([
+          { id: chapterId, from: this.cacheChapter(before), to: this.cacheChapter(after) },
+        ]);
+      }
     } catch (error) {
       reportError("Move chapter", error, this.onMessage);
     }

@@ -129,7 +129,7 @@ describe("FileCache", () => {
   });
 
   it("delegates cache file operations to the bridge", async () => {
-    const bridge = electronBridge();
+    const bridge = electronBridge({ cacheList: vi.fn(async () => ["Old/Act I/One.md"]) });
     const cache = new FileCache({ bridge });
     await cache.writeChapter("Doc/Act I/One.md", "# One");
     await cache.readChapter("Doc/Act I/One.md");
@@ -168,5 +168,62 @@ describe("FileCache", () => {
     expect(bridge.cacheWrite).toHaveBeenCalledWith("Doc/Two.md", "buffered");
     await vi.advanceTimersByTimeAsync(5000);
     expect(bridge.cacheWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves chapter cache files through temporary names so swaps do not overwrite", async () => {
+    const entries = new Map([
+      ["Doc/Act I/Opening 2.md", "second"],
+      ["Doc/Act I/Opening 1.md", "first"],
+    ]);
+    const bridge = electronBridge({
+      cacheRead: vi.fn(async (path: string) => entries.get(path) ?? null),
+      cacheRename: vi.fn(async (from: string, to: string) => {
+        const text = entries.get(from);
+        if (text !== undefined) {
+          entries.delete(from);
+          entries.set(to, text);
+        }
+      }),
+    });
+    const cache = new FileCache({ bridge });
+    cache.recordCacheText("Doc/Act I/Opening 2.md", "second");
+    cache.recordCacheText("Doc/Act I/Opening 1.md", "first");
+
+    await cache.moveChapters("Doc", [
+      { id: "a", from: { title: "Opening 2", act: "I" }, to: { title: "Opening 1", act: "I" } },
+      { id: "b", from: { title: "Opening 1", act: "I" }, to: { title: "Opening 2", act: "I" } },
+    ]);
+
+    expect(entries.get("Doc/Act I/Opening 1.md")).toBe("second");
+    expect(entries.get("Doc/Act I/Opening 2.md")).toBe("first");
+    expect(cache.cacheText("Doc/Act I/Opening 1.md")).toBe("second");
+    expect(cache.cacheText("Doc/Act I/Opening 2.md")).toBe("first");
+  });
+
+  it("does not move a document directory when no chapters have been cached", async () => {
+    const bridge = electronBridge({ cacheList: vi.fn(async () => []) });
+    const cache = new FileCache({ bridge });
+
+    await cache.renameDocument("Old", "New");
+
+    expect(bridge.cacheMoveDirectory).not.toHaveBeenCalled();
+  });
+
+  it("deletes the cached file for a removed chapter and for a whole document", async () => {
+    const bridge = electronBridge({
+      cacheList: vi.fn(async () => [
+        "Doc/Act I/One.md",
+        "Doc/Characters/Jane.md",
+        "Other/Act I/Two.md",
+      ]),
+    });
+    const cache = new FileCache({ bridge });
+
+    await cache.deleteChapters("Doc", [{ title: "One", act: "I" }]);
+    expect(bridge.cacheDelete).toHaveBeenCalledWith("Doc/Act I/One.md");
+
+    await cache.deleteDocument("Doc");
+    expect(bridge.cacheDelete).toHaveBeenCalledWith("Doc/Characters/Jane.md");
+    expect(bridge.cacheDelete).not.toHaveBeenCalledWith("Other/Act I/Two.md");
   });
 });

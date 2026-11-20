@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChapterListRow, MutationResponse } from "../src/renderer/api/types";
 import { LeftPanel, type LeftPanelApi } from "../src/renderer/layout/leftPanel";
+import type { FileCache } from "../src/renderer/state/fileCache";
 
 function fakeApi(overrides: Partial<LeftPanelApi> = {}): LeftPanelApi {
   const ok: MutationResponse = { status: { code: "ok", message: "ok" } };
@@ -19,8 +20,24 @@ function chapters(...rows: Array<[id: string, title: string, act: string]>): Cha
   return rows.map(([id, title, act], index) => ({ id, title, act, index }));
 }
 
+function fakeFileCache(): FileCache {
+  return {
+    isConfigured: vi.fn(() => true),
+    flush: vi.fn(async () => undefined),
+    moveChapters: vi.fn(async () => undefined),
+    deleteChapters: vi.fn(async () => undefined),
+  } as unknown as FileCache;
+}
+
 function listRows(): HTMLElement[] {
   return Array.from(document.querySelectorAll("[data-testid='chapter-row']")) as HTMLElement[];
+}
+
+function clickContextItem(label: string): void {
+  const item = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-testid='context-menu'] .context-item"),
+  ).find((candidate) => candidate.textContent === label)!;
+  item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
 afterEach(() => {
@@ -710,5 +727,152 @@ describe("LeftPanel", () => {
 
     expect(panel.selectedChapter()).toBeNull();
     expect(document.querySelector(".chapter-row.is-selected")).toBeNull();
+  });
+
+  it("mirrors a renamed chapter in the file cache", async () => {
+    const cache = fakeFileCache();
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "Renamed", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "A", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "Renamed", "I"])),
+    });
+    const panel = new LeftPanel({ api, fileCache: cache, documentTitle: () => "Novel" });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    clickContextItem("Rename");
+    const input = document.querySelector<HTMLInputElement>("[data-testid='modal-input']")!;
+    input.value = "Renamed";
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].click();
+
+    await vi.waitFor(() =>
+      expect(cache.moveChapters).toHaveBeenCalledWith("Novel", [
+        {
+          id: "a",
+          from: { title: "A", act: "I", category: undefined },
+          to: { title: "Renamed", act: "I", category: undefined },
+        },
+      ]),
+    );
+    expect(cache.flush).toHaveBeenCalled();
+  });
+
+  it("mirrors a deleted chapter in the file cache", async () => {
+    const cache = fakeFileCache();
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => [])
+        .mockResolvedValueOnce(chapters(["a", "A", "I"]))
+        .mockResolvedValueOnce([]),
+    });
+    const panel = new LeftPanel({ api, fileCache: cache, documentTitle: () => "Novel" });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    clickContextItem("Delete");
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].click();
+
+    await vi.waitFor(() =>
+      expect(cache.deleteChapters).toHaveBeenCalledWith("Novel", [
+        { title: "A", act: "I", category: undefined },
+      ]),
+    );
+    expect(cache.flush).toHaveBeenCalled();
+  });
+
+  it("mirrors a chapter move that adopts another act", async () => {
+    const cache = fakeFileCache();
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "II"], ["b", "B", "II"]))
+        .mockResolvedValueOnce(chapters(["a", "A", "I"], ["b", "B", "II"]))
+        .mockResolvedValueOnce(chapters(["a", "A", "II"], ["b", "B", "II"])),
+    });
+    const panel = new LeftPanel({ api, fileCache: cache, documentTitle: () => "Novel" });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    const rows = listRows();
+    rows.forEach((row, index) => {
+      const top = index * 20;
+      row.getBoundingClientRect = () =>
+        ({ top, bottom: top + 20, left: 0, right: 100, width: 100, height: 20 }) as DOMRect;
+    });
+    document.body.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 5, clientY: 5 }));
+    rows[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    clickContextItem("Move");
+    document.body.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 50, clientY: 35 }));
+    document.querySelector<HTMLElement>("[data-testid='chapter-list']")!.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 35 }),
+    );
+
+    await vi.waitFor(() =>
+      expect(cache.moveChapters).toHaveBeenCalledWith("Novel", [
+        {
+          id: "a",
+          from: { title: "A", act: "I", category: undefined },
+          to: { title: "A", act: "II", category: undefined },
+        },
+      ]),
+    );
+    expect(cache.flush).toHaveBeenCalled();
+  });
+
+  it("does not mirror a rename when the backend refuses it", async () => {
+    const cache = fakeFileCache();
+    const onMessage = vi.fn();
+    const api = fakeApi({
+      listChapters: vi.fn(async (): Promise<ChapterListRow[]> => chapters(["a", "A", "I"])),
+      updateChapter: vi.fn(async () => {
+        throw new Error("conflict");
+      }),
+    });
+    const panel = new LeftPanel({ api, fileCache: cache, documentTitle: () => "Novel", onMessage });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    clickContextItem("Rename");
+    const input = document.querySelector<HTMLInputElement>("[data-testid='modal-input']")!;
+    input.value = "Renamed";
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].click();
+
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.stringContaining("conflict")));
+    expect(cache.moveChapters).not.toHaveBeenCalled();
+  });
+
+  it("mirrors every title changed by renumbering", async () => {
+    const cache = fakeFileCache();
+    const api = fakeApi({
+      listChapters: vi
+        .fn(async (): Promise<ChapterListRow[]> => chapters(["a", "Opening 1", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "Opening 2", "I"]))
+        .mockResolvedValueOnce(chapters(["a", "Opening 1", "I"])),
+      renumberChapters: vi.fn(async () => ({
+        status: { code: "ok", message: "ok" },
+        renames: [{ id: "a", old_title: "Opening 2", new_title: "Opening 1" }],
+      })),
+    });
+    const panel = new LeftPanel({ api, fileCache: cache, documentTitle: () => "Novel" });
+    document.body.append(panel.element);
+    await panel.load("d1");
+
+    listRows()[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    clickContextItem("Renumber");
+    document.querySelectorAll<HTMLElement>("[data-testid='modal-button']")[1].click();
+
+    await vi.waitFor(() =>
+      expect(cache.moveChapters).toHaveBeenCalledWith("Novel", [
+        {
+          id: "a",
+          from: { title: "Opening 2", act: "I", category: undefined },
+          to: { title: "Opening 1", act: "I", category: undefined },
+        },
+      ]),
+    );
+    expect(cache.flush).toHaveBeenCalled();
   });
 });

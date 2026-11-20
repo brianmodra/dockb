@@ -93,6 +93,11 @@ scheduling, language changes, and glossary adds. Going back online flushes pendi
 uploads every backend-dirty cached chapter of the current document, reloads the active chapter,
 and only then switches the icon back to online; a failed upload leaves the editor offline.
 
+Once the backend accepts a structural change, the file cache follows it: chapter rename, renumber,
+move, and delete move or remove the matching cached files, including between act directories when
+a move adopts a new act. A document rename moves the cached directory and a document delete
+removes its files; when nothing has been cached yet there is no local directory to move.
+
 ## Commands
 
 Run these from `frontend/`:
