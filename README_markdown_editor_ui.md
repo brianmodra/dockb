@@ -118,9 +118,10 @@ message console at 24px minimum height), and the right panel starts at its 10px 
   /api/check/languages`; the dialog falls back to its built-in list if that request fails),
   scrollable, current one marked, Cancel/Apply; choosing one sets the language used for backend
   spelling and grammar checks and the WYSIWYG editable's `lang` attribute, and saves it per account
-  with `PUT /api/check/language` so the next startup restores it. **Dictionary…** opens
-  the document's glossary. The browser's own spellchecker is turned off, so the `lang` attribute
-  no longer selects a native dictionary.
+   with `PUT /api/check/language` so the next startup restores it. **Dictionary…** opens
+   the document's glossary. **File Cache…** (Electron only) chooses the local markdown mirror (§10).
+   The browser's own spellchecker is turned off, so the `lang` attribute no longer selects a native
+   dictionary.
 
 The menu bar is drawn in-window (HTML), not the native Electron menu, so its styling is ours and
 stays identical across platforms; the native menu is removed at startup
@@ -318,8 +319,7 @@ response-area function that opens a chapter scrolled to a paragraph, is in
   (`GET /api/auth/login?provider=…` and `/callback`) still work and are unchanged; only the editor
   stopped offering them. A first-time user on a temporary password is shown a **change your
   password** screen instead, and the manuscript routes answer 403
-  `password_change_required` until they do (`README_auth.md` §7).
-
+   `password_change_required` until they do (`README_auth.md` §7).
 - **File cache** (Settings → File Cache, Electron only) — explains that the cache is not the record:
   "The 'file cache' is the directory where documents will be stored on your PC. This is a cache, not
   the actual storage." and "The documents are stored in a database and with versioning, on the

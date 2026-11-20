@@ -29,8 +29,8 @@ breakdown, so a slow save or open shows exactly where the time went.
 
 The front end is the part of DockB that a writer sees and types into: a desktop Electron app
 with CodeMirror 6 (raw markdown) and ProseMirror (WYSIWYG) as two views of the same canonical
-chapter. It is a thin API client — save and open go through
-`GET/PUT /api/chapters/{id}/document`; app state and login live on the backend.
+chapter. Save and open go through `GET/PUT /api/chapters/{id}/document`; app state and login live
+on the backend. The browser build is a thin API client, while Electron adds the local cache below.
 
 The backend's analysis of the text (sentence and word annotations) is embedded in the markdown
 as spans, and the chapter's identity lives in the YAML front matter. The raw view shows the

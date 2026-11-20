@@ -348,7 +348,7 @@ enabled for the session from the user settings, which also disables the mode tog
 
 - `src/main/main.ts` — sandboxed `BrowserWindow`; removes the default Electron
   menu (`Menu.setApplicationMenu(null)`); Vite URL or `dist/index.html`.
-- `src/main/preload.ts` — `window.dockb` (`platform`, `openExternal`, `quit`).
+- `src/main/preload.ts` — `window.dockb` (`platform`, `openExternal`, `quit`, cache bridge).
 - `src/renderer/` — `index.ts` wires the `ApiClient` and mounts the shell;
   `main.ts` builds it; `api/` is the backend client.
 - `vite.config.mts` — Vite/Vitest, :3000, `/api` proxy.
