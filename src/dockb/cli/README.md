@@ -2,22 +2,15 @@
 
 ## Executive Summary
 
-These are DockB's four shell commands, all reached through one `dockb` command. Two work on
-chapter files: one walks a folder of markdown and updates the knowledge graph (act chapters line up
-by the number in their file name, while character chapters need no number), the other writes one
-chapter back out as markdown, either into the server's folder or to a path you name. `users`
-administers accounts: it is the only way to create an account and the administrative recovery route
-when a second factor is lost or email delivery is unavailable. `migrate-layout` upgrades a graph
-written before paragraph layouts were structured.
+These are DockB's shell commands, all reached through one `dockb` command. Two work on chapter
+files: one imports a Markdown folder into the knowledge graph, and one writes a chapter back out.
+`users` creates and administers accounts, including password resets and disabling a lost second
+factor. `migrate-layout` upgrades graphs written before paragraph layouts were structured.
 
-Use them without opening the editor. Every chapter command names the account the work belongs to
-with `--owner <username-or-user-id>`, because a document is stored under the account that owns it and the
-tree is keyed by an internal account id rather than a name; `users assign` is the way a manuscript
-is handed from one account to another, which is how a document created before accounts existed — or
-one whose account was deleted — becomes visible in an editor again. `users` also creates, resets,
-blocks and deletes accounts. Every command that reaches the knowledge graph reads the same database
-settings as the API server; all four report a refusal as one `error:` line, and never raise a
-traceback.
+Use them without opening the editor. Chapter commands name the owning account with
+`--owner <username-or-user-id>` because documents are stored per account; `users assign` hands a
+manuscript to an account so it becomes visible again. Every command uses the same settings as the
+API server and reports a refusal as one `error:` line, not a traceback.
 
 ## Missing settings
 

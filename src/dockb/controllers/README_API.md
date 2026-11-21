@@ -2,9 +2,15 @@
 
 ## Executive Summary
 
-This note is the contract between DockB's editor and the server: every request the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, including document attributes such as title, author, and the stored narrative-perspective code, how every route is gated to the signed-in account, and the errors the editor handles.
+This note is the contract between DockB's editor and server: what the editor may send, what the
+server replies, and what it refuses. It explains how manuscripts travel on the wire, including
+document attributes and narrative perspective, and how every manuscript route is scoped to the
+signed-in account.
 
-It covers the document, chapter, paragraph, and sentence lifecycles, the fixed narrative-perspective choices, reordering, point-of-view characters, history, asynchronous notifications, and the editor shell. On the auth side it covers password sign-in, two-factor challenges and enrollment, and self-service password recovery. It also covers the interactive routes: LanguageTool proofreading, which lists the supported languages and stores the writer's choice per account, the per-document glossary, AI chat, and importing a document directory. Read it before changing what the editor sends or what the API accepts.
+It covers document, chapter, paragraph, and sentence lifecycles, reordering, point of view, history,
+notifications, and the editor shell. It also covers password sign-in, two-factor verification and
+enrollment, password recovery, proofreading, glossaries, AI chat, and import. Read it before
+changing either side of the HTTP boundary.
 
 ## Core Principle
 

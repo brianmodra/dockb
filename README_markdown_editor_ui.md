@@ -2,23 +2,17 @@
 
 ## Executive Summary
 
-This document describes the writing window a DockB user sees: the menubar, chapter list, editor,
+This document describes the writing window a DockB user sees: menubar, chapter list, editor,
 message panel, right-hand reference shelf, and the dialogs behind each command. It explains why
-each click behaves as it does — opening or re-clicking a chapter, renaming or moving one, toggling
-between WYSIWYG and raw markdown, setting a point of view, choosing a local file-cache directory,
-and switching between online and offline work. The sign-in screen also carries forgotten-password
-recovery and two-factor challenge and enrollment dialogs. It also covers proofreading in both views:
-the backend checks the paragraph under the cursor, and the writer accepts a correction or adds a word
-to the document's glossary from the response strip. The Settings → Language… choice sets and saves
-the proofreading language for that account, so the next session starts with it.
+each click behaves as it does, including opening a chapter, renaming or moving one, switching
+between WYSIWYG and raw Markdown, setting a point of view, and choosing the Electron cache
+directory. It also covers sign-in, forgotten-password recovery, two-factor challenges and
+enrollment, proofreading corrections, and the per-account language choice.
 
-The browser window is a thin client; the Electron window also keeps a confined local markdown cache
-so a writer can keep editing when the backend is unreachable. The backend remains the writer of
-record, and the save icon still means "unsaved on the backend". The chapter list keeps the open
-chapter selected through renames and moves, the identity line above the text shows a character's
-name parts or a chapter's title and point of view, and the message panel carries save results,
-errors, diagnostics, and AI chat. Read it to see what the writer sees; the file and database design
-is in `README_markdown_redesign.md`, and sign-in is in `README_auth.md`.
+The browser window is a thin client; the Electron window keeps a local Markdown cache so writing
+can continue when the backend is unreachable. The backend remains the writer of record, and the
+save icon still means "unsaved on the backend". Read it for what the writer sees; the file design is
+in `README_markdown_redesign.md`, and the account rules are in `README_auth.md`.
 
 ## 1. Context and constraints
 

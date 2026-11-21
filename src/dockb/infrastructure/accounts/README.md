@@ -3,22 +3,16 @@
 ## Executive Summary
 
 This note describes the backend's server-owned account data, kept in one SQLite file: users,
-their linked OAuth provider accounts, each user's editor state (including the proofreading
-language last chosen), and each document's accepted proofreading words. Accounts are not part of
-the document graph, so they live in a relational store rather than in Neo4j. The glossary rows are
-keyed by username and document id, so one writer's accepted words cannot leak into another
-writer's manuscript.
+linked OAuth accounts, editor state including the chosen proofreading language, and each
+document's accepted words. Accounts are not part of the document graph, so they live in a
+relational store rather than in Neo4j. Glossary rows are keyed by username and document id, so one
+writer's words cannot leak into another's manuscript.
 
-It also covers password-reset tokens, 2FA challenges, hashed email codes, and encrypted TOTP secrets.
-Reset links and login challenges are stored only as hashes; TOTP secrets use a Fernet key derived
-from the secret with a separate domain label. Clearing 2FA removes every pending recovery/challenge
-row and stamps `credentials_changed_at`, so an admin disable or password reset cannot leave a live
-session or a reusable challenge behind.
-
-It covers the schema and its migrations, the store's accessors, token encryption, and the account
-lifecycle operations the command-line tools and server share. For why the store is SQLite, why
-accounts are never merged by email, and how the no-local-mode and soft-delete decisions bear on
-it, see `README_auth.md` at the repository root.
+It also records the schema, migrations, and accessors for password resets, two-factor challenges,
+email codes, and TOTP secrets. Recovery values are stored as hashes, TOTP secrets use a separate
+domain-derived encryption key, and clearing 2FA removes stored recovery state and stamps
+`credentials_changed_at`; a password reset also abandons in-memory enrollments in the auth service.
+For the decisions behind the store, see `README_auth.md` at the repository root.
 
 ## Package Structure
 

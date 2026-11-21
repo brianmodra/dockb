@@ -6,24 +6,18 @@ DockB is a writing tool that stores each book as a knowledge graph
 (Document → Chapter → Paragraph → Sentence → Token) in Neo4j, with a FastAPI
 backend and spaCy for language analysis. Writers get structure a plain text
 editor cannot: sentence splits, parts of speech, and a version history of every
-chapter. Moving chapters can leave the numbers in their titles out of step with
-the reading order, so the editor can renumber every chapter in one command; and
-a chapter can name the character its point of view is written from, matched
-against the characters' own name parts. This file is the front door: the
-install command, how to run the dev servers, how to import an existing set of
-markdown files, and pointers to the per-layer documentation.
+chapter. The editor can renumber chapters after a move and match a chapter's
+point of view against the characters' own name parts. This file is the front
+door: install, run the dev servers, import Markdown, and find the per-layer docs.
 
-The browser editor is a thin API client, while the desktop editor also keeps a local markdown file
-cache chosen in **Settings → File Cache**; the backend remains the writer of record and the cache is
-never git history. Writers edit canonical markdown in WYSIWYG or raw view, and an import only reads
-the directory a writer picks and hands it to the server. Every manuscript belongs to an account,
-which decides which documents the writer can see, which directory the markdown lives in, and which
-git history it has — so a session reads and writes only its own account's work, and a manuscript
-whose account was deleted is handed to another with `dockb users assign` rather than lost. Accounts
-can add TOTP or email one-time-code two-factor authentication, and writers can recover a forgotten
-password through a 24-hour link emailed to the account's stored address. The backend is observable
-as well as structured: every HTTP request logs its total time and a per-stage breakdown, so a slow
-save or open shows exactly where the time went.
+The browser editor is a thin API client; the desktop editor also keeps a local
+markdown file cache chosen in **Settings → File Cache**, but the backend remains
+the writer of record. Every manuscript belongs to an account that decides which
+documents a writer sees and where their markdown and git history live. Accounts
+can use TOTP or email one-time-code two-factor authentication and recover a
+forgotten password through a 24-hour email link. The backend logs a per-stage
+timing breakdown for every HTTP request, so a slow save or open shows where the
+time went.
 
 ## Summary
 

@@ -2,21 +2,17 @@
 
 ## Executive Summary
 
-This is the guide to DockB's desktop editor: how to run it, which module owns each area, and why
-the window is built the way it is. The browser build is a thin client that talks only to the server
-to sign in, verify a second factor, reset a forgotten password, open a document, edit a chapter,
-import a folder, and check spelling and grammar. The Electron build adds a local markdown file cache
-and offline mode; the backend still owns the manuscript, the git history, and the import write. The
-backend serves the interface itself, so the editor and API share an origin and the session cookie
-reaches every route. The writer's chosen proofreading language is saved per account and restored on
-the next launch.
+This is the guide to DockB's editor: how to run it, which module owns each area, and why the window
+is built that way. The browser build is a thin API client for sign-in, two-factor verification,
+password reset, document and chapter editing, import, and proofreading. The Electron build adds a
+local Markdown cache and offline mode; the backend still owns the manuscript, git history, and
+import write. The backend serves the editor itself so the API and interface share an origin and the
+session cookie reaches gated routes.
 
-This note also covers the parts a screenshot does not show: the chapter list's right-click actions,
-the document settings modal, the read-only reference shelf, the response strip for AI chat and
-proofreading fixes, the user menu and sign-out flow, the shared canonical buffer behind the raw and
-WYSIWYG views, the file-cache directory and conflict dialogs, and the connectivity toggle. Commands
-and the per-directory file map are here too. The visual design is in
-`../README_markdown_editor_ui.md` and the wire contract in
+This note also records the parts a screenshot does not show: context menus, dialogs, the read-only
+reference shelf, the response strip, the shared canonical buffer behind raw and WYSIWYG views, the
+file cache, and sign-out. Commands and a file map are here too. The visual design is in
+`../README_markdown_editor_ui.md`, and the wire contract is in
 `../src/dockb/controllers/README_API.md`.
 
 ## API client and session

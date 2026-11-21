@@ -2,23 +2,20 @@
 
 ## Executive Summary
 
-This document explains how a person gets into DockB and where their account lives. Accounts are
-created by an administrator through a command-line tool that hands out a temporary password the
-user must replace; Google and GitHub sign-in are also supported. Writers can reset a forgotten
-password through a 24-hour email link, and can add one second factor — TOTP or a five-minute email
-one-time code. In every case the backend, not the editor, creates the session cookie, and it keeps
-accounts, encrypted provider tokens, credential-recovery state, and each user's editor state —
-including the proofreading language they last chose — in a small SQLite database. There is no local
-mode: every request needs a sign-in.
+This document explains who may use DockB and where each account lives. An administrator creates
+accounts from the command line with a temporary password; the editor signs in with that password,
+lets a writer replace it, and offers a 24-hour email reset link if it is forgotten. A writer may
+add one second factor, either TOTP or a five-minute email code. The backend owns the session cookie,
+and the account store keeps users, encrypted provider tokens, recovery state, and each writer's
+editor state in one SQLite database. The backend also has OAuth routes, but the editor's sign-in
+gate is password-only.
 
-The document is both the reasoning and the record of what is built: the password gate, the forced
-password change, password recovery, two-factor enrollment and challenges, username handling and soft
-delete, per-account manuscript ownership, account blocking, and the two ways to sign out. The
-mechanics live in the code and in the neighbouring notes it points to — the schema and accessors in
-`src/dockb/infrastructure/accounts/README.md`, the session cookie in
-`src/dockb/infrastructure/session/README.md`, and the routes in
-`src/dockb/controllers/README_API.md`. It ends with the questions that were settled along the way,
-including how documents are recovered from a deleted account.
+The document records both the decisions and the rules the code implements: no local mode, enforced
+first-use password change, per-account manuscript ownership, soft delete, blocking, recovery and
+2FA, and both ways to end a session. It points to the schema note in
+`src/dockb/infrastructure/accounts/README.md`, the session note in
+`src/dockb/infrastructure/session/README.md`, and the HTTP contract in
+`src/dockb/controllers/README_API.md` for the mechanics.
 
 ## 1. Context and constraints
 
