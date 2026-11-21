@@ -466,7 +466,7 @@ class AccountStore(TwoFactorStoreMixin):  # pylint: disable=too-many-public-meth
         try:
             rows = connection.execute("""
                 SELECT id, username, email, display_name, avatar_url, must_change_password,
-                       blocked_at, deleted_at, last_login_at, created_at
+                       two_factor_method, blocked_at, deleted_at, last_login_at, created_at
                 FROM users ORDER BY created_at, username
                 """).fetchall()
         finally:

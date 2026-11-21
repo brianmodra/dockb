@@ -6,9 +6,9 @@ These are DockB's four shell commands, all reached through one `dockb` command. 
 chapter files: one walks a folder of markdown and updates the knowledge graph (act chapters line up
 by the number in their file name, while character chapters need no number), the other writes one
 chapter back out as markdown, either into the server's folder or to a path you name. `users`
-administers accounts — and because there is no self-registration and no password recovery over
-HTTP, it is the only way to create an account or to get someone back into a lost one.
-`migrate-layout` upgrades a graph written before paragraph layouts were structured.
+administers accounts: it is the only way to create an account and the administrative recovery route
+when a second factor is lost or email delivery is unavailable. `migrate-layout` upgrades a graph
+written before paragraph layouts were structured.
 
 Use them without opening the editor. Every chapter command names the account the work belongs to
 with `--owner <username-or-user-id>`, because a document is stored under the account that owns it and the
@@ -74,8 +74,9 @@ A missing or blank variable is reported as one `error:` line naming it, and the 
 | Command | Effect |
 | --- | --- |
 | `create --username <name> --email <address> [--display-name <name>]` | Generates a temporary password, prints it once, sets `must_change_password`. |
-| `list` | Every account with its state, including soft-deleted ones. Never prints a password or a hash. |
+| `list` | Every account with its state and enrolled second factor, including soft-deleted ones. Never prints a password, hash, or TOTP secret. |
 | `set-password <username>` | Re-issues a temporary password and re-arms `must_change_password`. |
+| `disable-2fa <username>` | Clears the second factor and all pending 2FA/recovery state, and ends live sessions. |
 | `block <username>` / `unblock <username>` | Refuse logins and end live sessions, or reverse it. |
 | `delete <username> --yes` | Soft delete: refuses logins, ends sessions, keeps the row. |
 | `undelete <username>` | Clears the soft delete, leaving the credentials alone. |
@@ -92,6 +93,11 @@ Two conventions the commands hold to:
   from somebody choosing it, and the first thing its holder does is replace it with one they chose.
   The maximum still applies.
 
+`disable-2fa` uses the same store accessor as password reset, so clearing a lost second factor on
+the command line removes the enrolled method, its secret, and any pending login challenge or reset
+token together. Like `set-password`, it stamps `credentials_changed_at`, so a session issued before
+the change does not remain signed in.
+
 `--yes` is required on `delete` because it is the one command whose effect cannot be undone by
 running its own name again. `undelete` is deliberate: a soft delete keeps the row, so the username
 stays taken and a create reports which deleted account holds it. It stamps
@@ -101,9 +107,9 @@ come back with the account.
 **Exit codes** are the usual Unix split: `2` for a malformed command line (argparse), `1` for a
 command that ran and refused. Every refusal is one `error:` line on stderr, never a traceback.
 
-None of these commands reach into a running server. `block`, `delete`, `set-password` and `undelete`
-end a live session by stamping `credentials_changed_at`, which the server compares on its next
-request — this process cannot evict an in-memory session it does not own. See
+None of these commands reach into a running server. `block`, `delete`, `set-password`, `disable-2fa`
+and `undelete` end a live session by stamping `credentials_changed_at`, which the server compares on
+its next request — this process cannot evict an in-memory session it does not own. See
 `../../../README_auth.md` §7 for the reasoning.
 
 ## Give a document to an account

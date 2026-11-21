@@ -241,6 +241,78 @@ class TestList:
         assert _run(["list"]) == 0
         assert "no accounts" in capsys.readouterr().out.lower()
 
+    def test_it_shows_no_second_factor_when_none_is_enrolled(self, store, capsys):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        store_id = store_id_for(store, "abby")
+        capsys.readouterr()
+
+        assert _run(["list"]) == 0
+        row = next(line for line in capsys.readouterr().out.splitlines() if store_id in line)
+        assert row.split("\t")[-1] == "-"
+
+    def test_it_shows_the_enrolled_second_factor(self, store, capsys):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        store.set_two_factor("abby", method="email")
+        store_id = store_id_for(store, "abby")
+        capsys.readouterr()
+
+        assert _run(["list"]) == 0
+        row = next(line for line in capsys.readouterr().out.splitlines() if store_id in line)
+        assert row.split("\t")[-1] == "email"
+
+    def test_it_never_prints_the_totp_secret(self, store, capsys):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        secret = "JBSWY3DPEHPK3PXP"
+        store.set_two_factor("abby", method="totp", totp_secret=secret)
+        capsys.readouterr()
+
+        assert _run(["list"]) == 0
+
+        out = capsys.readouterr().out
+        assert "totp" in out
+        assert secret not in out
+
+
+class TestDisableTwoFactor:
+    def test_it_clears_the_enrolled_method(self, store):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        store.set_two_factor("abby", method="totp", totp_secret="JBSWY3DPEHPK3PXP")
+
+        assert _run(["disable-2fa", "abby"]) == 0
+
+        assert store.get_two_factor_state("abby") == {"method": None, "totp_secret": None}
+
+    def test_it_clears_pending_recovery_and_challenge_state(self, store):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        store.set_two_factor("abby", method="totp", totp_secret="JBSWY3DPEHPK3PXP")
+        store.issue_password_reset("abby", token_hash="reset-hash", expires_at="2999-01-01T00:00:00+00:00")
+        store.issue_login_challenge("abby", token_hash="challenge-hash", method="totp", expires_at="2999-01-01T00:00:00+00:00")
+
+        assert _run(["disable-2fa", "abby"]) == 0
+
+        assert store.consume_password_reset("reset-hash", now="2999-01-01T00:00:00+00:00") is None
+        assert store.consume_login_challenge("challenge-hash", now="2999-01-01T00:00:00+00:00") is None
+
+    def test_it_ends_live_sessions(self, store):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        assert store.get_credentials("abby")["credentials_changed_at"] is None
+
+        assert _run(["disable-2fa", "abby"]) == 0
+
+        assert store.get_credentials("abby")["credentials_changed_at"] is not None
+
+    def test_it_takes_a_username_in_any_case(self, store):
+        _run(["create", "--username", "abby", "--email", "abby@example.com"])
+        store.set_two_factor("abby", method="email")
+
+        assert _run(["disable-2fa", "ABBY"]) == 0
+
+        assert store.get_two_factor_state("abby")["method"] is None
+
+    def test_an_unknown_username_is_an_error(self, capsys):
+        assert _run(["disable-2fa", "nobody"]) == 1
+        assert "nobody" in capsys.readouterr().err
+
 
 class TestBlock:
     def test_it_blocks_the_account(self, store):

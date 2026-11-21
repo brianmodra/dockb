@@ -11,16 +11,16 @@ documents, or one whose account was deleted, is in nobody's library and cannot b
 reached over HTTP at all. There is no transfer control in the editor, so this
 command is the whole of the ownership-transfer surface. It is also the only
 subcommand that reaches the knowledge graph, and so the only one that needs the
-Neo4j settings — the other seven need only ``DOCKB_SECRET_KEY``.
+Neo4j settings — the other eight need only ``DOCKB_SECRET_KEY``.
 
 Every command that generates a password prints it **once**, on stdout, and never
 logs it. No command accepts one as an argument, because an argument is recorded in
 the shell history and the process table.
 
-None of these commands reach into a running server. ``block``, ``delete`` and
-``set-password`` end a live session by stamping ``credentials_changed_at``, which
-the server compares on its next request — this process cannot evict an in-memory
-session it does not own.
+None of these commands reach into a running server. ``block``, ``delete``,
+``set-password`` and ``disable-2fa`` end a live session by stamping
+``credentials_changed_at``, which the server compares on its next request — this
+process cannot evict an in-memory session it does not own.
 """
 
 from __future__ import annotations
@@ -174,7 +174,8 @@ def _cmd_list(admin: _Admin, _args: argparse.Namespace) -> int:
         states = [state for state in ("blocked", "deleted") if user.get(f"{state}_at")]
         if user.get("must_change_password"):
             states.append("must change password")
-        print(f"{user['id']}\t{user['username']}\t{user['email'] or '-'}\t{', '.join(states) or 'active'}")
+        method = user.get("two_factor_method") or "-"
+        print(f"{user['id']}\t{user['username']}\t{user['email'] or '-'}\t{', '.join(states) or 'active'}\t{method}")
     return _EXIT_OK
 
 
@@ -184,6 +185,13 @@ def _cmd_set_password(admin: _Admin, args: argparse.Namespace) -> int:
     admin.store.set_password_hash(username, hash_password(admin.pepper, temporary, generated=True), must_change_password=True)
     print(f"reset password for {username}")
     print(temporary)
+    return _EXIT_OK
+
+
+def _cmd_disable_two_factor(admin: _Admin, args: argparse.Namespace) -> int:
+    username = normalize_username(args.username)
+    admin.store.clear_two_factor(username)
+    print(f"disabled 2fa for {username}")
     return _EXIT_OK
 
 
@@ -324,6 +332,7 @@ _HANDLERS = {
     "create": _cmd_create,
     "list": _cmd_list,
     "set-password": _cmd_set_password,
+    "disable-2fa": _cmd_disable_two_factor,
     "block": _cmd_block,
     "unblock": _cmd_unblock,
     "delete": _cmd_delete,
@@ -357,6 +366,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ("delete", "soft delete: refuse logins and end sessions"),
         ("undelete", "clear a soft delete, leaving credentials alone"),
         ("set-password", "re-issue a temporary password and require a change"),
+        ("disable-2fa", "clear the account's second factor and end live sessions"),
     ):
         sub = commands.add_parser(name, help=help_text)
         sub.add_argument("username", help="the account; matched case-insensitively")
