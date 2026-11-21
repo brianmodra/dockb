@@ -14,11 +14,18 @@ the gate.
 
 from __future__ import annotations
 
+import hashlib
+import secrets
+import threading
 from collections.abc import Callable
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import pyotp
+
 from dockb.infrastructure.accounts.store import AccountStore, normalize_username
+from dockb.infrastructure.email.service import EmailService, EmailUnavailableError
 from dockb.infrastructure.oauth.pending_login import PendingLoginStore
 from dockb.infrastructure.oauth.provider import OAuthProvider, OAuthProviderError
 from dockb.infrastructure.session.login_throttle import LoginThrottle
@@ -30,6 +37,41 @@ from dockb.passwords import DUMMY_HASH, hash_password, verify_password
 # caller is told the same thing whether the username is unknown, the password is wrong,
 # or the account is blocked or deleted.
 _LOGIN_REFUSED = "invalid username or password"
+_CHALLENGE_TTL_SECONDS = 300
+_EMAIL_OTP_TTL_SECONDS = 300
+_RESET_TTL_SECONDS = 86400
+_ENROLLMENT_TTL_SECONDS = 300
+
+
+class InvalidTwoFactorError(Exception):
+    """The supplied 2FA challenge or code was wrong, stale, or already used."""
+
+
+class InvalidResetTokenError(Exception):
+    """The supplied password-reset token was wrong, stale, or already used."""
+
+
+@dataclass(frozen=True)
+class PasswordLoginResult:
+    """The immediate result of a password check, before any required second factor."""
+
+    username: str
+    challenge: str | None = None
+    method: str | None = None
+
+    @property
+    def requires_two_factor(self) -> bool:
+        """Whether a second factor must be completed before a session exists."""
+        return self.challenge is not None
+
+
+@dataclass(frozen=True)
+class TwoFactorEnrollment:
+    """What the editor needs in order to display an enrollment choice."""
+
+    method: str
+    secret: str | None = None
+    provisioning_uri: str | None = None
 
 
 class UnknownProviderError(ValueError):
@@ -102,7 +144,7 @@ def _credentials_changed_since(stamp: str | None, session_started: datetime) -> 
     return datetime.fromisoformat(stamp) >= session_started
 
 
-class AuthService:
+class AuthService:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """Orchestrates sign-in and hands out backend session cookies."""
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -115,6 +157,7 @@ class AuthService:
         signer: SessionSigner,
         *,
         pepper: bytes,
+        email_service: EmailService | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._providers = providers
@@ -122,9 +165,12 @@ class AuthService:
         self._accounts = account_store
         self._sessions = session_manager
         self._signer = signer
+        self._email = email_service
         self._pepper = pepper
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._throttle = LoginThrottle(self._clock)
+        self._pending_enrollments: dict[str, tuple[str, str | None, datetime]] = {}
+        self._enrollment_lock = threading.Lock()
 
     @property
     def requires_login(self) -> bool:
@@ -136,38 +182,189 @@ class AuthService:
         """The names of the configured OAuth providers, empty when there are none."""
         return list(self._providers)
 
-    def login_with_password(self, username: str, password: str, *, client_ip: str) -> str:
-        """Sign *username* in with *password*, start its session, and return the username.
+    def login_with_password(self, username: str, password: str, *, client_ip: str) -> PasswordLoginResult:
+        """Check *password* and either sign in or return a required second factor.
 
         Raises LoginFailedError for every refusal and RateLimitedError when the backoff
         is still in force. *client_ip* is the caller's address, used only to throttle.
         """
-        # Normalized once, up front, and used for the throttle as well as the store. Keying
-        # the backoff on the raw username would hand an attacker a fresh allowance for
-        # every spelling of the same account — abby, ABBY, " abby " — which defeats it
-        # entirely.
         key = normalize_username(username)
         remaining = self._throttle.delay_for(key, client_ip)
         if remaining > 0:
-            # Refused before the hash is touched. The throttle then applies to the
-            # correct password too, or it would only slow an attacker's wrong guesses
-            # while leaving them free to keep trying the right one.
             raise RateLimitedError(remaining)
 
         credentials = self._accounts.get_credentials(key)
-        # The password is verified before the account is judged, including for a blocked
-        # or deleted one, so a refusal costs the same everywhere and the form cannot be
-        # used to learn which usernames exist or which are blocked. A missing account and
-        # a NULL hash both verify against DUMMY_HASH to keep that cost.
         verified = verify_password(self._pepper, password, _stored_hash(credentials))
         if not verified or credentials is None or not _may_sign_in(credentials):
             self._throttle.record_failure(key, client_ip)
             raise LoginFailedError(_LOGIN_REFUSED)
 
-        self._accounts.record_login(key)
-        self._sessions.create(key)
         self._throttle.record_success(key, client_ip)
-        return key
+        state = self._accounts.get_two_factor_state(key)
+        method = state["method"] if state else None
+        if method is None:
+            self._accounts.record_login(key)
+            self._sessions.create(key)
+            return PasswordLoginResult(key)
+        if method == "totp":
+            return PasswordLoginResult(key, challenge=self._issue_login_challenge(key, method), method=method)
+        if method == "email":
+            self._send_email_code(key)
+            return PasswordLoginResult(key, challenge=self._issue_login_challenge(key, method), method=method)
+        raise InvalidTwoFactorError("unsupported two-factor method")
+
+    def complete_two_factor_login(self, challenge: str, code: str) -> str:
+        """Verify *code* for *challenge*, then start the pending session."""
+        if not challenge or not code:
+            raise InvalidTwoFactorError("invalid two-factor code")
+        now = self._now()
+        token_hash = self._hash("login-challenge", challenge)
+        username = self._accounts.get_login_challenge(token_hash, now=now)
+        if username is None:
+            raise InvalidTwoFactorError("invalid two-factor challenge")
+
+        state = self._accounts.get_two_factor_state(username)
+        method = state["method"] if state else None
+        if method == "totp":
+            secret = state["totp_secret"] if state else None
+            if not secret or not self._totp_matches(secret, code):
+                raise InvalidTwoFactorError("invalid two-factor code")
+        elif method == "email":
+            if not self._accounts.verify_email_otp(username, code_hash=self._hash("email-otp", code.strip()), now=now):
+                raise InvalidTwoFactorError("invalid two-factor code")
+        else:
+            raise InvalidTwoFactorError("no two-factor method configured")
+
+        if self._accounts.consume_login_challenge(token_hash, now=now) != username:
+            raise InvalidTwoFactorError("invalid two-factor challenge")
+        self._accounts.record_login(username)
+        self._sessions.create(username)
+        return username
+
+    def request_password_reset(self, email: str) -> None:
+        """Mail a single-use reset link to the account owning *email*, if any."""
+        user = self._accounts.get_user_by_email(email.strip().lower())
+        if user is None:
+            return
+        token = secrets.token_urlsafe(32)
+        self._require_email_service().send_password_reset(user["email"], token)
+        self._accounts.issue_password_reset(
+            user["username"],
+            token_hash=self._hash("password-reset", token),
+            expires_at=self._expiry(_RESET_TTL_SECONDS),
+        )
+
+    def reset_password(self, token: str, new_password: str) -> None:
+        """Replace the password named by a valid reset *token* and cancel 2FA."""
+        new_hash = hash_password(self._pepper, new_password)
+        username = self._accounts.consume_password_reset(self._hash("password-reset", token), now=self._now())
+        if username is None:
+            raise InvalidResetTokenError("invalid password-reset token")
+        self._accounts.set_password_hash(username, new_hash, must_change_password=False)
+        self._accounts.clear_two_factor(username)
+
+    def begin_two_factor_enrollment(self, username: str, method: str) -> TwoFactorEnrollment:
+        """Start enrollment in TOTP or email OTP for the signed-in *username*."""
+        if method not in {"totp", "email"}:
+            raise ValueError(f"unsupported two-factor method: {method}")
+        key = normalize_username(username)
+        deadline = self._deadline(_ENROLLMENT_TTL_SECONDS)
+        with self._enrollment_lock:
+            self._discard_stale_enrollment(key)
+            if method == "totp":
+                secret = pyotp.random_base32()
+                uri = pyotp.TOTP(secret).provisioning_uri(name=key, issuer_name="DockB")
+                self._pending_enrollments[key] = (method, secret, deadline)
+                return TwoFactorEnrollment(method=method, secret=secret, provisioning_uri=uri)
+            self._send_email_code(key)
+            self._pending_enrollments[key] = (method, None, deadline)
+            return TwoFactorEnrollment(method=method)
+
+    def confirm_two_factor_enrollment(self, username: str, method: str, code: str) -> None:
+        """Enable a pending enrollment once its verification code checks out."""
+        key = normalize_username(username)
+        with self._enrollment_lock:
+            pending = self._pending_enrollments.get(key)
+            if pending is None or pending[0] != method or self._clock() >= pending[2]:
+                raise InvalidTwoFactorError("no pending two-factor enrollment")
+            secret = pending[1]
+            if method == "totp":
+                if not secret or not self._totp_matches(secret, code):
+                    raise InvalidTwoFactorError("invalid two-factor code")
+                self._accounts.set_two_factor(key, method="totp", totp_secret=secret)
+            else:
+                if not self._accounts.verify_email_otp(key, code_hash=self._hash("email-otp", code.strip()), now=self._now()):
+                    raise InvalidTwoFactorError("invalid two-factor code")
+                self._accounts.set_two_factor(key, method="email")
+            self._pending_enrollments.pop(key, None)
+
+    def two_factor_method(self, username: str) -> str | None:
+        """Return the account's configured 2FA method, if it has one."""
+        state = self._accounts.get_two_factor_state(normalize_username(username))
+        return state["method"] if state else None
+
+    def disable_two_factor(self, username: str) -> None:
+        """Remove the account's 2FA method and every pending related credential."""
+        key = normalize_username(username)
+        with self._enrollment_lock:
+            self._pending_enrollments.pop(key, None)
+        self._accounts.clear_two_factor(key)
+
+    def _issue_login_challenge(self, username: str, method: str) -> str:
+        token = secrets.token_urlsafe(32)
+        self._accounts.issue_login_challenge(
+            username,
+            token_hash=self._hash("login-challenge", token),
+            method=method,
+            expires_at=self._expiry(_CHALLENGE_TTL_SECONDS),
+        )
+        return token
+
+    def _send_email_code(self, username: str) -> None:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        self._require_email_service().send_email_otp(self._account_email(username), code)
+        self._accounts.issue_email_otp(
+            username,
+            code_hash=self._hash("email-otp", code),
+            expires_at=self._expiry(_EMAIL_OTP_TTL_SECONDS),
+        )
+
+    def _require_email_service(self) -> EmailService:
+        if self._email is None:
+            raise EmailUnavailableError("email is not configured")
+        return self._email
+
+    def _account_email(self, username: str) -> str:
+        user = self._accounts.get_user(username)
+        email = user["email"] if user else None
+        if not email or not email.strip():
+            raise EmailUnavailableError("the account has no email address")
+        return str(email).strip()
+
+    @staticmethod
+    def _totp_matches(secret: str, code: str) -> bool:
+        try:
+            return pyotp.TOTP(secret).verify(code.strip(), valid_window=1)
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _hash(domain: str, value: str) -> str:
+        return hashlib.sha256(f"dockb-{domain}:{value}".encode()).hexdigest()
+
+    def _now(self) -> str:
+        return self._clock().isoformat()
+
+    def _deadline(self, seconds: int) -> datetime:
+        return self._clock() + timedelta(seconds=seconds)
+
+    def _expiry(self, seconds: int) -> str:
+        return self._deadline(seconds).isoformat()
+
+    def _discard_stale_enrollment(self, username: str) -> None:
+        pending = self._pending_enrollments.get(username)
+        if pending is not None and self._clock() >= pending[2]:
+            self._pending_enrollments.pop(username, None)
 
     def change_password(self, username: str, current_password: str, new_password: str) -> None:
         """Replace *username*'s password, having first proved *current_password*.

@@ -145,6 +145,15 @@ class AccountStore(TwoFactorStoreMixin):  # pylint: disable=too-many-public-meth
             connection.close()
         return dict(row) if row is not None else None
 
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        """Return the user row with *email*, or None."""
+        connection = self._connect()
+        try:
+            row = connection.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+        finally:
+            connection.close()
+        return dict(row) if row is not None else None
+
     def get_user_by_provider_account(self, provider: str, provider_account_id: str) -> dict[str, Any] | None:
         """Return the user linked to a provider account, or None."""
         connection = self._connect()

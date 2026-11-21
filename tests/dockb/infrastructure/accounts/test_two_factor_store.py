@@ -244,3 +244,33 @@ def test_issuing_a_new_email_otp_resets_attempts(tmp_path) -> None:
     store.issue_email_otp(_USERNAME, code_hash="new-hash", expires_at=_EXPIRES)
     assert not store.verify_email_otp(_USERNAME, code_hash="wrong-hash", now=_FIRST)
     assert store.verify_email_otp(_USERNAME, code_hash="new-hash", now=_FIRST)
+
+
+def test_get_user_by_email_matches_case_insensitively(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+
+    user = store.get_user_by_email("  ABBY@EXAMPLE.COM  ")
+
+    assert user is not None
+    assert user["username"] == _USERNAME
+    assert store.get_user_by_email("nobody@example.com") is None
+
+
+def test_get_login_challenge_does_not_consume_it(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.issue_login_challenge(_USERNAME, token_hash="challenge-hash", method="totp", expires_at=_EXPIRES)
+
+    assert store.get_login_challenge("challenge-hash", now=_FIRST) == _USERNAME
+    assert store.get_login_challenge("challenge-hash", now=_FIRST) == _USERNAME
+    assert store.consume_login_challenge("challenge-hash", now=_FIRST) == _USERNAME
+    assert store.get_login_challenge("challenge-hash", now=_FIRST) is None
+
+
+def test_get_login_challenge_refuses_an_expired_challenge(tmp_path) -> None:
+    store = _store(tmp_path)
+    store.create_user(_USERNAME, email=_EMAIL, display_name="Abby")
+    store.issue_login_challenge(_USERNAME, token_hash="challenge-hash", method="totp", expires_at=_EXPIRES)
+
+    assert store.get_login_challenge("challenge-hash", now=_AFTER) is None

@@ -722,6 +722,7 @@ dependencies = [
     { name = "neo4j" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyotp" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "spacy" },
@@ -756,6 +757,7 @@ requires-dist = [
     { name = "neo4j", specifier = ">=5.19" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pydantic-settings", specifier = ">=2.2" },
+    { name = "pyotp", specifier = ">=2.9" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "spacy", specifier = ">=3.8.14" },
@@ -1963,6 +1965,15 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2d/ac/5de3c91c7f9354444af251f053cc9953c89cce1defa74b907f67be4f770a/pylint_pydantic-0.4.1-py3-none-any.whl", hash = "sha256:d1b937abe5c346d38de69ee1ada80c93d38ee2356addbabb687e2eb44036ac93", size = 16161, upload-time = "2025-10-27T08:03:33.641Z" },
+]
+
+[[package]]
+name = "pyotp"
+version = "2.12.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/d7/fe43d6cfd1e80081a374c612df6b6555205a7ab761fdd6ba6e30435fd963/pyotp-2.12.1.tar.gz", hash = "sha256:8d0c4192f3c5d1b1a8792df23b9d8acbb7e70abd2b160962af55c5700edbd236", size = 27480, upload-time = "2026-11-19T05:06:24.189Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/d5/ca399f55b474357c42b8d0ee1c0222a22e6f88bbf4588130b75737c3b73b/pyotp-2.12.1-py3-none-any.whl", hash = "sha256:2f65978d0a0afe5588ec960c810cbb974ba1957ffbf29775d8d4e1b2d4b8984c", size = 17026, upload-time = "2026-11-19T05:06:22.922Z" },
 ]
 
 [[package]]

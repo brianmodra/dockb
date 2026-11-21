@@ -152,7 +152,7 @@ class TestCreate:
             SessionSigner(_SECRET, ttl_hours=2),
             pepper=pepper_from(_SECRET),
         )
-        assert service.login_with_password("abby", temporary, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", temporary, client_ip="10.0.0.1").username == "abby"
         assert service.requires_password_change("abby") is True
 
 

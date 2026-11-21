@@ -260,13 +260,13 @@ class TestRequiresLogin:
 class TestLoginWithPassword:
     def test_correct_password_starts_a_session(self, tmp_path) -> None:
         service, _, sessions, _ = _with_password(tmp_path)
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
         assert sessions.get("abby") is not None
 
     def test_username_is_matched_case_insensitively(self, tmp_path) -> None:
         """Usernames normalize on the way in, so typing Abby must not lock anyone out."""
         service, _, _, _ = _with_password(tmp_path)
-        assert service.login_with_password("  ABBY  ", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("  ABBY  ", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_wrong_password_is_refused(self, tmp_path) -> None:
         service, _, sessions, _ = _with_password(tmp_path)
@@ -342,7 +342,7 @@ class TestLoginWithPassword:
     def test_a_temporary_password_still_signs_in(self, tmp_path) -> None:
         """First-use enforcement gates the routes, it does not refuse the sign-in."""
         service, _, _, _ = _with_password(tmp_path, password="tmp-1", must_change_password=True)
-        assert service.login_with_password("abby", "tmp-1", client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", "tmp-1", client_ip="10.0.0.1").username == "abby"
 
 
 class TestLoginBackoff:
@@ -379,7 +379,7 @@ class TestLoginBackoff:
         with pytest.raises(RateLimitedError):
             service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1")
         clock.advance(3600)
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_a_throttled_attempt_does_not_extend_the_backoff(self, tmp_path) -> None:
         """Otherwise waiting out the delay by retrying would restart it."""
@@ -389,7 +389,7 @@ class TestLoginBackoff:
             with pytest.raises(RateLimitedError):
                 service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1")
         clock.advance(2)
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_a_success_clears_the_counter(self, tmp_path) -> None:
         """Someone who fumbled twice and then got it right is not left waiting."""
@@ -401,7 +401,7 @@ class TestLoginBackoff:
         for _ in range(3):
             with pytest.raises(LoginFailedError):
                 service.login_with_password("abby", "wrong", client_ip="10.0.0.1")
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_throttling_one_username_leaves_another_alone(self, tmp_path) -> None:
         service, store, _, _ = _with_password(tmp_path)
@@ -412,7 +412,7 @@ class TestLoginBackoff:
             password_hash=hash_password(_PEPPER, _PASSWORD),
         )
         _fail(service, username="robin", client_ip="10.0.0.2")
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_respelling_the_username_does_not_reset_the_backoff(self, tmp_path) -> None:
         """Otherwise case and whitespace hand out a fresh allowance for the same account."""
@@ -426,7 +426,7 @@ class TestChangePassword:
     def test_correct_current_password_replaces_the_hash(self, tmp_path) -> None:
         service, _, _, _ = _with_password(tmp_path)
         service.change_password("abby", _PASSWORD, "a brand new password")
-        assert service.login_with_password("abby", "a brand new password", client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", "a brand new password", client_ip="10.0.0.1").username == "abby"
 
     def test_old_password_stops_working(self, tmp_path) -> None:
         service, _, _, _ = _with_password(tmp_path)
@@ -438,7 +438,7 @@ class TestChangePassword:
         service, _, _, _ = _with_password(tmp_path)
         with pytest.raises(LoginFailedError):
             service.change_password("abby", "not the password", "a brand new password")
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_unknown_user_is_refused(self, tmp_path) -> None:
         service, _, _, _ = _with_password(tmp_path)
@@ -449,7 +449,7 @@ class TestChangePassword:
         service, _, _, _ = _with_password(tmp_path)
         with pytest.raises(PasswordPolicyError):
             service.change_password("abby", _PASSWORD, "short")
-        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1") == "abby"
+        assert service.login_with_password("abby", _PASSWORD, client_ip="10.0.0.1").username == "abby"
 
     def test_policy_failure_leaves_the_old_password_in_force(self, tmp_path) -> None:
         service, store, _, _ = _with_password(tmp_path)

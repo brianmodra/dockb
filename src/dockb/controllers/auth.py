@@ -277,7 +277,7 @@ async def auth_login_password(
     if svc is None:
         raise HTTPException(status_code=503, detail="backend_not_ready")
     try:
-        user_id = await run_in_threadpool(
+        result = await run_in_threadpool(
             svc.login_with_password,
             body.username,
             body.password,
@@ -294,6 +294,13 @@ async def auth_login_password(
         ) from exc
     except LoginFailedError as exc:
         raise HTTPException(status_code=401, detail="invalid_username_or_password") from exc
+    if result.requires_two_factor:
+        return {
+            "two_factor_required": True,
+            "challenge": result.challenge,
+            "method": result.method,
+        }
+    user_id = result.username
     token = svc.session_cookie(user_id)
     _set_session_cookie(response, token, svc.session_ttl_seconds)
     return {

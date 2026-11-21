@@ -192,6 +192,20 @@ class TwoFactorStoreMixin:
         finally:
             connection.close()
 
+    def get_login_challenge(self, token_hash: str, *, now: str) -> str | None:
+        """Return the username for a valid 2FA challenge without consuming it."""
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT username, expires_at FROM login_challenges WHERE token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None or now >= row["expires_at"]:
+            return None
+        return str(row["username"])
+
     def consume_login_challenge(self, token_hash: str, *, now: str) -> str | None:
         """Return the username for a valid 2FA challenge, consuming it once."""
         connection = self._connect()
