@@ -16,19 +16,29 @@ run on the event loop. See ``README_auth.md`` §7.
 from __future__ import annotations
 
 import html
+import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from starlette.concurrency import run_in_threadpool
 
 from dockb.controllers.schemas.auth import (
     ChangePasswordRequest,
     PasswordLoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    StatusResponse,
+    TwoFactorConfirmRequest,
+    TwoFactorEnrollRequest,
+    TwoFactorVerifyRequest,
 )
+from dockb.infrastructure.email.service import EmailDeliveryError, EmailUnavailableError
 from dockb.passwords import PasswordPolicyError
 from dockb.services.auth_service import (
     InvalidLoginStateError,
+    InvalidResetTokenError,
+    InvalidTwoFactorError,
     LoginFailedError,
     PasswordUnchangedError,
     RateLimitedError,
@@ -36,6 +46,7 @@ from dockb.services.auth_service import (
 )
 
 router = APIRouter(tags=["auth"])
+logger = logging.getLogger(__name__)
 
 _auth_service: Any = None
 
@@ -231,6 +242,7 @@ def auth_me(
     profile = svc.get_user(user_id)
     if profile is None:
         raise HTTPException(status_code=401, detail="not_authenticated")
+    method = svc.two_factor_method(user_id)
     return {
         "user": {
             "id": profile["id"],
@@ -244,6 +256,8 @@ def auth_me(
             "avatar_url": profile["avatar_url"],
         },
         "password_change_required": svc.requires_password_change(user_id),
+        "two_factor_enabled": method is not None,
+        "two_factor_method": method,
     }
 
 
@@ -258,6 +272,17 @@ def _profile_for(user_id: str, svc: Any) -> dict[str, Any]:
         "email": profile["email"] or "",
         "display_name": profile["display_name"],
         "avatar_url": profile["avatar_url"],
+    }
+
+
+def _sign_in_response(user_id: str, svc: Any) -> dict[str, Any]:
+    """The common body returned once an account has a live session."""
+    method = svc.two_factor_method(user_id)
+    return {
+        "user": _profile_for(user_id, svc),
+        "password_change_required": svc.requires_password_change(user_id),
+        "two_factor_enabled": method is not None,
+        "two_factor_method": method,
     }
 
 
@@ -299,14 +324,13 @@ async def auth_login_password(
             "two_factor_required": True,
             "challenge": result.challenge,
             "method": result.method,
+            "two_factor_enabled": True,
+            "two_factor_method": result.method,
         }
     user_id = result.username
     token = svc.session_cookie(user_id)
     _set_session_cookie(response, token, svc.session_ttl_seconds)
-    return {
-        "user": _profile_for(user_id, svc),
-        "password_change_required": svc.requires_password_change(user_id),
-    }
+    return _sign_in_response(user_id, svc)
 
 
 @router.post("/api/auth/change-password")
@@ -357,3 +381,115 @@ def auth_logout(
     svc.end_session(user_id)
     response.delete_cookie(_SESSION_COOKIE, path="/api")
     return {"status": "ok"}
+
+
+def _send_password_reset(svc: Any, email: str) -> None:
+    try:
+        svc.request_password_reset(email)
+    except (EmailUnavailableError, EmailDeliveryError) as exc:
+        logger.warning("password reset email could not be sent: %s", exc)
+
+
+@router.post("/api/auth/password-reset/request", status_code=202)
+async def auth_request_password_reset(
+    body: PasswordResetRequest,
+    tasks: BackgroundTasks,
+    svc: Any = Depends(get_auth_service),
+) -> StatusResponse:
+    """Accept a reset request and mail the link after answering."""
+    if svc is None or not svc.email_available:
+        raise HTTPException(status_code=503, detail="email_unavailable")
+    tasks.add_task(_send_password_reset, svc, body.email)
+    return StatusResponse(status="accepted")
+
+
+@router.post("/api/auth/password-reset/confirm")
+async def auth_confirm_password_reset(
+    body: PasswordResetConfirmRequest,
+    svc: Any = Depends(get_auth_service),
+) -> StatusResponse:
+    """Replace the password named by a reset token."""
+    if svc is None:
+        raise HTTPException(status_code=503, detail="backend_not_ready")
+    try:
+        await run_in_threadpool(svc.reset_password, body.token, body.new_password)
+    except InvalidResetTokenError as exc:
+        raise HTTPException(status_code=400, detail="invalid_reset_token") from exc
+    except PasswordPolicyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return StatusResponse()
+
+
+@router.post("/api/auth/2fa/enroll")
+async def auth_begin_two_factor_enrollment(
+    body: TwoFactorEnrollRequest,
+    user_id: str = Depends(get_authenticated_user),
+    svc: Any = Depends(get_auth_service),
+) -> dict[str, Any]:
+    """Start enrolling the signed-in account in one 2FA method."""
+    if svc is None:
+        raise HTTPException(status_code=503, detail="backend_not_ready")
+    try:
+        enrollment = await run_in_threadpool(svc.begin_two_factor_enrollment, user_id, body.method)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="unsupported_two_factor_method") from exc
+    except EmailUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="email_unavailable") from exc
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail="email_delivery_failed") from exc
+    return {
+        "method": enrollment.method,
+        "secret": enrollment.secret,
+        "provisioning_uri": enrollment.provisioning_uri,
+    }
+
+
+@router.post("/api/auth/2fa/confirm")
+async def auth_confirm_two_factor_enrollment(
+    body: TwoFactorConfirmRequest,
+    user_id: str = Depends(get_authenticated_user),
+    svc: Any = Depends(get_auth_service),
+) -> StatusResponse:
+    """Enable a pending 2FA method once its code checks out."""
+    if svc is None:
+        raise HTTPException(status_code=503, detail="backend_not_ready")
+    try:
+        await run_in_threadpool(svc.confirm_two_factor_enrollment, user_id, body.method, body.code)
+    except InvalidTwoFactorError as exc:
+        raise HTTPException(status_code=400, detail="invalid_two_factor_code") from exc
+    return StatusResponse()
+
+
+@router.post("/api/auth/2fa/resend")
+async def auth_resend_email_otp(
+    user_id: str = Depends(get_authenticated_user),
+    svc: Any = Depends(get_auth_service),
+) -> StatusResponse:
+    """Send a fresh email OTP to the signed-in account."""
+    if svc is None or not svc.email_available:
+        raise HTTPException(status_code=503, detail="email_unavailable")
+    try:
+        await run_in_threadpool(svc.resend_email_otp, user_id)
+    except EmailUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="email_unavailable") from exc
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail="email_delivery_failed") from exc
+    return StatusResponse()
+
+
+@router.post("/api/auth/2fa/verify")
+async def auth_verify_two_factor(
+    body: TwoFactorVerifyRequest,
+    response: Response,
+    svc: Any = Depends(get_auth_service),
+) -> dict[str, Any]:
+    """Complete a password sign-in challenge and set the session cookie."""
+    if svc is None:
+        raise HTTPException(status_code=503, detail="backend_not_ready")
+    try:
+        user_id = await run_in_threadpool(svc.complete_two_factor_login, body.challenge, body.code)
+    except InvalidTwoFactorError as exc:
+        raise HTTPException(status_code=400, detail="invalid_two_factor_code") from exc
+    token = svc.session_cookie(user_id)
+    _set_session_cookie(response, token, svc.session_ttl_seconds)
+    return _sign_in_response(user_id, svc)

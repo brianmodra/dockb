@@ -64,6 +64,11 @@ class EmailService:
     def __init__(self, settings: EmailSettings) -> None:
         self._settings = settings
 
+    @property
+    def configured(self) -> bool:
+        """Whether this service can attempt a send."""
+        return self._settings.configured
+
     def send(self, recipient: str, subject: str, body: str) -> None:
         """Send one plain-text email."""
         if not self._settings.configured:

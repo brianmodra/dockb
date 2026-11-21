@@ -182,6 +182,11 @@ class AuthService:  # pylint: disable=too-many-instance-attributes,too-many-publ
         """The names of the configured OAuth providers, empty when there are none."""
         return list(self._providers)
 
+    @property
+    def email_available(self) -> bool:
+        """Whether outbound email is configured for recovery and 2FA."""
+        return self._email is not None and self._email.configured
+
     def login_with_password(self, username: str, password: str, *, client_ip: str) -> PasswordLoginResult:
         """Check *password* and either sign in or return a required second factor.
 
@@ -222,6 +227,9 @@ class AuthService:  # pylint: disable=too-many-instance-attributes,too-many-publ
         username = self._accounts.get_login_challenge(token_hash, now=now)
         if username is None:
             raise InvalidTwoFactorError("invalid two-factor challenge")
+        credentials = self._accounts.get_credentials(username)
+        if credentials is None or not _may_sign_in(credentials):
+            raise InvalidTwoFactorError("account can no longer sign in")
 
         state = self._accounts.get_two_factor_state(username)
         method = state["method"] if state else None
@@ -309,6 +317,10 @@ class AuthService:  # pylint: disable=too-many-instance-attributes,too-many-publ
         with self._enrollment_lock:
             self._pending_enrollments.pop(key, None)
         self._accounts.clear_two_factor(key)
+
+    def resend_email_otp(self, username: str) -> None:
+        """Send a fresh email OTP to *username*, replacing any earlier one."""
+        self._send_email_code(normalize_username(username))
 
     def _issue_login_challenge(self, username: str, method: str) -> str:
         token = secrets.token_urlsafe(32)

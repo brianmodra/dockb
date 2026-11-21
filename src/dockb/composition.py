@@ -31,6 +31,7 @@ from dockb.controllers.proofreading import get_proofreading_service, set_proofre
 from dockb.controllers.sentences import set_sent_service
 from dockb.infrastructure.accounts.store import AccountStore
 from dockb.infrastructure.document_store import DocumentStoreFactory
+from dockb.infrastructure.email.service import EmailService, EmailSettings
 from dockb.infrastructure.history.snapshot_reader import SnapshotReader
 from dockb.infrastructure.mcp.prompt_tokens import PromptTokenIssuer
 from dockb.infrastructure.neo4j.serialized_session import SerializedSession
@@ -173,6 +174,7 @@ def _build_auth_service(
             ttl_hours=int(os.environ.get("OAUTH_SESSION_TTL_HOURS", "48")),
         ),
         pepper=pepper_from(secret),
+        email_service=EmailService(EmailSettings.from_env()),
     )
 
 

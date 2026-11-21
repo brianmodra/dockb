@@ -8,6 +8,8 @@ the debug output. See ``README_auth.md`` §7.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -53,3 +55,42 @@ class ChangePasswordResponse(BaseModel):
 
     status: str = "ok"
     signed_out: bool = True
+
+
+class PasswordResetRequest(BaseModel):
+    """``POST /api/auth/password-reset/request`` request body."""
+
+    email: str = Field(min_length=3, description="The account's email address")
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """``POST /api/auth/password-reset/confirm`` request body."""
+
+    token: str = Field(min_length=1, description="The token from the reset link")
+    new_password: str = Field(min_length=1, description="The replacement password")
+
+
+class TwoFactorEnrollRequest(BaseModel):
+    """``POST /api/auth/2fa/enroll`` request body."""
+
+    method: Literal["totp", "email"]
+
+
+class TwoFactorConfirmRequest(BaseModel):
+    """``POST /api/auth/2fa/confirm`` request body."""
+
+    method: Literal["totp", "email"]
+    code: str = Field(min_length=1, description="The code from the authenticator or email")
+
+
+class TwoFactorVerifyRequest(BaseModel):
+    """``POST /api/auth/2fa/verify`` request body."""
+
+    challenge: str = Field(min_length=1, description="The challenge returned by password sign-in")
+    code: str = Field(min_length=1, description="The second factor code")
+
+
+class StatusResponse(BaseModel):
+    """A small acknowledgement for state-changing auth routes."""
+
+    status: str = "ok"
