@@ -291,6 +291,18 @@ class TestPasswordReset:
         result = service.login_with_password("abby", "a brand new password", client_ip="10.0.0.1")
         assert not result.requires_two_factor
 
+    def test_resetting_cancels_a_pending_enrollment(self, tmp_path) -> None:
+        service, _, _, _, email = _build(tmp_path)
+        enrollment = service.begin_two_factor_enrollment("abby", "totp")
+        assert enrollment.secret is not None
+        service.request_password_reset("abby@example.com")
+
+        service.reset_password(email.password_resets[0][1], "a brand new password")
+
+        with pytest.raises(InvalidTwoFactorError):
+            service.confirm_two_factor_enrollment("abby", "totp", pyotp.TOTP(enrollment.secret).now())
+        assert service.two_factor_method("abby") is None
+
 
 class TestEmailUnavailable:
     def test_reset_needs_email_delivery(self, tmp_path) -> None:

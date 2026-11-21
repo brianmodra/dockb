@@ -61,12 +61,12 @@ Consequences:
 ## 3. Decision: accounts and state live in SQLite (decided)
 
 The relational store is **SQLite via the Python standard library `sqlite3`** (no ORM), its file
-`dockb_app.db` **beside the backend's owned directory** — the chapters directory the composed
-`AuthService` receives as its `base_dir`. The chapters directory is `DOCKB_CHAPTERS_DIR`, defaulting
-to `cwd`/`dockb_chapters_dir` when unset, and is created (and git-initialized) when missing
-(`resolve_document_base_dir` in `composition.py`). This keeps all server-owned on-disk state in one
-place, with zero-ops on a single machine. Foreign keys are enforced (`PRAGMA foreign_keys=ON`), so
-deleting a user cascades to its OAuth links and app state.
+`dockb_app.db` **beside the backend's owned directory** — the chapters directory resolved by
+`resolve_document_base_dir` in `composition.py`. That base is `DOCKB_CHAPTERS_DIR`, defaulting to
+`cwd`/`dockb_chapters_dir` when unset, and is created when missing; each account's directory below
+it is git-initialized by `DocumentStore`, so a commit cannot span accounts. This keeps all
+server-owned on-disk state in one place, with zero-ops on a single machine. Foreign keys are
+enforced (`PRAGMA foreign_keys=ON`), so deleting a user cascades to its OAuth links and app state.
 
 The store's core tables (`src/dockb/infrastructure/accounts/store.py` owns the exact schema) are
 `users`, `oauth_accounts` (per provider account, holding the encrypted refresh `token` and its
@@ -307,10 +307,11 @@ supplied is unverified and therefore not an identity.
     habit of substituting an ephemeral secret when it is unset has to stop for password login.
     An ephemeral pepper would differ on every restart and lock every user out.
   - **Rotating it locks everyone out**, because every stored hash was keyed with the old one.
-    There is no second factor and no reset over HTTP (§7), so recovery is `dockb users
-    set-password`. Token encryption already has this property (`TokenEncryptor.try_decrypt`
-    returns `None` after a rotation), so this is not a new class of operational surprise — but
-    it is a new way to lose access to accounts, and the two should be rotated separately.
+    Email recovery can mint a new hash and clears TOTP state when used, but it needs SMTP
+    configured; `dockb users set-password` remains the fallback. Token encryption already has
+    this property (`TokenEncryptor.try_decrypt` returns `None` after a rotation), so this is not a
+    new class of operational surprise — but it is a new way to lose access to accounts, and the
+    two should be rotated separately.
 - The verification runs off the event loop. Argon2id is deliberately slow and memory-hard, and
   asyncio is cooperative and single-threaded: a blocking call in an `async def` route stalls
   every concurrent request for its full duration, whether or not it releases the GIL. The login
@@ -533,8 +534,9 @@ The column-by-column schema and the store's accessors are in
 ## 8. Flow in full (reference)
 
 1. The editor asks `GET /api/auth/config`, which always reports `login_required: true`, and shows
-   the Sign-in gate with a username/password form. Provider buttons appear underneath it only when
-   `providers` is non-empty.
+   the password-only sign-in gate. The backend's OAuth routes remain available by URL, but the
+   editor offers no provider buttons; an OAuth-only account needs `dockb users set-password` before
+   it can use the editor.
     - **Password:** the editor posts the username and password to `POST /api/auth/login/password`,
       which verifies the Argon2id hash. An account with 2FA gets a short-lived challenge instead of
       a cookie; `POST /api/auth/2fa/verify` exchanges the challenge and code for the server-side
@@ -548,18 +550,11 @@ The column-by-column schema and the store's accessors are in
       `POST /api/auth/password-reset/request`. The mail carries a 24-hour link to
       `/editor/?reset-password=<token>`; the editor posts the token and new password to
       `POST /api/auth/password-reset/confirm`, which ends sessions and clears 2FA state.
-
-   - **Provider:** the editor asks the backend for a login URL (`GET /api/auth/login?provider=google`),
-     which returns the provider consent URL with `state` and a PKCE `code_verifier` the backend
-     remembers.
-2. The editor opens that URL in the system browser; the user consents.
-3. Provider redirects to `http://localhost:{OAUTH_CALLBACK_PORT}/callback?...&code=...`.
-4. The backend verifies `state`, exchanges the code (with `code_verifier`), stores the encrypted
-   refresh token, upserts the user, and sets its own HttpOnly session cookie.
-5. The editor reads that session; every API call after carries it. `GET /api/app/state` and
-   `PUT /api/app/state` are then per-user as the UI record requires; `GET /api/auth/me` returns the
-   signed-in user's profile and doubles as a session check from the editor.
-6. The editor ends the session with `POST /api/auth/logout`, which drops the server-side context and
+2. A successful password and second-factor exchange gives the editor a session. Every API call
+   after carries its cookie. `GET /api/app/state` and `PUT /api/app/state` are then per-user as the
+   UI record requires; `GET /api/auth/me` returns the signed-in user's profile, whether a password
+   change is owed, and the configured 2FA method, and doubles as a session check from the editor.
+3. The editor ends the session with `POST /api/auth/logout`, which drops the server-side context and
    deletes the cookie, then clears the manuscript state it was holding and returns to step 1. This is
    `File → Sign out`; a logout that fails leaves the session in place, because the server still has it
    and the editor would otherwise show a gate that the very next request walks back through.

@@ -269,6 +269,8 @@ class AuthService:  # pylint: disable=too-many-instance-attributes,too-many-publ
         if username is None:
             raise InvalidResetTokenError("invalid password-reset token")
         self._accounts.set_password_hash(username, new_hash, must_change_password=False)
+        with self._enrollment_lock:
+            self._pending_enrollments.pop(normalize_username(username), None)
         self._accounts.clear_two_factor(username)
 
     def begin_two_factor_enrollment(self, username: str, method: str) -> TwoFactorEnrollment:
