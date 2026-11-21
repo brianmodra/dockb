@@ -4,7 +4,7 @@
 
 This note is the contract between DockB's editor and the server: every request the editor may send, the shape of each reply, and what the server refuses. It explains how a manuscript is represented on the wire, including document attributes such as title, author, and the stored narrative-perspective code, how every route is gated to the signed-in account, and the errors the editor handles.
 
-It covers the document, chapter, paragraph, and sentence lifecycles, the fixed narrative-perspective choices, reordering, point-of-view characters, history, asynchronous notifications, and the editor shell. It also covers the interactive routes: LanguageTool proofreading, which lists the supported languages and stores the writer's choice per account, the per-document glossary, AI chat, and importing a document directory. Read it before changing what the editor sends or what the API accepts.
+It covers the document, chapter, paragraph, and sentence lifecycles, the fixed narrative-perspective choices, reordering, point-of-view characters, history, asynchronous notifications, and the editor shell. On the auth side it covers password sign-in, two-factor challenges and enrollment, and self-service password recovery. It also covers the interactive routes: LanguageTool proofreading, which lists the supported languages and stores the writer's choice per account, the per-document glossary, AI chat, and importing a document directory. Read it before changing what the editor sends or what the API accepts.
 
 ## Core Principle
 
@@ -191,11 +191,17 @@ the same gate on its own routes because each needs the resolved username.
 | Endpoint | Auth |
 | --- | --- |
 | `GET /api/auth/config` | none — the editor reads it to decide whether to show a login gate |
-| `POST /api/auth/login/password` | none — this is how a password session is obtained |
+| `POST /api/auth/login/password` | none — this is how a password session or 2FA challenge is obtained |
+| `POST /api/auth/2fa/verify` | none — exchanges a password-login challenge for a session |
+| `POST /api/auth/password-reset/request` | none — accepts a reset request and sends mail in the background |
+| `POST /api/auth/password-reset/confirm` | none — the reset token is the credential |
 | `GET /api/auth/login` | none — this is how an OAuth session is started |
 | `GET /callback` | none — the provider redirects here with the code |
 | `GET /api/auth/me` | session |
 | `POST /api/auth/change-password` | session |
+| `POST /api/auth/2fa/enroll` | session |
+| `POST /api/auth/2fa/confirm` | session |
+| `POST /api/auth/2fa/resend` | session |
 | `POST /api/auth/logout` | session |
 | everything else under `/api` | session |
 
@@ -203,14 +209,23 @@ A request with no valid session cookie gets `401` with `{"detail": "not_authenti
 The check runs before the handler, so an unauthenticated caller cannot tell a
 valid route from an invalid one, and cannot reach a service.
 
-**The password flow.** `POST /api/auth/login/password` takes a username and password, verifies the
-hash off the event loop, starts the session and sets the cookie; it answers `401` with
-`invalid_username_or_password` for a wrong password, an unknown username and a blocked or deleted
-account alike, so the route is not an account-status oracle, and `429` while the throttle is in
-force. `POST /api/auth/change-password` proves the current password, stamps
-`credentials_changed_at` — which ends every session that predates it, including the one that asked —
-and answers `{"signed_out": true}`, so the editor presents the gate again rather than signing in
-with a password it would have to hold in memory. `POST /api/auth/logout` ends the session.
+**The password flow.** `POST /api/auth/login/password` takes a username and password and verifies
+the hash off the event loop. It answers `401` with `invalid_username_or_password` for a wrong
+password, an unknown username and a blocked or deleted account alike, so the route is not an
+account-status oracle, and `429` while the throttle is in force. On success it either starts the
+session and sets the cookie, or — for an account with a second factor — returns
+`{"two_factor_required": true, "challenge": "...", "method": "totp" | "email",
+"two_factor_enabled": true, "two_factor_method": "..."}` without setting a session cookie. The
+challenge is valid for five minutes. A direct session response and `GET /api/auth/me` carry the
+profile, `password_change_required`, `two_factor_enabled`, and `two_factor_method`.
+
+`POST /api/auth/2fa/verify` takes `{ "challenge": "...", "code": "..." }`. A valid code sets the
+same session cookie and returns the same session payload; a wrong, expired, or reused challenge or
+code answers `400` with `invalid_two_factor_code`. `POST /api/auth/change-password` proves the
+current password, stamps `credentials_changed_at` — which ends every session that predates it,
+including the one that asked — and answers `{"signed_out": true}`, so the editor presents the gate
+again rather than signing in with a password it would have to hold in memory. `POST /api/auth/logout`
+ends the session.
 
 **There is no local mode.** Every request needs a session cookie, whatever the
 deployment looks like. Having no OAuth provider configured is a password-only
@@ -224,6 +239,29 @@ always offers a username and password form.
 a temporary password cannot reach the manuscript. `/api/auth/me`,
 `/api/auth/change-password` and `/api/auth/logout` stay open so the user can get out
 of it.
+
+**Password recovery.** `POST /api/auth/password-reset/request` takes `{ "email": "..." }` and
+answers `202` with `{"status": "accepted"}` when email delivery is configured. The link is sent
+after the response, so a known and an unknown address take comparable time; delivery failures are
+logged server-side. Without SMTP configuration the route answers `503` with
+`{"detail": "email_unavailable"}`. The email carries an absolute link built from
+`DOCKB_PUBLIC_URL` to `/editor/?reset-password=<token>`. `POST /api/auth/password-reset/confirm`
+takes `{ "token": "...", "new_password": "..." }`, answers `{"status": "ok"}` on success, and
+answers `400` with `invalid_reset_token` for a missing, spent, or expired token or with the password
+policy message for an invalid replacement. A successful reset ends every session and clears the
+account's 2FA method, secret, enrollments, email OTPs, and challenges.
+
+**Two-factor enrollment.** An authenticated account with no second factor may enroll in exactly one
+method: `totp` or `email`. `POST /api/auth/2fa/enroll` takes `{ "method": "totp" | "email" }` and
+answers with `{ "method", "secret", "provisioning_uri" }`; for email both optional fields are
+`null`, while TOTP returns a secret and an `otpauth://` URI suitable for an authenticator app and a
+QR code. A pending enrollment lasts five minutes. Email enrollment sends a six-digit code that also
+expires after five minutes; `POST /api/auth/2fa/resend` sends a fresh one and replaces the old.
+`POST /api/auth/2fa/confirm` takes `{ "method": "...", "code": "..." }` and answers
+`{"status": "ok"}` only when the code checks out, otherwise `400` with
+`invalid_two_factor_code`. Enrollment routes answer `503` with `email_unavailable` or
+`email_delivery_failed` when email is required but cannot be sent. The editor offers enrollment
+after interactive logins and lets the writer skip it; no manuscript route depends on it.
 
 The session cookie is scoped to `path="/api"`, so it is sent to these endpoints
 and withheld from everything else the host serves — including `/editor` and `/callback`. See

@@ -4,15 +4,17 @@
 
 This document explains how a person gets into DockB and where their account lives. Accounts are
 created by an administrator through a command-line tool that hands out a temporary password the
-user must replace; Google and GitHub sign-in are also supported. In every case the backend, not the
-editor, creates the session cookie, and it keeps accounts, encrypted provider tokens, and each
-user's editor state — including the proofreading language they last chose — in a small SQLite
-database. There is no local mode: every request needs a sign-in.
+user must replace; Google and GitHub sign-in are also supported. Writers can reset a forgotten
+password through a 24-hour email link, and can add one second factor — TOTP or a five-minute email
+one-time code. In every case the backend, not the editor, creates the session cookie, and it keeps
+accounts, encrypted provider tokens, credential-recovery state, and each user's editor state —
+including the proofreading language they last chose — in a small SQLite database. There is no local
+mode: every request needs a sign-in.
 
 The document is both the reasoning and the record of what is built: the password gate, the forced
-password change, username handling and soft delete, per-account manuscript ownership, account
-blocking, and the two ways to sign out. The mechanics live in the code and in the neighbouring
-notes it points to — the schema and accessors in
+password change, password recovery, two-factor enrollment and challenges, username handling and soft
+delete, per-account manuscript ownership, account blocking, and the two ways to sign out. The
+mechanics live in the code and in the neighbouring notes it points to — the schema and accessors in
 `src/dockb/infrastructure/accounts/README.md`, the session cookie in
 `src/dockb/infrastructure/session/README.md`, and the routes in
 `src/dockb/controllers/README_API.md`. It ends with the questions that were settled along the way,
@@ -66,10 +68,14 @@ to `cwd`/`dockb_chapters_dir` when unset, and is created (and git-initialized) w
 place, with zero-ops on a single machine. Foreign keys are enforced (`PRAGMA foreign_keys=ON`), so
 deleting a user cascades to its OAuth links and app state.
 
-Three tables (`src/dockb/infrastructure/accounts/store.py` owns the exact schema):
+The store's core tables (`src/dockb/infrastructure/accounts/store.py` owns the exact schema) are
 `users`, `oauth_accounts` (per provider account, holding the encrypted refresh `token` and its
-`expires_at`), and `app_state` (per user, holding the editor state the UI record keeps open and
-the proofreading language the writer last chose).
+`expires_at`), `app_state` (per user, holding the editor state the UI record keeps open and
+the proofreading language the writer last chose), and `document_glossary`. Schema version 5 adds
+2FA columns to `users` and three credential-state tables in
+`src/dockb/infrastructure/accounts/two_factor.py`: `password_reset_tokens`, `login_challenges`,
+and `email_otps`. Reset tokens, login challenges, and one-time codes are stored only as hashes;
+TOTP secrets are encrypted at rest.
 User identity is the unique `users.username` column everywhere: sessions, cookies, and app state
 carry the username — the account's own for a password login, the OAuth profile username otherwise.
 `users` keeps an internal UUID `id` only for the `oauth_accounts` foreign key; `app_state` and the
@@ -98,6 +104,11 @@ store interface and route-controller call sites do not change.
   origin — which every `file://` page sends — from reading the API.
 - **Loopback callback scoped.** The OAuth client for the desktop app registers only the loopback
   redirect URI, so the code cannot be intercepted by a third origin.
+- **Recovery secrets are not stored raw.** Password-reset tokens, 2FA login challenges, and email
+  one-time codes are stored only as domain-separated hashes, expire on their own clocks (24 hours,
+  5 minutes, and 5 minutes), and are single-use or attempt-limited. TOTP secrets are encrypted with
+  a domain-separated key derived from `DOCKB_SECRET_KEY`, and completing a reset clears every 2FA
+  and challenge row for that account.
 
 ## 5. Providers (decided initially)
 
@@ -106,13 +117,21 @@ Google and GitHub, configured by environment variables:
 - `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET`
 - `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET`
 - `OAUTH_CALLBACK_PORT` (the loopback port for the login redirect)
-- `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens, the
-  session-cookie signer key, and the password pepper). **Required** — there is no ephemeral
-  fallback (see §6).
+- `DOCKB_SECRET_KEY` (server secret; derives the Fernet key that encrypts refresh tokens and TOTP
+  secrets, the session-cookie signer key, and the password pepper). **Required** — there is no
+  ephemeral fallback (see §6).
 - `OAUTH_SESSION_TTL_HOURS` (session cookie lifetime, default 48)
 
-Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from the
-consent URL and the token exchange profile.
+Email delivery for password resets and email one-time codes is configured separately:
+
+- `DOCKB_SMTP_HOST`, `DOCKB_SMTP_PORT` (default `587`), `DOCKB_SMTP_USERNAME`,
+  `DOCKB_SMTP_PASSWORD`, `DOCKB_SMTP_USE_TLS` (default true).
+- `DOCKB_EMAIL_FROM` (sender address). Delivery is disabled until this and `DOCKB_SMTP_HOST` are
+  set; routes that need email then answer `503 email_unavailable`.
+- `DOCKB_PUBLIC_URL` (origin placed in absolute reset links, default `http://localhost:8000`).
+
+Configuring a provider is adding its env pair; the flow code is provider-agnostic apart from
+the consent URL and the token exchange profile.
 
 ## 6. Decision: there is no local mode — every user signs in (decided)
 
@@ -142,9 +161,9 @@ The consequences, all deliberate:
   resolves to an identity.
 - `DOCKB_SECRET_KEY` is **required**, with no ephemeral fallback. This follows from the
   removal rather than being decided alongside it: with no local mode, the secret signs
-  session cookies, encrypts refresh tokens *and* peppers password hashes, so a key
-  generated per process would invalidate sessions, tokens and every password on every
-  restart. The server refuses to start without it, rather than substituting one.
+  session cookies, encrypts refresh tokens and TOTP secrets, *and* peppers password hashes, so a
+  key generated per process would invalidate sessions, tokens, second factors and every password
+  on every restart. The server refuses to start without it, rather than substituting one.
 - **Nobody can sign in until an account exists**, so the first account comes from the CLI,
   under the same admin-only rule as every other account (§7). A fresh install therefore
   presents a sign-in that no one can pass until an administrator runs `dockb users create`
@@ -166,22 +185,29 @@ baseline rather than of pending work.
 
 ## 7. Decision: account lifecycle is admin-CLI only (decided)
 
-Accounts are created, and passwords reset, by an admin-only command-line tool. There is no
-self-registration and no recovery flow over HTTP. That removes, as a class:
+Accounts are created by an admin-only command-line tool. There is no self-registration and no email
+verification. A writer who already has an account can recover a forgotten password over HTTP: the
+server emails a single-use, 24-hour link to the account's stored address. That keeps account
+creation in the CLI while removing the admin from the common reset case. The boundary is:
 
 - No `POST /api/auth/register` endpoint, and so no registration policy to decide or enforce.
-- No email verification step.
-- No password-reset token flow, no expiry on such a token, and no email delivery.
-- No account-takeover surface reachable from a recovery path.
+- No email verification step. The address on an account is admin-supplied and unverified; it is the
+  address password-reset links and email one-time codes go to, and access to the mailbox is the
+  proof recovery uses.
+- A reset link is bound to one password change, expires after 24 hours, and clears every session
+  and all 2FA state when used.
+- Reset mail is sent in a background task, so a known and an unknown address take comparable time.
+  Delivery failures are logged server-side; the caller sees only an accepted request.
 
 This is a deliberate fit for the current stage: DockB is a writing tool with a small, known set of
-users, and a CLI is the right weight for administering it. Opening DockB to untrusted users would
-require a hosted registration and recovery flow, and this decision would be revisited then.
+users, and a CLI is the right weight for creating and administering accounts. Opening DockB to
+untrusted users would require a hosted registration and verified-email recovery flow, and this
+decision would be revisited then.
 
 ### The admin CLI
 
 `dockb users <command>` creates, lists, blocks, unblocks, deletes, undeletes, resets a password,
-and assigns a manuscript to an account. The command table and each command's refusals live in
+disables 2FA, and assigns a manuscript to an account. The command table and each command's refusals live in
 `src/dockb/cli/README.md`, which is where that contract is maintained; what follows is why the
 lifecycle is a CLI at all and what the commands have in common.
 
@@ -362,8 +388,10 @@ So the exemption is an argument to the policy check rather than a different poli
 value still has to pass the maximum, and the first thing a user does with a temporary password is
 replace it with one that passes the minimum.
 
-An administrator reads it off the console and passes it to the user out of band. It is not emailed,
-and the address on the account is not verified, so there is nowhere to send it.
+An administrator reads it off the console and passes it to the user out of band. The initial
+temporary password is not emailed: an unverified address is not a safe destination for a credential
+that already grants access. The same address can carry a short-lived reset link after the user has
+an account, where mailbox access is the recovery proof.
 
 ### First use must change the password
 
@@ -406,7 +434,18 @@ buttons — so the sign-in screen is a username field, a password field, and **S
 - **Sign in** posts `POST /api/auth/login/password`. A 401 renders the server's own generic
   `invalid_username_or_password` message, because the route refuses a wrong password, an unknown
   username and a blocked account identically and the form must not become an account-status oracle
-  by re-deriving which one it was. A 429 renders a "wait before trying again" message instead.
+  by re-deriving which one it was. A 429 renders a "wait before trying again" message instead. A
+  response with `two_factor_required: true` opens the code dialog instead of a session.
+- **Forgot password?** opens a request dialog that posts the account address to
+  `POST /api/auth/password-reset/request`. It always acknowledges with the same message when email
+  is configured; the reset link carries a 24-hour token back to `/editor/?reset-password=<token>`.
+- **Two-factor challenge** explains whether the account uses TOTP or email, posts the code and the
+  challenge to `POST /api/auth/2fa/verify`, and only then accepts the session. A wrong or expired
+  code is shown inline and leaves the dialog open.
+- **Set up two-factor authentication** is offered after every interactive login on an account with
+  no second factor. It is informational and skippable with **Not now**: dismissing it does not gate
+  the manuscript. Enrollment offers TOTP (secret, provisioning URI, QR code) or an email one-time
+  code, and enables the chosen method only after a code checks out.
 - **Change your password** appears when `/api/auth/me` or the login response reports
   `password_change_required`, and is shown *before* any manuscript state is loaded, so the editor
   never issues a request that is about to be refused. It asks for the current password and the
@@ -414,6 +453,10 @@ buttons — so the sign-in screen is a username field, a password field, and **S
   precisely so somebody who signed in on another person's temporary password can get back to the
   gate, and a dialog with no way out of it is a trap.
 - **Sign in again** follows a successful change, with a message saying the password changed.
+- **Reset password** opens from `/editor/?reset-password=<token>`, takes the new password and its
+  confirmation, and posts the token to `POST /api/auth/password-reset/confirm`. On success it says
+  the password changed and asks the writer to sign in; the spent token and every session and 2FA
+  row for the account are gone.
 
 **Ending a session** has two entrances, both posting `POST /api/auth/logout`: **File → Sign out** in
 the editor's menu, for a writer simply finished for the day, and the change-password dialog's
@@ -464,11 +507,25 @@ The session cookie is tightened to `SameSite=Strict` for the password path, wher
 `state` or PKCE to protect it. It is scoped to `/api` (§4) and the editor is served same-origin from
 `/editor/` (§6), so a cross-site form post to a gated route carries no cookie.
 
-### Deferred
+### Password recovery and two-factor authentication (decided)
 
-Multi-factor authentication, recovery of a forgotten password over HTTP, and email verification are
-all out of scope. `dockb users set-password` is the only recovery path, which is sufficient while the
-user set is small and known, and would not be for untrusted users.
+A reset request takes an address and returns `202` without revealing whether an account holds it;
+the mail goes out after the response, and a delivery failure is logged rather than echoed back. A
+valid token permits one password change within 24 hours. Using it stamps `credentials_changed_at` and
+clears all sessions, the configured 2FA method and secret, pending enrollments, email OTPs, reset
+tokens, and login challenges. An administrator can still use `dockb users set-password`; the HTTP
+flow does not replace that command.
+
+An account has **one** second factor: `totp` or `email`. TOTP enrollment creates a random secret and
+an `otpauth://` URI compatible with common authenticator apps; codes allow one step of clock skew.
+Email enrollment sends a six-digit code that expires after five minutes and can be resent. A
+password sign-in on a 2FA account returns a five-minute challenge instead of a session; only
+`POST /api/auth/2fa/verify` turns that challenge into the normal session response. Wrong, expired,
+and already-used challenges and codes all fail the same way.
+
+The no-2FA warning is informational and skippable, so it cannot lock a writer out of manuscripts.
+There is no SMS factor and no email verification: the address is an admin-supplied recovery
+destination, not an identity.
 
 The column-by-column schema and the store's accessors are in
 `src/dockb/infrastructure/accounts/README.md`.
@@ -478,12 +535,20 @@ The column-by-column schema and the store's accessors are in
 1. The editor asks `GET /api/auth/config`, which always reports `login_required: true`, and shows
    the Sign-in gate with a username/password form. Provider buttons appear underneath it only when
    `providers` is non-empty.
-   - **Password:** the editor posts the username and password to `POST /api/auth/login/password`,
-     which verifies the Argon2id hash, starts the server-side session, and sets its own HttpOnly
-     session cookie. The response carries the profile and `password_change_required`. A first-time
-     user whose `must_change_password` is set is then served only `/api/auth/me`,
-     `/api/auth/change-password` and `/api/auth/logout`, and is shown the change-password screen
-     until the password changes.
+    - **Password:** the editor posts the username and password to `POST /api/auth/login/password`,
+      which verifies the Argon2id hash. An account with 2FA gets a short-lived challenge instead of
+      a cookie; `POST /api/auth/2fa/verify` exchanges the challenge and code for the server-side
+      session and its HttpOnly cookie. Otherwise the login response starts the session directly and
+      carries the profile, `password_change_required`, `two_factor_enabled`, and
+      `two_factor_method`. A first-time user whose `must_change_password` is set is then served only
+      `/api/auth/me`, `/api/auth/change-password` and `/api/auth/logout`, and is shown the
+      change-password screen until the password changes. On an interactive login without 2FA, the
+      editor also offers enrollment, which the writer may skip.
+    - **Forgotten password:** the editor posts the account address to
+      `POST /api/auth/password-reset/request`. The mail carries a 24-hour link to
+      `/editor/?reset-password=<token>`; the editor posts the token and new password to
+      `POST /api/auth/password-reset/confirm`, which ends sessions and clears 2FA state.
+
    - **Provider:** the editor asks the backend for a login URL (`GET /api/auth/login?provider=google`),
      which returns the provider consent URL with `state` and a PKCE `code_verifier` the backend
      remembers.
@@ -547,3 +612,9 @@ Settled while the design was implemented, or decided since:
 - **Machine-to-machine credentials are separate from user accounts** — the MCP server's service
   credential is not a user account and never appears in `users`. It is a per-prompt bearer token
   held in memory, and is documented in `README_mcp_auth.md`.
+- **Password recovery uses the stored address** — reset links and email codes go to the
+  admin-supplied address on the account, even though it is unverified and is not an identity. A
+  reset proves control of the mailbox for one password change; successful use clears sessions and all
+  2FA state.
+- **One second factor per account** — TOTP or email OTP, never SMS. TOTP uses PyOTP-compatible
+  secrets, and the no-2FA prompt is skippable so a missing second factor never gates manuscripts.

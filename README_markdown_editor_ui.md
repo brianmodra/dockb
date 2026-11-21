@@ -6,8 +6,9 @@ This document describes the writing window a DockB user sees: the menubar, chapt
 message panel, right-hand reference shelf, and the dialogs behind each command. It explains why
 each click behaves as it does — opening or re-clicking a chapter, renaming or moving one, toggling
 between WYSIWYG and raw markdown, setting a point of view, choosing a local file-cache directory,
-and switching between online and offline work. It also covers proofreading in both views: the
-backend checks the paragraph under the cursor, and the writer accepts a correction or adds a word
+and switching between online and offline work. The sign-in screen also carries forgotten-password
+recovery and two-factor challenge and enrollment dialogs. It also covers proofreading in both views:
+the backend checks the paragraph under the cursor, and the writer accepts a correction or adds a word
 to the document's glossary from the response strip. The Settings → Language… choice sets and saves
 the proofreading language for that account, so the next session starts with it.
 
@@ -313,13 +314,26 @@ response-area function that opens a chapter scrolled to a paragraph, is in
   off.
 - **Sign in** — always: `GET /api/auth/config` always reports `login_required: true`, so there
   is no mode in which the gate is skipped. The gate carries a **username / password form**, which
-  posts to `POST /api/auth/login/password`. It is password-only: there are no provider buttons, so
-  an account that exists only through OAuth has to be given a password by an administrator running
-  `dockb users set-password` before it can open the editor. The backend's OAuth routes
-  (`GET /api/auth/login?provider=…` and `/callback`) still work and are unchanged; only the editor
-  stopped offering them. A first-time user on a temporary password is shown a **change your
-  password** screen instead, and the manuscript routes answer 403
+  posts to `POST /api/auth/login/password`, and a **Forgot password?** button. It is password-only:
+  there are no provider buttons, so an account that exists only through OAuth has to be given a
+  password by an administrator running `dockb users set-password` before it can open the editor.
+  The backend's OAuth routes (`GET /api/auth/login?provider=…` and `/callback`) still work and are
+  unchanged; only the editor stopped offering them. A first-time user on a temporary password is
+  shown a **change your password** screen instead, and the manuscript routes answer 403
    `password_change_required` until they do (`README_auth.md` §7).
+- **Forgot password** — asks for the account address, posts it to
+  `POST /api/auth/password-reset/request`, and acknowledges with a message that a 24-hour link has
+  been emailed. The acknowledgement does not say whether the address belongs to an account.
+- **Reset password** — opened by `/editor/?reset-password=<token>`. It asks for the new password
+  twice, posts the token and password to `POST /api/auth/password-reset/confirm`, and on success
+  tells the writer to sign in. A bad or spent token stays in the dialog as an error.
+- **Two-factor challenge** — shown when password sign-in returns a challenge. It explains whether
+  the account uses an authenticator or email, posts the code to `POST /api/auth/2fa/verify`, and
+  opens the editor only once the code verifies; an error leaves the dialog open with a cleared code.
+- **Set up two-factor authentication** — offered after interactive logins on accounts with no
+  second factor. TOTP enrollment shows the secret, provisioning URI, and QR code; email enrollment
+  shows a code field and **Resend code**. **Confirm** enables the chosen method only after a valid
+  code, while **Not now** skips the offer without blocking the manuscript.
 - **File cache** (Settings → File Cache, Electron only) — explains that the cache is not the record:
   "The 'file cache' is the directory where documents will be stored on your PC. This is a cache, not
   the actual storage." and "The documents are stored in a database and with versioning, on the
@@ -344,7 +358,10 @@ through `PUT /api/chapters/{id}/document` when clicked.
 
 On launch the editor asks `GET /api/auth/config`, which always reports `login_required: true`,
 so the **Sign in** gate is always shown; the username comes from `GET /api/auth/me`, which also
-reports `password_change_required`, and is shown in the menubar. Once signed in it restores the **last document**
+reports `password_change_required`, `two_factor_enabled`, and `two_factor_method`, and is shown in
+the menubar. A password sign-in can insert the two-factor challenge before a session exists, and the
+no-2FA offer follows a completed interactive login. A link to
+`/editor/?reset-password=<token>` opens the reset-password modal. Once signed in it restores the **last document**
 from app state. If there is one, it loads the chapter list (panel widths and mode live in the
 same state). If there is none, it shows the **select a document** modal. In Electron, when no file
 cache directory has been chosen, the **File cache** modal appears first. The state is stored
@@ -391,3 +408,6 @@ The open questions in earlier revisions have been settled:
   (`frontend/src/renderer/layout/README_response_area.md`).
 - **Move-mode cancellation** — Esc or a click outside the list.
 - **Menubar** — in-window (HTML), not the native Electron menu.
+- **Credential recovery and 2FA** — the sign-in gate owns forgot-password, challenge, and enrollment
+  dialogs; enrollment is skippable and never gates manuscript access. Reset links arrive as a query
+  parameter on the backend-hosted editor and open a modal there.

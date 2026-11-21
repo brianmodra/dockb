@@ -19,9 +19,11 @@ never git history. Writers edit canonical markdown in WYSIWYG or raw view, and a
 the directory a writer picks and hands it to the server. Every manuscript belongs to an account,
 which decides which documents the writer can see, which directory the markdown lives in, and which
 git history it has — so a session reads and writes only its own account's work, and a manuscript
-whose account was deleted is handed to another with `dockb users assign` rather than lost. The
-backend is observable as well as structured: every HTTP request logs its total time and a per-stage
-breakdown, so a slow save or open shows exactly where the time went.
+whose account was deleted is handed to another with `dockb users assign` rather than lost. Accounts
+can add TOTP or email one-time-code two-factor authentication, and writers can recover a forgotten
+password through a 24-hour link emailed to the account's stored address. The backend is observable
+as well as structured: every HTTP request logs its total time and a per-stage breakdown, so a slow
+save or open shows exactly where the time went.
 
 ## Summary
 
@@ -111,15 +113,16 @@ counting from 1, or from 0 when "Start from 0" is ticked.
 
 ## Create the first account
 
-There is no sign-up form and no password-recovery email, so an account is made from the
-command line:
+There is no sign-up form, so the first account is made from the command line:
 
 ```
 dockb users create --username abby --email abby@example.com
 ```
 
-That prints a temporary password once; signing in asks for a new one. The other `dockb users`
-subcommands list accounts, reset passwords, block and unblock, and delete and undelete.
+That prints a temporary password once; signing in asks for a new one. Once SMTP is configured, a
+writer who forgets their password can request a 24-hour reset link from the sign-in screen. The
+other `dockb users` subcommands list accounts (including 2FA state), reset passwords, disable 2FA,
+block and unblock, and delete and undelete.
 
 Deleting an account is a **soft** delete: it refuses logins and keeps the row, its state and its
 manuscripts, because a deleted account cannot sign in and would otherwise take its work with it.
@@ -151,8 +154,10 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src
 ```
 
 The API needs `NEO4J_URL`, `NEO4J_USER`, and `NEO4J_PASSWORD`
-(or a `.env` in the repo root). `--reload-dir src` watches only the Python
-code, so the chapters under `run/` and other generated files never trigger
+(or a `.env` in the repo root). Password-reset links and email one-time codes need the SMTP settings
+in `.env.example`; without them those routes answer `503 email_unavailable`. `DOCKB_PUBLIC_URL`
+sets the origin in reset links and defaults to `http://localhost:8000`. `--reload-dir src` watches
+only the Python code, so the chapters under `run/` and other generated files never trigger
 reloads.
 
 Frontend (from `frontend/`):

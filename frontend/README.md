@@ -4,11 +4,12 @@
 
 This is the guide to DockB's desktop editor: how to run it, which module owns each area, and why
 the window is built the way it is. The browser build is a thin client that talks only to the server
-to sign in, open a document, edit a chapter, import a folder, and check spelling and grammar. The
-Electron build adds a local markdown file cache and offline mode; the backend still owns the
-manuscript, the git history, and the import write. The backend serves the interface itself, so the
-editor and API share an origin and the session cookie reaches every route. The writer's chosen
-proofreading language is saved per account and restored on the next launch.
+to sign in, verify a second factor, reset a forgotten password, open a document, edit a chapter,
+import a folder, and check spelling and grammar. The Electron build adds a local markdown file cache
+and offline mode; the backend still owns the manuscript, the git history, and the import write. The
+backend serves the interface itself, so the editor and API share an origin and the session cookie
+reaches every route. The writer's chosen proofreading language is saved per account and restored on
+the next launch.
 
 This note also covers the parts a screenshot does not show: the chapter list's right-click actions,
 the document settings modal, the read-only reference shelf, the response strip for AI chat and
@@ -29,8 +30,10 @@ routes and removes the need for both `credentials: "include"` and any CORS grant
 
 The renderer talks to the backend through a typed client in
 `src/renderer/api/`: `client.ts` (documents, chapters, chapter-document
-lifecycle, reorder, app state, auth), `http.ts` (`ApiError` on non-2xx), and
-`session.ts` (`checkSession`, `signInWithPassword`, `changePassword`, `signOut`).
+lifecycle, reorder, app state, auth), `http.ts` (`ApiError` on non-2xx), and `session.ts`
+(`checkSession`, `signInWithPassword`, `changePassword`, `signOut`, password-reset requests and
+confirmation, 2FA verification, and enrollment). Auth types include `two_factor_enabled` and
+`two_factor_method` on sessions and a `two_factor_required` sign-in result carrying the challenge.
 Document attrs carry the stored `narrative_perspective` (empty means none), and
 `getNarrativePerspectives()` fetches the fixed code/label choices the edit dialog shows.
 `index.ts` wires the client into
@@ -284,11 +287,21 @@ DOM as HTML.
   paragraph under the cursor mentions, replaced as the cursor moves. See
   `src/renderer/layout/README_right_panel.md`.
 - `documentPicker.ts`, `signInGate.ts`, `modals.ts` — start-up, confirm, document-edit and
-  user-settings dialogs (the delete/document-edit flows live in `main.ts`). The
+  user-settings dialogs (the delete/document-edit flows live in `main.ts`). The sign-in gate carries
+  a **Forgot password?** button and routes a `two_factor_required` result to the challenge dialog.
+  The
   document-edit modal carries title, author, and a narrative-perspective select built from
   `getNarrativePerspectives()`; Settings → Document is its only entry point. The user-settings
   modal (`userSettingsModal`) carries the "Enable raw markdown mode" checkbox, whose value is held
   for the session and gates the mode toggle.
+- `passwordReset.ts` — the **Forgot password?** request dialog posts the account address and reports
+  that a 24-hour link has been emailed, plus the reset dialog opened by
+  `/editor/?reset-password=<token>`; it checks that the two new-password entries match, confirms the
+  token, and asks the writer to sign in.
+- `twoFactor.ts` — the challenge dialog names the configured method and verifies the code, and the
+  enrollment dialog offers TOTP or email OTP after interactive logins. TOTP enrollment shows the
+  secret, provisioning URI, and a QR code rendered with `qrcode`; email enrollment can resend a
+  fresh five-minute code. **Not now** skips enrollment without gating the editor.
 - `languageSettings.ts` — the Language dialog (Settings ⚙ → Language…): a
   scrollable proofreading-language list with Cancel/Apply; the list comes from
   `GET /api/check/languages`, with the built-in list as the offline fallback. The
@@ -328,6 +341,12 @@ The gate is **password-only** — there are no provider buttons (`README_auth.md
 so an account that exists only through OAuth needs `dockb users set-password` before
 it can open the editor. The backend's OAuth routes are unchanged and still work by
 URL; only this screen stopped offering them.
+
+`signInFlow.ts` resolves the whole credential sequence: an existing session, otherwise the
+username/password gate, a 2FA challenge when the login response asks for one, a password change when
+one is owed, and a skippable no-2FA enrollment offer after an interactive login. A link to
+`/editor/?reset-password=<token>` opens the reset dialog from `main.ts`; after a successful change
+the message panel tells the writer to sign in with the new password.
 
 A first-time user signs in twice. Changing a password stamps the account's credentials
 and refuses every session older than the stamp, including the one the change arrived
