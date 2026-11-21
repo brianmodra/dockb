@@ -1,6 +1,13 @@
 import { ApiClient } from "./client";
 import { ApiError } from "./http";
-import type { Session } from "./types";
+import type {
+  Session,
+  SignInResult,
+  TwoFactorEnrollment,
+  TwoFactorMethod,
+} from "./types";
+
+export type { SignInResult } from "./types";
 
 /**
  * Who is signed in, or null when nobody is.
@@ -30,8 +37,47 @@ export async function signInWithPassword(
   client: ApiClient,
   username: string,
   password: string,
-): Promise<Session> {
+): Promise<SignInResult> {
   return client.loginWithPassword(username, password);
+}
+
+export async function verifyTwoFactor(
+  client: ApiClient,
+  challenge: string,
+  code: string,
+): Promise<Session> {
+  return client.verifyTwoFactor(challenge, code);
+}
+
+export async function requestPasswordReset(client: ApiClient, email: string): Promise<void> {
+  await client.requestPasswordReset(email);
+}
+
+export async function confirmPasswordReset(
+  client: ApiClient,
+  token: string,
+  newPassword: string,
+): Promise<void> {
+  await client.confirmPasswordReset(token, newPassword);
+}
+
+export async function beginTwoFactorEnrollment(
+  client: ApiClient,
+  method: TwoFactorMethod,
+): Promise<TwoFactorEnrollment> {
+  return client.beginTwoFactorEnrollment(method);
+}
+
+export async function confirmTwoFactorEnrollment(
+  client: ApiClient,
+  method: TwoFactorMethod,
+  code: string,
+): Promise<void> {
+  await client.confirmTwoFactorEnrollment(method, code);
+}
+
+export async function resendEmailOtp(client: ApiClient): Promise<void> {
+  await client.resendEmailOtp();
 }
 
 /**

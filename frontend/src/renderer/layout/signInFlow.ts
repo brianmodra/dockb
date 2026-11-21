@@ -3,6 +3,7 @@ import { checkSession } from "../api/session";
 import type { Session } from "../api/types";
 import { openSignInGate } from "./signInGate";
 import { openChangePasswordDialog } from "./changePasswordDialog";
+import { offerTwoFactorEnrollment } from "./twoFactor";
 
 export interface EnsureSignedInOptions {
   onMessage?: (text: string) => void;
@@ -20,6 +21,16 @@ export interface EnsureSignedInOptions {
  * followed by the sign-in gate again. The new password is not held in memory to post a
  * second time — the user types it.
  */
+async function afterInteractiveSignIn(
+  api: ApiClient,
+  session: Session | null,
+): Promise<Session | null> {
+  if (session && !session.twoFactorEnabled) {
+    await offerTwoFactorEnrollment(api);
+  }
+  return session;
+}
+
 export async function ensureSignedIn(
   api: ApiClient,
   options: EnsureSignedInOptions = {},
@@ -31,7 +42,7 @@ export async function ensureSignedIn(
     if (!signedIn) {
       return null;
     }
-    session = await checkSession(api);
+    session = await afterInteractiveSignIn(api, await checkSession(api));
   }
 
   if (session?.passwordChangeRequired) {
@@ -44,7 +55,7 @@ export async function ensureSignedIn(
     if (!signedInAgain) {
       return null;
     }
-    session = await checkSession(api);
+    session = await afterInteractiveSignIn(api, await checkSession(api));
   }
 
   return session;

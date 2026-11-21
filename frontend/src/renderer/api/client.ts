@@ -23,6 +23,9 @@ import type {
   ProofreadingLanguagesResponse,
   RenumberResponse,
   Session,
+  SignInResult,
+  TwoFactorEnrollment,
+  TwoFactorMethod,
   UserProfile,
 } from "./types";
 
@@ -297,18 +300,107 @@ export class ApiClient {
   }
 
   async getMe(): Promise<Session> {
-    const response = await request<{ user: UserProfile; password_change_required: boolean }>(
-      this.url("/auth/me"),
-    );
-    return { user: response.user, passwordChangeRequired: response.password_change_required };
+    const response = await request<{
+      user: UserProfile;
+      password_change_required: boolean;
+      two_factor_enabled: boolean;
+      two_factor_method: TwoFactorMethod | null;
+    }>(this.url("/auth/me"));
+    return {
+      user: response.user,
+      passwordChangeRequired: response.password_change_required,
+      twoFactorEnabled: response.two_factor_enabled,
+      twoFactorMethod: response.two_factor_method,
+    };
   }
 
-  async loginWithPassword(username: string, password: string): Promise<Session> {
-    const response = await request<{ user: UserProfile; password_change_required: boolean }>(
-      this.url("/auth/login/password"),
-      { method: "POST", body: JSON.stringify({ username, password }) },
-    );
-    return { user: response.user, passwordChangeRequired: response.password_change_required };
+  async loginWithPassword(username: string, password: string): Promise<SignInResult> {
+    const response = await request<{
+      user?: UserProfile;
+      password_change_required?: boolean;
+      two_factor_enabled?: boolean;
+      two_factor_method?: TwoFactorMethod | null;
+      two_factor_required?: boolean;
+      challenge?: string;
+      method?: TwoFactorMethod;
+    }>(this.url("/auth/login/password"), {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    if (response.two_factor_required) {
+      return {
+        twoFactorRequired: true,
+        challenge: response.challenge ?? "",
+        method: response.method ?? "totp",
+        twoFactorEnabled: true,
+        twoFactorMethod: response.method ?? "totp",
+      };
+    }
+    return {
+      user: response.user!,
+      passwordChangeRequired: response.password_change_required ?? false,
+      twoFactorEnabled: response.two_factor_enabled ?? false,
+      twoFactorMethod: response.two_factor_method ?? null,
+    };
+  }
+
+  async verifyTwoFactor(challenge: string, code: string): Promise<Session> {
+    const response = await request<{
+      user: UserProfile;
+      password_change_required: boolean;
+      two_factor_enabled: boolean;
+      two_factor_method: TwoFactorMethod | null;
+    }>(this.url("/auth/2fa/verify"), {
+      method: "POST",
+      body: JSON.stringify({ challenge, code }),
+    });
+    return {
+      user: response.user,
+      passwordChangeRequired: response.password_change_required,
+      twoFactorEnabled: response.two_factor_enabled,
+      twoFactorMethod: response.two_factor_method,
+    };
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    await request(this.url("/auth/password-reset/request"), {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+    await request(this.url("/auth/password-reset/confirm"), {
+      method: "POST",
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  }
+
+  async beginTwoFactorEnrollment(method: TwoFactorMethod): Promise<TwoFactorEnrollment> {
+    const response = await request<{
+      method: TwoFactorMethod;
+      secret: string | null;
+      provisioning_uri: string | null;
+    }>(this.url("/auth/2fa/enroll"), {
+      method: "POST",
+      body: JSON.stringify({ method }),
+    });
+    return {
+      method: response.method,
+      secret: response.secret,
+      provisioningUri: response.provisioning_uri,
+    };
+  }
+
+  async confirmTwoFactorEnrollment(method: TwoFactorMethod, code: string): Promise<void> {
+    await request(this.url("/auth/2fa/confirm"), {
+      method: "POST",
+      body: JSON.stringify({ method, code }),
+    });
+  }
+
+  async resendEmailOtp(): Promise<void> {
+    await request(this.url("/auth/2fa/resend"), { method: "POST" });
   }
 
   /** Returns nothing useful: the response is always `{status: "ok", signed_out: true}`. */

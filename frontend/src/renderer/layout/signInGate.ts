@@ -1,8 +1,11 @@
 import type { ApiClient } from "../api/client";
 import { signInWithPassword } from "../api/session";
+import type { SignInResult } from "../api/types";
 import { ApiError } from "../api/http";
 import { makeBody, makeOverlay, makeTitle } from "./modals";
 import { makeErrorLine, makeField, setError } from "./authForm";
+import { openPasswordResetRequest } from "./passwordReset";
+import { openTwoFactorChallenge } from "./twoFactor";
 
 /**
  * How a refusal reads to somebody who only needs to know what to do next.
@@ -60,6 +63,15 @@ export function openSignInGate(api: ApiClient): Promise<boolean> {
     const buttons = document.createElement("div");
     buttons.className = "modal-buttons";
 
+    const forgot = document.createElement("button");
+    forgot.type = "button";
+    forgot.className = "modal-button";
+    forgot.dataset.testid = "sign-in-forgot-password";
+    forgot.textContent = "Forgot password?";
+    forgot.addEventListener("click", () => {
+      void openPasswordResetRequest(api);
+    });
+
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "modal-button";
@@ -76,7 +88,7 @@ export function openSignInGate(api: ApiClient): Promise<boolean> {
     submit.dataset.testid = "sign-in-submit";
     submit.textContent = "Sign in";
 
-    buttons.append(cancel, submit);
+    buttons.append(forgot, cancel, submit);
     form.append(buttons);
 
     dialog.append(
@@ -93,7 +105,16 @@ export function openSignInGate(api: ApiClient): Promise<boolean> {
       submit.disabled = true;
       const typed = secret.value;
       try {
-        await signInWithPassword(api, fields.value, typed);
+        const result: SignInResult = await signInWithPassword(api, fields.value, typed);
+        if ("twoFactorRequired" in result) {
+          const verified = await openTwoFactorChallenge(api, result);
+          if (!verified) {
+            setError(error, "Two-factor verification was cancelled.");
+            submit.disabled = false;
+            secret.focus();
+            return;
+          }
+        }
         // Drop the typed secret from the DOM before handing the session over, so it
         // does not outlive the dialog in a node the page is about to discard anyway.
         secret.value = "";

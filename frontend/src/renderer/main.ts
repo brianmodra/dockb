@@ -23,6 +23,7 @@ import { openDictionaryDialog } from "./layout/dictionaryDialog";
 import { openFileCacheModal } from "./layout/fileCacheModal";
 import { openImportDialog, showImportSummaries, type ImportSelection } from "./layout/importDialog";
 import { ensureSignedIn } from "./layout/signInFlow";
+import { openPasswordResetDialog } from "./layout/passwordReset";
 import { AppStateController } from "./state/appState";
 import { Connectivity } from "./state/connectivity";
 import { FileCache } from "./state/fileCache";
@@ -789,6 +790,21 @@ async function boot(api: ApiClient, ctx: BootContext): Promise<void> {
     loadDocumentMentions,
   } = ctx;
   const onMessage = (text: string): void => layout.pushMessage(text);
+
+  const url = new URL(window.location.href);
+  const resetToken = url.searchParams.get("reset-password");
+  if (resetToken) {
+    url.searchParams.delete("reset-password");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    try {
+      const reset = await openPasswordResetDialog(api, resetToken, onMessage);
+      if (reset) {
+        onMessage("Password changed. Sign in with your new password.");
+      }
+    } catch (error) {
+      reportError("Password reset", error, onMessage);
+    }
+  }
 
   let config: import("./api/types").AuthConfig;
   try {

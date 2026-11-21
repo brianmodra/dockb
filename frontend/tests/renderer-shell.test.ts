@@ -19,6 +19,8 @@ function localModeApi(
     getMe: vi.fn(async () => ({
       user: { id: "u-1", username: "brian", email: "a@b.c", display_name: "Brian", avatar_url: "" },
       password_change_required: false,
+      twoFactorEnabled: true,
+      twoFactorMethod: "totp",
     })),
     getAppState: vi.fn(async () => ({ last_document_id: null, panel_widths: null, edit_mode: null })),
     putAppState: vi.fn(async () => ({ last_document_id: null, panel_widths: null, edit_mode: null })),
@@ -871,6 +873,8 @@ function signedInApi(overrides: Record<string, unknown> = {}): ReturnType<typeof
   const session = {
     user: { id: "u-1", username: "brian", email: "a@b.c", display_name: "Brian", avatar_url: "" },
     password_change_required: false,
+    twoFactorEnabled: true,
+    twoFactorMethod: "totp",
   };
   return localModeApi({
     getAuthConfig: vi.fn(async () => ({ login_required: true, providers: [] })),
@@ -1347,5 +1351,18 @@ describe("structural cache mirroring", () => {
     await tick();
 
     expect(bridge.cacheDelete).not.toHaveBeenCalled();
+  });
+
+  it("opens the reset modal from the reset-password query and removes the token", async () => {
+    window.history.replaceState(null, "", "/editor/?reset-password=reset-token");
+    const { api, bridge } = localModeApi({
+      confirmPasswordReset: vi.fn(async () => undefined),
+    });
+    mountShell(document.body, { api: api as never, bridge: bridge as never });
+    await tick();
+
+    expect(document.querySelector("[data-testid='password-reset-submit']")).not.toBeNull();
+    expect(window.location.search).not.toContain("reset-password");
+    expect(api.confirmPasswordReset).not.toHaveBeenCalled();
   });
 });

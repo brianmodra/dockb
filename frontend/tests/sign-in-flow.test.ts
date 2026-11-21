@@ -15,7 +15,13 @@ function fakeApi(options: {
   return {
     getMe: vi.fn(options.me),
     loginWithPassword:
-      options.login ?? vi.fn(async () => ({ user: profile, passwordChangeRequired: false })),
+      options.login ??
+      vi.fn(async () => ({
+        user: profile,
+        passwordChangeRequired: false,
+        twoFactorEnabled: true,
+        twoFactorMethod: "totp",
+      })),
     changePassword: options.change ?? vi.fn(async () => undefined),
     logout: options.logout ?? vi.fn(async () => undefined),
   } as never;
@@ -34,10 +40,28 @@ function set(testid: string, value: string): void {
 }
 
 const signedIn = (): Promise<Session> =>
-  Promise.resolve({ user: profile, passwordChangeRequired: false });
+  Promise.resolve({
+    user: profile,
+    passwordChangeRequired: false,
+    twoFactorEnabled: true,
+    twoFactorMethod: "totp",
+  });
 
 const pending = (): Promise<Session> =>
-  Promise.resolve({ user: profile, passwordChangeRequired: true });
+  Promise.resolve({
+    user: profile,
+    passwordChangeRequired: true,
+    twoFactorEnabled: true,
+    twoFactorMethod: "totp",
+  });
+
+const withoutTwoFactor = (): Promise<Session> =>
+  Promise.resolve({
+    user: profile,
+    passwordChangeRequired: false,
+    twoFactorEnabled: false,
+    twoFactorMethod: null,
+  });
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -164,5 +188,94 @@ describe("ensureSignedIn", () => {
     expect(api.loginWithPassword).not.toHaveBeenCalled();
     click("sign-in-cancel");
     expect(await promise).toBeNull();
+  });
+
+  it("does not offer enrollment for a restored session", async () => {
+    const session = await ensureSignedIn(fakeApi({ me: withoutTwoFactor }));
+
+    expect(session?.user.username).toBe("abby");
+    expect(document.querySelector("[data-testid='two-factor-skip']")).toBeNull();
+  });
+
+  it("offers enrollment after an interactive login without 2FA", async () => {
+    let calls = 0;
+    const api = fakeApi({
+      me: async () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new ApiError(401, "not_authenticated")) : withoutTwoFactor();
+      },
+      login: vi.fn(async () => ({
+        user: profile,
+        passwordChangeRequired: false,
+        twoFactorEnabled: false,
+        twoFactorMethod: null,
+      })),
+    });
+    const promise = ensureSignedIn(api);
+    await flush();
+    set("sign-in-username", "abby");
+    set("sign-in-password", "hunter2");
+    click("sign-in-submit");
+    await flush();
+
+    expect(document.querySelector("[data-testid='two-factor-skip']")).not.toBeNull();
+    click("two-factor-skip");
+    expect((await promise)?.user.username).toBe("abby");
+  });
+
+  it("does not offer enrollment after signing in with a second factor", async () => {
+    let calls = 0;
+    const api = fakeApi({
+      me: async () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new ApiError(401, "not_authenticated")) : signedIn();
+      },
+    });
+    const promise = ensureSignedIn(api);
+    await flush();
+    set("sign-in-username", "abby");
+    set("sign-in-password", "hunter2");
+    click("sign-in-submit");
+    await flush();
+
+    expect(document.querySelector("[data-testid='two-factor-skip']")).toBeNull();
+    expect(await promise).not.toBeNull();
+  });
+
+  it("offers enrollment after the second login following a password change", async () => {
+    let calls = 0;
+    const api = fakeApi({
+      me: async () => {
+        calls += 1;
+        return calls === 1
+          ? {
+              user: profile,
+              passwordChangeRequired: true,
+              twoFactorEnabled: true,
+              twoFactorMethod: "totp",
+            }
+          : withoutTwoFactor();
+      },
+      login: vi.fn(async () => ({
+        user: profile,
+        passwordChangeRequired: false,
+        twoFactorEnabled: false,
+        twoFactorMethod: null,
+      })),
+    });
+    const promise = ensureSignedIn(api);
+    await flush();
+    set("change-password-current", "temporary");
+    set("change-password-new", "a long enough password");
+    click("change-password-submit");
+    await flush();
+    set("sign-in-username", "abby");
+    set("sign-in-password", "a long enough password");
+    click("sign-in-submit");
+    await flush();
+
+    expect(document.querySelector("[data-testid='two-factor-skip']")).not.toBeNull();
+    click("two-factor-skip");
+    expect(await promise).not.toBeNull();
   });
 });

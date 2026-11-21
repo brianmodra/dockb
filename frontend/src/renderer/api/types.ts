@@ -19,9 +19,29 @@ export interface AuthConfig {
  * it is true the server refuses every manuscript route, so it has to be known before
  * the first one is issued rather than discovered from a 403.
  */
+export type TwoFactorMethod = "totp" | "email";
+
 export interface Session {
   user: UserProfile;
   passwordChangeRequired: boolean;
+  twoFactorEnabled: boolean;
+  twoFactorMethod: TwoFactorMethod | null;
+}
+
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challenge: string;
+  method: TwoFactorMethod;
+  twoFactorEnabled: true;
+  twoFactorMethod: TwoFactorMethod;
+}
+
+export type SignInResult = Session | TwoFactorChallenge;
+
+export interface TwoFactorEnrollment {
+  method: TwoFactorMethod;
+  secret: string | null;
+  provisioningUri: string | null;
 }
 
 export interface DocumentAttrs {
